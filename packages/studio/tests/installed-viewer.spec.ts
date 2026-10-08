@@ -33,6 +33,7 @@ const INSTALL_COMMAND_TIMEOUT_MS = 120_000;
 const VIEWER_COMMAND_TIMEOUT_MS = 10_000;
 const commit = runCommand('git', ['rev-parse', 'HEAD'], packageDirectory, COMMIT_COMMAND_TIMEOUT_MS).stdout.trim();
 const corePackageDirectory = resolve(packageDirectory, '..', 'core');
+const diagnosticsPackageDirectory = resolve(packageDirectory, '..', 'diagnostics');
 const persistencePackageDirectory = resolve(packageDirectory, '..', 'persistence');
 const viewports = [
   { height: 900, name: 'desktop', width: 1440 },
@@ -149,7 +150,11 @@ test.beforeAll(async () => {
     mkdirSync(installedConsumer);
     writeFileSync(join(sandbox, '.fluo-studio-installed-viewer.json'), '{"managed":true}\n');
 
+    runCommand('pnpm', ['build'], diagnosticsPackageDirectory, BUILD_COMMAND_TIMEOUT_MS);
+    runCommand('pnpm', ['build'], persistencePackageDirectory, BUILD_COMMAND_TIMEOUT_MS);
+    runCommand('pnpm', ['build'], corePackageDirectory, BUILD_COMMAND_TIMEOUT_MS);
     runCommand('pnpm', ['build'], packageDirectory, BUILD_COMMAND_TIMEOUT_MS);
+    const diagnosticsTarball = packPackage(diagnosticsPackageDirectory, tarballDirectory);
     const persistenceTarball = packPackage(persistencePackageDirectory, tarballDirectory);
     const coreTarball = packPackage(corePackageDirectory, tarballDirectory);
     const studioTarball = packPackage(packageDirectory, tarballDirectory);
@@ -160,6 +165,7 @@ test.beforeAll(async () => {
         private: true,
         dependencies: {
           '@fluojs/core': `file:${coreTarball}`,
+          '@fluojs/diagnostics': `file:${diagnosticsTarball}`,
           '@fluojs/persistence': `file:${persistenceTarball}`,
           '@fluojs/studio': `file:${studioTarball}`,
         },
@@ -167,9 +173,10 @@ test.beforeAll(async () => {
     );
 
     const installation = runCommand('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'], installedConsumer, INSTALL_COMMAND_TIMEOUT_MS);
-    const dependencies = runCommand('npm', ['ls', '@fluojs/core', '@fluojs/persistence', '@fluojs/studio'], installedConsumer, INSTALL_COMMAND_TIMEOUT_MS);
+    const dependencies = runCommand('npm', ['ls', '@fluojs/core', '@fluojs/diagnostics', '@fluojs/persistence', '@fluojs/studio'], installedConsumer, INSTALL_COMMAND_TIMEOUT_MS);
     expect(installation.stdout).toContain('added');
     expect(dependencies.stdout).toContain('@fluojs/core@');
+    expect(dependencies.stdout).toContain('@fluojs/diagnostics@');
     expect(dependencies.stdout).toContain('@fluojs/persistence@');
     expect(dependencies.stdout).toContain('@fluojs/studio@');
     const binary = join(installedConsumer, 'node_modules', '.bin', 'fluo-studio-viewer');

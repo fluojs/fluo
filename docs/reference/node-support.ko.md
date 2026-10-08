@@ -63,7 +63,9 @@ Authentication, 일반 authorization, malformed metadata, expired artifact, dige
 
 ## Portable package boundaries
 
-다음 8개 public root는 의도적으로 `engines.node`를 생략합니다: `@fluojs/config`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, `@fluojs/runtime`. 이웃 manifest와 모양을 맞추려고 engines를 복원하지 마세요.
+다음 10개 public root는 의도적으로 `engines.node`를 생략합니다: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, `@fluojs/runtime`. 이웃 manifest와 모양을 맞추려고 engines를 복원하지 마세요.
+
+Diagnostics root와 모든 public subpath는 host builtin, runtime 구현, Studio UI 및 import-time resource 없는 데이터 계약/reader입니다. Studio Node `>=24.0.0 <27`, CLI Node `>=24.11.0 <27`은 유지하며 선언 소유권 이전이 consumer 지원을 좁히지 않습니다.
 
 Package-wide Node metadata는 모든 conditional export나 runtime-native adapter에 대한 주장이 아닙니다. 기존 Bun, Deno, Workers 동작은 각 package README의 계약을 따릅니다. Config의 in-memory root는 portable하게 유지됩니다. Env-file/기본 `.env` loading과 watch mode는 `>=24.0.0 <27`에서 지원하는 Node 전용 기능입니다. 기존 capability guard는 host가 builtin 경계를 제공하지 못할 때 계속 `CONFIG_RUNTIME_UNAVAILABLE`을 발생시킵니다. Import나 feature 호출에 새 Node version 검사는 없습니다.
 

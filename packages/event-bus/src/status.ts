@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /**
  * Defines the event bus lifecycle state type.
@@ -24,12 +24,7 @@ export interface EventBusStatusAdapterInput {
 /**
  * Describes the event bus platform status snapshot contract.
  */
-export interface EventBusPlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface EventBusPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 function createReadiness(input: EventBusStatusAdapterInput): PlatformReadinessReport {
   if (input.lifecycleState === 'ready' && input.transportSubscribeFailures === 0) {

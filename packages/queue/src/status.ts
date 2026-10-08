@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /** Lifecycle phases reported by the queue platform status adapter. */
 export type QueueLifecycleState = 'idle' | 'starting' | 'started' | 'stopping' | 'stopped' | 'failed';
@@ -17,12 +17,7 @@ export interface QueueStatusAdapterInput {
 }
 
 /** Queue-specific platform snapshot returned to health and readiness integrations. */
-export interface QueuePlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface QueuePlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 function createReadiness(input: QueueStatusAdapterInput): PlatformReadinessReport {
   const workerStartFailures = input.workerStartFailures ?? 0;

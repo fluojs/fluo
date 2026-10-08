@@ -16,7 +16,7 @@
 
 | 패밀리 | 설명 | 패키지 |
 | --- | --- | --- |
-| **Core** | 공유 계약 및 DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
+| **Core** | 공유 계약 및 DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime`, `@fluojs/diagnostics` |
 | **HTTP** | 웹 API 실행, 라우팅, structured access logging. | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | **Auth** | 인증 및 인가. | `@fluojs/auth`, `@fluojs/auth-http`, `@fluojs/jwt`, `@fluojs/passport` |
 | **Platform** | 런타임 어댑터. | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-nextjs`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
@@ -67,6 +67,7 @@ source를 cancel하고, `MultipartBodyConsumedError`는 buffered/streaming doubl
 ## 패키지 책임
 
 ### core
+- **`@fluojs/diagnostics`**: Runtime/Studio 구현이나 host builtin에 의존하지 않는 공유 진단 데이터 및 static/report/live wire reader의 portable 단일 소유자입니다. Root와 `platform-contract`, `studio-contracts` subpath는 wire/parsed 차이를 유지하고 기존 runtime, core/internal, Studio 및 기능 status import는 계속 사용할 수 있습니다. [패키지 API owner](../../packages/diagnostics/README.ko.md)와 [migration](../getting-started/migrate-diagnostics.ko.md)을 참조하세요. Runtime은 생산/lifecycle/resource, Studio는 presentation과 reader facade, CLI는 export/transport, 각 기능은 status 정책과 typed details를 소유합니다.
 - **`@fluojs/core`**: 메타데이터 헬퍼 및 TC39 표준 데코레이터 지원. 여기에는 first-party request-pipeline DTO validation, binding, 표준 metadata bag 접근을 위한 `@fluojs/core/request-pipeline` package-integration seam이 포함됩니다.
 - **`@fluojs/di`**: 프로바이더 해결, 라이프사이클 스코프, 의존성 그래프 분석.
 - **`@fluojs/config`**: Package-wide Node engine 없이 portable in-memory configuration merge, validation, clone, typed access를 제공합니다. `ConfigService`와 명시적 in-memory `ConfigModule.load({ envFilePaths: [], ... })` 입력은 `process.cwd()`, 기본 `.env`, Node builtin을 해석하지 않습니다. 하나의 `ConfigModule.forRoot(...)` 등록이 `ConfigService`와 `CONFIG_RELOADER`를 함께 export하며, standalone reload에는 `ConfigReloadManager.create(...)`를 사용합니다. 순서형 `envFilePaths`는 낮은 우선순위에서 높은 우선순위 순으로 적용되고, 생략 시 `cwd` 또는 watch가 있거나 명시적 `defaults`/`processEnv`/`runtimeOverrides`가 없을 때만 `.env`를 로드하며 `[]`는 파일 로드를 비활성화합니다. Env-file, 기본 `.env`, watch 경로는 실행 시 `CONFIG_RUNTIME_UNAVAILABLE`로 보호되는 Node 전용 기능이며 `process.getBuiltinModule(...)`을 lazy하게 요구하고 사용할 수 없으면 remediation guidance를 제공합니다.
@@ -155,7 +156,7 @@ source를 cancel하고, `MultipartBodyConsumedError`는 buffered/streaming doubl
 - **`@fluojs/testing`**: `Test.createTestingModule({ rootModule })`, request-level `Test.createApp(...)`, `@fluojs/testing/http` request helper subpath, Vitest decorator tooling, request-scoped DI isolation regression helper, body-bearing RFC `QUERY` 및 single-byte-range listener portability assertion, portability harness cleanup 보장을 포함해 애플리케이션 및 플랫폼 계약을 검증하기 위한 Node.js `>=24.0.0 <27` conformance 및 통합 헬퍼.
 - **`@fluojs/vite`**: fluo 프로젝트용 Node.js `>=24.11.0 <27`(Babel 8 compiler toolchain floor) Vite 빌드 유틸리티이며, package manifest는 `engines.node >=24.11.0 <27`을 선언합니다. 생성된 starter `vite.config.ts` 파일이 사용하는 유지보수형 `fluoDecoratorsPlugin()`을 포함하고, Vite `>=6.2.0`을 요구하며, Babel peer는 package import나 plugin creation이 아니라 eligible 애플리케이션 `.ts` transform에서 lazy하게 해석합니다. 워크스페이스 suite는 Vite 8.2.2/Rolldown에서 실행되고 field-decorator metadata를 실행하며 plugin의 pre-transform 순서를 고정합니다.
 
-Studio의 Node.js `>=24.0.0 <27` engine floor는 consumer-side snapshot, diagnostic, timing declaration이 runtime-neutral이므로 독립적으로 설치할 수 있습니다. `@fluojs/runtime`은 배포 Studio dependency가 아니라 development-time drift check입니다. Runtime-neutral `PlatformCheckResult`, `PlatformReadinessReport`, `PlatformHealthReport` declaration은 inspect artifact 전반의 check outcome을 보존하며, readiness와 health report에는 각각 선택적 `checks`를 포함할 수 있습니다.
+Studio의 Node.js `>=24.0.0 <27` engine floor는 snapshot, diagnostic, timing declaration을 portable `@fluojs/diagnostics`에서 소비하므로 독립적으로 설치할 수 있습니다. `@fluojs/runtime`은 배포 Studio dependency가 아니라 development-time drift check입니다. Diagnostics는 공유 declaration과 validation을, Studio root는 reader facade와 presentation을 소유합니다. `PlatformCheckResult`, `PlatformReadinessReport`, `PlatformHealthReport`는 check outcome과 선택적 `checks`를 보존합니다.
 
 ## Studio inspect artifact ownership
 

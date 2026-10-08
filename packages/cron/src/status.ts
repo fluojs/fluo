@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /** Lifecycle phases reported by the cron platform status adapter. */
 export type CronLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
@@ -20,12 +20,7 @@ export interface CronStatusAdapterInput {
 }
 
 /** Cron-specific platform snapshot returned to health and readiness integrations. */
-export interface CronPlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface CronPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 function createReadiness(input: CronStatusAdapterInput): PlatformReadinessReport {
   const redisLockIoAvailable = resolveRedisLockIoAvailable(input);

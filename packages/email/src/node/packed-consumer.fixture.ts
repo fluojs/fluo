@@ -16,6 +16,7 @@ const consumerDependencyNames = [
   '@fluojs/persistence',
   '@fluojs/auth',
   '@fluojs/core',
+  '@fluojs/diagnostics',
   '@fluojs/di',
   '@fluojs/notifications',
   '@fluojs/runtime',

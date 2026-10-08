@@ -23,7 +23,9 @@ fluo 진단을 위한 CLI sidecar 및 React viewer workflow입니다. Node dev-r
 
 대부분의 애플리케이션 프로젝트는 Studio를 개발 전용 의존성으로 설치합니다. CLI가 `fluo dev --studio`, `fluo inspect --mermaid`, 패키징된 viewer 접근을 위해 Studio를 해석하며, 애플리케이션 런타임 자체는 Studio를 직접 import하지 않습니다.
 
-Studio는 Node.js tooling package이며 배포 package의 `engines.node` field와 동일하게 Node.js `>=24.0.0 <27`을 요구합니다. Studio는 runtime-neutral consumer-side diagnostics declaration을 소유하고 `@fluojs/runtime`을 설치하지 않으므로, 이 배포 engine floor는 runtime package로 인해 좁아지지 않습니다. 패키징된 viewer subpath는 Bun, Deno, Cloudflare Workers fallback workflow가 만든 artifact를 표시하는 경우에도 Node package resolution으로 해석합니다.
+Studio는 Node.js tooling package이며 배포 package의 `engines.node` field와 동일하게 Node.js `>=24.0.0 <27`을 요구합니다. 공유 declaration과 wire reader는 portable [`@fluojs/diagnostics`](../diagnostics/README.ko.md)가 소유하고 Studio는 이를 소비합니다. Studio는 `@fluojs/runtime`을 설치하지 않으므로 배포 engine floor는 runtime package로 인해 좁아지지 않습니다. 패키징된 viewer subpath는 Bun, Deno, Cloudflare Workers fallback workflow가 만든 artifact를 표시하는 경우에도 Node package resolution으로 해석합니다.
+
+기존 Studio root helper/type는 유지되는 public facade입니다. `parseStudioPayload`, `parseStudioLiveEvent`, `validateStudioLiveEvent`, `isStudioLiveEvent`는 diagnostics의 공유 reader를 소비하며 filter/Mermaid/viewer는 Studio에 남습니다. Optional wire와 normalized parsed route, version/validation/privacy 의미는 유지합니다. UI 없이 데이터를 읽는 새 consumer는 [선택적 diagnostics import 마이그레이션](../../docs/getting-started/migrate-diagnostics.ko.md)을 따르세요.
 
 ```bash
 pnpm add -D @fluojs/studio

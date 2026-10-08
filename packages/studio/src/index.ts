@@ -50,4 +50,4 @@ export type {
   StudioRestartPayload,
   StudioRouteDescriptor,
   StudioRouteKind,
-} from '@fluojs/core/internal';
+} from '@fluojs/diagnostics';

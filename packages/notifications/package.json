@@ -45,7 +45,8 @@
   "dependencies": {
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
-    "@fluojs/runtime": "workspace:^"
+    "@fluojs/runtime": "workspace:^",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "devDependencies": {
     "@fluojs/testing": "workspace:^",

@@ -1,0 +1,51 @@
+{
+  "name": "@fluojs/diagnostics",
+  "description": "Portable diagnostic data contracts and static/report/live wire readers for Fluo.",
+  "keywords": [
+    "fluo",
+    "diagnostics",
+    "contracts",
+    "portable"
+  ],
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fluojs/fluo.git",
+    "directory": "packages/diagnostics"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./platform-contract": {
+      "types": "./dist/platform-contract.d.ts",
+      "import": "./dist/platform-contract.js"
+    },
+    "./studio-contracts": {
+      "types": "./dist/studio-contracts.d.ts",
+      "import": "./dist/studio-contracts.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
+    "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "pnpm exec vitest run -c vitest.config.ts",
+    "test:watch": "pnpm exec vitest -c vitest.config.ts"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  }
+}

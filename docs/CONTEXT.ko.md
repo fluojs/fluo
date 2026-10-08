@@ -1,5 +1,7 @@
 # fluo — AI Context Document
 
+공유 진단 데이터와 static/report/live reader 소유권은 [`@fluojs/diagnostics`](../packages/diagnostics/README.ko.md)에 위임합니다. Runtime/core/Studio/status 호환성, wire와 parsed route field 및 CLI ingress 경계는 [선택적 import migration](./getting-started/migrate-diagnostics.ko.md)을 참조하세요. Runtime은 lifecycle/resource를, Studio는 filter/Mermaid/UI를 소유합니다.
+
 일반 identity·인증 결과·account-linking 정책은 `@fluojs/auth`, HTTP guard·strategy·credential·refresh integration은 `@fluojs/auth-http`, crypto와 rotation/replay는 `@fluojs/jwt`, Passport.js bridge는 `@fluojs/passport`가 소유합니다. 기존 Passport 예제와 import는 compatibility 경로이며 canonical HTTP 등록은 auth-http의 `AuthModule.forRoot(...)`입니다.
 
 Background HTTP 작업은 기존 `useForm`의 additive `mode: 'background'`와

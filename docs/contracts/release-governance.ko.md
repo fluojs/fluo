@@ -69,9 +69,11 @@ Prerelease workflow는 Changesets prerelease mode(`changeset pre enter <tag>`)�
 
 ## intended publish surface
 
+`@fluojs/diagnostics`는 Preview(`0.x`) portable 계약 패키지입니다. 공유 선언 소유권과 reader API는 기존 public import와 version-1 artifact를 유지하며 filter, transport, lifecycle 및 기능 status 정책은 기존 패키지에 남습니다.
+
+- `@fluojs/diagnostics`
 - `@fluojs/auth`
 - `@fluojs/auth-http`
-
 - `@fluojs/cache-manager`
 - `@fluojs/cli`
 - `@fluojs/config`

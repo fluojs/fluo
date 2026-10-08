@@ -1,13 +1,8 @@
 import type Redis from 'ioredis';
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /** Normalized Redis platform snapshot shape used by health/readiness integrations. */
-export interface PersistencePlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface PersistencePlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 /** Input consumed by the Redis status adapter when translating runtime state. */
 export interface RedisStatusAdapterInput {

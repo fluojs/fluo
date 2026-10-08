@@ -1,5 +1,7 @@
 # fluo — AI Context Document
 
+Shared diagnostic data and static/report/live reader ownership is delegated to [`@fluojs/diagnostics`](../packages/diagnostics/README.md). Use the [optional import migration](./getting-started/migrate-diagnostics.md) for runtime/core/Studio/status compatibility, wire versus parsed route fields and CLI ingress boundaries. Runtime owns lifecycle/resources; Studio owns filters/Mermaid/UI.
+
 Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.
 
 Background HTTP interactions use the existing `useForm` with additive

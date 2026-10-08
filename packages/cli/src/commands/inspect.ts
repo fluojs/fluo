@@ -4,14 +4,8 @@ import { createRequire } from 'node:module';
 import { dirname, extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type {
-  BootstrapTimingDiagnostics,
-  ModuleType,
-  PlatformDiagnosticIssue,
-  PlatformShell,
-  PlatformShellSnapshot,
-  RuntimeInspectionSnapshot,
-} from '@fluojs/runtime';
+import type { BootstrapTimingDiagnostics, PlatformDiagnosticIssue, PlatformShellSnapshot, StudioReportArtifact } from '@fluojs/diagnostics';
+import type { ModuleType, PlatformShell, RuntimeInspectionSnapshot } from '@fluojs/runtime';
 import { tsImport } from 'tsx/esm/api';
 
 import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
@@ -77,21 +71,9 @@ type ParsedInspectArgs = {
   timing: boolean;
 };
 
-type InspectReport = {
-  generatedAt: string;
+interface InspectReport extends Omit<StudioReportArtifact, 'snapshot'> {
   snapshot: RuntimeInspectionSnapshot;
-  summary: {
-    componentCount: number;
-    diagnosticCount: number;
-    errorCount: number;
-    healthStatus: PlatformShellSnapshot['health']['status'];
-    readinessStatus: PlatformShellSnapshot['readiness']['status'];
-    timingTotalMs: number;
-    warningCount: number;
-  };
-  timing: BootstrapTimingDiagnostics;
-  version: 1;
-};
+}
 
 const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio';
 const RUNTIME_ENTRYPOINT = '@fluojs/runtime';

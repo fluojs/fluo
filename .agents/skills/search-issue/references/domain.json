@@ -73,6 +73,7 @@
     "di",
     "i18n",
     "runtime",
+    "diagnostics",
     "http",
     "platform-fastify",
     "platform-nodejs",
@@ -116,7 +117,7 @@
     "vite"
   ],
   "groups": {
-    "foundation": ["core", "config", "di", "i18n", "runtime"],
+    "foundation": ["core", "config", "di", "i18n", "runtime", "diagnostics"],
     "http-runtime": [
       "http",
       "platform-fastify",
@@ -212,6 +213,7 @@
     "di": "area:foundation",
     "i18n": "area:foundation",
     "runtime": "area:foundation",
+    "diagnostics": "area:foundation",
     "http": "area:http-runtime",
     "platform-fastify": "area:http-runtime",
     "platform-nodejs": "area:http-runtime",

@@ -7,6 +7,7 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { parseStudioPayload } from '@fluojs/studio';
 
 import { createContentChangeGate, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { generatorManifest } from './generators/manifest.js';
@@ -4769,6 +4770,7 @@ exit 7
     expect(report.snapshot.diagnostics).toEqual([]);
     expect(report.timing.version).toBe(1);
     expect(report.timing.totalMs).toBeGreaterThanOrEqual(0);
+    expect(parseStudioPayload(stdoutBuffer.join('')).payload.report).toEqual(report);
   });
 
   it('writes TypeScript inspect report artifacts to an explicit output path', async () => {

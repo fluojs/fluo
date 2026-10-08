@@ -15,4 +15,4 @@ export type {
   StudioRequestTrace,
   StudioRestartPayload,
   StudioRouteKind,
-} from '@fluojs/core/internal';
+} from '@fluojs/diagnostics';

@@ -104,6 +104,8 @@
 
 ## 관측 가능성 및 문서화
 
+Runtime 구현이나 Studio UI 없이 공유 진단 데이터를 다룰 때는 [`@fluojs/diagnostics`](../../packages/diagnostics/README.ko.md)를 사용하세요. Portable status/snapshot/graph/trace/timing 계약과 static/report/live reader를 소유합니다. 기존 import path는 호환되며 filter와 Mermaid는 Studio에 남습니다.
+
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | OpenAPI 출력이 필요함 | `@fluojs/openapi` | 스키마 생성과 API 문서화에 사용합니다. |

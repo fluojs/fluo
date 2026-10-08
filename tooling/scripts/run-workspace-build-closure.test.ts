@@ -18,17 +18,17 @@ function expectBefore(order: string[], earlier: string, later: string) {
 }
 
 describe('resolveWorkspaceBuildOrder', () => {
-  it('orders @fluojs/studio behind its Core declaration dependency', () => {
+  it('orders @fluojs/studio behind its diagnostics declaration dependency', () => {
     const order = resolveWorkspaceBuildOrder('@fluojs/studio', repoRoot);
 
-    expectBefore(order, '@fluojs/persistence', '@fluojs/core');
-    expectBefore(order, '@fluojs/core', '@fluojs/studio');
-    expect(order).toEqual(['@fluojs/persistence', '@fluojs/core', '@fluojs/studio']);
+    expectBefore(order, '@fluojs/diagnostics', '@fluojs/studio');
+    expect(order).toEqual(['@fluojs/diagnostics', '@fluojs/studio']);
   });
 
   it('orders @fluojs/runtime behind its declaration-producing dependencies without Studio', () => {
     const order = resolveWorkspaceBuildOrder('@fluojs/runtime', repoRoot);
 
+    expectBefore(order, '@fluojs/diagnostics', '@fluojs/core');
     expectBefore(order, '@fluojs/persistence', '@fluojs/core');
     expectBefore(order, '@fluojs/core', '@fluojs/di');
     expectBefore(order, '@fluojs/core', '@fluojs/auth');
@@ -38,6 +38,7 @@ describe('resolveWorkspaceBuildOrder', () => {
     expectBefore(order, '@fluojs/http', '@fluojs/runtime');
     expect(order).not.toContain('@fluojs/studio');
     expect(order).toEqual([
+      '@fluojs/diagnostics',
       '@fluojs/persistence',
       '@fluojs/core',
       '@fluojs/di',

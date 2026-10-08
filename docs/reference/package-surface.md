@@ -16,7 +16,7 @@ Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/s
 
 | family | description | packages |
 | --- | --- | --- |
-| **Core** | Shared contracts and DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
+| **Core** | Shared contracts and DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime`, `@fluojs/diagnostics` |
 | **HTTP** | Web API execution, routing, and structured access logging. | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | **Auth** | Authentication and authorization. | `@fluojs/auth`, `@fluojs/auth-http`, `@fluojs/jwt`, `@fluojs/passport` |
 | **Platform** | Runtime adapters. | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-nextjs`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
@@ -68,6 +68,7 @@ active source; `MultipartBodyConsumedError` rejects buffered/streaming double co
 ## package responsibilities
 
 ### core
+- **`@fluojs/diagnostics`**: Portable single owner of shared diagnostic data and static/report/live wire readers, with no runtime/Studio implementation or host builtin dependency. Root plus `platform-contract` and `studio-contracts` subpaths preserve wire/parsed differences; existing runtime, core/internal, Studio and feature status imports remain available. See the [package API owner](../../packages/diagnostics/README.md) and [migration](../getting-started/migrate-diagnostics.md). Runtime owns production/lifecycle/resources; Studio owns presentation and reader facades; CLI owns export/transport; features own status policy and typed details.
 - **`@fluojs/core`**: Metadata helpers and TC39-standard decorator support, including the `@fluojs/core/request-pipeline` package-integration seam for first-party request-pipeline DTO validation, binding, and standard metadata-bag access.
 - **`@fluojs/di`**: Provider resolution, lifecycle scopes, and dependency graph analysis.
 - **`@fluojs/config`**: Portable in-memory configuration merging, validation, cloning, and typed access with no package-wide Node engine. `ConfigService` and explicit in-memory `ConfigModule.load({ envFilePaths: [], ... })` inputs never resolve `process.cwd()`, default `.env`, or Node builtins. One `ConfigModule.forRoot(...)` registration exports both `ConfigService` and `CONFIG_RELOADER`; use `ConfigReloadManager.create(...)` for standalone reloads. Ordered `envFilePaths` apply from lowest to highest precedence; omission loads `.env` only with `cwd` or watch, or without explicit `defaults`/`processEnv`/`runtimeOverrides`; `[]` disables file loading. Env-file, default `.env`, and watch paths are Node-only features guarded at execution by `CONFIG_RUNTIME_UNAVAILABLE`; they lazily require `process.getBuiltinModule(...)` and provide remediation guidance when unavailable.
@@ -154,7 +155,7 @@ active source; `MultipartBodyConsumedError` rejects buffered/streaming double co
 - **`@fluojs/testing`**: Node.js `>=24.0.0 <27` conformance and integration helpers for verifying application and platform contracts, including `Test.createTestingModule({ rootModule })`, request-level `Test.createApp(...)`, the `@fluojs/testing/http` request helper subpath, Vitest decorator tooling, request-scoped DI isolation regression helpers, body-bearing RFC `QUERY` and single-byte-range listener portability assertions, and portability harness cleanup guarantees.
 - **`@fluojs/vite`**: Node.js `>=24.11.0 <27` (the Babel 8 compiler toolchain floor) Vite-facing build utilities for fluo projects; the package manifest declares `engines.node >=24.11.0 <27`. It includes the maintained `fluoDecoratorsPlugin()` used by generated starter `vite.config.ts` files, requires Vite `>=6.2.0`, and lazily resolves Babel peers from eligible application `.ts` transforms rather than package import or plugin creation. The workspace suite runs Vite 8.2.2/Rolldown and executes field-decorator metadata while locking the plugin's pre-transform ordering.
 
-Studio's Node.js `>=24.0.0 <27` engine floor remains independently installable because its consumer-side snapshot, diagnostic, and timing declarations are runtime-neutral; `@fluojs/runtime` is a development-time drift check rather than a published Studio dependency. The runtime-neutral `PlatformCheckResult`, `PlatformReadinessReport`, and `PlatformHealthReport` declarations preserve check outcomes across inspect artifacts, and readiness and health reports may each include optional `checks`.
+Studio's Node.js `>=24.0.0 <27` engine floor remains independently installable because its snapshot, diagnostic and timing declarations come from portable `@fluojs/diagnostics`; `@fluojs/runtime` is a development-time drift check rather than a published Studio dependency. Diagnostics owns shared declarations and validation; Studio root retains reader facades and presentation. `PlatformCheckResult`, `PlatformReadinessReport`, and `PlatformHealthReport` preserve check outcomes and optional `checks`.
 
 ## Studio inspect artifact ownership
 

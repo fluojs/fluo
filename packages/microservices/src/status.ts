@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 import type { MicroserviceTransport } from './types.js';
 
@@ -46,12 +46,7 @@ export interface MicroserviceStatusAdapterInput {
 /**
  * Describes the microservice platform status snapshot contract.
  */
-export interface MicroservicePlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface MicroservicePlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 function createReadiness(input: MicroserviceStatusAdapterInput): PlatformReadinessReport {
   if (input.lifecycleState === 'ready') {

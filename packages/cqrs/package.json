@@ -46,7 +46,8 @@
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
     "@fluojs/event-bus": "workspace:^",
-    "@fluojs/runtime": "workspace:^"
+    "@fluojs/runtime": "workspace:^",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

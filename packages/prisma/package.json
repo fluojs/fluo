@@ -46,7 +46,8 @@
     "@fluojs/persistence": "workspace:^",
     "@fluojs/core": "workspace:^",
     "@fluojs/http": "workspace:^",
-    "@fluojs/di": "workspace:^"
+    "@fluojs/di": "workspace:^",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "peerDependencies": {
     "@prisma/client": ">=5.0.0"

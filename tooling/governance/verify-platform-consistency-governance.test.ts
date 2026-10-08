@@ -1945,6 +1945,23 @@ describe('enforceReactPageCatalogContract', () => {
   it('keeps compiled React page diagnostics aligned across source and bilingual docs', () => {
     expect(() => enforceReactPageCatalogContract()).not.toThrow();
   });
+
+  it.each([
+    "kind !== undefined && typeof kind !== 'string'",
+    "kind: kind ?? 'http'",
+    'params: params === undefined ? []',
+  ])('rejects a removed canonical route validation marker: %s', (marker) => {
+    const path = 'packages/diagnostics/src/studio-contracts.ts';
+    const readText = (relativePath: string) => readFileSync(join(repoRoot, relativePath), 'utf8');
+    const original = readText(path);
+    const variant = original.replace(marker, '');
+    expect(variant).not.toBe(original);
+
+    const enforce = () => enforceReactPageCatalogContract((relativePath: string) =>
+      relativePath === path ? variant : readText(relativePath));
+
+    expect(enforce).toThrow(/packages\/diagnostics\/src\/studio-contracts\.ts/u);
+  });
 });
 
 describe('enforceReactPageMetadataIdentityContract', () => {
@@ -6248,7 +6265,7 @@ describe('Studio public docs and migration expectations', () => {
     expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
   });
 
-  it('requires Core internal runtime declarations and rejects Studio imports', () => {
+  it('requires diagnostics runtime declarations and rejects Studio imports', () => {
     // Given: the real governed source reader.
     const readText = (relativePath: string) => readFileSync(join(repoRoot, relativePath), 'utf8');
 
@@ -6265,17 +6282,17 @@ describe('Studio public docs and migration expectations', () => {
     expect(() => enforceStudioPublicContractOwnership((relativePath) => {
       const content = readText(relativePath);
       return relativePath === 'packages/runtime/src/devtools/contracts.ts'
-        ? content.replace("from '@fluojs/core/internal';", "from '@fluojs/studio';")
+        ? content.replace("from '@fluojs/diagnostics';", "from '@fluojs/studio';")
         : content;
     })).toThrow(/@fluojs\/studio/u);
 
-    // When / Then: removing the Core-internal seam is rejected.
+    // When / Then: removing the diagnostics ownership seam is rejected.
     expect(() => enforceStudioPublicContractOwnership((relativePath) => {
       const content = readText(relativePath);
       return relativePath === 'packages/runtime/src/devtools/contracts.ts'
-        ? content.replace("from '@fluojs/core/internal';", "from '@fluojs/core';")
+        ? content.replace("from '@fluojs/diagnostics';", "from '@fluojs/core';")
         : content;
-    })).toThrow(/@fluojs\/core\/internal/u);
+    })).toThrow(/@fluojs\/diagnostics/u);
   });
 
   it.each(staticLiveCompanionPairs)(

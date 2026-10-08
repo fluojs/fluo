@@ -9,6 +9,7 @@ interface PackageManifest {
 
 const portablePackages = [
   '@fluojs/config',
+  '@fluojs/diagnostics',
   '@fluojs/email',
   '@fluojs/i18n',
   '@fluojs/persistence',

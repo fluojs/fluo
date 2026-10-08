@@ -63,6 +63,8 @@ pnpm dlx @fluojs/cli new my-app
 
 ## 릴리스 계약
 
+공유 inspect report와 live envelope 선언은 [`@fluojs/diagnostics`](../diagnostics/README.ko.md)가 소유합니다. CLI는 project-local lazy runtime resolution, bootstrap/close, stdout/stderr 분리, JSON/report wrapping과 output write를 유지하고 Mermaid는 Studio root에 위임합니다. Sidecar는 부분 ingress와 unknown payload를 보관하고 자체 epoch/sequence를 생성하며 recursive body-like-field 거부를 유지합니다. 이를 완전한 wire reader와 동일화하지 않습니다. [선택적 data-only migration](../../docs/getting-started/migrate-diagnostics.ko.md)을 참조하세요.
+
 - `@fluojs/cli`와 생성된 모든 Node HTTP, mixed, microservice, React SSR + Fastify 프로젝트는 Babel 8 compiler toolchain floor인 Node.js `>=24.11.0 <27`을 요구합니다. Node build target은 `node24`, Node starter typings는 `@types/node@^24.0.0`입니다. Bun과 Deno starter는 native engine을 유지하고 Workers의 Node engine은 로컬 CLI/Wrangler tooling만 제한합니다. 업그레이드 전에 [Node.js 마이그레이션](../../docs/reference/node-support.ko.md)을 적용하세요.
 - `@fluojs/cli`는 Node.js `>=24.11.0 <27`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 하고 생성 Babel 8 toolchain이 지원되는 engine 범위 안에 있도록 Node.js `>=24.11.0 <27`을 선언합니다. Node 24.11 미만과 Node 27 이상은 제외되며, Node microservice-only 프로젝트는 같은 `>=24.11.0 <27` 하한을 유지합니다.
 - `inspect`는 검사를 실행할 때만, 그리고 검사 대상 프로젝트의 dependency tree에서만 `@fluojs/runtime`을 해석합니다. `fluo inspect`를 사용하기 전에 현재 Node.js 버전과 호환되는 runtime 버전을 설치하세요. 다른 CLI 명령은 CLI 전체 Node.js `>=24.11.0 <27` 범위에서 계속 사용할 수 있습니다.

@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /** Resolved Slack lifecycle state used for diagnostics and health checks. */
 export type SlackLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
@@ -14,12 +14,7 @@ export interface SlackStatusAdapterInput {
 }
 
 /** Structured snapshot returned by {@link createSlackPlatformStatusSnapshot}. */
-export interface SlackPlatformStatusSnapshot {
-  details: Record<string, unknown>;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  readiness: PlatformReadinessReport;
-}
+export interface SlackPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 function createReadiness(input: SlackStatusAdapterInput): PlatformReadinessReport {
   if (input.lifecycleState === 'ready') {

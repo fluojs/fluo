@@ -48,7 +48,8 @@
     "@fluojs/di": "workspace:^",
     "@fluojs/redis": "workspace:^",
     "@fluojs/runtime": "workspace:^",
-    "bullmq": "^5.81.1"
+    "bullmq": "^5.81.1",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "devDependencies": {
     "vitest": "^4.1.11"
