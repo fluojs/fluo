@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "documents": [
     {
+      "id": "persistence.transactions",
+      "kind": "contract",
+      "owner": {
+        "en": "docs/architecture/transactions.md",
+        "ko": "docs/architecture/transactions.ko.md"
+      },
+      "packages": [
+        "@fluojs/persistence",
+        "@fluojs/core",
+        "@fluojs/runtime",
+        "@fluojs/prisma",
+        "@fluojs/drizzle",
+        "@fluojs/mongoose"
+      ],
+      "sourcePaths": [
+        "packages/persistence/src/index.ts",
+        "packages/persistence/src/transaction.ts",
+        "packages/persistence/src/result-rollback.ts",
+        "packages/persistence/src/request-transaction.ts",
+        "packages/prisma/src/service.ts",
+        "packages/drizzle/src/database.ts",
+        "packages/mongoose/src/connection.ts"
+      ],
+      "testPaths": [
+        "packages/persistence/src/result-rollback.test.ts",
+        "packages/persistence/src/request-transaction.test.ts",
+        "packages/persistence/src/after-commit.test.ts",
+        "tooling/governance/after-commit-contract.test.ts",
+        "packages/prisma/fixtures/after-commit/acceptance.ts"
+      ]
+    },
+    {
       "id": "documentation.authority",
       "kind": "contract",
       "owner": {

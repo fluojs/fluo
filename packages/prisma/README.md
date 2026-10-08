@@ -6,6 +6,12 @@ Node.js `>=24.0.0 <27` Prisma lifecycle and ALS-backed transaction context for f
 
 ## Table of Contents
 
+Shared boundary types, rollback observation contracts and common error constructors
+are owned by [`@fluojs/persistence`](../persistence/README.md). Existing Prisma root
+imports directly re-export those originals; SQL rollback observation, native options,
+client inference, retry and cleanup remain Prisma-owned. See the
+[optional import migration](../../docs/getting-started/migrate-persistence-contracts.md).
+
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)

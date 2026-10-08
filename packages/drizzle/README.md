@@ -6,6 +6,13 @@ Drizzle ORM integration for fluo with a transaction-aware database wrapper and a
 
 ## Table of Contents
 
+Shared boundary types, rollback observation contracts and common error constructors
+are owned by [`@fluojs/persistence`](../persistence/README.md). Existing Drizzle root
+imports directly re-export those originals. SQL rollback and pooled release observation,
+native options and client inference stay Drizzle-owned; status activity and shutdown
+settlement retain separate lifetimes. See the
+[optional import migration](../../docs/getting-started/migrate-persistence-contracts.md).
+
 - [Installation](#installation)
 - [Runtime Support](#runtime-support)
 - [When to Use](#when-to-use)

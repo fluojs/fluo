@@ -65,6 +65,7 @@
 
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
+| ORM 중립 transaction boundary 타입과 오류가 필요함 | `@fluojs/persistence` | canonical 공유 계약 소유자이며 기존 core/ORM import는 호환됩니다. Native transaction과 driver 지원은 각 ORM에 남습니다. [선택적 import 마이그레이션](../getting-started/migrate-persistence-contracts.ko.md)을 참고하세요. |
 | Node.js에서 Prisma 기반 관계형 접근이 필요함 | `@fluojs/prisma` | Node.js `>=24.0.0 <27`용 Prisma ORM 통합에 사용합니다. Root wrapper는 transaction context에 host `AsyncLocalStorage`와 `engines.node >=24.0.0 <27` 계약을 사용하므로, 호환 ALS 경계가 없는 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 raw Prisma-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요. |
 | Node.js 또는 Bun에서 Drizzle 기반 관계형 접근이 필요함 | `@fluojs/drizzle` | Node.js `>=24.0.0 <27`은 전체 지원합니다. Bun 1.4에서는 `drizzle-orm/libsql`처럼 비동기 callback을 끝까지 await하는 드라이버로 루트 wrapper의 예외 기반 트랜잭션을 조건부로 사용합니다. 동기 `drizzle-orm/bun-sqlite`는 ALS가 트랜잭션 handle을 선택해도 뒤따른 예외가 write를 롤백하지 못하므로 지원하지 않으며 `strictTransactions`로도 판별하지 못합니다. Node 24 미만과 Node 27 이상은 지원하지 않습니다. Deno와 Workers는 검증되지 않았으므로 애플리케이션 소유 provider(`useFactory` 또는 `useValue`) 뒤에 raw Drizzle handle을 등록하세요. |
 | Node.js에서 도큐먼트 데이터베이스 접근이 필요함 | `@fluojs/mongoose` | Node.js `>=24.0.0 <27`용 Mongoose 통합에 사용합니다. Root wrapper는 Node의 `node:async_hooks` transaction context를 사용하며 패키지 자체의 지원 범위를 요구합니다. Node 24 미만과 Node 27 이상은 지원하지 않습니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요. |

@@ -4,7 +4,21 @@
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 <!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->
 
-이 문서는 `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose` 전반의 현재 트랜잭션 문맥 계약을 정의합니다.
+이 문서는 `@fluojs/persistence`, `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose` 전반의 현재 트랜잭션 문맥 계약을 정의합니다.
+
+`@fluojs/persistence`는 공통 boundary 타입·오류·rollback observation 선언,
+Result policy와 FIFO hook settlement 및 abort forwarding·active-work 등록/settlement를 소유합니다.
+기존 core/ORM 오류·타입과 runtime root request helper는 원본을 직접 재노출합니다.
+공개 import와 primitive API는 [persistence README](../../packages/persistence/README.ko.md),
+선택적인 전환은 [migration 안내](../getting-started/migrate-persistence-contracts.ko.md)가 설명합니다.
+구체 native observer, ALS, connection/session, callback attempt와 driver cleanup은 각 ORM에 남습니다.
+Mongoose observer는 session-owning connection 문맥을 유지하고 `AfterCommitCleanupError`는
+Mongoose-owned `AggregateError`의 직접 하위 클래스입니다. Portable primitive는 새 ORM host 지원,
+새 retry·savepoint·durability 보장이나 diagnostics/status 소유권 이동을 뜻하지 않습니다.
+
+공통 source는 `packages/persistence/src/{transaction,result-rollback,request-transaction,after-commit}.ts`이고,
+`packages/persistence/src/*.test.ts`와 `tooling/governance/after-commit-contract.test.ts`가 이를 검증합니다.
+실제 native 및 packed import 검증은 아래 fixture와 duplicate-module-safety 실행 receipt로 별도 확인합니다.
 
 ## 호환되는 wrapper 사본
 
