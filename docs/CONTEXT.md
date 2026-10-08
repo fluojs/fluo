@@ -11,6 +11,10 @@ enter public prefetch. Example and packaged starter use `/catalog/background`.
 <!-- fluo:prisma-api-unification: module-owned-registration -->
 
 <!-- fluo:transaction-contract: explicit-target -->
+Shared transaction primitive ownership is `@fluojs/persistence`; core/ORM errors and
+runtime request helpers remain direct re-exports. Read the [transaction owner](./architecture/transactions.md),
+[primitive API](../packages/persistence/README.md), and [optional import migration](./getting-started/migrate-persistence-contracts.md).
+Native execution, observers and cleanup remain ORM-owned; portability does not broaden driver support.
 <!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->
 
 Transaction decorators use an explicit target accessor as the canonical path:

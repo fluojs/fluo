@@ -1,7 +1,6 @@
 import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
 import { isCompatibleDrizzleDatabaseHandle } from './database-brand.js';
 import { TransactionRollbackCapabilityError } from './result-rollback.js';
-import type { DrizzleDatabaseLike } from './types.js';
 
 type TransactionCapableDrizzle<TTransactionOptions = unknown> = {
   transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions, boundary?: TransactionBoundaryOptions<T>): Promise<T>;

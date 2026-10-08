@@ -14,6 +14,13 @@ FluoBlog의 초안은 이제 재시작해도 남는다. 운영자는 발행 버�
 
 ## 발행 작업의 계약을 문장으로 고정하기
 
+이 장의 native transaction 실행은 `@fluojs/prisma`가 소유합니다. ORM 사이에 공유하는
+boundary 타입과 오류의 canonical import는 `@fluojs/persistence`이며 기존 core/ORM import도 유지합니다.
+[공통 트랜잭션 owner](../../docs/architecture/transactions.ko.md)와
+[persistence API](../../packages/persistence/README.ko.md)를 함께 확인하세요.
+공통 primitive를 분리해도 두 저장소가 같은 native owner를 사용해야 한다는 조건이나
+애플리케이션의 발행 정책은 바뀌지 않습니다. Portable primitive는 Prisma driver의 새 host 지원 근거가 아닙니다.
+
 입력은 `postId`, `actorId`, `expectedVersion`이다. `postId`는 양의 정수인 게시글 ID이며 `actorId`는 기존 사용자 ID와 같은 문자열인 실행 주체다. 인증을 도입하기 전 로컬 실습에서는 운영자 ID `'author-1'`을 넘긴다. 외부 JSON의 작성자 ID를 권위 있는 값으로 채택하지 않는다. `expectedVersion`은 사용자가 편집 화면에서 확인한 게시글 버전이다.
 
 초안을 발행하려면 작성자가 일치하고, 읽은 버전이 현재 버전과 같으며, 제목과 본문이 비어 있지 않아야 한다. slug도 허용한 형식이어야 한다. 성공하면 상태가 바뀌고 버전이 한 번 증가하며 발행 시각이 정해진다. 새 초안의 `version=1`을 수정 없이 발행하면 게시글과 발행 기록은 모두 `version=2`가 된다. 발행 후의 일반 수정은 이 장에서 허용하지 않는다. 앞 장의 `editDraft` 역시 `status=draft`를 갱신 조건에 포함한다.

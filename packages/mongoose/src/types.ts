@@ -1,7 +1,8 @@
 import type { TransactionRollbackObserver } from './result-rollback.js';
-import type { AfterCommitCallback, MaybePromise, TransactionBoundaryOptions } from '@fluojs/core';
+import type { MaybePromise } from '@fluojs/core';
+import type { AfterCommitCallback, TransactionBoundaryOptions } from '@fluojs/persistence';
 
-export type { AfterCommitCallback, TransactionBoundaryOptions } from '@fluojs/core';
+export type { AfterCommitCallback, TransactionBoundaryOptions } from '@fluojs/persistence';
 
 /**
  * Minimal Mongoose connection seam that optionally supports session transaction APIs.

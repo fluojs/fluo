@@ -1,0 +1,61 @@
+---
+title: Persistence
+description: Share transaction policy contracts without coupling application code to a concrete ORM.
+package: "@fluojs/persistence"
+---
+
+`@fluojs/persistence` owns common transaction boundary types, error constructors,
+rollback observation declarations, and portable active-work primitives. It creates
+no connection, session, ALS context, or native transaction and depends on no ORM,
+core, runtime, HTTP, or diagnostics package.
+
+## Installation
+
+```bash
+pnpm add @fluojs/persistence
+```
+
+There is no package-wide `engines.node` or eager Node builtin. This says nothing
+new about driver support: use each ORM's package-owned host requirements.
+
+## Compose a boundary
+
+This is a service fragment with an existing registered Prisma wrapper:
+
+```ts
+import type { TransactionBoundaryOptions } from '@fluojs/persistence';
+
+type PublishResult = { readonly ok: boolean };
+const boundary: TransactionBoundaryOptions<PublishResult> = {
+  requireAfterCommit: true,
+  shouldRollback: (result) => !result.ok,
+};
+```
+
+Pass it last to Prisma/Drizzle `transaction` or `requestTransaction`. Mongoose
+accepts it without adding a native-options argument. Follow the
+[transaction context contract](/docs/architecture/transactions) and ORM APIs for
+native observer registration. Omission never infers rollback from a value's shape.
+
+The same owner preserves its first nested failure. Root Result recovery requires
+its exact signal and positive native rollback confirmation; native errors remain
+unchanged. Hooks register synchronously in an open callback and drain FIFO after
+outer commit and cleanup settlement, outside ended ALS. Every hook is attempted,
+but rollback, failed commit, and discarded attempts never drain hooks.
+
+## Existing imports
+
+Core and ORM root common errors directly re-export canonical constructors.
+Runtime root request helpers remain compatible. No application import must
+change. Declare a direct persistence dependency only when choosing the canonical
+import. Mongoose cleanup errors and concrete driver observation stay ORM-owned.
+No savepoint, new retry policy, outbox, durability or exactly-once guarantee is added.
+
+## Evidence
+
+`tooling/docs/fixtures/package-guides/persistence/persistence.test.ts` composes the
+canonical public boundary with the existing Prisma runner and constructor.
+The fixture uses a controllable native seam, not a real database.
+`packages/persistence/src` tests cover shared policy, abort forwarding and
+settlement; `packages/prisma/fixtures/after-commit` separately exercises real
+PostgreSQL and MongoDB. Inspect actual run receipts before claiming native success.

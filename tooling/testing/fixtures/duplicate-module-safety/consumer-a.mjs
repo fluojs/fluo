@@ -2,8 +2,12 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
 
 import { FluoError, getModuleMetadata, Inject, isFluoError, Module, publicToken, Scope } from '@fluojs/core';
+import * as CoreTransactions from '@fluojs/core';
+import * as Persistence from '@fluojs/persistence';
+import * as MongooseTransactions from '@fluojs/mongoose';
 import { Container } from '@fluojs/di';
 import {
   assertRequestContext,
@@ -32,6 +36,19 @@ import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { createReactServerEntry, renderReactResponse } from '@fluojs/react';
 import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
+
+for (const [core, mongoose, persistence] of [
+  [CoreTransactions.AfterCommitCapabilityError, MongooseTransactions.AfterCommitCapabilityError, Persistence.AfterCommitCapabilityError],
+  [CoreTransactions.AfterCommitError, MongooseTransactions.AfterCommitError, Persistence.AfterCommitError],
+  [CoreTransactions.TransactionRollbackCapabilityError, MongooseTransactions.TransactionRollbackCapabilityError, Persistence.TransactionRollbackCapabilityError],
+  [CoreTransactions.TransactionRollbackOnlyError, MongooseTransactions.TransactionRollbackOnlyError, Persistence.TransactionRollbackOnlyError],
+  [CoreTransactions.TransactionRollbackUnconfirmedError, MongooseTransactions.TransactionRollbackUnconfirmedError, Persistence.TransactionRollbackUnconfirmedError],
+]) {
+  assert.equal(core, persistence);
+  assert.equal(mongoose, persistence);
+}
+assert.ok(new CoreTransactions.AfterCommitError([]) instanceof Persistence.AfterCommitError);
+assert.ok(new MongooseTransactions.TransactionRollbackOnlyError({}) instanceof Persistence.TransactionRollbackOnlyError);
 
 const resolvedUrl = import.meta.resolve('@fluojs/core');
 const resolvedPath = realpathSync(fileURLToPath(resolvedUrl));
@@ -286,6 +303,34 @@ async function observeRollback(original = new Error(`original-${marker.artifact}
   }
 }
 
+async function observeResultRollback() {
+  const value = { ok: false, artifact: marker.artifact };
+  const events = [];
+  const connection = new MongooseConnection({
+    async startSession() {
+      return {
+        async startTransaction() { events.push('start'); },
+        async abortTransaction() { events.push('abort'); },
+        async commitTransaction() { events.push('commit'); },
+        async endSession() { events.push('end'); },
+      };
+    },
+  }, undefined, {
+    rollbackObserver: {
+      run(callback) { return callback(); },
+      beginAttempt() {
+        return { confirmRollback() { events.push('confirmed'); return true; } };
+      },
+    },
+  });
+
+  const returned = await connection.transaction(async () => value, { shouldRollback: (result) => !result.ok });
+
+  assert.equal(returned, value);
+  assert.deepEqual(events, ['start', 'abort', 'end', 'confirmed']);
+  return { originalPreserved: returned === value, events };
+}
+
 class FixtureProvider {}
 class FixtureModule {}
 Module({ controllers: [FixtureProvider], providers: [FixtureProvider] })(FixtureModule);
@@ -322,6 +367,7 @@ export const observation = {
     transports: await Promise.all(['node', 'fastify', 'express'].map(observeAdapter)),
     jwtPassport: await observeJwtPassport(),
     rollback: await observeRollback(),
+    resultRollback: await observeResultRollback(),
   },
   version: manifest.version,
 };

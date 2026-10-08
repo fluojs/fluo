@@ -1,7 +1,7 @@
 export {
   AfterCommitCapabilityError,
   AfterCommitError,
-} from '@fluojs/core';
+} from '@fluojs/persistence';
 
 /**
  * Reports manual session cleanup failure after commit, once all registered hooks have settled.

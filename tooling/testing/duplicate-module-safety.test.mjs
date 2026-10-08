@@ -21,7 +21,7 @@ test('coverage manifest exactly tracks the current public workspace package surf
   const coverage = loadCoverageManifest(root);
   const expected = publicPackageNames(root);
 
-  assert.equal(expected.length, 43);
+  assert.equal(expected.length, 44);
   assert.deepEqual(coverage.packages.map((entry) => entry.package), expected);
   assert.deepEqual(validateCoverageManifest(coverage, { root }), []);
 });
@@ -61,7 +61,7 @@ test('packed closure includes every internal dependency of applied packages', ()
 
 test('coverage file remains checked JSON rather than generated runtime state', () => {
   const source = readFileSync(coverageManifestPath(root), 'utf8');
-  assert.equal(JSON.parse(source).packages.length, 43);
+  assert.equal(JSON.parse(source).packages.length, 44);
   assert.deepEqual(loadCoverageManifest(root).packages.map((entry) => entry.package), publicPackageNames(root));
 });
 
