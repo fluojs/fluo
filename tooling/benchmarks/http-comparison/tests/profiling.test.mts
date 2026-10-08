@@ -1,0 +1,631 @@
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { before, test } from 'node:test';
+import { load } from '../src/load';
+import { selectProfileTargets } from '../src/profile';
+import {
+  profileCompleteness, requestSamples, sha256, timingCompleteness, validateCapture,
+  type ProfileCapture, type ProfileRun, type StageTimingSample,
+} from '../src/profile-report';
+import { monitorServer } from '../src/resources';
+import { RawCapture, RuntimeCapture } from '../src/profiling';
+import { SCENARIOS, STAGE_SCENARIOS } from '../src/scenarios';
+import { TARGETS, targetLaunch } from '../src/targets';
+
+let measured: Awaited<ReturnType<typeof monitorServer<Awaited<ReturnType<typeof load>>>>>;
+before(async () => {
+  const server = createServer((_request, response) => { response.end('{"ok":true}'); });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    measured = await monitorServer(process.pid, () => load({
+      url: `http://127.0.0.1:${address.port}`, duration: 1, amount: 3, connections: 1,
+      requests: [{ method: 'GET', path: '/', expectedStatus: 200, expectedBody: '{"ok":true}' }],
+    }, 'profile-model-fixture'));
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+function fixture() {
+  const provenance = '{}';
+  const raw = new Map<string, Uint8Array>();
+  const profile = {
+    nodes: [{ id: 1, callFrame: { functionName: 'readSearchLocal', url: 'shared/workloads.js' }, children: [] }],
+    samples: [1], timeDeltas: [1000], startTime: 0, endTime: 1000,
+  };
+  const artifacts = [
+    ['attempt/profile.json', 'profile', JSON.stringify(profile)],
+    ['attempt/subject.json', 'identity', JSON.stringify({ pid: 123, runtimePid: 123, isolateId: null, inspectorUrl: 'ws://127.0.0.1:1234', runtime: { node: '24' } })],
+    ['attempt/provenance.json', 'build', provenance],
+  ] as const;
+  const runs = (['control-before', 'capture', 'control-after'] as const).map((phase): ProfileRun => ({
+    ...measured, phase, instrumentation: phase === 'capture' ? 'cpu' : 'none', launcherPid: 123,
+    startedMs: 1, endedMs: 2, exit: { code: 0, signal: null },
+    launch: { command: 'node', args: ['server.js'], cwd: '/benchmark', env: {} },
+  }));
+  const capture: ProfileCapture = {
+    condition: { target: 'native-nodejs', platform: 'nodejs', scenario: 'read-search-local', configuration: 'equivalent', connections: 64, repeat: 0, mode: 'cpu' },
+    status: 'supported', reason: null,
+    subject: { kind: 'process', pid: 123, launcherPid: 123, isolateId: null, inspectorUrl: 'ws://127.0.0.1:1234', runtime: { node: '24' } },
+    format: 'v8-cpu', profilePath: 'attempt/profile.json', identityPath: 'attempt/subject.json',
+    artifacts: artifacts.map(([path, kind, bytes]) => {
+      const content = Buffer.from(bytes);
+      raw.set(path, content);
+      return { path, kind, sha256: sha256(content), bytes: content.byteLength };
+    }),
+    anchors: [1, 2].map((servingMs) => ({ collectorBeforeMs: servingMs, collectorAfterMs: servingMs + 1, servingMs, servingUptimeMs: servingMs })),
+    runs, provenanceSha256: sha256(provenance), limitations: [],
+  };
+  return { capture, raw, profile };
+}
+
+for (const format of ['v8-cpu', 'v8-allocation'] as const) {
+  for (const defect of ['none', 'dangling', 'duplicate', 'unreachable'] as const) {
+    if (format === 'v8-allocation' && defect === 'unreachable') continue;
+    test(`sample node links: ${format} ${defect} -> validates the complete tree`, () => {
+      const { capture, raw } = fixture();
+      const request = { id: 1, callFrame: { functionName: 'readSearchLocal', url: 'shared/workloads.js' }, children: [] };
+      const startup = { id: defect === 'duplicate' ? 1 : 2, callFrame: { functionName: 'bootstrap', url: 'startup.js' }, children: [] };
+      const root = { id: 0, callFrame: { functionName: '(root)', url: '' } };
+      const sampleId = defect === 'dangling' ? 999 : defect === 'duplicate' ? 1 : 2;
+      const profile = format === 'v8-cpu'
+        ? { nodes: [{ ...root, children: defect === 'unreachable' || defect === 'duplicate' ? [1] : [1, 2] }, request, startup],
+          samples: [1, sampleId], startTime: 0, endTime: 1000, timeDeltas: [0, 1000] }
+        : { head: { ...root, children: [request, startup] },
+          samples: [{ nodeId: 1, size: 64, ordinal: 1 }, { nodeId: sampleId, size: 64, ordinal: 2 }] };
+      const mode = format === 'v8-cpu' ? 'cpu' : 'allocation';
+      const bytes = Buffer.from(JSON.stringify(profile));
+      raw.set('attempt/profile.json', bytes);
+      const changed: ProfileCapture = {
+        ...capture, format, condition: { ...capture.condition, mode },
+        runs: capture.runs.map((run) => ({ ...run, instrumentation: run.phase === 'capture' ? mode : 'none' })),
+        artifacts: capture.artifacts.map((artifact) => artifact.kind === 'profile'
+          ? { ...artifact, bytes: bytes.byteLength, sha256: sha256(bytes) } : artifact),
+      };
+
+      if (defect === 'none') {
+        assert.equal(requestSamples(profile, format), 1);
+        assert.deepEqual(validateCapture(changed, raw), []);
+      } else {
+        const expected = defect === 'duplicate'
+          ? format === 'v8-cpu' ? /Duplicate CPU node ID/ : /duplicate allocation node ID/
+          : defect === 'unreachable' ? /Unreachable CPU node/ : /sample refers to a missing node/;
+        assert.throws(() => requestSamples(profile, format), expected);
+        assert.ok(validateCapture(changed, raw).includes('malformed-profile-or-identity'));
+      }
+    });
+  }
+}
+
+test('serving runtime identity mismatch is rejected despite matching artifact hashes', () => {
+  const { capture, raw } = fixture();
+  const identityBytes = raw.get('attempt/subject.json');
+  assert.ok(identityBytes);
+  const identity = JSON.parse(Buffer.from(identityBytes).toString());
+  identity.runtime.node = '25';
+  const bytes = Buffer.from(JSON.stringify(identity));
+  raw.set('attempt/subject.json', bytes);
+  const changed = { ...capture, artifacts: capture.artifacts.map((artifact) => artifact.kind === 'identity'
+    ? { ...artifact, bytes: bytes.length, sha256: sha256(bytes) } : artifact) };
+  assert.ok(validateCapture(changed, raw).includes('serving-runtime-mismatch'));
+});
+
+for (const version of ['24', '25']) {
+  test(`profile completeness compares authenticated serving versions: ${version}`, () => {
+    const { capture, raw } = fixture();
+    assert.ok(capture.subject);
+    const artifacts = capture.artifacts.map((artifact) => {
+      const original = raw.get(artifact.path);
+      assert.ok(original);
+      const bytes = artifact.kind === 'identity'
+        ? Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(original).toString()), runtime: { node: version } }))
+        : original;
+      const path = artifact.path.replace('attempt/', 'second/');
+      raw.set(path, bytes);
+      return { ...artifact, path, bytes: bytes.byteLength, sha256: sha256(bytes) };
+    });
+    const second: ProfileCapture = {
+      ...capture, condition: { ...capture.condition, target: 'fluo-nodejs' },
+      subject: { ...capture.subject, runtime: { node: version } },
+      profilePath: 'second/profile.json', identityPath: 'second/subject.json', artifacts,
+    };
+    const result = profileCompleteness([capture, second], [capture.condition, second.condition], raw);
+    if (version === '24') assert.equal(result.status, 'complete');
+    else assert.ok(result.errors.includes('mixed-serving-runtime:nodejs'));
+  });
+}
+
+test('target selection supports every target and rejects unknown or duplicate entries', () => {
+  // Given / When / Then
+  assert.equal(selectProfileTargets().length, 16);
+  assert.equal(selectProfileTargets(['nestjs-fastify', 'fluo-workers']).length, 2);
+  assert.throws(() => selectProfileTargets(['unknown']));
+  assert.throws(() => selectProfileTargets(['native-nodejs', 'native-nodejs']));
+});
+
+test('optional inspector launch preserves default args and isolates runtime flags', () => {
+  // Given
+  for (const target of TARGETS) {
+    const ordinary = targetLaunch(target, 'read-search-local');
+    // When
+    const instrumented = targetLaunch(target, 'read-search-local', { inspectorPort: 35333, gcTrace: true, env: { BENCH_CONFIGURATION: 'equivalent' } });
+    // Then
+    assert.deepEqual(target.args, TARGETS.find((item) => item.name === target.name)?.args);
+    assert.ok(!ordinary.args.some((arg) => arg.startsWith('--inspect=')));
+    if (target.platform === 'workers') {
+      assert.equal(instrumented.args[instrumented.args.indexOf('--inspector-port') + 1], '35333');
+      assert.ok(instrumented.args.includes('BENCH_CONFIGURATION:equivalent'));
+      assert.ok(!instrumented.args.includes('--trace-gc'));
+    } else {
+      assert.ok(instrumented.args.some((arg) => arg.startsWith('--inspect=127.0.0.1:35333')));
+      assert.equal(instrumented.args.includes('--trace-gc'), !['bun', 'deno'].includes(target.platform));
+    }
+  }
+});
+
+test('CPU validity rejects startup-only samples and accepts request stack ancestry', () => {
+  // Given
+  const { profile } = fixture();
+  const startup = { ...profile, nodes: [{ id: 1, callFrame: { functionName: '(program)', url: '' }, children: [] }] };
+  // When / Then
+  assert.equal(requestSamples(startup, 'v8-cpu'), 0);
+  assert.equal(requestSamples(profile, 'v8-cpu'), 1);
+  assert.throws(() => requestSamples({ ...profile, nodes: [{ ...profile.nodes[0], children: [1] }] }, 'v8-cpu'));
+});
+
+function requestStack(callFrame: { readonly functionName: string; readonly url: string }, format: 'v8-cpu' | 'v8-allocation') {
+  const leaf = { id: 4, callFrame: { functionName: 'sort', url: '' }, children: [] };
+  const handler = { id: 3, callFrame, children: [leaf] };
+  const unrelated = { id: 5, callFrame: { functionName: 'main', url: 'unrelated/server.js' }, children: [] };
+  const router = { id: 2, callFrame: { functionName: '', url: 'node_modules/@nestjs/core/router/router-execution-context.js' }, children: [handler, unrelated] };
+  const head = { id: 1, callFrame: { functionName: '(root)', url: '' }, children: [router] };
+  const samples = [1, 2, 3, 4, 4, 5];
+  return format === 'v8-cpu'
+    ? { nodes: [head, router, handler, leaf, unrelated].map((node) => ({ ...node, children: node.children.map((child) => child.id) })), samples }
+    : { head, samples: samples.map((nodeId, index) => ({ nodeId, size: 64, ordinal: index + 1 })) };
+}
+
+for (const format of ['v8-cpu', 'v8-allocation'] as const) {
+  test(`requestSamples: legitimate Nest handlers in ${format} -> count handler and descendants only`, () => {
+    // Given
+    const frames = [
+      ...['src/nestjs/server.ts', 'file:///benchmark/dist/nestjs/nestjs/server.js'].flatMap((url) =>
+        ['search', 'quote', 'project', 'tasks', 'task', 'preview', 'comments'].map((functionName) => ({ functionName, url }))),
+      ...['src/shared/nest-stages.ts', '/benchmark/dist/nestjs/shared/nest-stages.js'].flatMap((url) =>
+        ['read', 'canActivate', 'transform'].map((functionName) => ({ functionName, url }))),
+    ];
+    for (const callFrame of frames) {
+      const profile = requestStack(callFrame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 3, `${callFrame.url}:${callFrame.functionName}`);
+    }
+  });
+
+  test(`requestSamples: Nest startup and unrelated frames in ${format} -> reject all samples`, () => {
+    // Given
+    const frames = [
+      ...['src/nestjs/server.ts', '/benchmark/dist/nestjs/nestjs/server.js',
+        'src/shared/nest-stages.ts', '/benchmark/dist/nestjs/shared/nest-stages.js'].flatMap((url) =>
+        ['main', 'bootstrap', 'create', 'constructor', 'resolveAppModule', 'resolveNestStageModule', 'descriptor', 'unrelated', ''].map((functionName) => ({ functionName, url }))),
+      ...['unrelated/server.js', '/benchmark/src/nestjs/server.ts.backup', '/benchmark/dist/nestjs/nestjs/server.js.map',
+        '/benchmark/dist/other/nestjs/server.js', 'node_modules/@nestjs/core/nest-factory.js',
+        'node_modules/fastify/fastify.js'].flatMap((url) =>
+        ['search', 'quote', 'project', 'tasks', 'task', 'preview', 'comments', 'read', 'canActivate', 'transform'].map((functionName) => ({ functionName, url }))),
+      { functionName: 'read', url: 'src/nestjs/server.ts' },
+      { functionName: 'search', url: 'src/shared/nest-stages.ts' },
+      { functionName: 'transform', url: 'unrelated/shared/nest-stages.js' },
+    ];
+    for (const callFrame of frames) {
+      const profile = requestStack(callFrame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0, `${callFrame.url}:${callFrame.functionName}`);
+    }
+  });
+}
+
+for (const format of ['v8-cpu', 'v8-allocation'] as const) {
+  test(`requestSamples: verified Deno bundle request frames in ${format} -> count descendants without siblings`, () => {
+    // Given
+    const names = [
+      'search', 'quote', 'project', 'tasks', 'task', 'preview', 'comments',
+      'createDeferredWebFrameworkRequest', 'createDispatchRequest', 'createDispatchContext',
+      'startWebRequestDispatch', 'writeSuccessResponse', 'runWithRequestContext',
+      'dispatchMatchedRoute', 'runDispatchPipeline', 'tryFastPathExecution', 'executeFastPath',
+      'canActivate', 'serviceResult', 'bodyFields', 'serializedStage',
+    ];
+    for (const url of ['dist/fluo-deno/server.mjs', 'file:///benchmark/dist/fluo-deno/server.mjs']) {
+      for (const functionName of names) {
+        const profile = requestStack({ functionName, url }, format);
+
+        // When
+        const matched = requestSamples(profile, format);
+
+        // Then
+        assert.equal(matched, 3, `${url}:${functionName}`);
+      }
+    }
+  });
+
+  test(`requestSamples: Deno bundle startup or ambiguous frames in ${format} -> reject all samples`, () => {
+    // Given
+    const frames = [
+      ...['dist/fluo-deno/server.mjs', 'file:///benchmark/dist/fluo-deno/server.mjs'].flatMap((url) =>
+        ['main', 'bootstrap', 'create', 'constructor', 'createDispatcher', 'resolveAppModule',
+          'resolveStageModule', 'createNativeStage', 'read', 'handle', 'unrelated', '', 'searchOther'].map((functionName) => ({ functionName, url }))),
+      ...['unrelated/server.mjs', 'server.cjs', 'src/fluo-deno/server.ts',
+        'dist/other/fluo-deno/server.mjs', 'dist/fluo-deno/server.mjs.map',
+        'dist/fluo-deno/server.mjs.backup', 'dist/fluo-deno/other.mjs'].flatMap((url) =>
+        ['search', 'read', 'createDispatchContext', 'executeFastPath', 'canActivate', 'serviceResult'].map((functionName) => ({ functionName, url }))),
+    ];
+    for (const callFrame of frames) {
+      const profile = requestStack(callFrame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0, `${callFrame.url}:${callFrame.functionName}`);
+    }
+  });
+
+  test(`requestSamples: bundled stage read beneath dispatch in ${format} -> exclude startup sibling`, () => {
+    // Given
+    const profile = requestStack({ functionName: 'executeFastPath', url: 'dist/fluo-deno/server.mjs' }, format);
+    const callFrame = { functionName: 'read', url: 'dist/fluo-deno/server.mjs' };
+    if (profile.nodes !== undefined) profile.nodes[3].callFrame = callFrame;
+    else profile.head.children[0].children[0].children[0].callFrame = callFrame;
+
+    // When
+    const matched = requestSamples(profile, format);
+
+    // Then
+    assert.equal(matched, 3);
+  });
+
+  test(`requestSamples: Workers and verified Next host request ancestry in ${format} -> remains recognized`, () => {
+    // Given
+    const frames = [
+      { functionName: 'nativeFetch', url: 'server.js' },
+      { functionName: 'renderToResponseWithComponentsImpl', url: 'file:///benchmark/node_modules/next/dist/server/base-server.js' },
+    ];
+    for (const callFrame of frames) {
+      const profile = requestStack(callFrame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 3);
+    }
+  });
+
+  test(`requestSamples: Next startup bundle in ${format} -> rejects path-only attribution`, () => {
+    // Given
+    for (const url of ['file:///benchmark/.next/server/chunks/startup.js',
+      'file:///benchmark/.next/server/app/route.js']) {
+      const profile = requestStack({ functionName: 'bootstrap', url }, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0);
+    }
+  });
+
+  test(`requestSamples: Next bundle beneath request handler in ${format} -> counts descendants only`, () => {
+    // Given
+    const profile = requestStack({
+      functionName: 'handleRequestImpl', url: '/benchmark/node_modules/next/dist/server/base-server.js',
+    }, format);
+    const frame = { functionName: 'tB', url: '/benchmark/.next/server/chunks/route.js' };
+    if (profile.nodes !== undefined) profile.nodes[3].callFrame = frame;
+    else profile.head.children[0].children[0].children[0].callFrame = frame;
+
+    // When
+    const matched = requestSamples(profile, format);
+
+    // Then
+    assert.equal(matched, 3);
+  });
+
+  test(`requestSamples: adjacent startup sources in ${format} -> requires a known request frame`, () => {
+    // Given
+    const frames = [
+      { functionName: 'bootstrap', url: 'shared/fluo-app.js' },
+      { functionName: 'bootstrap', url: 'shared/native-app.js' },
+      { functionName: 'bootstrap', url: 'shared/workloads.js' },
+      { functionName: 'bootstrap', url: 'request-pipeline.js' },
+      { functionName: 'readSearchLocalSetup', url: 'unrelated.js' },
+      { functionName: '', url: 'shared/fluo-stages.js', lineNumber: 120 },
+      { functionName: '', url: 'shared/native-stages.js', lineNumber: 100 },
+      { functionName: 'read', url: 'shared/fluo-stages.js.map' },
+    ];
+    for (const frame of frames) {
+      const profile = requestStack(frame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0, frame.url);
+    }
+  });
+}
+
+for (const format of ['v8-cpu', 'v8-allocation'] as const) {
+  test(`requestSamples: Workers application dispatch in ${format} -> count request descendants only`, () => {
+    // Given
+    for (const functionName of ['startWebRequestDispatch', 'createDeferredWebFrameworkRequest',
+      'createDispatchContext', 'dispatchMatchedRoute', 'runDispatchPipeline',
+      'tryFastPathExecution', 'executeFastPath', 'writeSuccessResponse']) {
+      const profile = requestStack({ functionName, url: 'server.js' }, format);
+      const callFrame = { functionName: 'quote', url: 'server.js' };
+      if (profile.nodes !== undefined) profile.nodes[3].callFrame = callFrame;
+      else profile.head.children[0].children[0].children[0].callFrame = callFrame;
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 3, functionName);
+    }
+  });
+
+  test(`requestSamples: Workers startup and ambiguous frames in ${format} -> reject samples`, () => {
+    // Given
+    const frames = [
+      ...['main', 'bootstrap', 'createDispatcher', 'create', 'constructor', 'fetch',
+        'handle', 'read', 'quote', 'search', 'dispatch', '', 'executeFastPathOther']
+        .map((functionName) => ({ functionName, url: 'server.js' })),
+      ...['launcher.js', 'other/server.js', 'server.js.map', 'server.js.backup']
+        .map((url) => ({ functionName: 'executeFastPath', url })),
+    ];
+    for (const frame of frames) {
+      const profile = requestStack(frame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0, `${frame.url}:${frame.functionName}`);
+    }
+  });
+}
+
+for (const [name, expectedSource] of [
+  ['native-bun', 'Heap.garbageCollected'],
+  ['native-deno', '--v8-flags=--trace-gc'],
+  ['native-nodejs', '--trace-gc'],
+] as const) {
+  test(`RuntimeCapture.stop: ${name} GC diagnostics -> identifies actual collection source`, async () => {
+    // Given: model the inspector wire result, not the metadata under test.
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-gc-source-'));
+    const target = TARGETS.find((item) => item.name === name);
+    assert.ok(target);
+    const inspector = {
+      async call() {
+        return { result: { result: { value: JSON.stringify({
+          servingMs: 10, uptimeMs: 10, wallDelayMaxMs: 0, wallDelaySamples: 1, elapsedMs: 10,
+        }) } } };
+      },
+    };
+    const capture: unknown = Reflect.construct(RuntimeCapture, [target, inspector, new RawCapture(directory, directory)]);
+    assert.ok(capture instanceof RuntimeCapture);
+    try {
+      // When
+      const path = await capture.stop('gc-eventloop');
+
+      // Then
+      const profile = JSON.parse(await readFile(join(directory, path), 'utf8'));
+      assert.equal(profile.gcTraceSource, expectedSource);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
+
+test('JSC stacks and heap snapshots remain separate evidence formats', () => {
+  // Given
+  const profile = { stackTraces: [{ stackFrames: [{ name: 'readSearchLocal', url: 'workloads.js' }] }] };
+  // When / Then
+  assert.equal(requestSamples(profile, 'jsc-cpu'), 1);
+  assert.equal(requestSamples({ nodes: [1], edges: [1] }, 'jsc-heap'), 1);
+  assert.throws(() => requestSamples({ nodes: [1], edges: [1] }, 'v8-allocation'));
+});
+
+test('allocation snapshot priming preserves the final stop response, not the interim profile', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-allocation-stop-'));
+  const target = TARGETS.find((item) => item.name === 'native-nodejs');
+  assert.ok(target);
+  const calls: string[] = [];
+  const head = { id: 1, callFrame: { functionName: 'readSearchLocal', url: 'shared/workloads.js' }, children: [] };
+  const interim = { head, samples: [{ nodeId: 2, size: 64, ordinal: 1 }] };
+  const final = { head, samples: [{ nodeId: 1, size: 64, ordinal: 1 }] };
+  const inspector = {
+    async call(method: string) {
+      calls.push(method);
+      if (method === 'Runtime.evaluate') {
+        return { result: { result: { value: JSON.stringify({ servingMs: 10, uptimeMs: 10 }) } } };
+      }
+      return { result: { profile: method === 'HeapProfiler.getSamplingProfile' ? interim : final } };
+    },
+  };
+  const capture: unknown = Reflect.construct(RuntimeCapture, [target, inspector, new RawCapture(directory, directory)]);
+  assert.ok(capture instanceof RuntimeCapture);
+  try {
+    const path = await capture.stop('allocation');
+    assert.deepEqual(calls, ['Runtime.evaluate', 'HeapProfiler.getSamplingProfile', 'HeapProfiler.stopSampling']);
+    assert.deepEqual(JSON.parse(await readFile(join(directory, path), 'utf8')), final);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('stage-only request frames include anonymous and zero-argument handlers but exclude startup factories', () => {
+  // Given
+  const frames = [
+    { functionName: '', url: 'file:///dist/shared/native-stages.js', lineNumber: 4 },
+    { functionName: 'read', url: 'file:///dist/shared/fluo-stages.js', lineNumber: 10 },
+    { functionName: 'nativeFetch', url: 'file:///dist/native-deno/server.mjs', lineNumber: 200 },
+    { functionName: 'executeFastPath', url: '/packages/http/dist/dispatch/fast-path/fast-path-executor.js', lineNumber: 10 },
+  ];
+  // When / Then
+  for (const callFrame of frames) {
+    assert.equal(requestSamples({ nodes: [{ id: 1, callFrame, children: [] }], samples: [1] }, 'v8-cpu'), 1);
+    assert.equal(requestSamples({ stackTraces: [{ stackFrames: [{ name: callFrame.functionName, url: callFrame.url, line: callFrame.lineNumber + 1 }] }] }, 'jsc-cpu'), 1);
+  }
+  assert.equal(requestSamples({ nodes: [{ id: 1, callFrame: { functionName: 'createNativeStage', url: 'shared/native-stages.js', lineNumber: 1 }, children: [] }], samples: [1] }, 'v8-cpu'), 0);
+  assert.equal(requestSamples({ nodes: [{ id: 1, callFrame: { functionName: 'createDispatcher', url: '/packages/http/dist/dispatch/dispatcher.js', lineNumber: 5 }, children: [] }], samples: [1] }, 'v8-cpu'), 0);
+});
+
+test('capture validity accepts hashed profiles with serving identity and real successful traffic', () => {
+  // Given
+  const { capture, raw } = fixture();
+  // When
+  const errors = validateCapture(capture, raw);
+  // Then
+  assert.deepEqual(errors, []);
+});
+
+test('empty CPU samples fail even when raw bytes and hashes agree', () => {
+  // Given
+  const { capture, raw, profile } = fixture();
+  const bytes = Buffer.from(JSON.stringify({ ...profile, samples: [], timeDeltas: [] }));
+  raw.set('attempt/profile.json', bytes);
+  const changed = { ...capture, artifacts: capture.artifacts.map((artifact) => artifact.kind === 'profile'
+    ? { ...artifact, bytes: bytes.byteLength, sha256: sha256(bytes) } : artifact) };
+  // When / Then
+  assert.ok(validateCapture(changed, raw).includes('empty-or-startup-profile'));
+});
+
+for (const defect of ['missing-timing', 'nonfinite-interval', 'reversed-interval',
+  'mismatched-deltas', 'negative-delta', 'nonfinite-delta', 'excess-deltas'] as const) {
+  test(`validateCapture: ${defect} with valid raw hash -> rejects CPU time fields`, () => {
+    // Given
+    const { capture, raw, profile } = fixture();
+    let malformed: unknown;
+    switch (defect) {
+      case 'missing-timing': malformed = { nodes: profile.nodes, samples: profile.samples }; break;
+      case 'nonfinite-interval': malformed = { ...profile, startTime: null }; break;
+      case 'reversed-interval': malformed = { ...profile, endTime: profile.startTime }; break;
+      case 'mismatched-deltas': malformed = { ...profile, timeDeltas: [] }; break;
+      case 'negative-delta': malformed = { ...profile, timeDeltas: [-1] }; break;
+      case 'nonfinite-delta': malformed = { ...profile, timeDeltas: [null] }; break;
+      case 'excess-deltas': malformed = { ...profile, timeDeltas: [1001] }; break;
+    }
+    const bytes = Buffer.from(JSON.stringify(malformed));
+    raw.set('attempt/profile.json', bytes);
+    const changed = { ...capture, artifacts: capture.artifacts.map((artifact) => artifact.kind === 'profile'
+      ? { ...artifact, bytes: bytes.byteLength, sha256: sha256(bytes) } : artifact) };
+
+    // When
+    const errors = validateCapture(changed, raw);
+
+    // Then
+    assert.ok(errors.includes('invalid-cpu-time-fields'), errors.join(', '));
+  });
+}
+
+for (const defect of ['missing-raw', 'wrong-hash', 'wrong-subject', 'partial-controls', 'wrong-mode', 'missing-provenance', 'failed', 'fake-unsupported', 'abnormal-signal'] as const) {
+  test(`capture validity rejects ${defect}`, () => {
+    // Given
+    const { capture, raw } = fixture();
+    let changed = capture;
+    switch (defect) {
+      case 'missing-raw': raw.delete('attempt/profile.json'); break;
+      case 'wrong-hash': raw.set('attempt/profile.json', Buffer.from('{}')); break;
+      case 'wrong-subject': changed = { ...capture, subject: capture.subject ? { ...capture.subject, pid: 456 } : null }; break;
+      case 'partial-controls': changed = { ...capture, runs: capture.runs.slice(0, 2) }; break;
+      case 'wrong-mode': changed = { ...capture, condition: { ...capture.condition, mode: 'allocation' } }; break;
+      case 'missing-provenance': changed = { ...capture, artifacts: capture.artifacts.filter((a) => a.kind !== 'build') }; break;
+      case 'failed': changed = { ...capture, status: 'failed', reason: 'flush failed' }; break;
+      case 'fake-unsupported': changed = { ...capture, status: 'unsupported', reason: 'connection failed' }; break;
+      case 'abnormal-signal': changed = { ...capture, runs: capture.runs.map((run) => ({ ...run, exit: { code: null, signal: 'SIGABRT' } })) }; break;
+    }
+    // When / Then
+    assert.notEqual(validateCapture(changed, raw).length, 0);
+  });
+}
+
+test('profile completeness rejects absent and duplicate expected conditions', () => {
+  // Given
+  const { capture, raw } = fixture();
+  const extra = { ...capture.condition, target: 'fluo-nodejs' };
+  // When / Then
+  assert.equal(profileCompleteness([capture], [capture.condition], raw).status, 'complete');
+  assert.equal(profileCompleteness([capture], [capture.condition, extra], raw).status, 'incomplete');
+  assert.equal(profileCompleteness([capture, capture], [capture.condition, extra], raw).status, 'incomplete');
+});
+
+test('canonical Next graceful SIGTERM exit 143 preserves flushed profile validity', () => {
+  // Given
+  const { capture, raw } = fixture();
+  const next: ProfileCapture = { ...capture,
+    condition: { ...capture.condition, target: 'native-nextjs', platform: 'nextjs' },
+    runs: capture.runs.map((run) => ({ ...run, exit: { code: 143, signal: null } })),
+  };
+  // When / Then
+  assert.deepEqual(validateCapture(next, raw), []);
+  assert.notEqual(validateCapture({ ...capture, runs: next.runs }, raw).length, 0);
+});
+
+function timingSamples(): StageTimingSample[] {
+  return TARGETS.flatMap((target) => [...SCENARIOS, ...STAGE_SCENARIOS].flatMap((scenario) =>
+    (['default', 'equivalent'] as const).flatMap((configuration) => [1, 64].flatMap((connections) =>
+      [0, 1, 2].map((repeat) => ({
+        target: target.name, scenario: scenario.name, configuration, connections, repeat,
+        mode: 'uninstrumented' as const, source: 'issue3910' as const,
+        requests: 100, errors: 0, timeouts: 0, non2xx: 0, bodyMismatches: 0, statusMismatches: 0,
+        warmupSeconds: 5, durationSeconds: 15, sourceSha256: sha256('source'),
+        buildSourceSha256: sha256('source'), rawSha256: sha256('raw'), provenanceSha256: sha256('fresh'),
+      }))))));
+}
+
+test('timing completeness accepts exactly 2112 fresh uninstrumented stage and business conditions', () => {
+  // Given
+  const samples = timingSamples();
+  // When / Then
+  assert.equal(samples.length, 2112);
+  assert.equal(timingCompleteness(samples, sha256('fresh')).status, 'complete');
+});
+
+for (const defect of ['historical-576', 'instrumented', 'missing-condition', 'duplicate-condition', 'wrong-provenance', 'zero-traffic', 'status-mismatch', 'timeout', 'wrong-interval', 'wrong-build'] as const) {
+  test(`timing completeness rejects ${defect}`, () => {
+    // Given
+    const samples = timingSamples();
+    let changed = samples;
+    switch (defect) {
+      case 'historical-576': changed = samples.slice(0, 576).map((s) => ({ ...s, source: 'historical' })); break;
+      case 'instrumented': changed = samples.map((s) => ({ ...s, mode: 'cpu' })); break;
+      case 'missing-condition': changed = samples.slice(1); break;
+      case 'duplicate-condition': changed = [...samples.slice(1), samples[1]]; break;
+      case 'wrong-provenance': changed = samples.map((s) => ({ ...s, provenanceSha256: sha256('stale') })); break;
+      case 'zero-traffic': changed = samples.map((s) => ({ ...s, requests: 0 })); break;
+      case 'status-mismatch': changed = samples.map((s) => ({ ...s, statusMismatches: 1 })); break;
+      case 'timeout': changed = samples.map((s) => ({ ...s, timeouts: 1 })); break;
+      case 'wrong-interval': changed = samples.map((s) => ({ ...s, durationSeconds: 2 })); break;
+      case 'wrong-build': changed = samples.map((s) => ({ ...s, buildSourceSha256: sha256('stale') })); break;
+    }
+    // When / Then
+    assert.equal(timingCompleteness(changed, sha256('fresh')).status, 'incomplete');
+  });
+}

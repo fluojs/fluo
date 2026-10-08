@@ -4,6 +4,21 @@ import { TARGETS } from '../src/targets';
 import { histogramPercentile } from '../src/traffic';
 import { cpuSeconds } from '../src/resources';
 import { nativeFetch } from '../src/shared/native-app';
+import { selectSuite } from '../src/suites';
+
+test('keeps business scenarios separate from opt-in stage measurements', () => {
+  // Given / When
+  const business = selectSuite('business');
+  const stages = selectSuite('stages');
+  const all = selectSuite('all');
+  // Then
+  assert.equal(business.length, 3);
+  assert.equal(stages.length, 8);
+  assert.equal(all.length, 11);
+  assert.equal(new Set(all.map((scenario) => scenario.name)).size, 11);
+  assert.ok(stages.every((stage) => !business.some((scenario) => scenario.name === stage.name)));
+  assert.throws(() => selectSuite('unknown'), TypeError);
+});
 
 test('selects real native and Fluo targets for all seven platforms and Nest for both Node engines', () => {
   // Given: the runner consumes this target inventory.

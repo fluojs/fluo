@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "kind": "mac-generator-headroom-plan",
+  "createdAt": "2026-10-08T14:27:03.263Z",
+  "selectionBasis": "From all 2112 preserved timings, compare three-repeat medians at concurrency64. For each platform select maximum throughput and maximum load-generator CPU conditions, deduplicating exact matches.",
+  "conditions": [
+    {
+      "platform": "fastify",
+      "target": "native-fastify",
+      "scenario": "stage-minimal",
+      "configuration": "default",
+      "connections": 64,
+      "medianRps": 94820.27,
+      "medianClientCpu": 95.08616627905712,
+      "files": [
+        "timing-default-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median throughput on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "fastify",
+      "target": "native-fastify",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "medianRps": 86867.2,
+      "medianClientCpu": 99.45579800141142,
+      "files": [
+        "timing-equivalent-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median generator CPU on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "express",
+      "target": "native-express",
+      "scenario": "stage-minimal",
+      "configuration": "default",
+      "connections": 64,
+      "medianRps": 60946.14,
+      "medianClientCpu": 73.18116288772863,
+      "files": [
+        "timing-default-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median throughput on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "express",
+      "target": "native-express",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "medianRps": 57703.47,
+      "medianClientCpu": 78.28155144857456,
+      "files": [
+        "timing-equivalent-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median generator CPU on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "nodejs",
+      "target": "native-nodejs",
+      "scenario": "stage-minimal",
+      "configuration": "default",
+      "connections": 64,
+      "medianRps": 89516.8,
+      "medianClientCpu": 94.04894108702952,
+      "files": [
+        "timing-default-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median throughput on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "nodejs",
+      "target": "native-nodejs",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "medianRps": 84998.4,
+      "medianClientCpu": 99.9612593747816,
+      "files": [
+        "timing-equivalent-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median generator CPU on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "bun",
+      "target": "native-bun",
+      "scenario": "stage-dto-validation",
+      "configuration": "default",
+      "connections": 64,
+      "medianRps": 110551.47,
+      "medianClientCpu": 100.50693589201767,
+      "files": [
+        "timing-default-stage-dto-validation-c64.json"
+      ],
+      "reasons": [
+        "highest observed median throughput on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "bun",
+      "target": "native-bun",
+      "scenario": "json-command-local",
+      "configuration": "equivalent",
+      "connections": 64,
+      "medianRps": 88800,
+      "medianClientCpu": 100.840121155671,
+      "files": [
+        "timing-equivalent-json-command-local-c64.json"
+      ],
+      "reasons": [
+        "highest observed median generator CPU on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "deno",
+      "target": "native-deno",
+      "scenario": "stage-guards",
+      "configuration": "default",
+      "connections": 64,
+      "medianRps": 122186.67,
+      "medianClientCpu": 101.03582241552603,
+      "files": [
+        "timing-default-stage-guards-c64.json"
+      ],
+      "reasons": [
+        "highest observed median throughput on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "deno",
+      "target": "native-deno",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "medianRps": 106370.14,
+      "medianClientCpu": 101.35013185219283,
+      "files": [
+        "timing-equivalent-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median generator CPU on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "workers",
+      "target": "native-workers",
+      "scenario": "stage-minimal",
+      "configuration": "default",
+      "connections": 64,
+      "medianRps": 3924.67,
+      "medianClientCpu": 11.122840979241152,
+      "files": [
+        "timing-default-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median throughput on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "workers",
+      "target": "fluo-workers",
+      "scenario": "stage-serialization",
+      "configuration": "default",
+      "connections": 64,
+      "medianRps": 3517.27,
+      "medianClientCpu": 11.37092112623454,
+      "files": [
+        "timing-default-stage-serialization-c64.json"
+      ],
+      "reasons": [
+        "highest observed median generator CPU on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "nextjs",
+      "target": "native-nextjs",
+      "scenario": "stage-minimal",
+      "configuration": "default",
+      "connections": 64,
+      "medianRps": 10573.07,
+      "medianClientCpu": 18.038377435301534,
+      "files": [
+        "timing-default-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median throughput on platform at concurrency64"
+      ]
+    },
+    {
+      "platform": "nextjs",
+      "target": "native-nextjs",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "medianRps": 10019.47,
+      "medianClientCpu": 19.399596105744035,
+      "files": [
+        "timing-equivalent-stage-minimal-c64.json"
+      ],
+      "reasons": [
+        "highest observed median generator CPU on platform at concurrency64"
+      ]
+    }
+  ],
+  "method": {
+    "generators": [
+      1,
+      4
+    ],
+    "totalConnections": 64,
+    "repeats": 3,
+    "warmupSeconds": 3,
+    "durationSeconds": 10,
+    "alternatingOrder": true
+  },
+  "limitations": [
+    "Same-host contention and unsynchronized worker intervals remain explicit.",
+    "No claim that selected controls prove headroom for every untested scenario or concurrency1.",
+    "If scaling or client saturation is observed, classify affected capacity comparisons as generator-limited/inconclusive instead of hiding timing records."
+  ],
+  "primaryAudit": {
+    "path": "primary-raw-audit-20261008.log",
+    "sha256": "133ccc235ac8fa667693655890744530181d1b3bb33e410b099406f8e67978ba",
+    "status": "passed"
+  }
+}

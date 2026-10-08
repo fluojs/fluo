@@ -1,8 +1,20 @@
 import type { AppShape } from '../scenarios';
 import { comparisonHeaders } from './comparison-headers.js';
+import { createNativeStage } from './native-stages.js';
+import { isStageShape, type StageShape } from './stage-workloads.js';
 import { jsonCommandLocal, readSearchLocal, restRouteMixLocal, toPreviewBody, toQuoteInput } from './workloads.js';
 
+const stages = new Map<StageShape, ReturnType<typeof createNativeStage>>();
+
 export function nativeResponse(shape: AppShape, method: string, url: URL, body: unknown): { readonly status: number; readonly body: string } {
+  if (isStageShape(shape)) {
+    let stage = stages.get(shape);
+    if (!stage) {
+      stage = createNativeStage(shape);
+      stages.set(shape, stage);
+    }
+    return stage(method, url, body);
+  }
   const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const query = (name: string) => url.searchParams.get(name) ?? '';
   const tenantId = parts[1] ?? '';

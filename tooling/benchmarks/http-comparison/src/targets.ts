@@ -12,7 +12,13 @@ const activeTargets = new Set<ChildProcess>();
 
 for (const [signal, exitCode] of [['SIGINT', 130], ['SIGTERM', 143]] as const) {
   process.once(signal, () => {
-    void stopTargets([...activeTargets]).then(() => process.exit(exitCode));
+    void stopTargets([...activeTargets]).then(
+      () => process.exit(exitCode),
+      (error: Error) => {
+        process.stderr.write(`${error.message}\n`);
+        process.exit(exitCode);
+      },
+    );
   });
 }
 process.once('exit', () => {
@@ -95,69 +101,129 @@ export function runCommand(command: string, args: string[]): Promise<void> {
   });
 }
 
-export function startTargets(appShape: AppShape, targets: readonly TargetConfig[]): ChildProcess[] {
+export interface TargetLaunchOptions {
+  readonly inspectorPort?: number;
+  readonly gcTrace?: boolean;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly quiet?: boolean;
+  readonly onOutput?: (target: TargetConfig, stream: 'stdout' | 'stderr', data: Buffer) => void;
+}
+
+export function targetLaunch(target: TargetConfig, appShape: AppShape, options: TargetLaunchOptions = {}) {
+  const configuration = options.env?.BENCH_CONFIGURATION ?? process.env.BENCH_CONFIGURATION ?? 'default';
+  const args = target.platform === 'workers' ? [...target.args, '--var', `BENCH_APP_SHAPE:${appShape}`, '--var', `BENCH_CONFIGURATION:${configuration}`]
+    : target.platform === 'deno' ? [...target.args, appShape] : [...target.args];
+  if (options.inspectorPort !== undefined) {
+    const address = `127.0.0.1:${options.inspectorPort}`;
+    switch (target.platform) {
+      case 'workers':
+        args[args.indexOf('--inspector-port') + 1] = String(options.inspectorPort);
+        break;
+      case 'bun': args.unshift(`--inspect=${address}/3910`); break;
+      case 'deno': args.splice(1, 0, `--inspect=${address}`); break;
+      case 'fastify': case 'express': case 'nodejs': case 'nextjs':
+        args.unshift(`--inspect=${address}`);
+        break;
+    }
+  }
+  if (options.gcTrace) {
+    if (target.platform === 'deno') args.splice(1, 0, '--v8-flags=--trace-gc');
+    else if (target.command === 'node' && target.platform !== 'workers') args.unshift('--trace-gc');
+  }
+  return {
+    command: target.command, args, cwd: WDIR,
+    env: { ...process.env, ...options.env, BENCH_APP_SHAPE: appShape, BENCH_TARGET: target.name, PORT: String(target.port), WRANGLER_SEND_METRICS: 'false', NEXT_TELEMETRY_DISABLED: '1' },
+  };
+}
+
+export function startTargets(appShape: AppShape, targets: readonly TargetConfig[], options: TargetLaunchOptions = {}): ChildProcess[] {
   return targets.map((target) => {
-    const args = target.platform === 'workers' ? [...target.args, '--var', `BENCH_APP_SHAPE:${appShape}`, '--var', `BENCH_CONFIGURATION:${process.env.BENCH_CONFIGURATION ?? 'default'}`]
-      : target.platform === 'deno' ? [...target.args, appShape] : target.args;
-    const child = spawn(target.command, args, {
-      cwd: WDIR,
+    const launch = targetLaunch(target, appShape, options);
+    const child = spawn(launch.command, launch.args, {
+      cwd: launch.cwd,
       detached: true,
-      env: { ...process.env, BENCH_APP_SHAPE: appShape, BENCH_TARGET: target.name, PORT: String(target.port), WRANGLER_SEND_METRICS: 'false', NEXT_TELEMETRY_DISABLED: '1' },
+      env: launch.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[${target.name}] ${String(d)}`));
+    child.stdout?.on('data', (data: Buffer) => options.onOutput?.(target, 'stdout', data));
+    child.stderr?.on('data', (data: Buffer) => {
+      options.onOutput?.(target, 'stderr', data);
+      if (!options.quiet) process.stderr.write(`[${target.name}] ${String(data)}`);
+    });
     activeTargets.add(child);
     return child;
   });
 }
 
-function waitForChildExit(child: ChildProcess, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return Promise.resolve();
-  }
-
+function waitForChildStop(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  const streams = [child.stdout, child.stderr].filter((stream) => stream !== null);
+  const stopped = (): boolean => (child.exitCode !== null || child.signalCode !== null)
+    && streams.every((stream) => stream.readableEnded && stream.closed);
+  if (stopped()) return Promise.resolve(true);
   return new Promise((resolve) => {
-    let timeout: NodeJS.Timeout | undefined;
-    const settle = (): void => {
-      if (timeout) {
-        clearTimeout(timeout);
+    const settle = (complete: boolean): void => {
+      clearTimeout(timeout);
+      child.removeListener('exit', check);
+      child.removeListener('close', check);
+      child.removeListener('error', failed);
+      for (const stream of streams) {
+        stream.removeListener('end', check);
+        stream.removeListener('close', check);
+        stream.removeListener('error', failed);
       }
-
-      child.removeListener('exit', settle);
-      resolve();
+      resolve(complete);
     };
-
-    timeout = setTimeout(settle, timeoutMs);
-    child.once('exit', settle);
+    const check = (): void => { if (stopped()) settle(true); };
+    const failed = (): void => settle(false);
+    const timeout = setTimeout(() => settle(false), timeoutMs);
+    child.on('exit', check);
+    child.on('close', check);
+    child.on('error', failed);
+    for (const stream of streams) {
+      stream.on('end', check);
+      stream.on('close', check);
+      stream.on('error', failed);
+    }
+    check();
   });
 }
 
 function signalTarget(child: ChildProcess, signal: NodeJS.Signals): void {
-  if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) {
+  if (child.pid === undefined) {
     return;
   }
 
   try {
     process.kill(-child.pid, signal);
   } catch {
-    child.kill(signal);
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
   }
 }
 
 export async function stopTargets(processes: readonly ChildProcess[]): Promise<void> {
+  const graceful = processes.map((child) => waitForChildStop(child, 1_500));
   for (const child of processes) {
     signalTarget(child, 'SIGTERM');
   }
-
-  await Promise.all(processes.map((child) => waitForChildExit(child, 1_500)));
-
-  for (const child of processes) {
+  const completed = await Promise.all(graceful);
+  const remaining = processes.filter((_child, index) => !completed[index]);
+  const forced = remaining.map((child) => waitForChildStop(child, 1_000));
+  for (const child of remaining) {
     signalTarget(child, 'SIGKILL');
   }
-
-  await Promise.all(processes.map((child) => waitForChildExit(child, 1_000)));
-  for (const child of processes) activeTargets.delete(child);
+  const forcedCompleted = await Promise.all(forced);
+  const failed = remaining.filter((_child, index) => !forcedCompleted[index]);
+  for (const child of processes) {
+    if (child.exitCode !== null || child.signalCode !== null) activeTargets.delete(child);
+  }
+  for (const child of failed) {
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+  }
+  if (failed.length > 0) {
+    throw new Error(`Target teardown timed out or output closed without draining: ${failed.map((child) => child.pid).join(', ')}`);
+  }
 }
 
 async function buildBunTarget(): Promise<void> {

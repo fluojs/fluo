@@ -1,0 +1,418 @@
+{
+  "schemaVersion": 1,
+  "issue": 3910,
+  "analysisStatus": "observational-map-complete",
+  "acceptanceStatus": "pending-final-verification-and-review",
+  "timing": {
+    "samples": 2112,
+    "conditions": 704,
+    "comparisons": 396,
+    "path": "timing-comparisons.json"
+  },
+  "profiles": {
+    "primaryConditions": 528,
+    "supported": 506,
+    "unsupported": 22,
+    "cpuSummary": "cpu-sample-summaries.json",
+    "metrics": "primary-metrics-20261008.log",
+    "audit": "primary-raw-audit-20261008.log"
+  },
+  "headroom": {
+    "path": "headroom-summary.json",
+    "verdict": "inconclusive-for-isolated-server-capacity"
+  },
+  "confirmations": "hotspot-confirmations.json",
+  "findings": [
+    {
+      "id": "common-web-header-lookup",
+      "platforms": [
+        "bun"
+      ],
+      "followUpIssues": [
+        3911,
+        3913
+      ],
+      "priority": "high",
+      "observation": "Repeated header name scan and response header conversion occur in the minimal request path.",
+      "source": [
+        {
+          "path": "packages/runtime/src/web.ts",
+          "line": 886,
+          "symbol": "findHeaderName",
+          "method": "generated/source function name and body match"
+        },
+        {
+          "path": "packages/runtime/src/web.ts",
+          "line": 899,
+          "symbol": "toResponseHeaders",
+          "method": "generated/source function name and body match"
+        }
+      ],
+      "frames": [
+        {
+          "target": "fluo-bun",
+          "name": "findHeaderName",
+          "primaryShare": 0.05527638190954774,
+          "recaptureShare": 0.04841006169909824,
+          "primaryProfile": "2026-10-08T09-55-02.619Z-14e36ea5-4368-4e31-b0d0-8985450cccc4/fluo-bun-stage-minimal-cpu-0-cc9d0791-a14e-4788-a99f-2f3e4a610256/profile.json",
+          "recaptureProfile": "2026-10-08T15-04-44.557Z-ec6c3d8f-4725-46e1-a301-75e981ff408f/fluo-bun-stage-minimal-cpu-0-885611b0-936a-4680-b8f6-0eed4e6f639d/profile.json",
+          "primarySha256": "77e8b81e118bb6b21034ea4ec8569ebf127b8fd36a0798c75bc477c34dea2c6e",
+          "recaptureSha256": "d32d03a5f2586e9ffa910adff558eef544a8373e9f54c4a8b1adcf055cc0228a",
+          "generatedFrames": [
+            {
+              "url": "packages/runtime/dist/web.js",
+              "line": 558
+            }
+          ]
+        }
+      ],
+      "limits": [
+        "Anonymous web.js:560 samples add context but are not added to inclusive share.",
+        "No measured optimization delta; same-host generator capacity remains inconclusive."
+      ],
+      "regressions": [
+        "Case-insensitive repeated header writes preserve casing and do not create duplicate names.",
+        "Array-valued headers and multiple Set-Cookie values retain semantics."
+      ]
+    },
+    {
+      "id": "node-request-normalization",
+      "platforms": [
+        "fastify"
+      ],
+      "followUpIssues": [
+        3912
+      ],
+      "priority": "medium",
+      "observation": "Deferred request shell construction is repeatedly sampled even for the minimal path.",
+      "source": [
+        {
+          "path": "packages/platform-nodejs/src/node/internal-node-request.ts",
+          "line": 203,
+          "symbol": "createDeferredFrameworkRequestShell",
+          "method": "name/body correspondence to generated internal-node-request.js:131"
+        }
+      ],
+      "frames": [
+        {
+          "target": "fluo-fastify",
+          "name": "createDeferredFrameworkRequestShell",
+          "primaryShare": 0.030980461186410842,
+          "recaptureShare": 0.02756045519203414,
+          "primaryProfile": "2026-10-08T06-09-39.807Z-eecef791-e6ce-4aa7-885a-4beeaebd07e5/fluo-fastify-stage-minimal-cpu-0-49f698a1-0d0c-4dcb-be3d-fc787df1a3d7/profile.json",
+          "recaptureProfile": "2026-10-08T15-01-28.917Z-99d4cb14-0f63-4d82-afe3-c9a250f6ae64/fluo-fastify-stage-minimal-cpu-0-78c2db14-4017-4de8-aa57-aa4332845ed0/profile.json",
+          "primarySha256": "610ed671e2e593ba40150b62c11647b93787ddacc56a592bd8e02655fb09c61f",
+          "recaptureSha256": "94933a9bdcf3eb2985b38e486e3728fd508f9d07f1af54cd3d1ff7fcc733557a",
+          "generatedFrames": [
+            {
+              "url": "packages/platform-nodejs/dist/node/internal-node-request.js",
+              "line": 131
+            }
+          ]
+        }
+      ],
+      "limits": [
+        "Lazy getters are observable semantics, not removable just because construction is sampled."
+      ],
+      "regressions": [
+        "Unread headers/query/cookies/body remain lazy.",
+        "First access, repeated access, peer cancellation and request isolation retain behavior."
+      ]
+    },
+    {
+      "id": "express-response-wrapper",
+      "platforms": [
+        "express"
+      ],
+      "followUpIssues": [
+        3912
+      ],
+      "priority": "medium",
+      "observation": "Framework response wrapping and header snapshotting have reproducible self samples.",
+      "source": [
+        {
+          "path": "packages/platform-express/src/adapter.ts",
+          "line": 577,
+          "symbol": "createFrameworkResponse",
+          "method": "name/body correspondence to generated adapter.js:354"
+        }
+      ],
+      "frames": [
+        {
+          "target": "fluo-express",
+          "name": "createFrameworkResponse",
+          "primaryShare": 0.06009843709524221,
+          "recaptureShare": 0.05109804599688743,
+          "primaryProfile": "2026-10-08T08-08-09.718Z-5fdd86fd-a145-49e4-8d17-2628296d107c/fluo-express-stage-minimal-cpu-0-c600f261-945c-408f-8579-87e02f9ed862/profile.json",
+          "recaptureProfile": "2026-10-08T15-02-34.266Z-6ca3f582-cb0a-430c-ad76-90b95c29f9ba/fluo-express-stage-minimal-cpu-0-f77c0257-f028-4e44-948e-783acb5541fd/profile.json",
+          "primarySha256": "f7a97ef13202e028c1a59d04af538764f25fd8a961e807600be19c746e89b977",
+          "recaptureSha256": "c0a86b6cc4f35c2f6d8bab64d9217b0d0988958cfa8c320a5e24ca5611304ae5",
+          "generatedFrames": [
+            {
+              "url": "packages/platform-express/dist/adapter.js",
+              "line": 354
+            }
+          ]
+        }
+      ],
+      "limits": [
+        "Express host handle and Node I/O costs remain separate from wrapper self cost."
+      ],
+      "regressions": [
+        "Status, existing headers, multiple cookies, HEAD, body-forbidden statuses, streaming and already-ended responses remain correct."
+      ]
+    },
+    {
+      "id": "node-output-host-cost",
+      "platforms": [
+        "nodejs"
+      ],
+      "followUpIssues": [
+        3912
+      ],
+      "priority": "unconfirmed-framework-hotspot",
+      "observation": "writev is a large repeated runtime self frame; no framework-exclusive bottleneck is confirmed by that frame.",
+      "source": [],
+      "frames": [
+        {
+          "target": "fluo-nodejs",
+          "name": "writev",
+          "primaryShare": 0.3638269327519705,
+          "recaptureShare": 0.30194889562581206,
+          "primaryProfile": "2026-10-08T04-58-20.704Z-dde2ffb4-4615-48ab-b152-074e9fcbae17/fluo-nodejs-stage-minimal-cpu-0-3b7bd5f0-bbc8-44c0-ab1c-579185399d3a/profile.json",
+          "recaptureProfile": "2026-10-08T15-03-39.477Z-e5d0c6a6-4d70-4beb-9d8e-820cda85c68e/fluo-nodejs-stage-minimal-cpu-0-3cab9dde-6233-440b-892d-385b91e50770/profile.json",
+          "primarySha256": "f1770664e7c64a3c87e401875e11844eb0e6acfdf3a0da14714ab31b3c238f57",
+          "recaptureSha256": "f6aa63804b7e9b53c743c5f2223f799263b2c3777d19165d1119d8c44fbfb8c7",
+          "generatedFrames": [
+            {
+              "url": "",
+              "line": 0
+            }
+          ]
+        }
+      ],
+      "limits": [
+        "Runtime I/O and GC do not identify a safe adapter change."
+      ],
+      "regressions": [
+        "Preserve writes, completion, backpressure and cancellation in any later adapter experiment."
+      ]
+    },
+    {
+      "id": "deno-request-close-abort",
+      "platforms": [
+        "deno"
+      ],
+      "followUpIssues": [
+        3913
+      ],
+      "priority": "high-investigation",
+      "observation": "DOMException self samples repeat under Deno abortRequest -> close -> closeInnerRequestImmediately -> finishOrReturnNative. The native recapture has zero sampled DOMException leaves.",
+      "source": [
+        {
+          "path": "ext:deno_fetch/23_request.js",
+          "symbol": "abortRequest",
+          "method": "raw CPU parent chain, external runtime source"
+        },
+        {
+          "path": "packages/runtime/src/web.ts",
+          "line": 380,
+          "symbol": "startWebRequestDispatch",
+          "method": "adjacent integration boundary, NOT proven cause of DOMException"
+        }
+      ],
+      "frames": [
+        {
+          "target": "fluo-deno",
+          "name": "DOMException",
+          "primaryShare": 0.18769053308066244,
+          "recaptureShare": 0.19788445890968268,
+          "primaryProfile": "2026-10-08T11-18-42.300Z-41a1342c-4bc2-4a27-a6fb-2a71c93587d5/fluo-deno-stage-minimal-cpu-0-e8063ce5-1fe2-448a-beae-0cb39e9b0027/profile.json",
+          "recaptureProfile": "2026-10-08T15-05-49.521Z-2fa9208b-b58e-48df-b60b-d9a369d765cc/fluo-deno-stage-minimal-cpu-0-cbcddcf2-c0d8-4aae-bc65-ed8e220fe750/profile.json",
+          "primarySha256": "ae83f44114f94562013cc89289f4355f73697fa054f21cfb2aabcebd17783fa7",
+          "recaptureSha256": "b7c403457eae5fa3d4901c12175f70320fe9538d64868702ecdb4490a07ade99",
+          "generatedFrames": [
+            {
+              "url": "ext:deno_web/01_dom_exception.js",
+              "line": 1
+            }
+          ]
+        }
+      ],
+      "limits": [
+        "Signal access or framework abort integration is a hypothesis, not a proved cause.",
+        "No change may discard abort contracts or hide exception cost without a controlled causal experiment."
+      ],
+      "regressions": [
+        "Already-aborted, peer-disconnected, normal completion and body-read requests preserve signal identity, reason and cleanup."
+      ]
+    },
+    {
+      "id": "workers-header-conversion",
+      "platforms": [
+        "workers"
+      ],
+      "followUpIssues": [
+        3914
+      ],
+      "priority": "low",
+      "observation": "toResponseHeaders and cloneWebHeaders are repeatedly sampled in the application isolate; local native/Fluo throughput gaps are small relative to host overhead.",
+      "source": [
+        {
+          "path": "packages/runtime/src/web.ts",
+          "line": 899,
+          "symbol": "toResponseHeaders",
+          "method": "name/body match to preserved generated bundle, exact VLQ mapping unresolved"
+        },
+        {
+          "path": "packages/runtime/src/web.ts",
+          "line": 707,
+          "symbol": "cloneWebHeaders",
+          "method": "name/body match to preserved generated bundle, exact VLQ mapping unresolved"
+        }
+      ],
+      "frames": [
+        {
+          "target": "fluo-workers",
+          "name": "toResponseHeaders",
+          "primaryShare": 0.08536585365853659,
+          "recaptureShare": 0.06707692307692308,
+          "primaryProfile": "2026-10-08T12-44-01.577Z-2c3bd30c-d4c2-4a85-97d6-9290305a8c69/fluo-workers-stage-minimal-cpu-0-b6d17b8a-91ad-40d4-b476-f3b4bf887b28/profile.json",
+          "recaptureProfile": "2026-10-08T15-06-54.350Z-d197a1e8-6957-4493-8b38-4709da5d4b4d/fluo-workers-stage-minimal-cpu-0-b11a1410-8dfb-4c95-8fec-91c66898a69c/profile.json",
+          "primarySha256": "0156af94fe10d881afa3107f9a8a1e9dafbf0daba7986ce9c88fdc4deebe8d73",
+          "recaptureSha256": "55e1c47c9e2f805efdafb9d35f885e9ca008f85c0bfe91e6bb1b7d3f34f0589a",
+          "generatedFrames": [
+            {
+              "url": "server.js",
+              "line": 23173
+            }
+          ]
+        },
+        {
+          "target": "fluo-workers",
+          "name": "cloneWebHeaders",
+          "primaryShare": 0.038908246225319396,
+          "recaptureShare": 0.05046153846153846,
+          "primaryProfile": "2026-10-08T12-44-01.577Z-2c3bd30c-d4c2-4a85-97d6-9290305a8c69/fluo-workers-stage-minimal-cpu-0-b6d17b8a-91ad-40d4-b476-f3b4bf887b28/profile.json",
+          "recaptureProfile": "2026-10-08T15-06-54.350Z-d197a1e8-6957-4493-8b38-4709da5d4b4d/fluo-workers-stage-minimal-cpu-0-b11a1410-8dfb-4c95-8fec-91c66898a69c/profile.json",
+          "primarySha256": "0156af94fe10d881afa3107f9a8a1e9dafbf0daba7986ce9c88fdc4deebe8d73",
+          "recaptureSha256": "55e1c47c9e2f805efdafb9d35f885e9ca008f85c0bfe91e6bb1b7d3f34f0589a",
+          "generatedFrames": [
+            {
+              "url": "server.js",
+              "line": 23013
+            }
+          ]
+        }
+      ],
+      "limits": [
+        "An attempted current temporary source-map lookup did not align with the profiled declaration; not accepted as exact mapping.",
+        "Wrangler/process-tree CPU is not application isolate CPU.",
+        "Tracing.start unsupported does not establish all GC diagnostics unsupported; cross-request promise warnings remain recorded."
+      ],
+      "regressions": [
+        "Request/response header semantics and real executionContext.waitUntil behavior must be preserved."
+      ]
+    },
+    {
+      "id": "next-production-host-cost",
+      "platforms": [
+        "nextjs"
+      ],
+      "followUpIssues": [
+        3914
+      ],
+      "priority": "unconfirmed-framework-hotspot",
+      "observation": "Next loadManifest, request metadata and rendering host frames recur in Fluo and native captures.",
+      "source": [
+        {
+          "path": "tooling/benchmarks/http-comparison/node_modules/.pnpm/next@16.3.5_@types+node@22.19.17_react-dom@19.2.6_react@19.2.6__react@19.2.6/node_modules/next/dist/server/load-manifest.external.js",
+          "line": 36,
+          "symbol": "loadManifest",
+          "method": "direct installed Next source read; cache branch is present"
+        }
+      ],
+      "frames": [
+        {
+          "target": "fluo-nextjs",
+          "name": "loadManifest",
+          "primaryShare": 0.05388286334056399,
+          "recaptureShare": 0.029046339825386167,
+          "primaryProfile": "2026-10-08T13-55-44.347Z-1f5fe2e7-7752-4e84-97eb-d2d89bb97443/fluo-nextjs-stage-minimal-cpu-0-e2912b7f-b97d-46cb-bb77-7b8c3ce90702/profile.json",
+          "recaptureProfile": "2026-10-08T15-08-00.111Z-5adc2fc4-eeac-4c9e-84ab-301ade811b2c/fluo-nextjs-stage-minimal-cpu-0-b7bc4eba-66fb-4a1c-afd9-ddd8a670eaee/profile.json",
+          "primarySha256": "b395ad45a444dd8477fb9002d27b4af81a93c6b816c2aef4717c581744f602a6",
+          "recaptureSha256": "0ebe52e26486b5f1f5b6bbaedada38a7371e06f96700aa5794f4572704491fe2",
+          "generatedFrames": [
+            {
+              "url": "tooling/benchmarks/http-comparison/node_modules/.pnpm/next@16.3.5_@types+node@22.19.17_react-dom@19.2.6_react@19.2.6__react@19.2.6/node_modules/next/dist/server/load-manifest.external.js",
+              "line": 36
+            }
+          ]
+        },
+        {
+          "target": "fluo-nextjs",
+          "name": "addRequestMeta",
+          "primaryShare": 0.0382646420824295,
+          "recaptureShare": 0.059184016118200136,
+          "primaryProfile": "2026-10-08T13-55-44.347Z-1f5fe2e7-7752-4e84-97eb-d2d89bb97443/fluo-nextjs-stage-minimal-cpu-0-e2912b7f-b97d-46cb-bb77-7b8c3ce90702/profile.json",
+          "recaptureProfile": "2026-10-08T15-08-00.111Z-5adc2fc4-eeac-4c9e-84ab-301ade811b2c/fluo-nextjs-stage-minimal-cpu-0-b7bc4eba-66fb-4a1c-afd9-ddd8a670eaee/profile.json",
+          "primarySha256": "b395ad45a444dd8477fb9002d27b4af81a93c6b816c2aef4717c581744f602a6",
+          "recaptureSha256": "0ebe52e26486b5f1f5b6bbaedada38a7371e06f96700aa5794f4572704491fe2",
+          "generatedFrames": [
+            {
+              "url": "tooling/benchmarks/http-comparison/node_modules/.pnpm/next@16.3.5_@types+node@22.19.17_react-dom@19.2.6_react@19.2.6__react@19.2.6/node_modules/next/dist/server/request-meta.js",
+              "line": 44
+            }
+          ]
+        },
+        {
+          "target": "fluo-nextjs",
+          "name": "renderToResponseWithComponentsImpl",
+          "primaryShare": 0.03765726681127983,
+          "recaptureShare": 0.06170248488918737,
+          "primaryProfile": "2026-10-08T13-55-44.347Z-1f5fe2e7-7752-4e84-97eb-d2d89bb97443/fluo-nextjs-stage-minimal-cpu-0-e2912b7f-b97d-46cb-bb77-7b8c3ce90702/profile.json",
+          "recaptureProfile": "2026-10-08T15-08-00.111Z-5adc2fc4-eeac-4c9e-84ab-301ade811b2c/fluo-nextjs-stage-minimal-cpu-0-b7bc4eba-66fb-4a1c-afd9-ddd8a670eaee/profile.json",
+          "primarySha256": "b395ad45a444dd8477fb9002d27b4af81a93c6b816c2aef4717c581744f602a6",
+          "recaptureSha256": "0ebe52e26486b5f1f5b6bbaedada38a7371e06f96700aa5794f4572704491fe2",
+          "generatedFrames": [
+            {
+              "url": "tooling/benchmarks/http-comparison/node_modules/.pnpm/next@16.3.5_@types+node@22.19.17_react-dom@19.2.6_react@19.2.6__react@19.2.6/node_modules/next/dist/server/base-server.js",
+              "line": 1233
+            }
+          ]
+        },
+        {
+          "target": "fluo-nextjs",
+          "name": "join",
+          "primaryShare": 0.08537960954446855,
+          "recaptureShare": 0.051712558764271326,
+          "primaryProfile": "2026-10-08T13-55-44.347Z-1f5fe2e7-7752-4e84-97eb-d2d89bb97443/fluo-nextjs-stage-minimal-cpu-0-e2912b7f-b97d-46cb-bb77-7b8c3ce90702/profile.json",
+          "recaptureProfile": "2026-10-08T15-08-00.111Z-5adc2fc4-eeac-4c9e-84ab-301ade811b2c/fluo-nextjs-stage-minimal-cpu-0-b7bc4eba-66fb-4a1c-afd9-ddd8a670eaee/profile.json",
+          "primarySha256": "b395ad45a444dd8477fb9002d27b4af81a93c6b816c2aef4717c581744f602a6",
+          "recaptureSha256": "0ebe52e26486b5f1f5b6bbaedada38a7371e06f96700aa5794f4572704491fe2",
+          "generatedFrames": [
+            {
+              "url": "node:path",
+              "line": 1332
+            }
+          ]
+        }
+      ],
+      "limits": [
+        "Presence of loadManifest does not prove filesystem access for each request because the function first checks a shared cache.",
+        "Native host control shows similar request-metadata/render frames. No exclusive Fluo host bottleneck is confirmed."
+      ],
+      "regressions": [
+        "Preserve Next production Turbopack startup, request-lazy backend facade, routing/status/body and host lifecycle."
+      ]
+    }
+  ],
+  "limitations": [
+    "All timing/native/Nest comparisons are within the same scenario/configuration/concurrency/runtime/engine only.",
+    "Stage variants represent observed full-request increments, not exclusive stage durations.",
+    "CPU sampling share is separate from process-tree CPU microseconds/request; do not multiply them into per-function absolute CPU estimates.",
+    "Per-run latency percentiles are not pooled percentiles.",
+    "Same-host headroom and profiler drift limit causal/capacity claims; no speculative runtime optimization is included in issue3910.",
+    "Raw failed/interrupted attempts and original source provenance are retained, not relabeled."
+  ]
+}

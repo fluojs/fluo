@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 1,
+  "kind": "timing-collection-audit",
+  "checkedAt": "2026-10-08T04:12:01.103Z",
+  "status": "collection-complete",
+  "issueAcceptance": "incomplete",
+  "files": [
+    {
+      "file": "timing-default-read-search-local-c1.json",
+      "sha256": "5507241268009413b27da810e687c8528d956d151bd472804e1eff0e7cd3de71",
+      "environmentSha256": "a6d56179befbeeed083e52f979e74f8379926a3473dbc93ae1a94359985fd16a",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-read-search-local-c64.json",
+      "sha256": "44682cfa405fabcea4f1ef41398ba145fdd1cbd756fc3f7941c95e655aea6929",
+      "environmentSha256": "3d1b71f05daab605758f59f92e8504f16386a151feec63339d80764bf03bb52a",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-json-command-local-c1.json",
+      "sha256": "6dcf772992218aad359e7946ce3391ec25ad5c6dce33d5ef39649421ca0fb89d",
+      "environmentSha256": "fe46e14a16518d22eb7fc8dfcea060155eef0a50931357f6de76d19c01b36ffe",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-json-command-local-c64.json",
+      "sha256": "eb331bee752db5238ca26520d32a7951a0040b1a5d4007c5d335f9dcb8464ddd",
+      "environmentSha256": "578bc783c849db7c88077a0c42ce386f88820a462abfa94a6008b8a8b78032e1",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-rest-route-mix-local-c1.json",
+      "sha256": "6fdc91a4dbcf029d9d7ecccdec4918f79a26ed67b1d8cb09cae4d82f56283ac6",
+      "environmentSha256": "f48c4215d396d6e2bb9df940b8041b218082ece52374b582542ae03ac866a0b2",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-rest-route-mix-local-c64.json",
+      "sha256": "ca86851461d20b3247523725381cd8f9d5ea339fc5b2a803c87d52a98130d66c",
+      "environmentSha256": "7184e6d91802ce89a50a5351904c811ef4e8c697c6c8cf276295f6b25fabd8e2",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-minimal-c1.json",
+      "sha256": "190d6cd50c19935723145bbdbfc2c6500c2dca45630e01a089772f950806e104",
+      "environmentSha256": "326547e22df37ffc20e344ff93e4c52e04c6ac8e9c6162c6f8088528004834eb",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-minimal-c64.json",
+      "sha256": "40100dd640127897e1992f80ff7ee54afcfa66fead672d5a47d6abe2b7901f1b",
+      "environmentSha256": "13ef57dfb16f73c35ea8f131c87202df3286768c75a865eb80d0407016a45f4e",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-routing-params-c1.json",
+      "sha256": "55d919007c390938f60e91bc3ef2a7275c1afd7e32ba9332f58048dc801ee7e6",
+      "environmentSha256": "f0c3b165d993368d717461d0f437e640a1b1e669b9a2060c8ecb2efb2ec59e54",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-routing-params-c64.json",
+      "sha256": "e8443590d422feab3ecf0754ddb615d240c8dffab555009eedb1b96961569d94",
+      "environmentSha256": "032ebdda0d30af3d6cca45690aafe2c0ef5c46a302ec387495d4e051b6e1c0b9",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-singleton-di-c1.json",
+      "sha256": "7547cfcbdb07c404e9e2b3caeeccad051be8981464ffc719242ba07f6f50767d",
+      "environmentSha256": "f05af6863ba989d9fbbdaa99febe03a611f4d0defa7ae485fa5631d7cfc5c825",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-singleton-di-c64.json",
+      "sha256": "f90fc09365c6abe7c314809d91d579398d587dfde77d2f928583ad1140fce1ec",
+      "environmentSha256": "f31834ea3c69bebe4d2670fcd2e6dd1a931363e9a8a46d0620314c98bf5498ad",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-request-di-c1.json",
+      "sha256": "bb0a160712a766bea60fc57fe66f16b5d83cd25f84e48b9aa85f710d9c702c3c",
+      "environmentSha256": "5d694a210bf9511c73a823cdafe591dbd3e7c0b816d24b5ebaebb882ee3767f3",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-request-di-c64.json",
+      "sha256": "69b47484bb179cf5e06d47dcb7c614a628ca114780517aab015668436ddc149d",
+      "environmentSha256": "1bfa381a1a436162f786f559c7d097a8627f4f4f4f9d9478d08a8d1f53416bde",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-body-c1.json",
+      "sha256": "59f3e69de1a4bcec0cd6a24330106cef211b6ce015b2f8bdb67a0cc474c16099",
+      "environmentSha256": "893c1f5f452cd9242430fbe713ea441429b59ff503f2b9fe5e3a2044729142bb",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-body-c64.json",
+      "sha256": "940456ce0193161aaef9d07d75b009518a6af42b987db1349483c339607f8af8",
+      "environmentSha256": "e480ae67491db54a1011d497cca055cd63a986d962ae5fe67ae158a3bfa1440f",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-guards-c1.json",
+      "sha256": "0d5f55d46d19f8c1c883e9439df043dd3a6592c66b0371b2d14538b4ae338a86",
+      "environmentSha256": "d829087993bb5cd88ec629e7cc2080d8284c3124434c66fdf255f11847318a28",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-guards-c64.json",
+      "sha256": "de15b45a74099c9c30cda5ffb00432153ea87523208bc4f97bd9f8dd6304336e",
+      "environmentSha256": "bc906b05d47b071e5fd511d81de70be24f6f4716aa4e719cf007dae48b082fe2",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-dto-validation-c1.json",
+      "sha256": "6791c63a38ade9c04f86defc3ec4c56b0405b5f2101f5f1defda039597513df5",
+      "environmentSha256": "bd0b59fcc7c16d4a3de1d4020d69c6ef549df0252268f28299778fee9ed2e39d",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-dto-validation-c64.json",
+      "sha256": "426ee62994db461f11b4c7c4ea2ae9279fc76bfe94eb30b5b39c475e0886e272",
+      "environmentSha256": "f5281dca09e3f4e4176c1d7366da279c3e9c43b1edcf2fc619deb3e1d8b60b91",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-serialization-c1.json",
+      "sha256": "8e49ad5d64312122d6cbe4b5008dfeb5d9c5f0493aaf83f440ff99a7cc7a3138",
+      "environmentSha256": "09bcff95ad770ac4ec9a4c1dd18d46d4514f162f313ff9a987b69aeeb808b90f",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-default-stage-serialization-c64.json",
+      "sha256": "f9167fa01dc301173b359789bac161c00d11507f22e1a64a21367f2a7dea6a20",
+      "environmentSha256": "0d918c0971b6f614991af5569bded61f3a3754b836d1bd91f48a7d4dabe987e7",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-read-search-local-c1.json",
+      "sha256": "219f94fecd4b47b980f7a5397434fac49eb2813cc05696d5703168874f2787e7",
+      "environmentSha256": "5cc215c10b8cd84a5fd8118714f3941dae911762ebc006de96666fc4b439be3d",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-read-search-local-c64.json",
+      "sha256": "ca6e68b0534f30e61b8357ec57063b5ff9b0ce539663ebb3bb03750eee0472e2",
+      "environmentSha256": "4ae958d9b7813069b5316658df90a574eabaab4aadf495c0012d38fbb00d9365",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-json-command-local-c1.json",
+      "sha256": "685843da2838feab8641d67d37d817ae97b8eedd0838bc72904731ba9b9a9037",
+      "environmentSha256": "7655d798425a20534469332f79195d27babf50cf354985df87468eea570df44f",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-json-command-local-c64.json",
+      "sha256": "26d3840dede1a2044ab48f031437c053f89d7ff8fbba0d49d6440e0c010d6380",
+      "environmentSha256": "b77740719325a363d45c577099a5fa3ac370c2726729c6e89371cf3b3b07c1d6",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-rest-route-mix-local-c1.json",
+      "sha256": "d5c107bbe7d176e65e790f9d8909ed9874967dc8d1ec564022fd02438ace0673",
+      "environmentSha256": "3218089b203dd32d482d0a97f19cbd920c1196bc6ef0ef7f724958f700cb7a0e",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-rest-route-mix-local-c64.json",
+      "sha256": "e1b7749359290df3904de0c94ec68af2de245122de505c85f3aad8f0dfcfe22a",
+      "environmentSha256": "679446decb3c9f1a52fd4c5aa91bcc27f3c85c1af86ebfc3dcbe2b236eae72a0",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-minimal-c1.json",
+      "sha256": "ca5ea80df337fc902be5cf52e0c207a12aeb2162bca05ee8f9a664d21ee6e41f",
+      "environmentSha256": "b622d7c04f230d5954c3dd58f43dbe973e1438fda57a275248a96b6e53d8514c",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-minimal-c64.json",
+      "sha256": "85b03ba1894b6b492ec3f1235e90dd554dba3934b05ac5c70eb12a08c2d0fd87",
+      "environmentSha256": "b934736f62f3e64d9fc3cb0690bd7fc31f74d1f5bb73802277dfdf1ebd48af89",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-routing-params-c1.json",
+      "sha256": "1e441aa519cd3de3cfea62dd791e2ab09cb374dc181baf410371fa44dc578e5d",
+      "environmentSha256": "aa8a94d4696c07711bb78ba527c0bf95dcb3a0243aa83d9e4895ae817d81fa94",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-routing-params-c64.json",
+      "sha256": "b469ed1d68b9e7a3a14e09c4b5ca32f9abbf023778a685d94e7d76da26d19f9d",
+      "environmentSha256": "29178a9e15757aacf721013eb17bfda52d145dd3f4fef9c175ba0e5985ecced5",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-singleton-di-c1.json",
+      "sha256": "85f025ba55ab4ca806013c0cff1025f61d045f9ea85248d25977a374649af35c",
+      "environmentSha256": "ac8380429ae64058ab84ee03fea614a086922f66ce13efc486d025e3b06ab718",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-singleton-di-c64.json",
+      "sha256": "f7889badbd1bc1007b2ac590573b30b5ec085c257bdaf083ef136bc264ecab3b",
+      "environmentSha256": "d07e737d39b7ec61a3ac38c9365f5638062252910fedcfa66f21e3af4d0c52c9",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-request-di-c1.json",
+      "sha256": "8c9d4ed31f4010ab6dec8a3aa738024cb39f26d0875975b717307069aa384cc6",
+      "environmentSha256": "39e2de69d876ce0d909ccd062df4bf9be9480af2b3da86141f332bf368578a86",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-request-di-c64.json",
+      "sha256": "3bab99780e721a92b238ce56926d17a9b7792abddd91d339aac600b98dc23da8",
+      "environmentSha256": "4b40f5f334627323955eb4cafe6fdee519cddf66d9523599f104963620d409ca",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-body-c1.json",
+      "sha256": "e13ca963386eab35f231a5a643e451b9b2b98e4277fe4eae4ec6adad053798d4",
+      "environmentSha256": "79b015f04fb17bc089bb34f754417e3e6490d723dd59ceb0b5e3d3be0bef2a07",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-body-c64-port-recovery-attempt2.json",
+      "sha256": "c9a11666a7e40c9142095e2086989facd3b1e4a7865cf4437665a4c6529787d4",
+      "environmentSha256": "feb0bb922aa45a045dea0bb3c8fd910ed95dea0e83c6856cac49706d195e0876",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-guards-c1.json",
+      "sha256": "1889aca5a5d876f1fbb116c4dc24dcc70bd0306fbc8d26b2e09bba83da236021",
+      "environmentSha256": "4cdc8faa6d345516ee3642bcf7a1941e6b7bd071bddbd2ede85ba74b465c63f0",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-guards-c64.json",
+      "sha256": "5569703fd9729cfdf510e82120394c4b478f5d95f7c40c366a477e508eae11d7",
+      "environmentSha256": "df8c988e94803a12e2efba65aa9a551896fb3910ad28583e6a388ce4735bcc1d",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-dto-validation-c1.json",
+      "sha256": "cf1c64c1ff4c1b31b39f514df94a577c3a798113f4379b53591d54a11bc0bcee",
+      "environmentSha256": "69c665806a9401c11be8918989f37c760c7fb25af606051af0659545b3d67dcc",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-dto-validation-c64.json",
+      "sha256": "f73259b13563efb5a512a9e39cf59449b8a0aa3047af4f0b36bd47b89706b3a1",
+      "environmentSha256": "e9fd8dfeca2fe90757933ca76c3741ba5fcc92527f574fa850f781f07dd89da5",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-serialization-c1.json",
+      "sha256": "fe66159d799d51efa40b6b61d4db326d9a9ae9116bbb09f58b47c2c4ae408d2a",
+      "environmentSha256": "e4b915c644060537d05fb2f8c1f7a25837fc6a8456e5a3f98cc27a66381f497d",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    },
+    {
+      "file": "timing-equivalent-stage-serialization-c64.json",
+      "sha256": "cd07021f6e4a3a722d7acfcd18e8a4fa74117c0f4737b97a4879bd86b24c5767",
+      "environmentSha256": "6c403591bdba18c66fa7b16116e16098c8d72cfa3a105cea6d7baac310d043b5",
+      "sourceSha256": "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921",
+      "samples": 48,
+      "errors": []
+    }
+  ],
+  "uniqueConditions": 2112,
+  "expectedConditions": 2112,
+  "runtimeDependencyLockfileVersionGroups": 1,
+  "checks": [
+    "44 explicitly selected successful files",
+    "16 known target labels for each of 11 scenarios, 2 configurations, 2 concurrency levels, 3 repeats; no duplicate keys",
+    "5-second configured warmup and 15-second configured measurement",
+    "zero invalid attempts in selected files; completed requests positive; all traffic counters zero",
+    "embedded source snapshot SHA-256 recomputed and matched across all shards",
+    "fresh build command receipts completed before environment capture",
+    "identical runtime/dependency/lockfile versions across 44 shards"
+  ],
+  "limitations": [
+    "Not a capacity/headroom verdict or issue acceptance.",
+    "Build receipt has no explicit buildSourceSha256; it records fresh build commands before the captured source snapshot. Do not fabricate that field.",
+    "Measured interval boundaries and final profile-to-timing aggregation remain to be checked.",
+    "workerd request-context warnings remain part of interpretation."
+  ],
+  "excludedAttempts": [
+    "timing-equivalent-rest-route-mix-local-c1-interrupted-attempt1.json",
+    "timing-equivalent-stage-body-c64.json"
+  ]
+}

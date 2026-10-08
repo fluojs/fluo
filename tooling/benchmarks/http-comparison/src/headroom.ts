@@ -2,12 +2,12 @@ import { writeFile } from 'node:fs/promises';
 import { load } from './load';
 import { environmentSummary } from './provenance';
 import { monitorServer } from './resources';
-import { SCENARIOS } from './scenarios';
+import { selectSuite } from './suites';
 import { buildTarget, runCommand, startTargets, stopTargets, TARGETS, waitForTarget } from './targets';
 
 const target = TARGETS.find((item) => item.name === (process.env.BENCH_TARGETS ?? 'native-fastify'));
 if (!target) throw new Error('Headroom diagnostic requires one known BENCH_TARGETS target');
-const scenario = SCENARIOS.find((item) => item.name === (process.env.BENCH_SCENARIOS ?? 'read-search-local'));
+const scenario = selectSuite().find((item) => item.name === (process.env.BENCH_SCENARIOS ?? 'read-search-local'));
 if (!scenario) throw new Error('Headroom diagnostic requires one known BENCH_SCENARIOS scenario');
 const output = process.env.BENCH_OUTPUT_JSON;
 if (!output) throw new Error('BENCH_OUTPUT_JSON is required');
@@ -15,9 +15,9 @@ await buildTarget(target);
 if (process.env.BENCH_LOAD_PROCESS === '1') {
   await runCommand('pnpm', ['exec', 'esbuild', 'src/load-client.ts', '--bundle', '--platform=node', '--format=esm', '--packages=external', '--outfile=dist/load-client.mjs']);
 }
+const environment = await environmentSummary();
 const servers = startTargets(scenario.appShape, [target]);
 const observations: unknown[] = [];
-const environment = await environmentSummary();
 try {
   await waitForTarget(servers[0]);
   const pid = servers[0].pid;

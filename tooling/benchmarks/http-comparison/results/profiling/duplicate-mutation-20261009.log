@@ -1,0 +1,44 @@
+✖ sample node links: v8-cpu duplicate -> validates the complete tree (1070.9545ms)
+✖ sample node links: v8-allocation duplicate -> validates the complete tree (0.60875ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1218.13875
+
+✖ failing tests:
+
+test at tests/profiling.test.mts:1:3077
+✖ sample node links: v8-cpu duplicate -> validates the complete tree (1070.9545ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (/Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison/tests/profiling.test.mts:103:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Duplicate CPU node ID/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at tests/profiling.test.mts:1:3077
+✖ sample node links: v8-allocation duplicate -> validates the complete tree (0.60875ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (/Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison/tests/profiling.test.mts:103:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /duplicate allocation node ID/,
+    operator: 'throws',
+    diff: 'simple'
+  }

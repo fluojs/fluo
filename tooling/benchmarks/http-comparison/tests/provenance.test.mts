@@ -12,6 +12,16 @@ test('rejects installed dependency overrides that differ from the declared lockf
   assert.doesNotThrow(() => assertInstalledLockfile(expected, expected));
 });
 
+test('accepts importer key order changes without accepting dependency changes', () => {
+  const root = "  .:\n    dependencies:\n      a:\n        specifier: ^1.0.0\n        version: 1.0.0\n";
+  const child = "  packages/auth:\n    dependencies:\n      b:\n        specifier: 2.0.0\n        version: 2.0.0\n";
+  const expected = `lockfileVersion: '9.0'\nimporters:\n${root}${child}`;
+  const reordered = `lockfileVersion: '9.0'\nimporters:\n${child}${root}`;
+  assert.doesNotThrow(() => assertInstalledLockfile(expected, reordered));
+  assert.throws(() => assertInstalledLockfile(expected, reordered.replace('version: 2.0.0', 'version: 2.0.1')),
+    /Installed dependency lockfile differs/);
+});
+
 test('captures installed type-only packages as well as runtime and linked packages', { timeout: 20_000 }, async () => {
   // Given: type-only packages have package.json but no executable entry point.
   // When

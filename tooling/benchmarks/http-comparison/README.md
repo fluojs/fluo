@@ -14,6 +14,28 @@ The default suite is intentionally limited to three practical local API workload
 - `json-command-local`: a POST quote-calculation command with JSON body materialization, nested line items, deterministic tax/discount/shipping computation, and response serialization.
 - `rest-route-mix-local`: a small REST surface that cycles through project detail, task list, task detail, POST preview, and comment summary routes to exercise mixed route matching, path/query extraction, GET/POST dispatch, and DI.
 
+`BENCH_SUITE=stages` selects eight independent diagnostic fixtures:
+`stage-minimal`, `stage-routing-params`, `stage-singleton-di`,
+`stage-request-di`, `stage-body`, `stage-guards`, `stage-dto-validation`,
+and `stage-serialization`. `BENCH_SUITE=all` includes these and the three
+business workloads; the default remains `business`. `BENCH_SCENARIOS` filters
+within the selected suite. Smoke and generator-headroom commands use the same
+suite selector.
+
+Stage differences are whole-request increments, not exclusive timers for
+individual framework operations. Native DI fixtures use explicit caches, not
+a framework container. Nest request fixtures explicitly dispose on response
+completion; this is not a claim about automatic Nest request-provider cleanup.
+DTO validation uses Fluo binding/validators, a matching native materializer,
+and a custom Nest pipe rather than `ValidationPipe`. Serialization measures
+plain JSON encoding, not serializer-plugin shaping. The machine-readable
+feature distinctions are in `src/shared/stage-workloads.ts`.
+
+Guard denial and invalid DTO requests are separate correctness probes, never
+errors mixed into the successful throughput matrix. The original archived
+576 business measurements remain historical evidence, not measurements of the
+new stage fixtures.
+
 ## Run
 
 ```bash
@@ -142,7 +164,7 @@ while the server remains underutilized is evidence against generator headroom.
 - This measures the current workspace package builds through linked fluo dependencies, not the released npm beta surface.
 - fluo uses TC39 standard decorators without `emitDecoratorMetadata`; NestJS uses legacy decorators with `emitDecoratorMetadata` through `nestjs/tsconfig.json`.
 - `fluo+Bun` is a runtime comparison, not a same-adapter comparison. Treat it as “same fluo app graph on Bun’s native server” versus the Node.js adapter targets.
-- The suite covers routing, request binding, local deterministic service work, and JSON serialization. It does not measure validation plugins, serialization plugins, guards, pipes, database access, or production middleware.
+- The default `business` suite covers routing, request binding, local deterministic service work, and JSON serialization. It does not measure validation plugins, serialization plugins, guards, or pipes. The diagnostic `stages` suite additionally isolates guard execution (`stage-guards`) and DTO materialization/validation (`stage-dto-validation`); these fixtures do not represent arbitrary plugin or pipe configurations. Neither suite measures database access or production middleware.
 
 ### Load-generator limits
 

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "kind": "profile-classifier-fix-reproduction",
+  "createdAt": "2026-10-08T06:48:46.299Z",
+  "originalHead": "b02cde867cab4b9dd2dc7824f8c5ee177639899b",
+  "validatorHead": "c3641fd6fca4bf04a9c71656842a2737a35b50eb",
+  "changedFiles": [
+    "tooling/benchmarks/http-comparison/src/profile-report.ts",
+    "tooling/benchmarks/http-comparison/tests/profiling.test.mts"
+  ],
+  "originalManifest": "/Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison/results/profiling/2026-10-08T06-35-41.003Z-c0321e25-8a0b-427c-9f71-d0befef48321/manifest.json",
+  "originalStatus": "failed",
+  "originalReason": "empty-or-startup-profile",
+  "rawProfileSha256": "c1a41464c3b8a2e73ab6854c1fc9d2ba88d018564bcc46b9dafed8591ad379fc",
+  "totalAllocationSamples": 499507,
+  "matchedRequestSamples": 106075,
+  "candidateValidationErrors": [],
+  "acceptance": "original failed attempt remains excluded; recapture only this allocation condition",
+  "provenancePolicy": "Old measurements retain original source and commit. Correction changes classifier and regression tests only, not serving fixtures or load. Record new collector provenance separately; never relabel old artifacts as new-head captures.",
+  "implementationResult": {
+    "version": 1,
+    "result": "completed",
+    "mode": "implement",
+    "lane_id": "http-platform-performance-3909-3915",
+    "issue_number": 3910,
+    "branch": "issue-3910",
+    "worktree": ".worktrees/issue-3910",
+    "pr": null,
+    "preflight_sha256": "7f19ed1c92dcf0680a8a623589395d2b510a0a9bd8cc6cf012da70faf3bf29e0",
+    "previous_head_sha": "b02cde867cab4b9dd2dc7824f8c5ee177639899b",
+    "head_sha": "c3641fd6fca4bf04a9c71656842a2737a35b50eb",
+    "commit_sha": "c3641fd6fca4bf04a9c71656842a2737a35b50eb",
+    "changed_files": [
+      "tooling/benchmarks/http-comparison/src/profile-report.ts",
+      "tooling/benchmarks/http-comparison/tests/profiling.test.mts"
+    ],
+    "verification": [
+      {
+        "command": "cd tooling/benchmarks/http-comparison && node --import tsx --test tests/profiling.test.mts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck",
+        "status": "passed"
+      }
+    ],
+    "fix_back_result": "not-applicable",
+    "addressed_blockers": [],
+    "remaining_blockers": []
+  }
+}

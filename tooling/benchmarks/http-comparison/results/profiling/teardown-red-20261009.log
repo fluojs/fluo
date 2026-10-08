@@ -1,0 +1,84 @@
+✖ captureCondition: final control shutdown overflows raw limit -> journals failed capture (9527.613125ms)
+✖ stopTargets: shutdown parent with descendant-held pipes -> drains or reports failure (59.044667ms)
+✖ stopTargets: exited parent with descendant-held pipes -> drains or reports failure (49.259791ms)
+✖ stopTargets: escaped parent with descendant-held pipes -> drains or reports failure (47.602709ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 0
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9832.170375
+
+✖ failing tests:
+
+test at tests/teardown-drain.test.mts:1:910
+✖ captureCondition: final control shutdown overflows raw limit -> journals failed capture (9527.613125ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'supported'
+  - 'failed'
+
+      at TestContext.<anonymous> (/Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison/tests/teardown-drain.test.mts:69:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'supported',
+    expected: 'failed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/teardown-drain.test.mts:1:3772
+✖ stopTargets: shutdown parent with descendant-held pipes -> drains or reports failure (59.044667ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (/Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison/tests/teardown-drain.test.mts:113:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/teardown-drain.test.mts:1:3772
+✖ stopTargets: exited parent with descendant-held pipes -> drains or reports failure (49.259791ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (/Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison/tests/teardown-drain.test.mts:113:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/teardown-drain.test.mts:1:3772
+✖ stopTargets: escaped parent with descendant-held pipes -> drains or reports failure (47.602709ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison/tests/teardown-drain.test.mts:110:9)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /teardown|drain|closed/i,
+    operator: 'rejects',
+    diff: 'simple'
+  }

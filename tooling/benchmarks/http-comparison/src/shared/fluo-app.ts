@@ -1,13 +1,13 @@
 import { ensureMetadataSymbol, Inject, Module } from '@fluojs/core';
 import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
-
+import type { AppShape } from './app-shape.js';
+import { resolveStageModule } from './fluo-stages.js';
+import { isStageShape } from './stage-workloads.js';
 import { jsonCommandLocal, type QuoteInput, queryValue, readSearchLocal, restRouteMixLocal, toPreviewBody, toQuoteInput } from './workloads.js';
 
 export { readAppShape } from './app-shape.js';
 
 ensureMetadataSymbol();
-
-type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
 
 class UsersReadService {
   search(context: RequestContext) {
@@ -102,6 +102,7 @@ class JsonCommandModule {}
 class RestRouteMixModule {}
 
 export function resolveAppModule(shape: AppShape) {
+  if (isStageShape(shape)) return resolveStageModule(shape);
   switch (shape) {
     case 'read-search-local': return ReadSearchModule;
     case 'json-command-local': return JsonCommandModule;

@@ -5,7 +5,8 @@ import { load } from './load';
 import { environmentSummary, WORKSPACE_ROOT } from './provenance';
 import { printReport, type ScenarioResult, summarizeRuns, type TargetResult } from './report';
 import { monitorServer, type ProcessSample } from './resources';
-import { SCENARIOS, type ScenarioConfig } from './scenarios';
+import type { ScenarioConfig } from './scenarios';
+import { selectSuite } from './suites';
 import { buildCommands, buildTarget, runCommand, startTargets, stopTargets, TARGETS, type TargetConfig, WDIR, waitForTarget } from './targets';
 import { measureTargets } from './traffic';
 
@@ -43,13 +44,14 @@ function readTargetFilter(): Set<string> | undefined {
 }
 
 function selectedScenarios(): readonly ScenarioConfig[] {
+  const scenarios = selectSuite();
   const filter = readScenarioFilter();
   if (!filter) {
-    return SCENARIOS;
+    return scenarios;
   }
 
-  const selected = SCENARIOS.filter((scenario) => filter.has(scenario.name));
-  const knownNames = new Set(SCENARIOS.map((scenario) => scenario.name));
+  const selected = scenarios.filter((scenario) => filter.has(scenario.name));
+  const knownNames = new Set(scenarios.map((scenario) => scenario.name));
   const unknown = [...filter].filter((name) => !knownNames.has(name));
   if (unknown.length > 0) {
     throw new Error(`Unknown BENCH_SCENARIOS entries: ${unknown.join(', ')}`);

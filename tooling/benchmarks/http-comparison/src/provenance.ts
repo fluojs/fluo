@@ -4,7 +4,8 @@ import { readdir, readFile, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { arch, cpus, platform, release } from 'node:os';
 import { dirname, join } from 'node:path';
-import { promisify } from 'node:util';
+import { isDeepStrictEqual, promisify } from 'node:util';
+import { parse } from 'yaml';
 import { WDIR } from './targets';
 
 const execute = promisify(execFile);
@@ -12,7 +13,9 @@ export const WORKSPACE_ROOT = join(WDIR, '../../..');
 const require = createRequire(import.meta.url);
 
 export function assertInstalledLockfile(expected: string, installed: string): void {
-  if (expected !== installed) {
+  const declaredLock: unknown = parse(expected);
+  const installedLock: unknown = parse(installed);
+  if (!isDeepStrictEqual(declaredLock, installedLock)) {
     throw new Error('Installed dependency lockfile differs from the declared lockfile; rerun frozen install before measuring');
   }
 }
