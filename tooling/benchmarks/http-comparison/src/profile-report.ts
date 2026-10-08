@@ -94,8 +94,10 @@ function requestFrame(value: unknown): boolean {
   // read/handle and anonymous frames still require a verified request ancestor.
   const denoBundleRequest = /(?:^|\/)dist\/fluo-deno\/server\.mjs$/.test(url)
     && /^(?:search|quote|project|tasks|task|preview|comments|createDeferredWebFrameworkRequest|createDispatchRequest|createDispatchContext|startWebRequestDispatch|writeSuccessResponse|runWithRequestContext|dispatchMatchedRoute|runDispatchPipeline|tryFastPathExecution|executeFastPath|canActivate|serviceResult|bodyFields|serializedStage)$/.test(name);
+  const workerRequest = url === 'server.js'
+    && /^(?:startWebRequestDispatch|createDeferredWebFrameworkRequest|createDispatchContext|dispatchMatchedRoute|runDispatchPipeline|tryFastPathExecution|executeFastPath|writeSuccessResponse)$/.test(name);
   return /readSearchLocal|jsonCommandLocal|restRouteMixLocal|nativeResponse|nativeFetch/.test(name)
-    || (stage && stageHandler) || fastRequest || nestRequest || nestStageRequest || denoBundleRequest
+    || (stage && stageHandler) || fastRequest || nestRequest || nestStageRequest || denoBundleRequest || workerRequest
     || /(?:shared\/(?:workloads|native-app|fluo-app)|\.next\/server\/(?:app|chunks)|request-pipeline|request-execution)/.test(url);
 }
 export function requestSamples(profile: unknown, format: ProfileCapture['format']): number {

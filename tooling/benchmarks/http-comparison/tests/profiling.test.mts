@@ -190,7 +190,7 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
       ...['dist/fluo-deno/server.mjs', 'file:///benchmark/dist/fluo-deno/server.mjs'].flatMap((url) =>
         ['main', 'bootstrap', 'create', 'constructor', 'createDispatcher', 'resolveAppModule',
           'resolveStageModule', 'createNativeStage', 'read', 'handle', 'unrelated', '', 'searchOther'].map((functionName) => ({ functionName, url }))),
-      ...['unrelated/server.mjs', 'server.js', 'src/fluo-deno/server.ts',
+      ...['unrelated/server.mjs', 'server.cjs', 'src/fluo-deno/server.ts',
         'dist/other/fluo-deno/server.mjs', 'dist/fluo-deno/server.mjs.map',
         'dist/fluo-deno/server.mjs.backup', 'dist/fluo-deno/other.mjs'].flatMap((url) =>
         ['search', 'read', 'createDispatchContext', 'executeFastPath', 'canActivate', 'serviceResult'].map((functionName) => ({ functionName, url }))),
@@ -234,6 +234,46 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
 
       // Then
       assert.equal(matched, 3);
+    }
+  });
+}
+
+for (const format of ['v8-cpu', 'v8-allocation'] as const) {
+  test(`requestSamples: Workers application dispatch in ${format} -> count request descendants only`, () => {
+    // Given
+    for (const functionName of ['startWebRequestDispatch', 'createDeferredWebFrameworkRequest',
+      'createDispatchContext', 'dispatchMatchedRoute', 'runDispatchPipeline',
+      'tryFastPathExecution', 'executeFastPath', 'writeSuccessResponse']) {
+      const profile = requestStack({ functionName, url: 'server.js' }, format);
+      const callFrame = { functionName: 'quote', url: 'server.js' };
+      if (profile.nodes !== undefined) profile.nodes[3].callFrame = callFrame;
+      else profile.head.children[0].children[0].children[0].callFrame = callFrame;
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 3, functionName);
+    }
+  });
+
+  test(`requestSamples: Workers startup and ambiguous frames in ${format} -> reject samples`, () => {
+    // Given
+    const frames = [
+      ...['main', 'bootstrap', 'createDispatcher', 'create', 'constructor', 'fetch',
+        'handle', 'read', 'quote', 'search', 'dispatch', '', 'executeFastPathOther']
+        .map((functionName) => ({ functionName, url: 'server.js' })),
+      ...['launcher.js', 'other/server.js', 'server.js.map', 'server.js.backup']
+        .map((url) => ({ functionName: 'executeFastPath', url })),
+    ];
+    for (const frame of frames) {
+      const profile = requestStack(frame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0, `${frame.url}:${frame.functionName}`);
     }
   });
 }
