@@ -9,6 +9,7 @@ interface PackageManifest {
 
 const portablePackages = [
   '@fluojs/config',
+  '@fluojs/diagnostics',
   '@fluojs/email',
   '@fluojs/i18n',
   '@fluojs/platform-bun',
@@ -52,7 +53,7 @@ function readPackageManifests(): { root: PackageManifest; packages: PackageManif
 }
 
 describe('Node support classification', () => {
-  it('keeps the eight portable public roots free of engines.node', () => {
+  it('keeps the nine portable public roots free of engines.node', () => {
     // Given: every public package is classified at its manifest boundary.
     const { packages } = readPackageManifests();
     const publicManifests = packages.filter((manifest) => !manifest.private);
@@ -60,7 +61,7 @@ describe('Node support classification', () => {
     // When: package managers consume the published Node support claims.
     const omissions = publicManifests.filter((manifest) => manifest.engines?.node === undefined);
 
-    // Then: only the eight portable roots omit engines.
+    // Then: only the nine portable roots omit engines.
     expect(omissions.map((manifest) => manifest.name).sort()).toEqual(portablePackages);
   });
 

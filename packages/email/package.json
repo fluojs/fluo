@@ -62,7 +62,8 @@
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
     "@fluojs/notifications": "workspace:^",
-    "@fluojs/runtime": "workspace:^"
+    "@fluojs/runtime": "workspace:^",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "peerDependencies": {
     "@fluojs/queue": "workspace:^",

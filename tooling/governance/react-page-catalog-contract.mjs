@@ -11,7 +11,7 @@ const sourceRequirements = [
   ['packages/react/src/index.ts', ['createReactPageCatalog']],
   ['packages/cli/src/commands/inspect.ts', ['createRuntimeInspectionSnapshot', 'describeRoutes']],
   [
-    'packages/studio/src/contracts.ts',
+    'packages/diagnostics/src/studio-contracts.ts',
     [
       'StudioRouteDescriptor',
       "kind !== undefined && typeof kind !== 'string'",

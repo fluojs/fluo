@@ -99,6 +99,8 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 
 ## observability & docs
 
+For shared diagnostic data without runtime implementation or Studio UI, use [`@fluojs/diagnostics`](../../packages/diagnostics/README.md). It owns portable status/snapshot/graph/trace/timing contracts and static/report/live readers. Existing import paths remain compatible; filters and Mermaid remain Studio-owned.
+
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need OpenAPI output | `@fluojs/openapi` | Use for schema generation and API docs. |

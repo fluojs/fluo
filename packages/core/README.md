@@ -19,6 +19,8 @@ Shared contracts, standard decorators, and metadata primitives that every fluo p
 
 ## Installation
 
+[`@fluojs/diagnostics`](../diagnostics/README.md) owns shared graph/trace/live/timing data declarations. Existing Studio type imports from `@fluojs/core/internal` remain as re-exports. New data-only consumers should use diagnostics; metadata execution remains in core. [Import migration](../../docs/getting-started/migrate-diagnostics.md) is optional.
+
 ```bash
 npm install @fluojs/core
 ```

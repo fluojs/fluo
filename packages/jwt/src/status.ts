@@ -1,58 +1,38 @@
+import type { PlatformCheckResult, PlatformDiagnosticIssue, PlatformHealthReport, PlatformReadinessReport, PlatformResourceOwnership, PlatformStatusSnapshot } from '@fluojs/diagnostics';
+
 /**
  * Describes the readiness state exposed by JWT.
  */
-export interface JwtPlatformReadinessReport {
-  critical: boolean;
-  reason?: string;
-  status: 'ready' | 'not-ready' | 'degraded';
+export interface JwtPlatformReadinessReport extends PlatformReadinessReport {
   checks?: JwtPlatformCheckResult[];
 }
 
 /**
  * Describes the health state exposed by JWT.
  */
-export interface JwtPlatformHealthReport {
-  reason?: string;
-  status: 'healthy' | 'unhealthy' | 'degraded';
+export interface JwtPlatformHealthReport extends PlatformHealthReport {
   checks?: JwtPlatformCheckResult[];
 }
 
 /**
  * Describes one named readiness or health probe result exposed by JWT.
  */
-export interface JwtPlatformCheckResult {
-  name: string;
-  status: 'pass' | 'fail' | 'degraded';
-  message?: string;
-}
+export interface JwtPlatformCheckResult extends PlatformCheckResult {}
 
 /**
  * Describes ownership of JWT-managed resources.
  */
-export interface JwtPlatformOwnership {
-  externallyManaged: boolean;
-  ownsResources: boolean;
-}
+export interface JwtPlatformOwnership extends PlatformResourceOwnership {}
 
 /**
  * Describes a JWT diagnostic issue.
  */
-export interface JwtPlatformDiagnosticIssue {
-  cause?: string;
-  code: string;
-  componentId: string;
-  dependsOn?: string[];
-  docsUrl?: string;
-  fixHint?: string;
-  message: string;
-  severity: 'error' | 'warning' | 'info';
-}
+export interface JwtPlatformDiagnosticIssue extends PlatformDiagnosticIssue {}
 
 /**
  * Describes the jwt platform status snapshot contract.
  */
-export interface JwtPlatformStatusSnapshot {
-  details: Record<string, unknown>;
+export interface JwtPlatformStatusSnapshot extends PlatformStatusSnapshot {
   health: JwtPlatformHealthReport;
   ownership: JwtPlatformOwnership;
   readiness: JwtPlatformReadinessReport;

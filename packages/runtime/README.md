@@ -20,6 +20,8 @@ Preparing for the coordinated Node 24 release? Follow the [consumer migration gu
 
 ## Installation
 
+[`@fluojs/diagnostics`](../diagnostics/README.md) owns shared state, health/readiness, ownership, snapshot, issue, graph/trace/live/timing declarations. Existing runtime root Platform*/BootstrapTiming*/RuntimeDiagnostics* and `@fluojs/runtime/devtools` producer type imports remain available. Producer routes still require graphNodeId/kind/params, unlike optional wire routes. PlatformShell orchestration, actual resources and lifecycle remain runtime-owned. See the [optional import migration](../../docs/getting-started/migrate-diagnostics.md).
+
 ```bash
 npm install @fluojs/runtime
 ```

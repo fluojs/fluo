@@ -66,7 +66,9 @@ The focused `test:node-floor` command remains available for local checks, not as
 
 ## Portable package boundaries
 
-These eight public roots intentionally omit `engines.node`: `@fluojs/config`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, and `@fluojs/runtime`. Do not restore engines merely to match neighboring manifests.
+These nine public roots intentionally omit `engines.node`: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, and `@fluojs/runtime`. Do not restore engines merely to match neighboring manifests.
+
+Diagnostics root and all public subpaths are data contracts/readers without host builtins, runtime implementation, Studio UI or import-time resources. Studio remains Node `>=24.0.0 <27`; CLI remains Node `>=24.11.0 <27`. Moving declaration ownership does not narrow consumer support.
 
 Package-wide Node metadata is not a claim about every conditional export or runtime-native adapter. Existing Bun, Deno, and Workers behavior remains governed by each package's README. Config's in-memory root stays portable; env-file/default `.env` loading and watch mode are Node-only features supported on `>=24.0.0 <27`. Their existing capability guard still raises `CONFIG_RUNTIME_UNAVAILABLE` when the host cannot supply the builtin boundary. There is no new Node version check at import or feature invocation.
 

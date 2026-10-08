@@ -44,18 +44,18 @@ afterEach(() => {
 });
 
 describe('Studio devtools runtime bridge', () => {
-  it('uses the runtime-neutral Core internal seam rather than a Studio production dependency', () => {
+  it('uses the runtime-neutral diagnostics seam rather than a Studio production dependency', () => {
     const packageDirectory = dirname(fileURLToPath(import.meta.url));
     const packageManifest = JSON.parse(readFileSync(join(packageDirectory, '../../package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
     };
     const contractsSource = readFileSync(join(packageDirectory, 'contracts.ts'), 'utf8');
-    const coreInternalImport = '@fluojs/core' + '/internal';
+    const diagnosticsImport = '@fluojs/diagnostics';
 
     expect(packageManifest.dependencies?.['@fluojs/studio']).toBeUndefined();
     expect(packageManifest.devDependencies?.['@fluojs/studio']).toBe('workspace:^');
-    expect(contractsSource).toContain(`from '${coreInternalImport}'`);
+    expect(contractsSource).toContain(`from '${diagnosticsImport}'`);
     expect(contractsSource).not.toContain("from '@fluojs/studio'");
   });
 

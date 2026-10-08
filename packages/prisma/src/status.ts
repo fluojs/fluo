@@ -1,25 +1,4 @@
-type PlatformReadinessReport = {
-  checks?: Array<{ message?: string; name: string; status: 'pass' | 'fail' | 'degraded' }>;
-  critical: boolean;
-  reason?: string;
-  status: 'ready' | 'not-ready' | 'degraded';
-};
-
-type PlatformHealthReport = {
-  checks?: Array<{ message?: string; name: string; status: 'pass' | 'fail' | 'degraded' }>;
-  reason?: string;
-  status: 'healthy' | 'unhealthy' | 'degraded';
-};
-
-type PersistencePlatformStatusSnapshot = {
-  details: Record<string, unknown>;
-  health: PlatformHealthReport;
-  ownership: {
-    externallyManaged: boolean;
-    ownsResources: boolean;
-  };
-  readiness: PlatformReadinessReport;
-};
+import type { PersistencePlatformStatusSnapshot, PlatformHealthReport, PlatformReadinessReport } from '@fluojs/diagnostics';
 
 type PrismaPlatformLifecycleState = 'created' | 'ready' | 'shutting-down' | 'stopped';
 

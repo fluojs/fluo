@@ -68,6 +68,7 @@ function runIsolatedBuild(outputDirectory: string): void {
     '--config-file',
     '../../tooling/babel/babel.config.cjs',
   ]);
+  runPackageCommand(['tsc', '-p', 'tsconfig.build.json', '--outDir', outputDirectory]);
 }
 
 const snapshotFixture: PlatformShellSnapshot = {
@@ -603,7 +604,7 @@ describe('parseStudioPayload', () => {
     expect(runtimeCoupledSources).toEqual([]);
   });
 
-  it('gives runtime live bridge types a Core-internal portability seam', () => {
+  it('gives runtime live bridge types a diagnostics portability seam', () => {
     const runtimeManifest = JSON.parse(readFileSync(resolve(packageDir, '../runtime/package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
@@ -612,7 +613,7 @@ describe('parseStudioPayload', () => {
 
     expect(runtimeManifest.dependencies?.['@fluojs/studio']).toBeUndefined();
     expect(runtimeManifest.devDependencies?.['@fluojs/studio']).toBe('workspace:^');
-    expect(runtimeLiveContracts).toContain("from '@fluojs/core/internal';");
+    expect(runtimeLiveContracts).toContain("from '@fluojs/diagnostics';");
     expect(runtimeLiveContracts).not.toContain("from '@fluojs/studio';");
     expect(runtimeLiveContracts).not.toContain('export interface StudioRouteDescriptor');
     expect(runtimeLiveContracts).not.toContain('export type StudioLiveEvent =');
@@ -1277,6 +1278,12 @@ describe('parseStudioPayload', () => {
       cpSync(resolve(outputDirectory, 'index.js'), resolve(packageInstallRoot, 'dist/index.js'));
       cpSync(resolve(outputDirectory, 'contracts.js'), resolve(packageInstallRoot, 'dist/contracts.js'));
       cpSync(resolve(outputDirectory, 'index.html'), resolve(packageInstallRoot, 'dist/index.html'));
+      cpSync(resolve(outputDirectory, 'index.d.ts'), resolve(packageInstallRoot, 'dist/index.d.ts'));
+      cpSync(resolve(outputDirectory, 'contracts.d.ts'), resolve(packageInstallRoot, 'dist/contracts.d.ts'));
+      const diagnosticsInstallRoot = resolve(consumerRoot, 'node_modules/@fluojs/diagnostics');
+      mkdirSync(diagnosticsInstallRoot, { recursive: true });
+      cpSync(resolve(packageDir, '../diagnostics/package.json'), resolve(diagnosticsInstallRoot, 'package.json'));
+      cpSync(resolve(packageDir, '../diagnostics/dist'), resolve(diagnosticsInstallRoot, 'dist'), { recursive: true });
 
       const packagedViewerResolve = spawnSync(
         process.execPath,
@@ -1294,6 +1301,31 @@ describe('parseStudioPayload', () => {
         { cwd: consumerRoot, encoding: 'utf8' },
       );
       expect(directSubpathImport.status, [directSubpathImport.stdout, directSubpathImport.stderr].filter(Boolean).join('\n')).toBe(0);
+
+      writeFileSync(resolve(consumerRoot, 'consumer.ts'), `
+        import { parseStudioPayload, type StudioRouteDescriptor } from '@fluojs/studio';
+        import type { StudioNormalizedRouteDescriptor } from '@fluojs/diagnostics';
+        const wire: StudioRouteDescriptor = {
+          controller: 'Legacy', handler: 'list', id: 'GET /legacy', method: 'GET', path: '/legacy',
+        };
+        const parsed = parseStudioPayload(JSON.stringify({
+          generatedAt: '', components: [], diagnostics: [],
+          health: { status: 'healthy' }, readiness: { status: 'ready', critical: false },
+          routes: [wire],
+        }));
+        const route: StudioNormalizedRouteDescriptor | undefined = parsed.payload.snapshot?.routes?.[0];
+        const params: string[] | undefined = route?.params;
+      `);
+      const isolatedDeclarations = spawnSync(
+        process.execPath,
+        [
+          resolve(packageDir, '../../node_modules/typescript/bin/tsc'),
+          '--strict', '--noEmit', '--module', 'ESNext', '--moduleResolution', 'Bundler',
+          '--target', 'ES2022', 'consumer.ts',
+        ],
+        { cwd: consumerRoot, encoding: 'utf8', timeout: packageCommandTimeoutMs },
+      );
+      expect(isolatedDeclarations.status, [isolatedDeclarations.stdout, isolatedDeclarations.stderr].filter(Boolean).join('\n')).toBe(0);
 
       const removedContractsSubpath = spawnSync(
         process.execPath,

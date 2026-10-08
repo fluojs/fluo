@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /**
  * Defines the cqrs lifecycle state type.
@@ -26,12 +26,7 @@ export interface CqrsStatusAdapterInput {
 /**
  * Describes the cqrs platform status snapshot contract.
  */
-export interface CqrsPlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface CqrsPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 function createReadiness(input: CqrsStatusAdapterInput): PlatformReadinessReport {
   if (input.lifecycleState === 'ready' && input.sagaLifecycleState === 'ready') {

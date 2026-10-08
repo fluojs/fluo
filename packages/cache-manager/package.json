@@ -49,7 +49,8 @@
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
     "@fluojs/http": "workspace:^",
-    "@fluojs/runtime": "workspace:^"
+    "@fluojs/runtime": "workspace:^",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "peerDependencies": {
     "@fluojs/redis": "workspace:^",

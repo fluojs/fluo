@@ -19,6 +19,8 @@ Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Nod
 
 ## 설치
 
+공유 graph/trace/live/timing 데이터 선언의 소유자는 [`@fluojs/diagnostics`](../diagnostics/README.ko.md)입니다. 기존 `@fluojs/core/internal` Studio type import는 공유 선언 재노출로 유지됩니다. 새 data-only consumer는 diagnostics를 사용하고 metadata 실행부는 core에 남겨 두세요. [Import 마이그레이션](../../docs/getting-started/migrate-diagnostics.ko.md)은 선택 사항입니다.
+
 ```bash
 npm install @fluojs/core
 ```

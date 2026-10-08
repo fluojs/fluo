@@ -56,5 +56,8 @@
   },
   "devDependencies": {
     "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "@fluojs/diagnostics": "workspace:^"
   }
 }

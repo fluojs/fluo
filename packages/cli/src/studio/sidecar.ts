@@ -1,3 +1,4 @@
+import type { StudioLiveEventBase } from '@fluojs/diagnostics';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -36,18 +37,11 @@ export interface StudioSidecar {
 }
 
 type JsonRecord = Record<string, unknown>;
-type StoredStudioEvent = {
-  emittedAt: string;
-  epoch: string;
-  eventId: string;
-  payload: unknown;
-  sequence: number;
+type StoredStudioEvent = StudioLiveEventBase<string, unknown> & {
   source: {
     appId: string;
     runtime: StudioSidecarRuntime;
   };
-  type: string;
-  version: 1;
 };
 
 type StudioClient = {

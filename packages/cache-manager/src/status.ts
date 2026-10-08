@@ -1,14 +1,9 @@
-import type { PlatformDiagnosticIssue, PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformDiagnosticIssue, PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /**
  * Snapshot shape produced by the cache-manager platform status helpers.
  */
-export interface CacheManagerPlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface CacheManagerPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 /**
  * Backing store categories recognized by the cache-manager status adapter.

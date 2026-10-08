@@ -67,6 +67,9 @@ Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`
 
 ## intended publish surface
 
+`@fluojs/diagnostics` is a Preview (`0.x`) portable contract package. Its shared declaration ownership and reader APIs preserve existing public imports and version-1 artifacts; filters, transport, lifecycle and feature status policy remain with their existing packages.
+
+- `@fluojs/diagnostics`
 - `@fluojs/cache-manager`
 - `@fluojs/cli`
 - `@fluojs/config`

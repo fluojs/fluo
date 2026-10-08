@@ -20,6 +20,8 @@ Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전�
 
 ## 설치
 
+공유 state, health/readiness, ownership, snapshot, issue, graph/trace/live/timing 선언은 [`@fluojs/diagnostics`](../diagnostics/README.ko.md)가 소유합니다. 기존 runtime root의 Platform*/BootstrapTiming*/RuntimeDiagnostics*와 `@fluojs/runtime/devtools` producer type import는 유지됩니다. Runtime producer route는 graphNodeId/kind/params를 계속 요구하며, optional wire route와 구분합니다. PlatformShell orchestration, 실제 자원 및 lifecycle은 runtime에 남습니다. [선택적 import 마이그레이션](../../docs/getting-started/migrate-diagnostics.ko.md)을 참조하세요.
+
 ```bash
 npm install @fluojs/runtime
 ```

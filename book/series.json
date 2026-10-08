@@ -786,6 +786,7 @@
           "title": "CLI와 Studio가 애플리케이션을 보는 방법",
           "part": 5,
           "packages": [
+            "@fluojs/diagnostics",
             "@fluojs/cli",
             "@fluojs/studio"
           ],

@@ -1,14 +1,9 @@
-import type { PlatformDiagnosticIssue, PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformDiagnosticIssue, PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /**
  * Snapshot shape produced by the throttler platform status helpers.
  */
-export interface ThrottlerPlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface ThrottlerPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 /**
  * Backing store categories recognized by the throttler status adapter.

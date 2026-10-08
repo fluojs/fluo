@@ -2,7 +2,7 @@ import type {
   PersistencePlatformStatusSnapshot,
   PlatformHealthReport,
   PlatformReadinessReport,
-} from '@fluojs/runtime';
+} from '@fluojs/diagnostics';
 
 type DrizzlePlatformLifecycleState = 'ready' | 'shutting-down' | 'stopped';
 
