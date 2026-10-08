@@ -2,6 +2,52 @@
   "version": 1,
   "packages": [
     {
+      "package": "@fluojs/auth",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "jwt-passport"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute auth errors through the Passport compatibility surface on Node; patch skew changes only @fluojs/core."
+    },
+    {
+      "package": "@fluojs/auth-http",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "jwt-passport"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute HTTP auth guards, registration and bearer strategies through the Passport compatibility surface on Node; patch skew changes only @fluojs/core."
+    },
+    {
       "package": "@fluojs/cache-manager",
       "status": "not-applicable",
       "topologies": [],

@@ -1,5 +1,7 @@
 # @fluojs/jwt
 
+`JwtPrincipal`은 `@fluojs/auth`의 공유 `Principal`을 확장합니다. claims 검증·정규화와 refresh rotation/replay는 JWT 책임으로 유지하며 HTTP credential·guard·refresh 교환의 canonical 소유자는 `@fluojs/auth-http`입니다. 기존 Passport import도 호환됩니다.
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Node.js 지원 및 마이그레이션](../../docs/reference/node-support.ko.md)을 참조하세요.

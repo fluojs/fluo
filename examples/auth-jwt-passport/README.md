@@ -1,8 +1,10 @@
 # auth-jwt-passport example
 
+The runnable source composes canonical HTTP integration from `@fluojs/auth-http` with `@fluojs/jwt`. Earlier `@fluojs/passport` imports remain compatibility aliases.
+
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/passport` around the simplest official bearer-token flow.
+Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/auth-http` around the simplest official bearer-token flow.
 
 ## what this example demonstrates
 
@@ -10,7 +12,7 @@ Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/pa
 - issuing and rotating refresh tokens through the JWT-owned `RefreshTokenService`
 - protecting a route with `@UseAuth('jwt')` and `@RequireScopes(...)`
 - exchanging a body-presented refresh token through `@UseAuth('refresh-token')`
-- verifying bearer tokens through the built-in `BearerJwtStrategy` preset from `@fluojs/passport`
+- verifying bearer tokens through the built-in `BearerJwtStrategy` preset from `@fluojs/auth-http`
 - explicit DI token metadata instead of reflection-based injection
 - runtime-owned `/health` and `/ready` endpoints alongside auth routes
 - unit, integration, and e2e-style testing with `@fluojs/testing`

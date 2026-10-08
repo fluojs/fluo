@@ -23,8 +23,7 @@
       "per-call expiresIn overrides a pre-existing payload exp; expired and audience-mismatched tokens fail with JwtExpiredTokenError/JwtInvalidTokenError; decode() returns null for malformed input and is documented as unverified inspection only"
     ],
     "verifiedCommands": [
-      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 4 files / 27 tests passed (Node v24.20.0)",
-      "pnpm exec tsc -p tsconfig.tools.json --noEmit — 0 errors under tooling/docs/fixtures/package-guides/security (pre-existing errors exist in other workstreams' fixture dirs)"
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 6 files / 30 tests passed; issue-3928 checkout on 2026-10-08"
     ],
     "unexecuted": [
       "Remote JWKS fetches against a network identity provider (documented from packages/jwt/src/signing/jwks.ts defaults and README; fixture signs/verifies with static keys)",
@@ -65,8 +64,7 @@
       "@fluojs/passport refresh strategy + @fluojs/jwt refresh service: RefreshTokenModule.forRoot() aliases the JWT-owned RefreshTokenService; POST /auth/refresh rotates a presented token and replay of the consumed token yields 401 and revokes the family (successor token also 401)"
     ],
     "verifiedCommands": [
-      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 4 files / 27 tests passed (Node v24.20.0)",
-      "pnpm exec tsc -p tsconfig.tools.json --noEmit — 0 errors under tooling/docs/fixtures/package-guides/security (pre-existing errors exist in other workstreams' fixture dirs)"
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 6 files / 30 tests passed; issue-3928 checkout on 2026-10-08"
     ],
     "unexecuted": [
       "Passport.js bridge against a real passport-* strategy (documented from src/adapters/passport-js.ts and README; no third-party strategy installed or run)",
@@ -101,13 +99,62 @@
       "@fluojs/throttler + Redis structural client: RedisThrottlerStore.consume parses the Lua result [count, resetAt, ttlMsLeft] into { count, resetAt, retryAfterMs } and sends the expected EVAL arguments (contract-level, not a live Redis server)"
     ],
     "verifiedCommands": [
-      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 4 files / 27 tests passed (Node v24.20.0)",
-      "pnpm exec tsc -p tsconfig.tools.json --noEmit — 0 errors under tooling/docs/fixtures/package-guides/security (pre-existing errors exist in other workstreams' fixture dirs)"
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 6 files / 30 tests passed; issue-3928 checkout on 2026-10-08"
     ],
     "unexecuted": [
       "Live Redis connectivity and cross-process window sharing (fixture verifies the structural RedisThrottlerClient contract and Lua-script arguments; package tests use the same mock level)",
       "createThrottlerPlatformStatusSnapshot / createThrottlerPlatformDiagnosticIssues (documented from src/status.ts; not fixture-executed)",
       "Non-HTTP transports (guard is HTTP-only by contract; no fixture attempts WebSocket/GraphQL enforcement)"
+    ]
+  },
+  "@fluojs/auth": {
+    "page": "apps/docs/content/docs/packages/auth.mdx",
+    "sources": [
+      "packages/auth/README.md",
+      "packages/auth/src/index.ts",
+      "packages/auth/src/types.ts",
+      "packages/auth/src/errors.ts",
+      "packages/auth/src/account/account-linking.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/security/auth-guide.test.ts"
+    ],
+    "compositions": [
+      "Neutral strategy accepts application-owned input and returns the shared Principal without HTTP context",
+      "Conservative account-linking policy deduplicates repeated existing identity links"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 6 files / 30 tests passed; issue-3928 checkout on 2026-10-08"
+    ],
+    "unexecuted": [
+      "Actual account persistence and user consent remain application-owned"
+    ]
+  },
+  "@fluojs/auth-http": {
+    "page": "apps/docs/content/docs/packages/auth-http.mdx",
+    "sources": [
+      "packages/auth-http/README.md",
+      "packages/auth-http/src/index.ts",
+      "packages/auth-http/src/module.ts",
+      "packages/auth-http/src/guard.ts",
+      "packages/auth-http/src/cookie/cookie-auth-module.ts",
+      "packages/auth-http/src/refresh/refresh-token.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/security/auth-http-guide.test.ts",
+      "tooling/docs/fixtures/package-guides/security/passport-guide.test.ts",
+      "tooling/docs/fixtures/package-guides/security/cookie-guide.test.ts"
+    ],
+    "compositions": [
+      "Canonical auth-http registry plus custom API-key strategy execute a real Test.createApp HTTP dispatcher",
+      "Canonical bearer registration and compatibility decorators preserve challenges and scopes",
+      "Cookie composition and JWT-owned refresh exchange retain the single registry and replay semantics"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 6 files / 30 tests passed; issue-3928 checkout on 2026-10-08"
+    ],
+    "unexecuted": [
+      "Third-party provider networks and durable external account/refresh storage are not exercised"
     ]
   }
 }

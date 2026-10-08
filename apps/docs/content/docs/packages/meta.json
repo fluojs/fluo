@@ -12,7 +12,7 @@
     "---Data---",
     "prisma", "drizzle", "mongoose", "redis", "cache-manager",
     "---Security---",
-    "jwt", "passport", "throttler",
+    "auth", "auth-http", "jwt", "passport", "throttler",
     "---Events and work---",
     "event-bus", "cqrs", "queue", "cron", "microservices", "websockets", "socket-io",
     "---Delivery and operations---",

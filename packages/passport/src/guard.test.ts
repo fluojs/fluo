@@ -808,19 +808,21 @@ describe('AuthGuard', () => {
 
   it('isolates Passport.js bridge request state across concurrent authentications', async () => {
     let sequence = 0;
+    const actions: Array<() => void> = [];
+    let notifyStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { notifyStarted = resolve; });
 
     class PassportLikeConcurrentStrategy {
       success?: (user: unknown, info?: unknown) => void;
 
       authenticate() {
         const current = ++sequence;
-        const delay = current === 1 ? 10 : 0;
-
-        setTimeout(() => {
+        actions.push(() => {
           this.success?.({
             id: `google-user-${current}`,
           });
-        }, delay);
+        });
+        if (actions.length === 2) notifyStarted?.();
       }
     }
 
@@ -848,10 +850,14 @@ describe('AuthGuard', () => {
 
     const [firstResponse, secondResponse] = [createResponse(), createResponse()];
 
-    await Promise.all([
+    const pending = Promise.all([
       dispatcher.dispatch(createRequest('/oauth/profile'), firstResponse),
       dispatcher.dispatch(createRequest('/oauth/profile'), secondResponse),
     ]);
+    await started;
+    actions[1]();
+    actions[0]();
+    await pending;
 
     const subjects = [firstResponse.body, secondResponse.body]
       .map((body) => (body as { subject?: string }).subject)
@@ -861,6 +867,9 @@ describe('AuthGuard', () => {
   });
 
   it('does not leak mutable strategy template state across concurrent Passport.js requests', async () => {
+    const actions: Array<() => void> = [];
+    let notifyStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { notifyStarted = resolve; });
     class PassportLikeMutableStateStrategy {
       success?: (user: unknown, info?: unknown) => void;
       readonly state = { subject: '' };
@@ -870,11 +879,10 @@ describe('AuthGuard', () => {
         const subject = headers?.['x-user'] ?? 'unknown';
         this.state.subject = subject;
 
-        const delay = subject === 'alpha' ? 10 : 0;
-
-        setTimeout(() => {
+        actions.push(() => {
           this.success?.({ id: this.state.subject });
-        }, delay);
+        });
+        if (actions.length === 2) notifyStarted?.();
       }
     }
 
@@ -908,10 +916,14 @@ describe('AuthGuard', () => {
 
     const [alphaResponse, betaResponse] = [createResponse(), createResponse()];
 
-    await Promise.all([
+    const pending = Promise.all([
       dispatcher.dispatch(alphaRequest, alphaResponse),
       dispatcher.dispatch(betaRequest, betaResponse),
     ]);
+    await started;
+    actions[1]();
+    actions[0]();
+    await pending;
 
     const subjects = [alphaResponse.body, betaResponse.body]
       .map((body) => (body as { subject?: string }).subject)

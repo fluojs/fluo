@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { enforcePassportCookiePresetContract } from './passport-cookie-preset-contract.mjs';
 
 const repoRoot = join(import.meta.dirname, '..', '..');
-const cookieAuthModulePath = 'packages/passport/src/cookie/cookie-auth-module.ts';
+const cookieAuthModulePath = 'packages/auth-http/src/cookie/cookie-auth-module.ts';
 const platformGovernancePath = 'tooling/governance/verify-platform-consistency-governance.mjs';
 
 function read(relativePath: string): string {

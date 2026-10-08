@@ -1,5 +1,7 @@
 # @fluojs/jwt
 
+`JwtPrincipal` extends the shared `Principal` from `@fluojs/auth`. JWT retains claim validation/normalization and refresh rotation/replay; `@fluojs/auth-http` is the canonical owner of HTTP credentials, guards and refresh exchange. Earlier Passport imports remain compatible.
+
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 Node.js support is `>=24.0.0 <27`. See [Node.js support and migration](../../docs/reference/node-support.md) before upgrading.

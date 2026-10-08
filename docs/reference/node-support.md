@@ -4,7 +4,7 @@
 
 ## Support matrix
 
-Node floors are classified by role. The 32 Node-bound public packages that are pure runtime — including [`@fluojs/platform-fastify`](../../packages/platform-fastify/README.md) — keep `engines.node: ">=24.0.0 <27"`. The Babel 8 compiler tooling packages — [`@fluojs/cli`](../../packages/cli/README.md), [`@fluojs/vite`](../../packages/vite/README.md), and [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.md) — plus the private root workspace, the examples, and generated Node-toolchain projects raise to `engines.node: ">=24.11.0 <27"`, because Babel 8 requires Node `^22.18.0 || >=24.11.0` upstream and fluo keeps excluding Node 22. Exact Node `24.0.0` remains a supported runtime floor for packages that do not compile. Adopting Node 24 LTS is a lifecycle and support-policy decision, not a claim that a dependency or a new runtime API requires Node 24. Node 20 and Node 22 are not supported by the upcoming major release.
+Node floors are classified by role. The 34 Node-bound public packages that are pure runtime — including [`@fluojs/platform-fastify`](../../packages/platform-fastify/README.md) — keep `engines.node: ">=24.0.0 <27"`. The Babel 8 compiler tooling packages — [`@fluojs/cli`](../../packages/cli/README.md), [`@fluojs/vite`](../../packages/vite/README.md), and [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.md) — plus the private root workspace, the examples, and generated Node-toolchain projects raise to `engines.node: ">=24.11.0 <27"`, because Babel 8 requires Node `^22.18.0 || >=24.11.0` upstream and fluo keeps excluding Node 22. Exact Node `24.0.0` remains a supported runtime floor for packages that do not compile. Adopting Node 24 LTS is a lifecycle and support-policy decision, not a claim that a dependency or a new runtime API requires Node 24. Node 20 and Node 22 are not supported by the upcoming major release.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
@@ -66,7 +66,7 @@ The focused `test:node-floor` command remains available for local checks, not as
 
 ## Portable package boundaries
 
-These nine public roots intentionally omit `engines.node`: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, and `@fluojs/runtime`. Do not restore engines merely to match neighboring manifests.
+These ten public roots intentionally omit `engines.node`: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, and `@fluojs/runtime`. Do not restore engines merely to match neighboring manifests.
 
 Diagnostics root and all public subpaths are data contracts/readers without host builtins, runtime implementation, Studio UI or import-time resources. Studio remains Node `>=24.0.0 <27`; CLI remains Node `>=24.11.0 <27`. Moving declaration ownership does not narrow consumer support.
 

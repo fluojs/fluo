@@ -29,6 +29,41 @@ overrides:
 
 importers:
 
+  packages/auth:
+    dependencies:
+      '@fluojs/core':
+        specifier: workspace:^
+        version: link:../core
+    devDependencies:
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(happy-dom@20.9.0)(vite@8.2.2(@types/node@22.19.15)(esbuild@0.28.1)(tsx@4.23.1))
+
+  packages/auth-http:
+    dependencies:
+      '@fluojs/auth':
+        specifier: workspace:^
+        version: link:../auth
+      '@fluojs/core':
+        specifier: workspace:^
+        version: link:../core
+      '@fluojs/di':
+        specifier: workspace:^
+        version: link:../di
+      '@fluojs/http':
+        specifier: workspace:^
+        version: link:../http
+      '@fluojs/jwt':
+        specifier: workspace:^
+        version: link:../jwt
+      '@fluojs/runtime':
+        specifier: workspace:^
+        version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(happy-dom@20.9.0)(vite@8.2.2(@types/node@22.19.15)(esbuild@0.28.1)(tsx@4.23.1))
+
   .:
     devDependencies:
       '@babel/cli':
@@ -104,6 +139,9 @@ importers:
 
   examples/auth-jwt-passport:
     dependencies:
+      '@fluojs/auth-http':
+        specifier: workspace:*
+        version: link:../../packages/auth-http
       '@fluojs/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -701,6 +739,9 @@ importers:
 
   packages/http:
     dependencies:
+      '@fluojs/auth':
+        specifier: workspace:^
+        version: link:../auth
       '@fluojs/core':
         specifier: workspace:^
         version: link:../core
@@ -739,6 +780,9 @@ importers:
 
   packages/jwt:
     dependencies:
+      '@fluojs/auth':
+        specifier: workspace:^
+        version: link:../auth
       '@fluojs/core':
         specifier: workspace:^
         version: link:../core
@@ -889,6 +933,12 @@ importers:
 
   packages/passport:
     dependencies:
+      '@fluojs/auth':
+        specifier: workspace:^
+        version: link:../auth
+      '@fluojs/auth-http':
+        specifier: workspace:^
+        version: link:../auth-http
       '@fluojs/core':
         specifier: workspace:^
         version: link:../core
@@ -908,6 +958,9 @@ importers:
         specifier: workspace:^
         version: link:../runtime
     devDependencies:
+      '@fluojs/testing':
+        specifier: workspace:^
+        version: link:../testing
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(happy-dom@20.9.0)(vite@8.2.2(@types/node@22.19.15)(esbuild@0.28.1)(tsx@4.23.1))

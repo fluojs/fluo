@@ -1,5 +1,7 @@
 # NestJS → fluo Migration Map
 
+일반 identity·인증 결과·account-linking 정책은 `@fluojs/auth`, HTTP guard·strategy·credential·refresh integration은 `@fluojs/auth-http`, crypto와 rotation/replay는 `@fluojs/jwt`, Passport.js bridge는 `@fluojs/passport`가 소유합니다. 기존 Passport 예제와 import는 compatibility 경로이며 canonical HTTP 등록은 auth-http의 `AuthModule.forRoot(...)`입니다.
+
 <p><strong><kbd>한국어</kbd></strong> <a href="./migrate-from-nestjs.md"><kbd>English</kbd></a></p>
 
 OpenAPI는 module-owned `OpenApiModule.forRoot(...)` / `forRootAsync(...)`를 사용하고 numeric `ApiResponse` 호출을 object option으로 바꾸며 `OpenApiDocumentBuilder.build(...)`를 사용합니다. [OpenAPI 3 마이그레이션 가이드](../architecture/openapi-migration.ko.md)를 참고하세요.

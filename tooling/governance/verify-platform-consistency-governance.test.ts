@@ -6553,6 +6553,6 @@ describe('mandatory first-party dependency Node engine alignment', () => {
     // Then: an unchanged public dependent's Node 24 advertisement is rejected.
     expect(() =>
       enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/core'])))
-      .toThrow(/@fluojs\/cache-manager engines\.node .*permits Node 24\.0\.0.*@fluojs\/core/u);
+      .toThrow(/@fluojs\/auth engines\.node .*permits Node 24\.0\.0.*@fluojs\/core/u);
   });
 });

@@ -3,6 +3,8 @@
 
 # Chapter 15. Guards and Passport Strategies
 
+현재 canonical 소유권: 일반 identity와 account-linking 정책은 `@fluojs/auth`, HTTP 전략·guard·bearer/cookie/refresh integration은 `@fluojs/auth-http`, JWT 암호화와 rotation/replay는 `@fluojs/jwt`, Passport.js action binding은 `@fluojs/passport`입니다. 아래 Passport import 예제는 유지되는 compatibility 경로입니다. 새 코드는 `AuthModule`을 auth-http에서 가져오되 애플리케이션 클래스 이름과 충돌하면 alias하세요. 기존 HTTP `AuthStrategy`의 `GuardContext`, scope 판정, optional/handled 결과는 바뀌지 않습니다. [소유권 마이그레이션](../../docs/getting-started/migrate-auth-ownership.ko.md)을 참고하세요.
+
 <!-- fluo:docs-navigation:start -->
 > **이전 판 안내 — 기초 개념·애플리케이션 레퍼런스.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
 >

@@ -14,6 +14,7 @@ const commandTimeoutMs = 180_000;
 const tarBlockSize = 512;
 const consumerDependencyNames = [
   '@fluojs/persistence',
+  '@fluojs/auth',
   '@fluojs/core',
   '@fluojs/diagnostics',
   '@fluojs/di',
