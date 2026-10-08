@@ -12,17 +12,26 @@ import type { EnvironmentSummary } from '../src/provenance';
 import type { ScenarioConfig } from '../src/scenarios';
 import { startTargets, stopTargets, TARGETS, type TargetConfig, waitForTarget } from '../src/targets';
 
-async function unusedPort(): Promise<number> {
-  const server = createServer();
-  const listening = once(server, 'listening');
-  server.listen(0, '127.0.0.1');
-  await listening;
-  const address = server.address();
-  assert.ok(address && typeof address !== 'string');
-  const closed = once(server, 'close');
-  server.close();
-  await closed;
-  return address.port;
+async function unusedPorts(): Promise<number[]> {
+  const servers = [createServer(), createServer()];
+  try {
+    const ports = [];
+    for (const server of servers) {
+      const listening = once(server, 'listening');
+      server.listen(0, '127.0.0.1');
+      await listening;
+      const address = server.address();
+      assert.ok(address && typeof address !== 'string');
+      ports.push(address.port);
+    }
+    return ports;
+  } finally {
+    await Promise.all(servers.filter((server) => server.listening).map(async (server) => {
+      const closed = once(server, 'close');
+      server.close();
+      await closed;
+    }));
+  }
 }
 
 test('captureCondition: final control shutdown overflows raw limit -> journals failed capture', { timeout: 30_000 }, async () => {
@@ -40,11 +49,12 @@ test('captureCondition: final control shutdown overflows raw limit -> journals f
     appShape: 'read-search-local', name: 'teardown-regression', description: 'diagnostic traffic',
     requests: [{ method: 'GET', path: '/', expectedStatus: 200, expectedBody: '{"ok":true}' }],
   };
+  const [httpPort, inspectorPort] = await unusedPorts();
   const plan: CapturePlan = {
     targets: [target], scenarios: [scenario], modes: ['cpu'], configuration: 'equivalent',
     connections: 1, repeats: 1, warmupSeconds: 0.1, durationSeconds: 0.1, controlSeconds: 0.1,
-    portBase: await unusedPort() - TARGETS.findIndex((item) => item.name === target.name),
-    inspectorPortBase: await unusedPort() - TARGETS.findIndex((item) => item.name === target.name),
+    portBase: httpPort - TARGETS.findIndex((item) => item.name === target.name),
+    inspectorPortBase: inspectorPort - TARGETS.findIndex((item) => item.name === target.name),
     outputDirectory: root,
   };
   const environment: EnvironmentSummary = {
