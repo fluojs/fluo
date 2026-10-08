@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "kind": "deno-bundled-profile-classifier-reproduction",
+  "createdAt": "2026-10-08T11:09:41.586Z",
+  "originalManifest": "/Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison/results/profiling/2026-10-08T10-56-25.732Z-af5f2dec-d532-4ef0-a698-ee7a456f855a/manifest.json",
+  "originalHead": "c3641fd6fca4bf04a9c71656842a2737a35b50eb",
+  "validatorHead": "4b425946a15c8f2bffc2d6cf3a7c83a1c36b0af8",
+  "replay": [
+    {
+      "mode": "cpu",
+      "originalStatus": "failed",
+      "originalReason": "empty-or-startup-profile",
+      "totalSamples": 12210,
+      "matchedSamples": 6163,
+      "candidateErrors": [],
+      "rawProfileSha256": "256cf265cfd0297851fd6d4bafcf611ba963622720fb7f27cd4f58f4f35c8e0c"
+    },
+    {
+      "mode": "allocation",
+      "originalStatus": "failed",
+      "originalReason": "empty-or-startup-profile",
+      "totalSamples": 622935,
+      "matchedSamples": 377126,
+      "candidateErrors": [],
+      "rawProfileSha256": "e190134c32f088d95af75f685adc5d12d712946c518b6193fd35ab1f5e76d54a"
+    }
+  ],
+  "implementationResult": {
+    "version": 1,
+    "result": "completed",
+    "mode": "implement",
+    "lane_id": "http-platform-performance-3909-3915",
+    "issue_number": 3910,
+    "branch": "issue-3910",
+    "worktree": ".worktrees/issue-3910",
+    "pr": null,
+    "preflight_sha256": "7f19ed1c92dcf0680a8a623589395d2b510a0a9bd8cc6cf012da70faf3bf29e0",
+    "previous_head_sha": "c3641fd6fca4bf04a9c71656842a2737a35b50eb",
+    "head_sha": "4b425946a15c8f2bffc2d6cf3a7c83a1c36b0af8",
+    "commit_sha": "4b425946a15c8f2bffc2d6cf3a7c83a1c36b0af8",
+    "changed_files": [
+      "tooling/benchmarks/http-comparison/src/profile-report.ts",
+      "tooling/benchmarks/http-comparison/tests/profiling.test.mts"
+    ],
+    "verification": [
+      {
+        "command": "cd tooling/benchmarks/http-comparison && node --import tsx --test --test-reporter=tap tests/profiling.test.mts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck",
+        "status": "passed"
+      },
+      {
+        "command": "lsp_diagnostics: tooling/benchmarks/http-comparison/src/profile-report.ts; tooling/benchmarks/http-comparison/tests/profiling.test.mts",
+        "status": "passed"
+      },
+      {
+        "command": "git diff --check && git diff --cached --check",
+        "status": "passed"
+      }
+    ],
+    "fix_back_result": "not-applicable",
+    "addressed_blockers": [],
+    "remaining_blockers": []
+  },
+  "acceptance": "Original failed attempts remain excluded and immutable. Recapture only CPU and allocation. Collector-only source change; historical measurements retain their original provenance."
+}

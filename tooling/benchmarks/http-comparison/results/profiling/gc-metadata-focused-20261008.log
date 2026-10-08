@@ -1,0 +1,221 @@
+
+> @fluojs-internal/tooling-benchmarks-http@0.0.0 test /Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison
+> node --import tsx --test tests/*.test.mts
+
+✔ archive rejects incomplete evidence: none (113.572875ms)
+✔ archive rejects incomplete evidence: missing-target (69.65825ms)
+✔ archive rejects incomplete evidence: wrong-status (62.992375ms)
+✔ archive rejects incomplete evidence: smoke-duration (57.632375ms)
+✔ preserves completed HTTP samples and rejects failure evidence (2283.759792ms)
+✔ preserves completed HTTP samples and rejects signal evidence (1211.7935ms)
+✔ preserves completed HTTP samples and rejects signal-after-complete evidence (1211.003167ms)
+✔ retains available server samples alongside failed traffic diagnostics (1053.623584ms)
+✔ load subprocess returns raw failure diagnostics with a nonzero exit (1147.770667ms)
+✔ rejects non-2xx traffic even when its body and requested status match (1007.674625ms)
+✔ rejects zero completions even when the SDK reports no errors (1030.41175ms)
+✔ retains TCP errors after an otherwise valid completed response (1008.723208ms)
+(node:27682) TimeoutNegativeWarning: -1 is a negative number.
+Timeout duration was set to 1.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ retains actual request timeouts without accepting zero completions (2025.503083ms)
+✔ rejects a valid body belonging to a different route (1008.057292ms)
+✔ rejects an unexpected successful status with the correct body (1003.966583ms)
+✔ cycles POST and GET without body or content-type leakage (1008.2125ms)
+✔ missing quote input cannot become the benchmark fixture (1.044041ms)
+✔ warms each target immediately before measuring it (0.535292ms)
+✔ reports median and sample variation without hiding outliers (0.428166ms)
+✔ each concurrent connection starts and repeats the same route cycle (1008.162667ms)
+✔ shared quote normalization uses the received payload, not canned line items (0.857083ms)
+✔ keeps business scenarios separate from opt-in stage measurements (0.797125ms)
+✔ selects real native and Fluo targets for all seven platforms and Nest for both Node engines (0.316708ms)
+✔ computes p95 from counted responses rather than substituting p97.5 (0.086625ms)
+✔ keeps ps cumulative server CPU seconds separate from client CPU (0.064541ms)
+✔ equivalent native responses retain the default Fluo security headers without changing the workload (10.352625ms)
+✔ target selection supports every target and rejects unknown or duplicate entries (1072.707584ms)
+✔ optional inspector launch preserves default args and isolates runtime flags (1.989083ms)
+✔ CPU validity rejects startup-only samples and accepts request stack ancestry (0.721375ms)
+✔ requestSamples: legitimate Nest handlers in v8-cpu -> count handler and descendants only (0.473292ms)
+✔ requestSamples: Nest startup and unrelated frames in v8-cpu -> reject all samples (1.2245ms)
+✔ requestSamples: legitimate Nest handlers in v8-allocation -> count handler and descendants only (0.241042ms)
+✔ requestSamples: Nest startup and unrelated frames in v8-allocation -> reject all samples (0.557916ms)
+✔ requestSamples: verified Deno bundle request frames in v8-cpu -> count descendants without siblings (0.507667ms)
+✔ requestSamples: Deno bundle startup or ambiguous frames in v8-cpu -> reject all samples (0.417209ms)
+✔ requestSamples: bundled stage read beneath dispatch in v8-cpu -> exclude startup sibling (0.058542ms)
+✔ requestSamples: preserved Workers and Next bundle request ancestry in v8-cpu -> remains recognized (0.080292ms)
+✔ requestSamples: verified Deno bundle request frames in v8-allocation -> count descendants without siblings (0.212292ms)
+✔ requestSamples: Deno bundle startup or ambiguous frames in v8-allocation -> reject all samples (0.365ms)
+✔ requestSamples: bundled stage read beneath dispatch in v8-allocation -> exclude startup sibling (0.021875ms)
+✔ requestSamples: preserved Workers and Next bundle request ancestry in v8-allocation -> remains recognized (0.059916ms)
+✔ requestSamples: Workers application dispatch in v8-cpu -> count request descendants only (0.065042ms)
+✔ requestSamples: Workers startup and ambiguous frames in v8-cpu -> reject samples (0.113959ms)
+✔ requestSamples: Workers application dispatch in v8-allocation -> count request descendants only (0.07725ms)
+✔ requestSamples: Workers startup and ambiguous frames in v8-allocation -> reject samples (0.100708ms)
+✔ RuntimeCapture.stop: native-bun GC diagnostics -> identifies actual collection source (3.200833ms)
+✔ RuntimeCapture.stop: native-deno GC diagnostics -> identifies actual collection source (1.977583ms)
+✔ RuntimeCapture.stop: native-nodejs GC diagnostics -> identifies actual collection source (0.673958ms)
+✔ JSC stacks and heap snapshots remain separate evidence formats (0.115ms)
+✔ stage-only request frames include anonymous and zero-argument handlers but exclude startup factories (0.164416ms)
+✔ capture validity accepts hashed profiles with serving identity and real successful traffic (0.422167ms)
+✔ empty CPU samples fail even when raw bytes and hashes agree (0.123625ms)
+✔ capture validity rejects missing-raw (0.0955ms)
+✔ capture validity rejects wrong-hash (0.057208ms)
+✔ capture validity rejects wrong-subject (0.045709ms)
+✔ capture validity rejects partial-controls (0.038375ms)
+✔ capture validity rejects wrong-mode (0.043125ms)
+✔ capture validity rejects missing-provenance (0.065625ms)
+✔ capture validity rejects failed (0.041167ms)
+✔ capture validity rejects fake-unsupported (0.04125ms)
+✔ capture validity rejects abnormal-signal (0.044709ms)
+✔ profile completeness rejects absent and duplicate expected conditions (0.138667ms)
+✔ canonical Next graceful SIGTERM exit 143 preserves flushed profile validity (0.062167ms)
+✔ timing completeness accepts exactly 2112 fresh uninstrumented stage and business conditions (6.500458ms)
+✔ timing completeness rejects historical-576 (5.524292ms)
+✔ timing completeness rejects instrumented (5.767666ms)
+✔ timing completeness rejects missing-condition (3.554459ms)
+✔ timing completeness rejects duplicate-condition (3.771167ms)
+✔ timing completeness rejects wrong-provenance (7.021875ms)
+✔ timing completeness rejects zero-traffic (3.451416ms)
+✔ timing completeness rejects status-mismatch (3.610417ms)
+✔ timing completeness rejects timeout (6.044459ms)
+✔ timing completeness rejects wrong-interval (3.722708ms)
+✔ timing completeness rejects wrong-build (3.881459ms)
+✔ rejects installed dependency overrides that differ from the declared lockfile (0.451583ms)
+✔ captures installed type-only packages as well as runtime and linked packages (277.873834ms)
+✔ accepts explicit stage shapes without changing the business default (0.774833ms)
+✔ native serves every independent stage over real HTTP (22.0675ms)
+✔ native routing responds to changed path and query (1.663125ms)
+✔ native materializes the actual changed body without a fallback (1.523708ms)
+✔ native rejects guard denial outside the success scenario (0.715084ms)
+✔ native binds changed DTO input and rejects malformed fields (8.06ms)
+✔ native encodes a generated nested response for changed input (0.763375ms)
+✔ native reuses a singleton within and across requests (0.925541ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] MinimalModule dependencies initialized
+[fluo] LOG [RoutesResolver] MinimalController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53577
+✔ native isolates overlapping requests and disposes each reused instance once (0.90075ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] RoutingModule dependencies initialized
+[fluo] LOG [RoutesResolver] RoutingController {/stage/items}
+[fluo] LOG [RouterExplorer] Mapped {/stage/items/:itemId, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53579
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] SingletonModule dependencies initialized
+[fluo] LOG [RoutesResolver] SingletonController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53581
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] RequestModule dependencies initialized
+[fluo] LOG [RoutesResolver] RequestController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53583
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] BodyModule dependencies initialized
+[fluo] LOG [RoutesResolver] BodyController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, POST} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53585
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] GuardModule dependencies initialized
+[fluo] LOG [RoutesResolver] GuardController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53587
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] ValidationModule dependencies initialized
+[fluo] LOG [RoutesResolver] ValidationController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, POST} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53589
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] SerializationModule dependencies initialized
+[fluo] LOG [RoutesResolver] SerializationController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53591
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] RoutingModule dependencies initialized
+[fluo] LOG [RoutesResolver] RoutingController {/stage/items}
+[fluo] LOG [RouterExplorer] Mapped {/stage/items/:itemId, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53593
+✔ fluo serves every independent stage over real HTTP (12.96525ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] BodyModule dependencies initialized
+[fluo] LOG [RoutesResolver] BodyController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, POST} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53596
+✔ fluo routing responds to changed path and query (4.633417ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] GuardModule dependencies initialized
+[fluo] LOG [RoutesResolver] GuardController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53599
+✔ fluo materializes the actual changed body without a fallback (1.932ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] ValidationModule dependencies initialized
+[fluo] LOG [RoutesResolver] ValidationController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, POST} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53601
+✔ fluo rejects guard denial outside the success scenario (1.130208ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] SerializationModule dependencies initialized
+[fluo] LOG [RoutesResolver] SerializationController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53604
+✔ fluo binds changed DTO input and rejects malformed fields (8.716791ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] SingletonModule dependencies initialized
+[fluo] LOG [RoutesResolver] SingletonController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53606
+✔ fluo encodes a generated nested response for changed input (0.819542ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] RequestModule dependencies initialized
+[fluo] LOG [RoutesResolver] RequestController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:53609
+✔ fluo reuses a singleton within and across requests (1.199792ms)
+✔ fluo isolates overlapping requests and disposes each reused instance once (1.106125ms)
+✔ nestjs-fastify serves every independent stage over real HTTP (91.718792ms)
+✔ nestjs-fastify routing responds to changed path and query (2.683208ms)
+✔ nestjs-fastify materializes the actual changed body without a fallback (2.762875ms)
+✔ nestjs-fastify rejects guard denial outside the success scenario (1.718375ms)
+✔ nestjs-fastify binds changed DTO input and rejects malformed fields (13.452666ms)
+✔ nestjs-fastify encodes a generated nested response for changed input (1.847375ms)
+✔ nestjs-fastify reuses a singleton within and across requests (1.890833ms)
+✔ nestjs-fastify isolates overlapping requests and disposes each reused instance once (1.864708ms)
+✔ nestjs-express serves every independent stage over real HTTP (18.332375ms)
+✔ nestjs-express routing responds to changed path and query (1.718625ms)
+✔ nestjs-express materializes the actual changed body without a fallback (2.009041ms)
+✔ nestjs-express rejects guard denial outside the success scenario (1.353ms)
+✔ nestjs-express binds changed DTO input and rejects malformed fields (10.082792ms)
+✔ nestjs-express encodes a generated nested response for changed input (1.6115ms)
+✔ nestjs-express reuses a singleton within and across requests (1.643ms)
+✔ nestjs-express isolates overlapping requests and disposes each reused instance once (1.599125ms)
+✔ terminating a benchmark owner also terminates its detached server (96.087ms)
+ℹ tests 110
+ℹ suites 0
+ℹ pass 110
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11506.6335
+
+> @fluojs-internal/tooling-benchmarks-http@0.0.0 typecheck /Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p nestjs/tsconfig.json
+
+Checked 38 files in 9ms. No fixes applied.
+GC_METADATA_CHECK_EXIT=0

@@ -1,0 +1,685 @@
+
+> @fluojs-internal/tooling-benchmarks-http@0.0.0 test /Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison
+> node --import tsx --test tests/*.test.mts
+
+✔ archive rejects incomplete evidence: none (101.890041ms)
+✔ archive rejects incomplete evidence: missing-target (73.309209ms)
+✔ archive rejects incomplete evidence: wrong-status (66.136333ms)
+✔ archive rejects incomplete evidence: smoke-duration (58.096166ms)
+✔ preserves completed HTTP samples and rejects failure evidence (2312.985541ms)
+✔ preserves completed HTTP samples and rejects signal evidence (1218.128917ms)
+✔ preserves completed HTTP samples and rejects signal-after-complete evidence (1222.358916ms)
+✔ retains available server samples alongside failed traffic diagnostics (1051.125ms)
+✔ load subprocess returns raw failure diagnostics with a nonzero exit (1147.699917ms)
+✔ rejects non-2xx traffic even when its body and requested status match (1006.871625ms)
+✔ rejects zero completions even when the SDK reports no errors (1030.432583ms)
+✔ retains TCP errors after an otherwise valid completed response (1007.599709ms)
+(node:97065) TimeoutNegativeWarning: -2 is a negative number.
+Timeout duration was set to 1.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ retains actual request timeouts without accepting zero completions (2033.445167ms)
+✔ rejects a valid body belonging to a different route (1008.421583ms)
+✔ rejects an unexpected successful status with the correct body (1007.448292ms)
+✔ cycles POST and GET without body or content-type leakage (1009.848959ms)
+✔ missing quote input cannot become the benchmark fixture (3.06925ms)
+✔ warms each target immediately before measuring it (0.620833ms)
+✔ reports median and sample variation without hiding outliers (0.544708ms)
+✔ each concurrent connection starts and repeats the same route cycle (1009.603041ms)
+✔ shared quote normalization uses the received payload, not canned line items (0.835666ms)
+✔ keeps business scenarios separate from opt-in stage measurements (0.577916ms)
+✔ selects real native and Fluo targets for all seven platforms and Nest for both Node engines (0.322417ms)
+✔ computes p95 from counted responses rather than substituting p97.5 (0.087625ms)
+✔ keeps ps cumulative server CPU seconds separate from client CPU (0.063292ms)
+✔ equivalent native responses retain the default Fluo security headers without changing the workload (7.708708ms)
+✔ target selection supports every target and rejects unknown or duplicate entries (1098.099208ms)
+✔ optional inspector launch preserves default args and isolates runtime flags (2.35925ms)
+✔ CPU validity rejects startup-only samples and accepts request stack ancestry (0.882041ms)
+✔ requestSamples: legitimate Nest handlers in v8-cpu -> count handler and descendants only (0.515958ms)
+✔ requestSamples: Nest startup and unrelated frames in v8-cpu -> reject all samples (0.777917ms)
+✔ requestSamples: legitimate Nest handlers in v8-allocation -> count handler and descendants only (0.243542ms)
+✔ requestSamples: Nest startup and unrelated frames in v8-allocation -> reject all samples (0.702708ms)
+✔ requestSamples: verified Deno bundle request frames in v8-cpu -> count descendants without siblings (0.555917ms)
+✔ requestSamples: Deno bundle startup or ambiguous frames in v8-cpu -> reject all samples (0.512875ms)
+✔ requestSamples: bundled stage read beneath dispatch in v8-cpu -> exclude startup sibling (0.089917ms)
+✔ requestSamples: preserved Workers and Next bundle request ancestry in v8-cpu -> remains recognized (0.106959ms)
+✔ requestSamples: verified Deno bundle request frames in v8-allocation -> count descendants without siblings (0.283458ms)
+✔ requestSamples: Deno bundle startup or ambiguous frames in v8-allocation -> reject all samples (0.468458ms)
+✔ requestSamples: bundled stage read beneath dispatch in v8-allocation -> exclude startup sibling (0.033667ms)
+✔ requestSamples: preserved Workers and Next bundle request ancestry in v8-allocation -> remains recognized (0.0775ms)
+✔ requestSamples: Workers application dispatch in v8-cpu -> count request descendants only (0.083834ms)
+✔ requestSamples: Workers startup and ambiguous frames in v8-cpu -> reject samples (0.160375ms)
+✔ requestSamples: Workers application dispatch in v8-allocation -> count request descendants only (0.096917ms)
+✔ requestSamples: Workers startup and ambiguous frames in v8-allocation -> reject samples (0.138834ms)
+✔ JSC stacks and heap snapshots remain separate evidence formats (0.076084ms)
+✔ stage-only request frames include anonymous and zero-argument handlers but exclude startup factories (0.151334ms)
+✔ capture validity accepts hashed profiles with serving identity and real successful traffic (0.463834ms)
+✔ empty CPU samples fail even when raw bytes and hashes agree (0.119458ms)
+✔ capture validity rejects missing-raw (0.119708ms)
+✔ capture validity rejects wrong-hash (0.076709ms)
+✔ capture validity rejects wrong-subject (0.059084ms)
+✔ capture validity rejects partial-controls (0.050834ms)
+✔ capture validity rejects wrong-mode (0.0545ms)
+✔ capture validity rejects missing-provenance (0.06425ms)
+✔ capture validity rejects failed (0.053791ms)
+✔ capture validity rejects fake-unsupported (0.05ms)
+✔ capture validity rejects abnormal-signal (0.058834ms)
+✔ profile completeness rejects absent and duplicate expected conditions (0.162458ms)
+✔ canonical Next graceful SIGTERM exit 143 preserves flushed profile validity (0.082542ms)
+✔ timing completeness accepts exactly 2112 fresh uninstrumented stage and business conditions (7.446708ms)
+✔ timing completeness rejects historical-576 (5.824167ms)
+✔ timing completeness rejects instrumented (5.539375ms)
+✔ timing completeness rejects missing-condition (3.882542ms)
+✔ timing completeness rejects duplicate-condition (3.962917ms)
+✔ timing completeness rejects wrong-provenance (7.131042ms)
+✔ timing completeness rejects zero-traffic (3.355666ms)
+✔ timing completeness rejects status-mismatch (3.396125ms)
+✔ timing completeness rejects timeout (3.846416ms)
+✔ timing completeness rejects wrong-interval (4.98225ms)
+✔ timing completeness rejects wrong-build (3.809875ms)
+✔ rejects installed dependency overrides that differ from the declared lockfile (1.065459ms)
+✔ captures installed type-only packages as well as runtime and linked packages (269.549958ms)
+✔ accepts explicit stage shapes without changing the business default (2.387ms)
+✔ native serves every independent stage over real HTTP (24.0015ms)
+✔ native routing responds to changed path and query (1.5885ms)
+✔ native materializes the actual changed body without a fallback (1.48625ms)
+✔ native rejects guard denial outside the success scenario (0.7265ms)
+✔ native binds changed DTO input and rejects malformed fields (9.224709ms)
+✔ native encodes a generated nested response for changed input (0.941583ms)
+✔ native reuses a singleton within and across requests (1.051166ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] MinimalModule dependencies initialized
+[fluo] LOG [RoutesResolver] MinimalController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51319
+✔ native isolates overlapping requests and disposes each reused instance once (1.03625ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] RoutingModule dependencies initialized
+[fluo] LOG [RoutesResolver] RoutingController {/stage/items}
+[fluo] LOG [RouterExplorer] Mapped {/stage/items/:itemId, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51321
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] SingletonModule dependencies initialized
+[fluo] LOG [RoutesResolver] SingletonController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51323
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] RequestModule dependencies initialized
+[fluo] LOG [RoutesResolver] RequestController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51325
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] BodyModule dependencies initialized
+[fluo] LOG [RoutesResolver] BodyController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, POST} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51327
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] GuardModule dependencies initialized
+[fluo] LOG [RoutesResolver] GuardController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51329
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] ValidationModule dependencies initialized
+[fluo] LOG [RoutesResolver] ValidationController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, POST} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51331
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] SerializationModule dependencies initialized
+[fluo] LOG [RoutesResolver] SerializationController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51333
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] RoutingModule dependencies initialized
+[fluo] LOG [RoutesResolver] RoutingController {/stage/items}
+[fluo] LOG [RouterExplorer] Mapped {/stage/items/:itemId, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51335
+✔ fluo serves every independent stage over real HTTP (13.730917ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] BodyModule dependencies initialized
+[fluo] LOG [RoutesResolver] BodyController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, POST} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51338
+✔ fluo routing responds to changed path and query (1.819625ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] GuardModule dependencies initialized
+[fluo] LOG [RoutesResolver] GuardController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51341
+✔ fluo materializes the actual changed body without a fallback (1.705208ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] ValidationModule dependencies initialized
+[fluo] LOG [RoutesResolver] ValidationController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, POST} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51343
+✔ fluo rejects guard denial outside the success scenario (0.954292ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] SerializationModule dependencies initialized
+[fluo] LOG [RoutesResolver] SerializationController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51346
+✔ fluo binds changed DTO input and rejects malformed fields (10.251625ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] SingletonModule dependencies initialized
+[fluo] LOG [RoutesResolver] SingletonController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51348
+✔ fluo encodes a generated nested response for changed input (1.1445ms)
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] RequestModule dependencies initialized
+[fluo] LOG [RoutesResolver] RequestController {/stage}
+[fluo] LOG [RouterExplorer] Mapped {/stage, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:51351
+✔ fluo reuses a singleton within and across requests (1.38975ms)
+✔ fluo isolates overlapping requests and disposes each reused instance once (1.150542ms)
+✔ nestjs-fastify serves every independent stage over real HTTP (96.610792ms)
+✔ nestjs-fastify routing responds to changed path and query (2.616083ms)
+✔ nestjs-fastify materializes the actual changed body without a fallback (2.439667ms)
+✔ nestjs-fastify rejects guard denial outside the success scenario (1.621625ms)
+✔ nestjs-fastify binds changed DTO input and rejects malformed fields (10.543042ms)
+✔ nestjs-fastify encodes a generated nested response for changed input (1.557125ms)
+✔ nestjs-fastify reuses a singleton within and across requests (1.933ms)
+✔ nestjs-fastify isolates overlapping requests and disposes each reused instance once (1.993625ms)
+✔ nestjs-express serves every independent stage over real HTTP (18.564083ms)
+✔ nestjs-express routing responds to changed path and query (1.688583ms)
+✔ nestjs-express materializes the actual changed body without a fallback (2.059042ms)
+✔ nestjs-express rejects guard denial outside the success scenario (4.67625ms)
+✔ nestjs-express binds changed DTO input and rejects malformed fields (10.465125ms)
+✔ nestjs-express encodes a generated nested response for changed input (1.501084ms)
+✔ nestjs-express reuses a singleton within and across requests (1.528583ms)
+✔ nestjs-express isolates overlapping requests and disposes each reused instance once (1.4055ms)
+✔ terminating a benchmark owner also terminates its detached server (102.821541ms)
+ℹ tests 107
+ℹ suites 0
+ℹ pass 107
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11625.896917
+
+> @fluojs-internal/tooling-benchmarks-http@0.0.0 typecheck /Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p nestjs/tsconfig.json
+
+
+> fluo@ build /Users/ayden/Documents/fluo/.worktrees/issue-3910
+> pnpm -r --filter './packages/*' --if-present run build
+
+Scope: 43 of 58 workspace projects
+packages/core prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/vite prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/vite prebuild: Done
+packages/vite build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/**/*.spec.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/core prebuild: Done
+packages/core build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/vite build: Successfully compiled 2 files with Babel (55ms).
+packages/core build: Successfully compiled 22 files with Babel (89ms).
+packages/core build: Done
+packages/vite build: Done
+packages/studio prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/validation prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/di prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/studio prebuild: Done
+packages/studio build$ pnpm exec vite build && pnpm exec babel src/contracts.ts src/index.ts src/viewer-server.ts src/viewer-cli.ts --extensions .ts --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/di prebuild: Done
+packages/di build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/validation prebuild: Done
+packages/validation build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/di build: Successfully compiled 7 files with Babel (79ms).
+packages/studio build: vite v8.2.2 building client environment for production...
+packages/validation build: Successfully compiled 16 files with Babel (90ms).
+packages/studio build: transforming...
+packages/studio build: ✓ 35 modules transformed.
+packages/studio build: rendering chunks...
+packages/studio build: computing gzip size...
+packages/studio build: dist/index.html                   0.39 kB │ gzip:  0.27 kB
+packages/studio build: dist/assets/index-C3sr4y-k.css    9.49 kB │ gzip:  2.82 kB
+packages/studio build: dist/assets/index-DK_4_5NR.js   241.79 kB │ gzip: 72.52 kB
+packages/studio build: ✓ built in 181ms
+packages/studio build: Successfully compiled 4 files with Babel (57ms).
+packages/di build: Done
+packages/validation build: Done
+packages/studio build: Done
+packages/http prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/http prebuild: Done
+packages/http build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/**/*.test-fixture.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/http build: Successfully compiled 60 files with Babel (154ms).
+packages/http build: Done
+packages/serialization prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/serialization prebuild: Done
+packages/serialization build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/serialization build: Successfully compiled 8 files with Babel (51ms).
+packages/serialization build: Done
+packages/runtime prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/runtime prebuild: Done
+packages/runtime build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/test-support/**/*.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/runtime build: Successfully compiled 39 files with Babel (134ms).
+packages/runtime build: Done
+packages/drizzle prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/event-bus prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/microservices prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/jwt prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/event-bus prebuild: Done
+packages/jwt prebuild: Done
+packages/event-bus build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/jwt build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/microservices prebuild: Done
+packages/drizzle prebuild: Done
+packages/microservices build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/drizzle build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/event-bus build: Successfully compiled 11 files with Babel (103ms).
+packages/drizzle build: Successfully compiled 15 files with Babel (105ms).
+packages/jwt build: Successfully compiled 14 files with Babel (121ms).
+packages/microservices build: Successfully compiled 17 files with Babel (136ms).
+packages/drizzle build: Done
+packages/mongoose prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/event-bus build: Done
+packages/platform-nodejs prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/mongoose prebuild: Done
+packages/mongoose build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/jwt build: Done
+packages/prisma prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-nodejs prebuild: Done
+packages/platform-nodejs build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/**/*.test-fixture.ts','src/test-support/**/*.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/prisma prebuild: Done
+packages/prisma build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/microservices build: Done
+packages/react prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/react prebuild: Done
+packages/react build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/mongoose build: Successfully compiled 11 files with Babel (87ms).
+packages/platform-nodejs build: Successfully compiled 18 files with Babel (90ms).
+packages/prisma build: Successfully compiled 13 files with Babel (92ms).
+packages/react build: Successfully compiled 57 files with Babel (190ms).
+packages/mongoose build: Done
+packages/redis prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/redis prebuild: Done
+packages/redis build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/prisma build: Done
+packages/platform-nodejs build: Done
+packages/redis build: Successfully compiled 7 files with Babel (70ms).
+packages/react build: Done
+packages/redis build: Done
+packages/cqrs prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/cli prebuild$ node ./scripts/generate-published-internal-dependencies.mjs && node ../../tooling/scripts/clean-dist.mjs
+packages/cron prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/graphql prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/cqrs prebuild: Done
+packages/cqrs build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/graphql prebuild: Done
+packages/graphql build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/**/*.test-fixture.ts','src/test-support/**/*.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/cron prebuild: Done
+packages/cron build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/cli prebuild: Done
+packages/cli build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json && node -e "const fs=require('fs'); fs.cpSync('src/generators/templates', 'dist/generators/templates', {recursive: true}); fs.cpSync('src/new/templates', 'dist/new/templates', {recursive: true})"
+packages/cron build: Successfully compiled 14 files with Babel (105ms).
+packages/graphql build: Successfully compiled 17 files with Babel (125ms).
+packages/cqrs build: Successfully compiled 23 files with Babel (128ms).
+packages/cli build: Successfully compiled 72 files with Babel (253ms).
+packages/cron build: Done
+packages/openapi prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/cqrs build: Done
+packages/passport prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/openapi prebuild: Done
+packages/openapi build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/passport prebuild: Done
+packages/passport build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/graphql build: Done
+packages/platform-express prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-express prebuild: Done
+packages/platform-express build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/test-support/**/*.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/openapi build: Successfully compiled 8 files with Babel (92ms).
+packages/passport build: Successfully compiled 17 files with Babel (110ms).
+packages/platform-express build: Successfully compiled 2 files with Babel (64ms).
+packages/cli build: Done
+packages/queue prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/queue prebuild: Done
+packages/queue build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/openapi build: Done
+packages/passport build: Done
+packages/queue build: Successfully compiled 12 files with Babel (81ms).
+packages/platform-express build: Done
+packages/queue build: Done
+packages/config prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/testing prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/config prebuild: Done
+packages/config build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/testing prebuild: Done
+packages/testing build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/config build: Successfully compiled 7 files with Babel (75ms).
+packages/testing build: Successfully compiled 17 files with Babel (131ms).
+packages/config build: Done
+packages/testing build: Done
+packages/i18n prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/metrics prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/cache-manager prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/notifications prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/metrics prebuild: Done
+packages/metrics build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/i18n prebuild: Done
+packages/cache-manager prebuild: Done
+packages/notifications prebuild: Done
+packages/i18n build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/cache-manager build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/notifications build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/notifications build: Successfully compiled 8 files with Babel (87ms).
+packages/metrics build: Successfully compiled 10 files with Babel (89ms).
+packages/i18n build: Successfully compiled 18 files with Babel (115ms).
+packages/cache-manager build: Successfully compiled 16 files with Babel (116ms).
+packages/notifications build: Done
+packages/platform-bun prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/metrics build: Done
+packages/platform-cloudflare-workers prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-bun prebuild: Done
+packages/platform-bun build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/test-support/**/*.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/platform-cloudflare-workers prebuild: Done
+packages/platform-cloudflare-workers build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/i18n build: Done
+packages/platform-deno prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/cache-manager build: Done
+packages/platform-fastify prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-deno prebuild: Done
+packages/platform-deno build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/test-support/**/*.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/platform-fastify prebuild: Done
+packages/platform-fastify build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts','src/test-support/**/*.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/platform-cloudflare-workers build: Successfully compiled 2 files with Babel (56ms).
+packages/platform-bun build: Successfully compiled 5 files with Babel (63ms).
+packages/platform-deno build: Successfully compiled 6 files with Babel (58ms).
+packages/platform-fastify build: Successfully compiled 2 files with Babel (62ms).
+packages/platform-cloudflare-workers build: Done
+packages/platform-nextjs prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-bun build: Done
+packages/terminus prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-deno build: Done
+packages/platform-nextjs prebuild: Done
+packages/throttler prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-nextjs build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/terminus prebuild: Done
+packages/terminus build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/throttler prebuild: Done
+packages/throttler build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/platform-fastify build: Done
+packages/platform-nextjs build: Successfully compiled 9 files with Babel (60ms).
+packages/terminus build: Successfully compiled 17 files with Babel (91ms).
+packages/throttler build: Successfully compiled 12 files with Babel (72ms).
+packages/throttler build: Done
+packages/terminus build: Done
+packages/platform-nextjs build: Done
+packages/email prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/discord prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/slack prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/websockets prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/discord prebuild: Done
+packages/discord build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/slack prebuild: Done
+packages/slack build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/email prebuild: Done
+packages/email build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --ignore 'src/**/*.fixture.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/websockets prebuild: Done
+packages/websockets build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/slack build: Successfully compiled 9 files with Babel (88ms).
+packages/discord build: Successfully compiled 9 files with Babel (88ms).
+packages/email build: Successfully compiled 14 files with Babel (101ms).
+packages/websockets build: Successfully compiled 28 files with Babel (163ms).
+packages/discord build: Done
+packages/slack build: Done
+packages/email build: Done
+packages/websockets build: Done
+packages/socket.io prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/socket.io prebuild: Done
+packages/socket.io build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/socket.io build: Successfully compiled 8 files with Babel (78ms).
+packages/socket.io build: Done
+
+> @fluojs-internal/tooling-benchmarks-http@0.0.0 smoke /Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison
+> tsx src/smoke.ts
+
+
+  dist/native-deno/server.mjs  14.6kb
+
+⚡ Done in 3ms
+
+  dist/fluo-deno/server.mjs  814.9kb
+
+⚡ Done in 21ms
+▲ Next.js 16.3.5 (Turbopack)
+✓ Running next.config.mjs took 6ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 209ms
+  Running TypeScript ...
+  Finished TypeScript in 537ms ...
+  Collecting page data using 4 workers ...
+  Generating static pages using 4 workers (0/2) ...
+✓ Generating static pages using 4 workers (2/2) in 142ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /_not-found
+└ ƒ /[[...path]]
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+▲ Next.js 16.3.5 (Turbopack)
+✓ Running next.config.mjs took 8ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 386ms
+  Running TypeScript ...
+  Finished TypeScript in 502ms ...
+  Collecting page data using 4 workers ...
+  Generating static pages using 4 workers (0/2) ...
+✓ Generating static pages using 4 workers (2/2) in 140ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /_not-found
+└ ƒ /[[...path]]
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+SMOKE PASS native-fastify/read-search-local
+SMOKE PASS native-fastify/json-command-local
+SMOKE PASS native-fastify/rest-route-mix-local
+SMOKE PASS native-fastify/stage-minimal
+SMOKE PASS native-fastify/stage-routing-params
+SMOKE PASS native-fastify/stage-singleton-di
+SMOKE PASS native-fastify/stage-request-di
+SMOKE PASS native-fastify/stage-body
+SMOKE PASS native-fastify/stage-guards
+SMOKE PASS native-fastify/stage-dto-validation
+SMOKE PASS native-fastify/stage-serialization
+SMOKE PASS fluo-fastify/read-search-local
+SMOKE PASS fluo-fastify/json-command-local
+SMOKE PASS fluo-fastify/rest-route-mix-local
+SMOKE PASS fluo-fastify/stage-minimal
+SMOKE PASS fluo-fastify/stage-routing-params
+SMOKE PASS fluo-fastify/stage-singleton-di
+SMOKE PASS fluo-fastify/stage-request-di
+SMOKE PASS fluo-fastify/stage-body
+SMOKE PASS fluo-fastify/stage-guards
+SMOKE PASS fluo-fastify/stage-dto-validation
+SMOKE PASS fluo-fastify/stage-serialization
+SMOKE PASS nestjs-fastify/read-search-local
+SMOKE PASS nestjs-fastify/json-command-local
+SMOKE PASS nestjs-fastify/rest-route-mix-local
+SMOKE PASS nestjs-fastify/stage-minimal
+SMOKE PASS nestjs-fastify/stage-routing-params
+SMOKE PASS nestjs-fastify/stage-singleton-di
+SMOKE PASS nestjs-fastify/stage-request-di
+SMOKE PASS nestjs-fastify/stage-body
+SMOKE PASS nestjs-fastify/stage-guards
+SMOKE PASS nestjs-fastify/stage-dto-validation
+SMOKE PASS nestjs-fastify/stage-serialization
+SMOKE PASS native-express/read-search-local
+SMOKE PASS native-express/json-command-local
+SMOKE PASS native-express/rest-route-mix-local
+SMOKE PASS native-express/stage-minimal
+SMOKE PASS native-express/stage-routing-params
+SMOKE PASS native-express/stage-singleton-di
+SMOKE PASS native-express/stage-request-di
+SMOKE PASS native-express/stage-body
+SMOKE PASS native-express/stage-guards
+SMOKE PASS native-express/stage-dto-validation
+SMOKE PASS native-express/stage-serialization
+SMOKE PASS fluo-express/read-search-local
+SMOKE PASS fluo-express/json-command-local
+SMOKE PASS fluo-express/rest-route-mix-local
+SMOKE PASS fluo-express/stage-minimal
+SMOKE PASS fluo-express/stage-routing-params
+SMOKE PASS fluo-express/stage-singleton-di
+SMOKE PASS fluo-express/stage-request-di
+SMOKE PASS fluo-express/stage-body
+SMOKE PASS fluo-express/stage-guards
+SMOKE PASS fluo-express/stage-dto-validation
+SMOKE PASS fluo-express/stage-serialization
+SMOKE PASS nestjs-express/read-search-local
+SMOKE PASS nestjs-express/json-command-local
+SMOKE PASS nestjs-express/rest-route-mix-local
+SMOKE PASS nestjs-express/stage-minimal
+SMOKE PASS nestjs-express/stage-routing-params
+SMOKE PASS nestjs-express/stage-singleton-di
+SMOKE PASS nestjs-express/stage-request-di
+SMOKE PASS nestjs-express/stage-body
+SMOKE PASS nestjs-express/stage-guards
+SMOKE PASS nestjs-express/stage-dto-validation
+SMOKE PASS nestjs-express/stage-serialization
+SMOKE PASS native-nodejs/read-search-local
+SMOKE PASS native-nodejs/json-command-local
+SMOKE PASS native-nodejs/rest-route-mix-local
+SMOKE PASS native-nodejs/stage-minimal
+SMOKE PASS native-nodejs/stage-routing-params
+SMOKE PASS native-nodejs/stage-singleton-di
+SMOKE PASS native-nodejs/stage-request-di
+SMOKE PASS native-nodejs/stage-body
+SMOKE PASS native-nodejs/stage-guards
+SMOKE PASS native-nodejs/stage-dto-validation
+SMOKE PASS native-nodejs/stage-serialization
+SMOKE PASS fluo-nodejs/read-search-local
+SMOKE PASS fluo-nodejs/json-command-local
+SMOKE PASS fluo-nodejs/rest-route-mix-local
+SMOKE PASS fluo-nodejs/stage-minimal
+SMOKE PASS fluo-nodejs/stage-routing-params
+SMOKE PASS fluo-nodejs/stage-singleton-di
+SMOKE PASS fluo-nodejs/stage-request-di
+SMOKE PASS fluo-nodejs/stage-body
+SMOKE PASS fluo-nodejs/stage-guards
+SMOKE PASS fluo-nodejs/stage-dto-validation
+SMOKE PASS fluo-nodejs/stage-serialization
+SMOKE PASS native-bun/read-search-local
+SMOKE PASS native-bun/json-command-local
+SMOKE PASS native-bun/rest-route-mix-local
+SMOKE PASS native-bun/stage-minimal
+SMOKE PASS native-bun/stage-routing-params
+SMOKE PASS native-bun/stage-singleton-di
+SMOKE PASS native-bun/stage-request-di
+SMOKE PASS native-bun/stage-body
+SMOKE PASS native-bun/stage-guards
+SMOKE PASS native-bun/stage-dto-validation
+SMOKE PASS native-bun/stage-serialization
+SMOKE PASS fluo-bun/read-search-local
+SMOKE PASS fluo-bun/json-command-local
+SMOKE PASS fluo-bun/rest-route-mix-local
+SMOKE PASS fluo-bun/stage-minimal
+SMOKE PASS fluo-bun/stage-routing-params
+SMOKE PASS fluo-bun/stage-singleton-di
+SMOKE PASS fluo-bun/stage-request-di
+SMOKE PASS fluo-bun/stage-body
+SMOKE PASS fluo-bun/stage-guards
+SMOKE PASS fluo-bun/stage-dto-validation
+SMOKE PASS fluo-bun/stage-serialization
+SMOKE PASS native-deno/read-search-local
+SMOKE PASS native-deno/json-command-local
+SMOKE PASS native-deno/rest-route-mix-local
+SMOKE PASS native-deno/stage-minimal
+SMOKE PASS native-deno/stage-routing-params
+SMOKE PASS native-deno/stage-singleton-di
+SMOKE PASS native-deno/stage-request-di
+SMOKE PASS native-deno/stage-body
+SMOKE PASS native-deno/stage-guards
+SMOKE PASS native-deno/stage-dto-validation
+SMOKE PASS native-deno/stage-serialization
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/read-search-local
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/json-command-local
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/rest-route-mix-local
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/stage-minimal
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/stage-routing-params
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/stage-singleton-di
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/stage-request-di
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/stage-body
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/stage-guards
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/stage-dto-validation
+[fluo-deno] Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+SMOKE PASS fluo-deno/stage-serialization
+SMOKE PASS native-workers/read-search-local
+SMOKE PASS native-workers/json-command-local
+SMOKE PASS native-workers/rest-route-mix-local
+SMOKE PASS native-workers/stage-minimal
+SMOKE PASS native-workers/stage-routing-params
+SMOKE PASS native-workers/stage-singleton-di
+SMOKE PASS native-workers/stage-request-di
+SMOKE PASS native-workers/stage-body
+SMOKE PASS native-workers/stage-guards
+SMOKE PASS native-workers/stage-dto-validation
+SMOKE PASS native-workers/stage-serialization
+SMOKE PASS fluo-workers/read-search-local
+SMOKE PASS fluo-workers/json-command-local
+SMOKE PASS fluo-workers/rest-route-mix-local
+SMOKE PASS fluo-workers/stage-minimal
+SMOKE PASS fluo-workers/stage-routing-params
+SMOKE PASS fluo-workers/stage-singleton-di
+SMOKE PASS fluo-workers/stage-request-di
+SMOKE PASS fluo-workers/stage-body
+SMOKE PASS fluo-workers/stage-guards
+SMOKE PASS fluo-workers/stage-dto-validation
+SMOKE PASS fluo-workers/stage-serialization
+SMOKE PASS native-nextjs/read-search-local
+SMOKE PASS native-nextjs/json-command-local
+SMOKE PASS native-nextjs/rest-route-mix-local
+SMOKE PASS native-nextjs/stage-minimal
+SMOKE PASS native-nextjs/stage-routing-params
+SMOKE PASS native-nextjs/stage-singleton-di
+SMOKE PASS native-nextjs/stage-request-di
+SMOKE PASS native-nextjs/stage-body
+SMOKE PASS native-nextjs/stage-guards
+SMOKE PASS native-nextjs/stage-dto-validation
+SMOKE PASS native-nextjs/stage-serialization
+SMOKE PASS fluo-nextjs/read-search-local
+SMOKE PASS fluo-nextjs/json-command-local
+SMOKE PASS fluo-nextjs/rest-route-mix-local
+SMOKE PASS fluo-nextjs/stage-minimal
+SMOKE PASS fluo-nextjs/stage-routing-params
+SMOKE PASS fluo-nextjs/stage-singleton-di
+SMOKE PASS fluo-nextjs/stage-request-di
+SMOKE PASS fluo-nextjs/stage-body
+SMOKE PASS fluo-nextjs/stage-guards
+SMOKE PASS fluo-nextjs/stage-dto-validation
+SMOKE PASS fluo-nextjs/stage-serialization
+FINAL_FOCUSED_EXIT=0

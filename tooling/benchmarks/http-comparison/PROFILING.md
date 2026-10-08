@@ -1,5 +1,13 @@
 # HTTP runtime profiling
 
+## #3910 측정 결과
+
+수집 범위, 원본 검증, 동일-runtime 비교, hotspot 재확인과 headroom 한계는
+[`results/profiling/REPORT.md`](results/profiling/REPORT.md)에 정리했다.
+[`manifest.json`](results/profiling/manifest.json)은 원본 해시와 분석 산출물을 연결한다.
+원본 archive는 로컬에 별도 보존하며 Git 요약만으로 raw 검증을 재현할 수는 없다.
+서버 최대 capacity와 성능 예산 PASS를 주장하지 않는다.
+
 ## 실행과 API
 
 이 엔진은 기존 `load`, `monitorServer`, `EvidenceJournal`과 canonical target launch를 사용한다. `src/run.ts`의 uninstrumented timing과 별도로 실행한다. 공개 package API는 추가하지 않는다.

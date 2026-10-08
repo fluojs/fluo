@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "kind": "hotspot-recapture-plan",
+  "sourceHead": "bd47ec3aa8d5479fca7fc0556acb18f6a1be203c",
+  "conditions": [
+    {
+      "target": "fluo-fastify",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    },
+    {
+      "target": "fluo-express",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    },
+    {
+      "target": "fluo-nodejs",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    },
+    {
+      "target": "fluo-bun",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    },
+    {
+      "target": "fluo-deno",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    },
+    {
+      "target": "fluo-workers",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    },
+    {
+      "target": "fluo-nextjs",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    },
+    {
+      "target": "native-deno",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    },
+    {
+      "target": "native-nextjs",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "mode": "cpu",
+      "warmupSeconds": 5,
+      "durationSeconds": 15,
+      "controlSeconds": 15
+    }
+  ],
+  "basis": "Recheck observed framework adapter/header and host CPU frames in all seven Fluo platforms; native Deno and Next separate controls qualify host-specific attribution.",
+  "primaryInputs": "primary-inputs-20261008.json",
+  "limits": [
+    "These are follow-up captures, never duplicate primary conditions.",
+    "No runtime changes or causal optimization result claimed.",
+    "Sample self shares and process-tree CPU remain separate metrics."
+  ]
+}
