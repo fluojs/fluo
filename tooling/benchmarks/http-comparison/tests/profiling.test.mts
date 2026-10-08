@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { before, test } from 'node:test';
 import { load } from '../src/load';
 import { selectProfileTargets } from '../src/profile';
@@ -9,6 +12,7 @@ import {
   type ProfileCapture, type ProfileRun, type StageTimingSample,
 } from '../src/profile-report';
 import { monitorServer } from '../src/resources';
+import { RawCapture, RuntimeCapture } from '../src/profiling';
 import { SCENARIOS, STAGE_SCENARIOS } from '../src/scenarios';
 import { TARGETS, targetLaunch } from '../src/targets';
 
@@ -274,6 +278,38 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
 
       // Then
       assert.equal(matched, 0, `${frame.url}:${frame.functionName}`);
+    }
+  });
+}
+
+for (const [name, expectedSource] of [
+  ['native-bun', 'Heap.garbageCollected'],
+  ['native-deno', '--v8-flags=--trace-gc'],
+  ['native-nodejs', '--trace-gc'],
+] as const) {
+  test(`RuntimeCapture.stop: ${name} GC diagnostics -> identifies actual collection source`, async () => {
+    // Given: model the inspector wire result, not the metadata under test.
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-gc-source-'));
+    const target = TARGETS.find((item) => item.name === name);
+    assert.ok(target);
+    const inspector = {
+      async call() {
+        return { result: { result: { value: JSON.stringify({
+          servingMs: 10, uptimeMs: 10, wallDelayMaxMs: 0, wallDelaySamples: 1, elapsedMs: 10,
+        }) } } };
+      },
+    };
+    const capture: unknown = Reflect.construct(RuntimeCapture, [target, inspector, new RawCapture(directory, directory)]);
+    assert.ok(capture instanceof RuntimeCapture);
+    try {
+      // When
+      const path = await capture.stop('gc-eventloop');
+
+      // Then
+      const profile = JSON.parse(await readFile(join(directory, path), 'utf8'));
+      assert.equal(profile.gcTraceSource, expectedSource);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
   });
 }

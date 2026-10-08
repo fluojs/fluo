@@ -251,7 +251,7 @@ export class RuntimeCapture {
         } else { profile = object((await this.inspector.call('HeapProfiler.stopSampling')).result).profile; this.format = 'v8-allocation'; }
         break;
       case 'gc-eventloop':
-        profile = { ...await this.evaluate(wallStop), gcEvents: this.gcEvents, gcTraceSource: this.target.platform === 'deno' ? '--v8-flags=--trace-gc' : '--trace-gc' };
+        profile = { ...await this.evaluate(wallStop), gcEvents: this.gcEvents, gcTraceSource: this.target.platform === 'bun' ? 'Heap.garbageCollected' : this.target.platform === 'deno' ? '--v8-flags=--trace-gc' : '--trace-gc' };
         if (['fastify', 'express', 'nodejs', 'nextjs'].includes(this.target.platform)) profile = { ...object(profile), node: await this.evaluate(nodeStop) };
         this.format = 'gc-eventloop';
         break;
