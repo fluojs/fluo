@@ -135,14 +135,18 @@ export async function captureCondition(input: {
         if (raw.failure) throw raw.failure;
       } finally {
         if (instrumented) session?.close();
-        await stopTargets(processes);
-        if (measured) runs.push({
-          ...measured, phase, instrumentation: instrumented ? condition.mode : 'none',
-          launcherPid: child.pid ?? 0, startedMs, endedMs,
-          launch: { command: launch.command, args: launch.args, cwd: launch.cwd, env: { BENCH_CONFIGURATION: plan.configuration, BENCH_APP_SHAPE: scenario.appShape, PORT: String(target.port), NEXT_TELEMETRY_DISABLED: '1', WRANGLER_SEND_METRICS: 'false' } },
-          exit: { code: child.exitCode, signal: child.signalCode },
-        });
+        try {
+          await stopTargets(processes);
+        } finally {
+          if (measured) runs.push({
+            ...measured, phase, instrumentation: instrumented ? condition.mode : 'none',
+            launcherPid: child.pid ?? 0, startedMs, endedMs,
+            launch: { command: launch.command, args: launch.args, cwd: launch.cwd, env: { BENCH_CONFIGURATION: plan.configuration, BENCH_APP_SHAPE: scenario.appShape, PORT: String(target.port), NEXT_TELEMETRY_DISABLED: '1', WRANGLER_SEND_METRICS: 'false' } },
+            exit: { code: child.exitCode, signal: child.signalCode },
+          });
+        }
       }
+      if (raw.failure) throw raw.failure;
     }
   } catch (error) {
     if (!(error instanceof Error)) throw error;

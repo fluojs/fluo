@@ -45,7 +45,7 @@ function fixture() {
   };
   const artifacts = [
     ['attempt/profile.json', 'profile', JSON.stringify(profile)],
-    ['attempt/subject.json', 'identity', JSON.stringify({ pid: 123, runtimePid: 123, isolateId: null, inspectorUrl: 'ws://127.0.0.1:1234' })],
+    ['attempt/subject.json', 'identity', JSON.stringify({ pid: 123, runtimePid: 123, isolateId: null, inspectorUrl: 'ws://127.0.0.1:1234', runtime: { node: '24' } })],
     ['attempt/provenance.json', 'build', provenance],
   ] as const;
   const runs = (['control-before', 'capture', 'control-after'] as const).map((phase): ProfileRun => ({
@@ -77,9 +77,9 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
       const request = { id: 1, callFrame: { functionName: 'readSearchLocal', url: 'shared/workloads.js' }, children: [] };
       const startup = { id: defect === 'duplicate' ? 1 : 2, callFrame: { functionName: 'bootstrap', url: 'startup.js' }, children: [] };
       const root = { id: 0, callFrame: { functionName: '(root)', url: '' } };
-      const sampleId = defect === 'dangling' ? 999 : 2;
+      const sampleId = defect === 'dangling' ? 999 : defect === 'duplicate' ? 1 : 2;
       const profile = format === 'v8-cpu'
-        ? { nodes: [{ ...root, children: defect === 'unreachable' ? [1] : [1, 2] }, request, startup],
+        ? { nodes: [{ ...root, children: defect === 'unreachable' || defect === 'duplicate' ? [1] : [1, 2] }, request, startup],
           samples: [1, sampleId], startTime: 0, endTime: 1000, timeDeltas: [0, 1000] }
         : { head: { ...root, children: [request, startup] },
           samples: [{ nodeId: 1, size: 64, ordinal: 1 }, { nodeId: sampleId, size: 64, ordinal: 2 }] };
@@ -97,11 +97,52 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
         assert.equal(requestSamples(profile, format), 1);
         assert.deepEqual(validateCapture(changed, raw), []);
       } else {
-        assert.throws(() => requestSamples(profile, format), /node|sample/i);
+        const expected = defect === 'duplicate'
+          ? format === 'v8-cpu' ? /Duplicate CPU node ID/ : /duplicate allocation node ID/
+          : defect === 'unreachable' ? /Unreachable CPU node/ : /sample refers to a missing node/;
+        assert.throws(() => requestSamples(profile, format), expected);
         assert.ok(validateCapture(changed, raw).includes('malformed-profile-or-identity'));
       }
     });
   }
+}
+
+test('serving runtime identity mismatch is rejected despite matching artifact hashes', () => {
+  const { capture, raw } = fixture();
+  const identityBytes = raw.get('attempt/subject.json');
+  assert.ok(identityBytes);
+  const identity = JSON.parse(Buffer.from(identityBytes).toString());
+  identity.runtime.node = '25';
+  const bytes = Buffer.from(JSON.stringify(identity));
+  raw.set('attempt/subject.json', bytes);
+  const changed = { ...capture, artifacts: capture.artifacts.map((artifact) => artifact.kind === 'identity'
+    ? { ...artifact, bytes: bytes.length, sha256: sha256(bytes) } : artifact) };
+  assert.ok(validateCapture(changed, raw).includes('serving-runtime-mismatch'));
+});
+
+for (const version of ['24', '25']) {
+  test(`profile completeness compares authenticated serving versions: ${version}`, () => {
+    const { capture, raw } = fixture();
+    assert.ok(capture.subject);
+    const artifacts = capture.artifacts.map((artifact) => {
+      const original = raw.get(artifact.path);
+      assert.ok(original);
+      const bytes = artifact.kind === 'identity'
+        ? Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(original).toString()), runtime: { node: version } }))
+        : original;
+      const path = artifact.path.replace('attempt/', 'second/');
+      raw.set(path, bytes);
+      return { ...artifact, path, bytes: bytes.byteLength, sha256: sha256(bytes) };
+    });
+    const second: ProfileCapture = {
+      ...capture, condition: { ...capture.condition, target: 'fluo-nodejs' },
+      subject: { ...capture.subject, runtime: { node: version } },
+      profilePath: 'second/profile.json', identityPath: 'second/subject.json', artifacts,
+    };
+    const result = profileCompleteness([capture, second], [capture.condition, second.condition], raw);
+    if (version === '24') assert.equal(result.status, 'complete');
+    else assert.ok(result.errors.includes('mixed-serving-runtime:nodejs'));
+  });
 }
 
 test('target selection supports every target and rejects unknown or duplicate entries', () => {

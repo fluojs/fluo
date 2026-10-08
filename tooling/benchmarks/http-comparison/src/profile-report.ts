@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { monitorServer } from './resources';
 import { SCENARIOS, STAGE_SCENARIOS } from './scenarios';
 import type { Platform } from './targets';
@@ -221,6 +222,12 @@ export function validateCapture(capture: ProfileCapture, raw: ReadonlyMap<string
     if (!identityBytes || (capture.status === 'supported' && !profileBytes)) throw new ProfileFailure('validity', 'Missing identity/profile bytes');
     const identity = object(JSON.parse(new TextDecoder().decode(identityBytes)));
     const subject = capture.subject;
+    const runtime = object(identity.runtime);
+    const runtimeVersion = capture.condition.platform === 'workers' ? runtime.version
+      : capture.condition.platform === 'bun' ? runtime.bun
+      : capture.condition.platform === 'deno' ? runtime.deno : runtime.node;
+    if (!isDeepStrictEqual(runtime, subject?.runtime) || typeof runtimeVersion !== 'string' || !runtimeVersion
+      || (capture.condition.platform === 'workers' && runtime.host !== 'workerd')) errors.push('serving-runtime-mismatch');
     if (!subject || subject.pid !== identity.pid || subject.launcherPid !== capture.runs[1]?.launcherPid
       || subject.inspectorUrl !== identity.inspectorUrl || subject.isolateId !== identity.isolateId
       || subject.kind !== (capture.condition.platform === 'workers' ? 'application-isolate' : 'process')
@@ -253,6 +260,16 @@ export function validateCapture(capture: ProfileCapture, raw: ReadonlyMap<string
 export function profileCompleteness(captures: readonly ProfileCapture[], required: readonly ProfileCondition[], raw: ReadonlyMap<string, Uint8Array>) {
   const byKey = new Map(captures.map((capture) => [conditionKey(capture.condition), capture]));
   const errors = captures.flatMap((capture) => validateCapture(capture, raw).map((error) => `${conditionKey(capture.condition)}:${error}`));
+  const runtimes = new Map<Platform, Set<unknown>>();
+  for (const capture of captures) {
+    const platform = capture.condition.platform;
+    const runtime = capture.subject?.runtime;
+    const versions = runtimes.get(platform) ?? new Set<unknown>();
+    versions.add(platform === 'workers' ? runtime?.version : platform === 'bun' ? runtime?.bun
+      : platform === 'deno' ? runtime?.deno : runtime?.node);
+    runtimes.set(platform, versions);
+  }
+  for (const [platform, versions] of runtimes) if (versions.size > 1) errors.push(`mixed-serving-runtime:${platform}`);
   if (byKey.size !== captures.length) errors.push('duplicate-condition');
   for (const condition of required) if (!byKey.has(conditionKey(condition))) errors.push(`missing:${conditionKey(condition)}`);
   if (captures.length !== required.length) errors.push('partial-or-extra-matrix');

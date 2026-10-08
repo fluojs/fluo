@@ -12,7 +12,13 @@ const activeTargets = new Set<ChildProcess>();
 
 for (const [signal, exitCode] of [['SIGINT', 130], ['SIGTERM', 143]] as const) {
   process.once(signal, () => {
-    void stopTargets([...activeTargets]).then(() => process.exit(exitCode));
+    void stopTargets([...activeTargets]).then(
+      () => process.exit(exitCode),
+      (error: Error) => {
+        process.stderr.write(`${error.message}\n`);
+        process.exit(exitCode);
+      },
+    );
   });
 }
 process.once('exit', () => {
@@ -150,52 +156,74 @@ export function startTargets(appShape: AppShape, targets: readonly TargetConfig[
   });
 }
 
-function waitForChildExit(child: ChildProcess, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return Promise.resolve();
-  }
-
+function waitForChildStop(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  const streams = [child.stdout, child.stderr].filter((stream) => stream !== null);
+  const stopped = (): boolean => (child.exitCode !== null || child.signalCode !== null)
+    && streams.every((stream) => stream.readableEnded && stream.closed);
+  if (stopped()) return Promise.resolve(true);
   return new Promise((resolve) => {
-    let timeout: NodeJS.Timeout | undefined;
-    const settle = (): void => {
-      if (timeout) {
-        clearTimeout(timeout);
+    const settle = (complete: boolean): void => {
+      clearTimeout(timeout);
+      child.removeListener('exit', check);
+      child.removeListener('close', check);
+      child.removeListener('error', failed);
+      for (const stream of streams) {
+        stream.removeListener('end', check);
+        stream.removeListener('close', check);
+        stream.removeListener('error', failed);
       }
-
-      child.removeListener('exit', settle);
-      resolve();
+      resolve(complete);
     };
-
-    timeout = setTimeout(settle, timeoutMs);
-    child.once('exit', settle);
+    const check = (): void => { if (stopped()) settle(true); };
+    const failed = (): void => settle(false);
+    const timeout = setTimeout(() => settle(false), timeoutMs);
+    child.on('exit', check);
+    child.on('close', check);
+    child.on('error', failed);
+    for (const stream of streams) {
+      stream.on('end', check);
+      stream.on('close', check);
+      stream.on('error', failed);
+    }
+    check();
   });
 }
 
 function signalTarget(child: ChildProcess, signal: NodeJS.Signals): void {
-  if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) {
+  if (child.pid === undefined) {
     return;
   }
 
   try {
     process.kill(-child.pid, signal);
   } catch {
-    child.kill(signal);
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
   }
 }
 
 export async function stopTargets(processes: readonly ChildProcess[]): Promise<void> {
+  const graceful = processes.map((child) => waitForChildStop(child, 1_500));
   for (const child of processes) {
     signalTarget(child, 'SIGTERM');
   }
-
-  await Promise.all(processes.map((child) => waitForChildExit(child, 1_500)));
-
-  for (const child of processes) {
+  const completed = await Promise.all(graceful);
+  const remaining = processes.filter((_child, index) => !completed[index]);
+  const forced = remaining.map((child) => waitForChildStop(child, 1_000));
+  for (const child of remaining) {
     signalTarget(child, 'SIGKILL');
   }
-
-  await Promise.all(processes.map((child) => waitForChildExit(child, 1_000)));
-  for (const child of processes) activeTargets.delete(child);
+  const forcedCompleted = await Promise.all(forced);
+  const failed = remaining.filter((_child, index) => !forcedCompleted[index]);
+  for (const child of processes) {
+    if (child.exitCode !== null || child.signalCode !== null) activeTargets.delete(child);
+  }
+  for (const child of failed) {
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+  }
+  if (failed.length > 0) {
+    throw new Error(`Target teardown timed out or output closed without draining: ${failed.map((child) => child.pid).join(', ')}`);
+  }
 }
 
 async function buildBunTarget(): Promise<void> {
