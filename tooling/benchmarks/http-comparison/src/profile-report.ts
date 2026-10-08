@@ -86,8 +86,13 @@ function requestFrame(value: unknown): boolean {
     || (name === '' && typeof line === 'number' && line >= 3);
   const fastRequest = /packages\/http\/(?:dist|src)\/dispatch\//.test(url)
     && /^(?:dispatch|dispatchMatchedRoute|runDispatchPipeline|tryFastPathExecution|executeFastPath|consumeFrameworkRequestNativeRouteHandoff)$/.test(name);
+  const nestRequest = /(?:^|\/)(?:src\/nestjs|dist\/nestjs\/nestjs)\/server\.[jt]s$/.test(url)
+    && /^(?:search|quote|project|tasks|task|preview|comments)$/.test(name);
+  const nestStageRequest = /(?:^|\/)(?:src\/shared|dist\/nestjs\/shared)\/nest-stages\.[jt]s$/.test(url)
+    && /^(?:read|canActivate|transform)$/.test(name);
   return /readSearchLocal|jsonCommandLocal|restRouteMixLocal|nativeResponse|nativeFetch/.test(name)
-    || (stage && stageHandler) || fastRequest || /(?:shared\/(?:workloads|native-app|fluo-app)|\.next\/server\/(?:app|chunks)|request-pipeline|request-execution)/.test(url);
+    || (stage && stageHandler) || fastRequest || nestRequest || nestStageRequest
+    || /(?:shared\/(?:workloads|native-app|fluo-app)|\.next\/server\/(?:app|chunks)|request-pipeline|request-execution)/.test(url);
 }
 export function requestSamples(profile: unknown, format: ProfileCapture['format']): number {
   const data = object(profile);

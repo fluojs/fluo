@@ -103,6 +103,64 @@ test('CPU validity rejects startup-only samples and accepts request stack ancest
   assert.throws(() => requestSamples({ ...profile, nodes: [{ ...profile.nodes[0], children: [1] }] }, 'v8-cpu'));
 });
 
+function nestRequestStack(callFrame: { readonly functionName: string; readonly url: string }, format: 'v8-cpu' | 'v8-allocation') {
+  const leaf = { id: 4, callFrame: { functionName: 'sort', url: '' }, children: [] };
+  const handler = { id: 3, callFrame, children: [leaf] };
+  const unrelated = { id: 5, callFrame: { functionName: 'main', url: 'unrelated/server.js' }, children: [] };
+  const router = { id: 2, callFrame: { functionName: '', url: 'node_modules/@nestjs/core/router/router-execution-context.js' }, children: [handler, unrelated] };
+  const head = { id: 1, callFrame: { functionName: '(root)', url: '' }, children: [router] };
+  const samples = [1, 2, 3, 4, 4, 5];
+  return format === 'v8-cpu'
+    ? { nodes: [head, router, handler, leaf, unrelated].map((node) => ({ ...node, children: node.children.map((child) => child.id) })), samples }
+    : { head, samples: samples.map((nodeId, index) => ({ nodeId, size: 64, ordinal: index + 1 })) };
+}
+
+for (const format of ['v8-cpu', 'v8-allocation'] as const) {
+  test(`requestSamples: legitimate Nest handlers in ${format} -> count handler and descendants only`, () => {
+    // Given
+    const frames = [
+      ...['src/nestjs/server.ts', 'file:///benchmark/dist/nestjs/nestjs/server.js'].flatMap((url) =>
+        ['search', 'quote', 'project', 'tasks', 'task', 'preview', 'comments'].map((functionName) => ({ functionName, url }))),
+      ...['src/shared/nest-stages.ts', '/benchmark/dist/nestjs/shared/nest-stages.js'].flatMap((url) =>
+        ['read', 'canActivate', 'transform'].map((functionName) => ({ functionName, url }))),
+    ];
+    for (const callFrame of frames) {
+      const profile = nestRequestStack(callFrame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 3, `${callFrame.url}:${callFrame.functionName}`);
+    }
+  });
+
+  test(`requestSamples: Nest startup and unrelated frames in ${format} -> reject all samples`, () => {
+    // Given
+    const frames = [
+      ...['src/nestjs/server.ts', '/benchmark/dist/nestjs/nestjs/server.js',
+        'src/shared/nest-stages.ts', '/benchmark/dist/nestjs/shared/nest-stages.js'].flatMap((url) =>
+        ['main', 'bootstrap', 'create', 'constructor', 'resolveAppModule', 'resolveNestStageModule', 'descriptor', 'unrelated', ''].map((functionName) => ({ functionName, url }))),
+      ...['unrelated/server.js', '/benchmark/src/nestjs/server.ts.backup', '/benchmark/dist/nestjs/nestjs/server.js.map',
+        '/benchmark/dist/other/nestjs/server.js', 'node_modules/@nestjs/core/nest-factory.js',
+        'node_modules/fastify/fastify.js'].flatMap((url) =>
+        ['search', 'quote', 'project', 'tasks', 'task', 'preview', 'comments', 'read', 'canActivate', 'transform'].map((functionName) => ({ functionName, url }))),
+      { functionName: 'read', url: 'src/nestjs/server.ts' },
+      { functionName: 'search', url: 'src/shared/nest-stages.ts' },
+      { functionName: 'transform', url: 'unrelated/shared/nest-stages.js' },
+    ];
+    for (const callFrame of frames) {
+      const profile = nestRequestStack(callFrame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0, `${callFrame.url}:${callFrame.functionName}`);
+    }
+  });
+}
+
 test('JSC stacks and heap snapshots remain separate evidence formats', () => {
   // Given
   const profile = { stackTraces: [{ stackFrames: [{ name: 'readSearchLocal', url: 'workloads.js' }] }] };
