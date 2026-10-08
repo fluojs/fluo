@@ -3,6 +3,8 @@
 
 # Chapter 15. Guards and Passport Strategies
 
+Current canonical ownership: general identity and account-linking policy belong to `@fluojs/auth`, HTTP strategies/guards/bearer/cookie/refresh integration to `@fluojs/auth-http`, JWT crypto and rotation/replay to `@fluojs/jwt`, and Passport.js action binding to `@fluojs/passport`. Passport imports below remain compatibility examples. New code imports `AuthModule` from auth-http; alias it if an application class has that name. Existing HTTP AuthStrategy GuardContext input, scope checks and optional/handled outcomes are unchanged. See [ownership migration](../../docs/getting-started/migrate-auth-ownership.md).
+
 <!-- fluo:docs-navigation:start -->
 > **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
 >

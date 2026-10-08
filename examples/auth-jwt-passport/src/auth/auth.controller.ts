@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { Controller, Get, Post, RequestDto, type RequestContext } from '@fluojs/http';
-import { RequireScopes, UseAuth } from '@fluojs/passport';
+import { RequireScopes, UseAuth } from '@fluojs/auth-http';
 
 import { LoginDto } from './login.dto';
 import { AuthService } from './auth.service';

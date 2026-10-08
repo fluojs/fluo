@@ -1,5 +1,7 @@
 # fluo — AI Context Document
 
+Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.
+
 Background HTTP interactions use the existing `useForm` with additive
 `mode: 'background'` and `method: 'get' | 'post'`; omitted options retain legacy
 navigation POST/busy skipping. The [form owner](./contracts/react-progressive-forms.md)

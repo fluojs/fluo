@@ -17,7 +17,8 @@
     "@fluojs/passport": "workspace:*",
     "@fluojs/platform-fastify": "workspace:*",
     "@fluojs/runtime": "workspace:*",
-    "@fluojs/validation": "workspace:*"
+    "@fluojs/validation": "workspace:*",
+    "@fluojs/auth-http": "workspace:*"
   },
   "devDependencies": {
     "@fluojs/testing": "workspace:*"

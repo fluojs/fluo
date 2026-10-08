@@ -1,5 +1,7 @@
 # package chooser — 작업에 맞는 패키지 고르기
 
+일반 identity·인증 결과·account-linking 정책은 `@fluojs/auth`, HTTP guard·strategy·credential·refresh integration은 `@fluojs/auth-http`, crypto와 rotation/replay는 `@fluojs/jwt`, Passport.js bridge는 `@fluojs/passport`가 소유합니다. 기존 Passport 예제와 import는 compatibility 경로이며 canonical HTTP 등록은 auth-http의 `AuthModule.forRoot(...)`입니다.
+
 <p><a href="./package-chooser.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 > 현재 `fluo new`가 실제로 무엇을 스캐폴딩하는지 찾고 있다면 [fluo new 지원 매트릭스](./fluo-new-support-matrix.ko.md)를 확인하세요. 이 chooser는 현재 스타터 프리셋만이 아니라 더 넓은 패키지 생태계를 다룹니다.
@@ -76,6 +78,8 @@
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | JWT 서명과 검증이 필요함 | `@fluojs/jwt` | 토큰 발급, 검증, principal 정규화에 사용합니다. |
+| 일반 identity와 인증·account-linking 정책이 필요함 | `@fluojs/auth` | HTTP나 JWT를 로드하지 않는 neutral root입니다. |
+| HTTP 인증과 scope 판정이 필요함 | `@fluojs/auth-http` | AuthModule, guard, bearer/cookie와 refresh 교환을 사용합니다. |
 | Passport 전략 통합이 필요함 | `@fluojs/passport` | Passport 기반 인증 흐름을 연결할 때 사용합니다. |
 | 요청 제한이 필요함 | `@fluojs/throttler` | 속도 제한과 가드 단계 강제에 사용합니다. |
 

@@ -4,6 +4,8 @@ description: How @fluojs/http turns decorated controllers into a request pipelin
 package: "@fluojs/http"
 ---
 
+`Principal` is declared by `@fluojs/auth` and re-exported here with the same mutable contract. Authentication guards, credentials and challenges belong to `@fluojs/auth-http`; HTTP does not depend back on that integration.
+
 `@fluojs/http` is the HTTP execution layer of fluo. It owns everything that happens between a parsed request and a written response: route metadata, DTO binding, validation, guards, interceptors, content negotiation, error serialization, and request-scoped lifecycle. It does not own a socket. Listening on a port is an adapter's job (`@fluojs/platform-nodejs`, Fastify, Express, or a fetch-style host), and application assembly is `@fluojs/runtime`'s job. This split is the package's central design decision: the same controllers run behind a Node listener in production and behind `Test.createApp(...)` in tests, and the same route metadata runs on a laptop and on a worker runtime.
 
 There is no `HttpModule.forRoot(...)`. HTTP is not a module; it is the pipeline that every module's controllers plug into. You decorate classes, register them as `controllers` in a module, and hand the root module to `FluoFactory.create(AppModule, { adapter })`. If you find yourself looking for an HTTP module factory, the piece you are missing is the runtime bootstrap, not this package.

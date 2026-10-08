@@ -2,6 +2,8 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./release-governance.md"><kbd>English</kbd></a></p>
 
+auth/auth-http 분리는 기존 Passport·HTTP Principal·JwtPrincipal import와 class/error/DI identity를 유지하는 additive release입니다. 새 패키지는 Changesets로 versioning하며 기존 패키지의 import 제거·strategy signature 강제 변경·Principal 축소에는 별도의 major 승인과 migration 계약이 필요합니다.
+
 ## Stability Tiers
 
 | Tier | Version window | Release rule | Contract level |
@@ -66,6 +68,9 @@ changeset에 없는 패키지는 해당 릴리스에서 version이 올라가거�
 Prerelease workflow는 Changesets prerelease mode(`changeset pre enter <tag>`)를 사용합니다. 필요할 때 dedicated branch에서 prerelease mode에 진입하고, stable 릴리스 전에 `changeset pre exit`로 종료합니다.
 
 ## intended publish surface
+
+- `@fluojs/auth`
+- `@fluojs/auth-http`
 
 - `@fluojs/cache-manager`
 - `@fluojs/cli`

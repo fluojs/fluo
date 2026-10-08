@@ -151,10 +151,12 @@
         },
         {
           "number": 14,
-          "slug": "ch14-authentication",
+"slug": "ch14-authentication",
           "title": "로그인 상태를 검증하기",
           "part": 4,
           "packages": [
+            "@fluojs/auth",
+            "@fluojs/auth-http",
             "@fluojs/jwt",
             "@fluojs/passport"
           ],

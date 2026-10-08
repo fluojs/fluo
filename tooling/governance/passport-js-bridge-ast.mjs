@@ -116,7 +116,7 @@ export function enforcePassportBridgeSourceAst(readText) {
     fail(bridgePath, 'must return the matching named adapter registration');
   }
 
-  const modulePath = 'packages/passport/src/module.ts';
+  const modulePath = 'packages/auth-http/src/module.ts';
   const moduleSource = parseSource(modulePath, readText(modulePath));
   const registryFactory = moduleSource.statements.find((statement) =>
     ts.isFunctionDeclaration(statement) && statement.name?.text === 'createStrategyRegistry');

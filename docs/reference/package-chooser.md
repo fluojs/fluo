@@ -1,5 +1,7 @@
 # package chooser — pick packages by task
 
+Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.
+
 <p><strong><kbd>English</kbd></strong> <a href="./package-chooser.ko.md"><kbd>한국어</kbd></a></p>
 
 > Looking for what `fluo new` actually scaffolds today? See the [fluo new support matrix](./fluo-new-support-matrix.md). This chooser covers the broader package ecosystem, not just current starter presets.
@@ -76,6 +78,8 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need JWT signing and verification | `@fluojs/jwt` | Use for token issuance, verification, and principal normalization. |
+| Need neutral identity and authentication/account-linking policy | `@fluojs/auth` | No HTTP or JWT integration at the root. |
+| Need HTTP authentication and scopes | `@fluojs/auth-http` | Use AuthModule, guards, bearer/cookie and refresh exchange. |
 | Need Passport strategy integration | `@fluojs/passport` | Use when bridging Passport-based auth flows. |
 | Need request throttling | `@fluojs/throttler` | Use for rate limiting and guard-stage enforcement. |
 

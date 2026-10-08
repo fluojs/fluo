@@ -4,7 +4,7 @@
 
 ## Support matrix
 
-Node floor는 역할별로 분류됩니다. 순수 runtime인 32개 Node-bound public package([`@fluojs/platform-fastify`](../../packages/platform-fastify/README.ko.md) 포함)는 `engines.node: ">=24.0.0 <27"`을 유지합니다. Babel 8 compiler tooling package인 [`@fluojs/cli`](../../packages/cli/README.ko.md), [`@fluojs/vite`](../../packages/vite/README.ko.md), [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.ko.md)와 private root workspace, examples, 생성 Node toolchain 프로젝트는 `engines.node: ">=24.11.0 <27"`으로 올립니다. Babel 8은 upstream에서 Node `^22.18.0 || >=24.11.0`을 요구하고 fluo는 Node 22를 계속 제외하기 때문입니다. 컴파일하지 않는 package에 대해 exact Node `24.0.0`은 여전히 지원되는 runtime floor입니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
+Node floor는 역할별로 분류됩니다. 순수 runtime인 34개 Node-bound public package([`@fluojs/platform-fastify`](../../packages/platform-fastify/README.ko.md) 포함)는 `engines.node: ">=24.0.0 <27"`을 유지합니다. Babel 8 compiler tooling package인 [`@fluojs/cli`](../../packages/cli/README.ko.md), [`@fluojs/vite`](../../packages/vite/README.ko.md), [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.ko.md)와 private root workspace, examples, 생성 Node toolchain 프로젝트는 `engines.node: ">=24.11.0 <27"`으로 올립니다. Babel 8은 upstream에서 Node `^22.18.0 || >=24.11.0`을 요구하고 fluo는 Node 22를 계속 제외하기 때문입니다. 컴파일하지 않는 package에 대해 exact Node `24.0.0`은 여전히 지원되는 runtime floor입니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |

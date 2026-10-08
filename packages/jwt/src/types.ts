@@ -1,3 +1,4 @@
+import type { Principal } from '@fluojs/auth';
 import type { KeyObject } from 'node:crypto';
 
 import type { RefreshTokenOptions } from './refresh/refresh-token.js';
@@ -72,14 +73,7 @@ export interface JwtClaims extends Record<string, unknown> {
 /**
  * Describes the jwt principal contract.
  */
-export interface JwtPrincipal {
-  subject: string;
-  issuer?: string;
-  audience?: string | string[];
-  roles?: string[];
-  scopes?: string[];
-  claims: Record<string, unknown>;
-}
+export interface JwtPrincipal extends Principal {}
 
 /**
  * Describes the jwt verifier contract.

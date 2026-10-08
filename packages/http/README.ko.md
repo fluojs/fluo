@@ -1,5 +1,7 @@
 # @fluojs/http
 
+`Principal`의 선언 소유자는 `@fluojs/auth`이며 HTTP는 같은 mutable 계약을 re-export합니다. 인증 guard·credential·challenge는 `@fluojs/auth-http`가 소유하므로 HTTP에서 integration으로 역의존하지 않습니다.
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Node.js 지원 및 마이그레이션](../../docs/reference/node-support.ko.md)을 참조하세요.

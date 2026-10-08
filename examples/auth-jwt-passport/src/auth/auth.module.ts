@@ -5,10 +5,10 @@ import {
   BearerJwtStrategy,
   createBearerJwtStrategyRegistration,
   createRefreshTokenStrategyRegistration,
-  PassportModule,
+  AuthModule as HttpAuthModule,
   REFRESH_TOKEN_STRATEGY_NAME,
   RefreshTokenModule,
-} from '@fluojs/passport';
+} from '@fluojs/auth-http';
 
 import { AuthController, ProfileController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -31,7 +31,7 @@ import { AuthService } from './auth.service';
       secret: 'fluo-auth-example-secret',
     }),
     RefreshTokenModule.forRoot(),
-    PassportModule.forRoot(
+    HttpAuthModule.forRoot(
       { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
       [createBearerJwtStrategyRegistration(), createRefreshTokenStrategyRegistration()],
     ),
