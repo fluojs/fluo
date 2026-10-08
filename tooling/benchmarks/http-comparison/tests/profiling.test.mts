@@ -103,7 +103,7 @@ test('CPU validity rejects startup-only samples and accepts request stack ancest
   assert.throws(() => requestSamples({ ...profile, nodes: [{ ...profile.nodes[0], children: [1] }] }, 'v8-cpu'));
 });
 
-function nestRequestStack(callFrame: { readonly functionName: string; readonly url: string }, format: 'v8-cpu' | 'v8-allocation') {
+function requestStack(callFrame: { readonly functionName: string; readonly url: string }, format: 'v8-cpu' | 'v8-allocation') {
   const leaf = { id: 4, callFrame: { functionName: 'sort', url: '' }, children: [] };
   const handler = { id: 3, callFrame, children: [leaf] };
   const unrelated = { id: 5, callFrame: { functionName: 'main', url: 'unrelated/server.js' }, children: [] };
@@ -125,7 +125,7 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
         ['read', 'canActivate', 'transform'].map((functionName) => ({ functionName, url }))),
     ];
     for (const callFrame of frames) {
-      const profile = nestRequestStack(callFrame, format);
+      const profile = requestStack(callFrame, format);
 
       // When
       const matched = requestSamples(profile, format);
@@ -150,13 +150,90 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
       { functionName: 'transform', url: 'unrelated/shared/nest-stages.js' },
     ];
     for (const callFrame of frames) {
-      const profile = nestRequestStack(callFrame, format);
+      const profile = requestStack(callFrame, format);
 
       // When
       const matched = requestSamples(profile, format);
 
       // Then
       assert.equal(matched, 0, `${callFrame.url}:${callFrame.functionName}`);
+    }
+  });
+}
+
+for (const format of ['v8-cpu', 'v8-allocation'] as const) {
+  test(`requestSamples: verified Deno bundle request frames in ${format} -> count descendants without siblings`, () => {
+    // Given
+    const names = [
+      'search', 'quote', 'project', 'tasks', 'task', 'preview', 'comments',
+      'createDeferredWebFrameworkRequest', 'createDispatchRequest', 'createDispatchContext',
+      'startWebRequestDispatch', 'writeSuccessResponse', 'runWithRequestContext',
+      'dispatchMatchedRoute', 'runDispatchPipeline', 'tryFastPathExecution', 'executeFastPath',
+      'canActivate', 'serviceResult', 'bodyFields', 'serializedStage',
+    ];
+    for (const url of ['dist/fluo-deno/server.mjs', 'file:///benchmark/dist/fluo-deno/server.mjs']) {
+      for (const functionName of names) {
+        const profile = requestStack({ functionName, url }, format);
+
+        // When
+        const matched = requestSamples(profile, format);
+
+        // Then
+        assert.equal(matched, 3, `${url}:${functionName}`);
+      }
+    }
+  });
+
+  test(`requestSamples: Deno bundle startup or ambiguous frames in ${format} -> reject all samples`, () => {
+    // Given
+    const frames = [
+      ...['dist/fluo-deno/server.mjs', 'file:///benchmark/dist/fluo-deno/server.mjs'].flatMap((url) =>
+        ['main', 'bootstrap', 'create', 'constructor', 'createDispatcher', 'resolveAppModule',
+          'resolveStageModule', 'createNativeStage', 'read', 'handle', 'unrelated', '', 'searchOther'].map((functionName) => ({ functionName, url }))),
+      ...['unrelated/server.mjs', 'server.js', 'src/fluo-deno/server.ts',
+        'dist/other/fluo-deno/server.mjs', 'dist/fluo-deno/server.mjs.map',
+        'dist/fluo-deno/server.mjs.backup', 'dist/fluo-deno/other.mjs'].flatMap((url) =>
+        ['search', 'read', 'createDispatchContext', 'executeFastPath', 'canActivate', 'serviceResult'].map((functionName) => ({ functionName, url }))),
+    ];
+    for (const callFrame of frames) {
+      const profile = requestStack(callFrame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0, `${callFrame.url}:${callFrame.functionName}`);
+    }
+  });
+
+  test(`requestSamples: bundled stage read beneath dispatch in ${format} -> exclude startup sibling`, () => {
+    // Given
+    const profile = requestStack({ functionName: 'executeFastPath', url: 'dist/fluo-deno/server.mjs' }, format);
+    const callFrame = { functionName: 'read', url: 'dist/fluo-deno/server.mjs' };
+    if (profile.nodes !== undefined) profile.nodes[3].callFrame = callFrame;
+    else profile.head.children[0].children[0].children[0].callFrame = callFrame;
+
+    // When
+    const matched = requestSamples(profile, format);
+
+    // Then
+    assert.equal(matched, 3);
+  });
+
+  test(`requestSamples: preserved Workers and Next bundle request ancestry in ${format} -> remains recognized`, () => {
+    // Given
+    const frames = [
+      { functionName: 'nativeFetch', url: 'server.js' },
+      { functionName: 'tB', url: 'file:///benchmark/nextjs/native/.next/server/chunks/[root-of-the-server]__1jnewc0._.js' },
+    ];
+    for (const callFrame of frames) {
+      const profile = requestStack(callFrame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 3);
     }
   });
 }

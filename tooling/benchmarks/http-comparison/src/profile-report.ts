@@ -90,8 +90,12 @@ function requestFrame(value: unknown): boolean {
     && /^(?:search|quote|project|tasks|task|preview|comments)$/.test(name);
   const nestStageRequest = /(?:^|\/)(?:src\/shared|dist\/nestjs\/shared)\/nest-stages\.[jt]s$/.test(url)
     && /^(?:read|canActivate|transform)$/.test(name);
+  // Bundling removes package paths and may inline workload helpers. Ambiguous
+  // read/handle and anonymous frames still require a verified request ancestor.
+  const denoBundleRequest = /(?:^|\/)dist\/fluo-deno\/server\.mjs$/.test(url)
+    && /^(?:search|quote|project|tasks|task|preview|comments|createDeferredWebFrameworkRequest|createDispatchRequest|createDispatchContext|startWebRequestDispatch|writeSuccessResponse|runWithRequestContext|dispatchMatchedRoute|runDispatchPipeline|tryFastPathExecution|executeFastPath|canActivate|serviceResult|bodyFields|serializedStage)$/.test(name);
   return /readSearchLocal|jsonCommandLocal|restRouteMixLocal|nativeResponse|nativeFetch/.test(name)
-    || (stage && stageHandler) || fastRequest || nestRequest || nestStageRequest
+    || (stage && stageHandler) || fastRequest || nestRequest || nestStageRequest || denoBundleRequest
     || /(?:shared\/(?:workloads|native-app|fluo-app)|\.next\/server\/(?:app|chunks)|request-pipeline|request-execution)/.test(url);
 }
 export function requestSamples(profile: unknown, format: ProfileCapture['format']): number {
