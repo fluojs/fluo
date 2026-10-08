@@ -575,19 +575,37 @@ function createExpressRequestResponseFactory(
 }
 
 function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkResponse {
-  const headers = Object.fromEntries(
-    Object.entries(response.getHeaders())
-      .filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined)
-      .map(([name, value]) => [name, typeof value === 'number' ? String(value) : value]),
-  );
+  const headerSnapshot = response.getHeaders();
+  let headers: FrameworkResponse['headers'] | undefined;
+  let stream: FrameworkResponseStream | undefined;
+  let streamInitialized = false;
 
   let frameworkResponse: ExpressFrameworkResponse;
   frameworkResponse = {
     committed: response.headersSent || response.writableEnded,
     earlyHints: createNodeEarlyHintsCapability(response, () => frameworkResponse.committed),
-    headers,
+    get headers() {
+      return headers ??= Object.fromEntries(
+        Object.entries(headerSnapshot)
+          .filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined)
+          .map(([name, value]) => [name, typeof value === 'number' ? String(value) : value]),
+      );
+    },
+    set headers(value) {
+      headers = value;
+    },
     raw: response,
-    stream: createFrameworkResponseStream(response),
+    get stream() {
+      if (!streamInitialized) {
+        stream = createFrameworkResponseStream(response);
+        streamInitialized = true;
+      }
+      return stream;
+    },
+    set stream(value) {
+      stream = value;
+      streamInitialized = true;
+    },
     redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('Location', location);
@@ -641,12 +659,12 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
       if (lowerName === 'set-cookie') {
         const merged = mergeSetCookieHeader(response.getHeader(name), value);
         response.setHeader(name, merged);
-        this.headers[name] = merged;
+        (headers ?? headerSnapshot)[name] = merged;
         return;
       }
 
       response.setHeader(name, value);
-      this.headers[name] = value;
+      (headers ?? headerSnapshot)[name] = value;
     },
     setStatus(code: number) {
       response.status(code);
