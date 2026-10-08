@@ -10,7 +10,7 @@ const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 const workspaceRoot = resolve(packageRoot, '../..');
 const fixtureRoots: string[] = [];
 
-function createPhysicalPackageRoot(root: string, name: 'core' | 'react'): string {
+function createPhysicalPackageRoot(root: string, name: 'core' | 'persistence' | 'react'): string {
   const packageDirectory = join(root, 'node_modules', '@fluojs', name);
   const sourceDirectory = join(workspaceRoot, 'packages', name);
 
@@ -31,6 +31,7 @@ function runPhysicalCopyFixture(source: string): void {
   symlinkSync(join(packageRoot, 'node_modules', 'react-dom'), join(root, 'node_modules', 'react-dom'), 'dir');
 
   for (const copyRoot of [copyARoot, copyBRoot]) {
+    createPhysicalPackageRoot(copyRoot, 'persistence');
     createPhysicalPackageRoot(copyRoot, 'core');
     createPhysicalPackageRoot(copyRoot, 'react');
     mkdirSync(join(copyRoot, 'node_modules'), { recursive: true });

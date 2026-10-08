@@ -34,7 +34,7 @@ const boundary: TransactionBoundaryOptions<PublishResult> = {
 
 Pass it last to Prisma/Drizzle `transaction` or `requestTransaction`. Mongoose
 accepts it without adding a native-options argument. Follow the
-[transaction context contract](/docs/architecture/transactions) and ORM APIs for
+[transaction context contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/transactions.md) and ORM APIs for
 native observer registration. Omission never infers rollback from a value's shape.
 
 The same owner preserves its first nested failure. Root Result recovery requires
