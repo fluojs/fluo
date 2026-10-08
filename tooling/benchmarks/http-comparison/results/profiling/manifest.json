@@ -395,8 +395,8 @@
         "inputDigest": "11bff16e264ecc10978581177bd86dd26b714e35fd0f4da63e43758dfa63458b"
       }
     },
-    "latestValidatorHead": "feea7bcb3431c28fee9d2cf60b977762efa4d8b2",
-    "latestRawAudit": "primary-raw-audit-recovered-runtime-20261009.log",
+    "latestValidatorHead": "99c38ea7feb8f48af4116c8009d210afcb86b4ff",
+    "latestRawAudit": "primary-raw-audit-subject-runtime-20261009.log",
     "selectedSources": {
       "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921": {
         "head": "b02cde867cab4b9dd2dc7824f8c5ee177639899b",
@@ -426,31 +426,32 @@
     "collectorEnvironmentGroups": 1,
     "servingRuntimes": {
       "nodejs": [
-        "v24.20.0"
+        "24.20.0"
       ],
       "fastify": [
-        "v24.20.0"
+        "24.20.0"
       ],
       "express": [
-        "v24.20.0"
+        "24.20.0"
       ],
       "bun": [
         "1.4.2"
       ],
       "deno": [
-        "deno 2.9.7 (stable, release, aarch64-apple-darwin)\nv8 15.0.245.2-rusty\ntypescript 6.0.3"
+        "2.9.7"
       ],
       "workers": [
-        "v24.20.0"
+        "workerd 2025-06-04"
       ],
       "nextjs": [
-        "v24.20.0"
+        "24.20.0"
       ]
     },
     "installedBunVersions": [
       "1.4.0",
       "1.4.2"
-    ]
+    ],
+    "servingRuntimeSource": "hash-validated subject.json, deep-compared with capture.subject.runtime"
   },
   "hotspotConfirmation": {
     "expected": 9,
@@ -477,7 +478,7 @@
   },
   "focusedVerification": {
     "tests": {
-      "passed": 131,
+      "passed": 138,
       "failed": 0
     },
     "typecheckExit": 0,
@@ -489,13 +490,29 @@
       "requestsPerReceipt": 25,
       "trafficErrors": 0,
       "sourceHead": "bd47ec3aa8d5479fca7fc0556acb18f6a1be203c",
-      "runtimeAndFixtureDeltaAfterSmoke": "none; collector parsing, validation, metadata and allocation snapshot priming only"
+      "runtimeAndFixtureDeltaAfterSmoke": "Serving fixtures unchanged; collector and target teardown changed and16 additional actual host shutdowns passed"
     },
     "commandExit": 0,
     "fullLocalCi": "not-required: no CI execution/configuration changes",
     "lint": {
-      "files": 38,
+      "files": 40,
       "exit": 0
+    },
+    "fixturePortFollowup": {
+      "head": "284722175f71a9638968647e54bcbc12249b2b9d",
+      "testsPassed": 4,
+      "failed": 0,
+      "typecheckExit": 0,
+      "change": "test-only distinct HTTP/inspector port reservation"
+    },
+    "teardownSmoke": {
+      "sourceHead": "99c38ea7feb8f48af4116c8009d210afcb86b4ff",
+      "targets": 16,
+      "requestsPerTarget": 25,
+      "stdoutStderrDrained": true,
+      "forcedKill": false,
+      "reusedBuilds": true,
+      "receipt": "teardown-host-smoke-20261009.json"
     }
   },
   "derivedArtifacts": [
@@ -556,8 +573,8 @@
     },
     {
       "path": "REPORT.md",
-      "bytes": 11011,
-      "sha256": "853dd0a82c3a4ef8c29eab9095b594affd2623795d3ce6f18eaaeea4d269e250"
+      "bytes": 12059,
+      "sha256": "c732b5cd09ddccf57cccfc2a2a2d458d36117923622821b2787bc21fe8e499cb"
     },
     {
       "path": "final-correctness-smoke-20261008.json",
@@ -613,6 +630,41 @@
       "path": "primary-metrics-recovered-20261009.log",
       "bytes": 1148329,
       "sha256": "c0e52f2eea6fbd36f7fb0b62e4434faeee1080b25f4772cda402cbaf3c01eccc"
+    },
+    {
+      "path": "primary-raw-audit-subject-runtime-20261009.log",
+      "bytes": 419288,
+      "sha256": "07593d0049e0aaf0082e21d548b6a5081ac3f94800b5f25afc6fb47fd5ad96de"
+    },
+    {
+      "path": "final-runtime-teardown-checks-20261009.log",
+      "bytes": 17905,
+      "sha256": "9b6e35b79b510045174e99962bca81eb45cfb7e67910359d24caf1250aad2ff9"
+    },
+    {
+      "path": "teardown-port-pair-focused-20261009.log",
+      "bytes": 777,
+      "sha256": "42b6d9978992eb327a40e4e153c1a436a6e07689d82024d0f0f1311e53112d91"
+    },
+    {
+      "path": "teardown-host-smoke-20261009.json",
+      "bytes": 66592,
+      "sha256": "0f0239533079daef2bff23c83866335b3eb2e96489145fd76022777c12968ab2"
+    },
+    {
+      "path": "duplicate-mutation-20261009.log",
+      "bytes": 1902,
+      "sha256": "2880dc2cb5d954820431f83c31aba13d872785255c9469a6e50d001003c1fb1f"
+    },
+    {
+      "path": "runtime-identity-focused-20261009.log",
+      "bytes": 6491,
+      "sha256": "49bfdbff6c081000169d526cbbe4d10ed626aa6fa3e98e360cd93308578cb3ed"
+    },
+    {
+      "path": "teardown-red-20261009.log",
+      "bytes": 3624,
+      "sha256": "567d1cd43b2c22a80232d609151d61f0e6484e0bcd4f28cb0b84ee499d12ba3b"
     }
   ],
   "rawArchive": {
@@ -882,7 +934,7 @@
     "No public raw download exists yet; audit commands require the preserved raw archive contents.",
     "Historical Bun GC raw gcTraceSource label incorrectly says --trace-gc; actual JSC event source is authenticated by protocol/launch and corrected in derived metrics, without mutating raw bytes.",
     "112 allocation snapshots with 531 dangling samples remain preserved but superseded by strictly validated recovery captures. Priming may include profiler serialization overhead after measured traffic.",
-    "Installed Bun metadata changed 1.4.0 to 1.4.2 only for non-Bun recovery; serving Bun remains 1.4.0. See per-runtime identities rather than assuming one global environment metadata group."
+    "Installed runtime metadata is separate from serving identity. Actual Bun1.4.2, Deno2.9.7, Node24.20.0 and workerd2025-06-04 are authenticated by saved subjects; earlier Bun1.4.0 serving claim was incorrect."
   ],
   "failedAttemptsPreserved": [
     {
@@ -3210,7 +3262,7 @@
       "reason": "malformed-profile-or-identity"
     }
   ],
-  "collectorHeadAtLatestFocusedChecks": "feea7bcb3431c28fee9d2cf60b977762efa4d8b2",
+  "collectorHeadAtLatestFocusedChecks": "99c38ea7feb8f48af4116c8009d210afcb86b4ff",
   "supplementaryRawArchive": {
     "path": "/Users/ayden/Documents/fluo/.omo/3910-allocation-recovery-20261009.tar.gz",
     "bytes": 1300498419,

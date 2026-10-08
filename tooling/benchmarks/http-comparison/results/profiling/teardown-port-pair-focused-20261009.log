@@ -1,0 +1,17 @@
+✔ captureCondition: final control shutdown overflows raw limit -> journals failed capture (9383.692458ms)
+✔ stopTargets: shutdown parent with descendant-held pipes -> drains or reports failure (1558.38775ms)
+✔ stopTargets: exited parent with descendant-held pipes -> drains or reports failure (1596.417083ms)
+✔ stopTargets: escaped parent with descendant-held pipes -> drains or reports failure (2599.773959ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15319.657084
+
+> @fluojs-internal/tooling-benchmarks-http@0.0.0 typecheck /Users/ayden/Documents/fluo/.worktrees/issue-3910/tooling/benchmarks/http-comparison
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p nestjs/tsconfig.json
+
+PORT_PAIR_CHECK_EXIT=0

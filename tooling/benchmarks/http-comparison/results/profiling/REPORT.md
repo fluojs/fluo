@@ -9,12 +9,12 @@
 | 증거 | 결과 | 원본 연결 |
 | --- | --- | --- |
 | 비계측 timing | 16 targets × 11 scenarios × 2 configurations × 2 concurrency × 3 repeats = 2,112 samples | `timing-collection-audit-20261008.json` |
-| primary profiling | 528개 고유 조건: supported 506, unsupported 22; allocation 112조건 교체 | `primary-raw-audit-recovered-runtime-20261009.log` |
+| primary profiling | 528개 고유 조건: supported 506, unsupported 22; allocation 112조건 교체 | `primary-raw-audit-subject-runtime-20261009.log` |
 | 선택 원본 | 5,472개 파일, 11,650,130,417 bytes; 이전 실패 원본은 별도 보존 | `audit-primary-20261008.mjs` |
 | hotspot 재확인 | 7개 Fluo 플랫폼 + native Deno/Next 대조, CPU 9개 capture | `hotspot-confirmations.json` |
 | generator 진단 | 14개 조건, 1-vs-4 generators, 3회 교차 비교, 84개 관측 | `headroom-summary.json` |
-| 최종 focused checks | 초기 fresh build와 이후 collector 회귀 131 tests·typecheck·lint 통과 | `final-focused-checks-20261008.log`, `priming-focused-20261009.log` |
-| 실제 host smoke | 16 targets × 11 scenarios = 176 receipts; 각 25개 요청의 body/status/counters 통과 | `final-correctness-smoke-20261008.json` |
+| 최종 focused checks | 초기 fresh build와 이후 collector 회귀 138 tests·typecheck·lint 통과 | `final-focused-checks-20261008.log`, `final-runtime-teardown-checks-20261009.log` |
+| 실제 host smoke | 기존 176 receipts와 종료 처리 수정 후 16-host 추가 smoke; 각각 25개 요청 통과 | `final-correctness-smoke-20261008.json`, `teardown-host-smoke-20261009.json` |
 
 Primary condition은 `equivalent`, concurrency 64, warmup 5초, capture 15초다.
 각 mode는 새 서버의 비계측 before/after control을 각각 갖는다.
@@ -148,10 +148,22 @@ protocol 파일로 보존하며 파일별 64 MiB 제한을 유지한다. priming
 기존 112조건의 bytes와 실패 원인을 보존하고 `primary-inputs-20261008.json`의
 `superseded` 항목으로 새 원본과 일대일 연결했다. 해당 원본이 여전히 검증에 실패하는지,
 교체 원본은 실제로 통과하는지도 감사한다. Timing·CPU·GC·Bun heap과 나머지 allocation은
-재측정하지 않았다. 최종 collector 회귀는 131 tests·typecheck·lint가 통과했다.
+재측정하지 않았다. 최종 collector 회귀는 138 tests·typecheck·lint가 통과했다.
 
-수집 중 설치된 Bun은 1.4.0에서 1.4.2로 바뀌었으나 복구된 조건은 Bun을 실행하지 않는다.
-실제 serving Bun 원본은 1.4.0 그대로이며, collector Node·dependency·플랫폼별 serving
-runtime은 따로 일치 여부를 검사한다. 전체 환경 metadata가 하나였다고 주장하지 않는다.
+설치 metadata에는 Bun 1.4.0과 1.4.2가 기록돼 있지만 실제 serving 버전은
+해시 검증한 `subject.json`에서 추출한다. 선택된 원본의 실제 serving Bun은 모두 1.4.2,
+Deno는 2.9.7, Node 계열은 24.20.0, Workers는 `workerd 2025-06-04`다.
+이전 보고서의 serving Bun 1.4.0 설명은 설치 metadata와 실제 subject를 혼동한 오류였다.
+원본을 변경하지 않고 정정했으며, 선언된 subject와 실제 identity의 전체 runtime 객체도
+대조한다. Collector Node·dependency와 실제 serving runtime을 별도로 검사한다.
+전체 환경 metadata가 하나였다고 주장하지 않는다.
 다섯 collector source snapshot의 정확한 해시와 허용된 변경을 입력에 명시하고,
 그 외 serving source의 동일성을 확인한다.
+
+종료 시에는 signal 전에 exit·stdout/stderr drain·close를 구독하고, 마지막 출력까지
+종료한 뒤 raw-limit 실패를 다시 확인한다. 마지막 control-after 종료 출력만 한도를
+넘는 실제 회귀가 failed로 기록됨을 확인했다. 중복 node만 있는 fixture로 검사를
+분리했고, duplicate 검사 두 개를 제거하면 해당 테스트 두 개가 모두 실패했다.
+수정 후 실제 16개 host에서 출력 drain과 정상 종료를 확인했다. 기존 원본의 stdout/stderr
+2,148개 중 최대 파일은 5,562,042 bytes였으며, 기존 데이터에서 실제 truncation이 발견됐다고
+주장하지 않는다.

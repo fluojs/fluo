@@ -60,9 +60,6 @@ for (const directory of inputs.directories) {
   for (const capture of manifest.captures) {
     const key = conditionKey(capture.condition);
     const platform = capture.condition.platform;
-    const versions = servingRuntimes.get(platform) ?? new Set();
-    versions.add(platform === 'bun' ? provenance.bun : platform === 'deno' ? provenance.deno : provenance.node);
-    servingRuntimes.set(platform, versions);
     if (capture.status !== 'supported' && capture.status !== 'unsupported') {
       excluded.push({ directory, condition: capture.condition, status: capture.status, reason: capture.reason });
       continue;
@@ -90,6 +87,12 @@ for (const directory of inputs.directories) {
     }
     const failures = validateCapture(capture, raw);
     if (capture.provenanceSha256 !== manifest.provenanceSha256) failures.push('capture-provenance');
+    const identity = JSON.parse(raw.get(capture.identityPath).toString());
+    const runtime = identity.runtime;
+    const versions = servingRuntimes.get(platform) ?? new Set();
+    versions.add(platform === 'workers' ? runtime.version : platform === 'bun' ? runtime.bun
+      : platform === 'deno' ? runtime.deno : runtime.node);
+    servingRuntimes.set(platform, versions);
     if (replacement) {
       seenSuperseded.add(`${directory}:${key}`);
       if (capture.condition.mode !== 'allocation' || failures.length !== 1 || failures[0] !== 'malformed-profile-or-identity') {
@@ -139,7 +142,7 @@ const result = {
     'Workers Tracing.start unsupported is not proof that every GC mechanism is unsupported.',
     'Original manifests are immutable. Superseded allocation captures must still fail strict validation and have an exact valid replacement.',
     'Five exact collector snapshots are allowlisted; classifier/tests, headroom readiness, GC label and allocation snapshot priming differ. Serving inputs and runtime/dependency identity must remain identical.',
-    'Installed but unused Bun changed from 1.4.0 to 1.4.2 during non-Bun recovery. All serving Bun captures remain on their original runtime; collector Node, dependencies and each serving runtime are checked separately.',
+    'Installed metadata is not serving identity. Serving versions are extracted from hash-validated subject.json and checked against capture.subject.runtime; Bun is 1.4.2 and Workers is workerd 2025-06-04 in this evidence set.',
   ],
 };
 console.log(JSON.stringify(result));
