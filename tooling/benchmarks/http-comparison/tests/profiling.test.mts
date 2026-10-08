@@ -69,6 +69,41 @@ function fixture() {
   return { capture, raw, profile };
 }
 
+for (const format of ['v8-cpu', 'v8-allocation'] as const) {
+  for (const defect of ['none', 'dangling', 'duplicate', 'unreachable'] as const) {
+    if (format === 'v8-allocation' && defect === 'unreachable') continue;
+    test(`sample node links: ${format} ${defect} -> validates the complete tree`, () => {
+      const { capture, raw } = fixture();
+      const request = { id: 1, callFrame: { functionName: 'readSearchLocal', url: 'shared/workloads.js' }, children: [] };
+      const startup = { id: defect === 'duplicate' ? 1 : 2, callFrame: { functionName: 'bootstrap', url: 'startup.js' }, children: [] };
+      const root = { id: 0, callFrame: { functionName: '(root)', url: '' } };
+      const sampleId = defect === 'dangling' ? 999 : 2;
+      const profile = format === 'v8-cpu'
+        ? { nodes: [{ ...root, children: defect === 'unreachable' ? [1] : [1, 2] }, request, startup],
+          samples: [1, sampleId], startTime: 0, endTime: 1000, timeDeltas: [0, 1000] }
+        : { head: { ...root, children: [request, startup] },
+          samples: [{ nodeId: 1, size: 64, ordinal: 1 }, { nodeId: sampleId, size: 64, ordinal: 2 }] };
+      const mode = format === 'v8-cpu' ? 'cpu' : 'allocation';
+      const bytes = Buffer.from(JSON.stringify(profile));
+      raw.set('attempt/profile.json', bytes);
+      const changed: ProfileCapture = {
+        ...capture, format, condition: { ...capture.condition, mode },
+        runs: capture.runs.map((run) => ({ ...run, instrumentation: run.phase === 'capture' ? mode : 'none' })),
+        artifacts: capture.artifacts.map((artifact) => artifact.kind === 'profile'
+          ? { ...artifact, bytes: bytes.byteLength, sha256: sha256(bytes) } : artifact),
+      };
+
+      if (defect === 'none') {
+        assert.equal(requestSamples(profile, format), 1);
+        assert.deepEqual(validateCapture(changed, raw), []);
+      } else {
+        assert.throws(() => requestSamples(profile, format), /node|sample/i);
+        assert.ok(validateCapture(changed, raw).includes('malformed-profile-or-identity'));
+      }
+    });
+  }
+}
+
 test('target selection supports every target and rejects unknown or duplicate entries', () => {
   // Given / When / Then
   assert.equal(selectProfileTargets().length, 16);
@@ -374,6 +409,34 @@ test('JSC stacks and heap snapshots remain separate evidence formats', () => {
   assert.equal(requestSamples(profile, 'jsc-cpu'), 1);
   assert.equal(requestSamples({ nodes: [1], edges: [1] }, 'jsc-heap'), 1);
   assert.throws(() => requestSamples({ nodes: [1], edges: [1] }, 'v8-allocation'));
+});
+
+test('allocation snapshot priming preserves the final stop response, not the interim profile', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-allocation-stop-'));
+  const target = TARGETS.find((item) => item.name === 'native-nodejs');
+  assert.ok(target);
+  const calls: string[] = [];
+  const head = { id: 1, callFrame: { functionName: 'readSearchLocal', url: 'shared/workloads.js' }, children: [] };
+  const interim = { head, samples: [{ nodeId: 2, size: 64, ordinal: 1 }] };
+  const final = { head, samples: [{ nodeId: 1, size: 64, ordinal: 1 }] };
+  const inspector = {
+    async call(method: string) {
+      calls.push(method);
+      if (method === 'Runtime.evaluate') {
+        return { result: { result: { value: JSON.stringify({ servingMs: 10, uptimeMs: 10 }) } } };
+      }
+      return { result: { profile: method === 'HeapProfiler.getSamplingProfile' ? interim : final } };
+    },
+  };
+  const capture: unknown = Reflect.construct(RuntimeCapture, [target, inspector, new RawCapture(directory, directory)]);
+  assert.ok(capture instanceof RuntimeCapture);
+  try {
+    const path = await capture.stop('allocation');
+    assert.deepEqual(calls, ['Runtime.evaluate', 'HeapProfiler.getSamplingProfile', 'HeapProfiler.stopSampling']);
+    assert.deepEqual(JSON.parse(await readFile(join(directory, path), 'utf8')), final);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('stage-only request frames include anonymous and zero-argument handlers but exclude startup factories', () => {

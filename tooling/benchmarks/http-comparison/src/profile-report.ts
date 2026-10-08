@@ -110,11 +110,16 @@ export function requestSamples(profile: unknown, format: ProfileCapture['format'
     case 'v8-cpu': {
       const nodes = new Map(array(data.nodes).map((n) => {
         const node = object(n);
+        if (typeof node.id !== 'number' || !Number.isSafeInteger(node.id) || node.id < 0) {
+          throw new ProfileFailure('profile', 'Invalid CPU node ID');
+        }
         return [node.id, node] as const;
       }));
+      if (nodes.size !== array(data.nodes).length) throw new ProfileFailure('profile', 'Duplicate CPU node ID');
       const requestIds = new Set<unknown>();
       const visited = new Set<unknown>();
       const visit = (id: unknown, parentIsRequest: boolean): void => {
+        if (typeof id !== 'number') throw new ProfileFailure('profile', 'Invalid CPU child node ID');
         if (visited.has(id)) throw new ProfileFailure('profile', 'Cyclic or duplicate CPU node');
         visited.add(id);
         const node = nodes.get(id);
@@ -125,19 +130,31 @@ export function requestSamples(profile: unknown, format: ProfileCapture['format'
       };
       const root = array(data.nodes)[0];
       if (root !== undefined) visit(object(root).id, false);
+      if (visited.size !== nodes.size) throw new ProfileFailure('profile', 'Unreachable CPU node');
+      for (const id of array(data.samples)) {
+        if (!visited.has(id)) throw new ProfileFailure('profile', 'CPU sample refers to a missing node');
+      }
       return array(data.samples).filter((id) => requestIds.has(id)).length;
     }
     case 'jsc-cpu':
       return array(data.stackTraces).filter((stack) => array(object(stack).stackFrames).some(requestFrame)).length;
     case 'v8-allocation': {
       const ids = new Set<unknown>();
+      const visited = new Set<unknown>();
       const visit = (value: unknown, parentIsRequest: boolean): void => {
         const node = object(value);
+        if (typeof node.id !== 'number' || !Number.isSafeInteger(node.id) || node.id < 0 || visited.has(node.id)) {
+          throw new ProfileFailure('profile', 'Invalid or duplicate allocation node ID');
+        }
+        visited.add(node.id);
         const matched = parentIsRequest || requestFrame(node.callFrame);
         if (matched) ids.add(node.id);
         for (const child of array(node.children)) visit(child, matched);
       };
       visit(data.head, false);
+      for (const sample of array(data.samples)) {
+        if (!visited.has(object(sample).nodeId)) throw new ProfileFailure('profile', 'Allocation sample refers to a missing node');
+      }
       return array(data.samples).filter((sample) => ids.has(object(sample).nodeId)).length;
     }
     case 'jsc-heap':

@@ -41,7 +41,7 @@ export class RawCapture {
 
 class Inspector {
   private id = 0;
-  private readonly pending = new Map<number, { resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void }>();
+  private readonly pending = new Map<number, { resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void; protocolFile: string }>();
   private readonly listeners = new Map<string, Set<(value: Record<string, unknown>) => void>>();
   private readonly socket: WebSocket;
   private readonly opened: Promise<void>;
@@ -57,9 +57,14 @@ class Inspector {
     this.socket.addEventListener('message', (event) => {
       try {
         const bytes = String(event.data);
-        this.raw.append('protocol', 'protocol.jsonl', `${JSON.stringify({ collectorMs: performance.now(), received: bytes })}\n`);
+        const collectorMs = performance.now();
+        let message: Record<string, unknown> | undefined;
+        try { message = object(JSON.parse(bytes)); }
+        finally {
+          const file = typeof message?.id === 'number' ? this.pending.get(message.id)?.protocolFile : undefined;
+          this.raw.append('protocol', file ?? 'protocol.jsonl', `${JSON.stringify({ collectorMs, received: bytes })}\n`);
+        }
         if (this.raw.failure) throw this.raw.failure;
-        const message = object(JSON.parse(bytes));
         if (typeof message.id === 'number') {
           const waiting = this.pending.get(message.id);
           this.pending.delete(message.id);
@@ -90,9 +95,10 @@ class Inspector {
   async call(method: string, params: Readonly<Record<string, unknown>> = {}): Promise<Record<string, unknown>> {
     await this.bounded(this.opened, 'Websocket open');
     const id = ++this.id;
-    const response = new Promise<Record<string, unknown>>((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    const protocolFile = method === 'HeapProfiler.getSamplingProfile' ? 'allocation-prime-protocol.jsonl' : 'protocol.jsonl';
+    const response = new Promise<Record<string, unknown>>((resolve, reject) => this.pending.set(id, { resolve, reject, protocolFile }));
     const bytes = JSON.stringify({ id, method, params });
-    this.raw.append('protocol', 'protocol.jsonl', `${JSON.stringify({ collectorMs: performance.now(), sent: bytes })}\n`);
+    this.raw.append('protocol', protocolFile, `${JSON.stringify({ collectorMs: performance.now(), sent: bytes })}\n`);
     this.socket.send(bytes);
     try { return await this.bounded(response, method); } finally { this.pending.delete(id); }
   }
@@ -248,7 +254,11 @@ export class RuntimeCapture {
             profile = JSON.parse(data);
           } finally { event.cancel(); }
           this.format = 'jsc-heap';
-        } else { profile = object((await this.inspector.call('HeapProfiler.stopSampling')).result).profile; this.format = 'v8-allocation'; }
+        } else {
+          await this.inspector.call('HeapProfiler.getSamplingProfile');
+          profile = object((await this.inspector.call('HeapProfiler.stopSampling')).result).profile;
+          this.format = 'v8-allocation';
+        }
         break;
       case 'gc-eventloop':
         profile = { ...await this.evaluate(wallStop), gcEvents: this.gcEvents, gcTraceSource: this.target.platform === 'bun' ? 'Heap.garbageCollected' : this.target.platform === 'deno' ? '--v8-flags=--trace-gc' : '--trace-gc' };

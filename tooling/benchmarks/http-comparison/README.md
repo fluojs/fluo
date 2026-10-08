@@ -164,7 +164,7 @@ while the server remains underutilized is evidence against generator headroom.
 - This measures the current workspace package builds through linked fluo dependencies, not the released npm beta surface.
 - fluo uses TC39 standard decorators without `emitDecoratorMetadata`; NestJS uses legacy decorators with `emitDecoratorMetadata` through `nestjs/tsconfig.json`.
 - `fluo+Bun` is a runtime comparison, not a same-adapter comparison. Treat it as “same fluo app graph on Bun’s native server” versus the Node.js adapter targets.
-- The suite covers routing, request binding, local deterministic service work, and JSON serialization. It does not measure validation plugins, serialization plugins, guards, pipes, database access, or production middleware.
+- The default `business` suite covers routing, request binding, local deterministic service work, and JSON serialization. It does not measure validation plugins, serialization plugins, guards, or pipes. The diagnostic `stages` suite additionally isolates guard execution (`stage-guards`) and DTO materialization/validation (`stage-dto-validation`); these fixtures do not represent arbitrary plugin or pipe configurations. Neither suite measures database access or production middleware.
 
 ### Load-generator limits
 

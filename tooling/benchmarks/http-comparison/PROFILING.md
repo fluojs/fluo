@@ -50,7 +50,7 @@ CLI는 `BENCH_SUITE=business|stages|all`, `BENCH_TARGETS`, `BENCH_SCENARIOS`를 
 | Mode | Node / production Next / Deno / application workerd | Bun JSC |
 | --- | --- | --- |
 | `cpu` | `Profiler.enable`, `Profiler.setSamplingInterval({interval:1000})`, `Profiler.start` → `Profiler.stop` | `ScriptProfiler.startTracking({includeSamples:true})` → `ScriptProfiler.stopTracking` 및 `ScriptProfiler.trackingComplete` |
-| `allocation` | `HeapProfiler.enable`, `HeapProfiler.startSampling({samplingInterval:32768,includeObjectsCollectedByMajorGC:true,includeObjectsCollectedByMinorGC:true})` → `HeapProfiler.stopSampling` | `Heap.enable`, `Heap.startTracking` → `Heap.stopTracking` 및 `Heap.trackingComplete.snapshotData` |
+| `allocation` | `HeapProfiler.enable`, `HeapProfiler.startSampling({samplingInterval:32768,includeObjectsCollectedByMajorGC:true,includeObjectsCollectedByMinorGC:true})` → `HeapProfiler.getSamplingProfile` → `HeapProfiler.stopSampling` | `Heap.enable`, `Heap.startTracking` → `Heap.stopTracking` 및 `Heap.trackingComplete.snapshotData` |
 | `gc-eventloop` | Node/Next `--trace-gc`와 serving `perf_hooks`; Deno `--v8-flags=--trace-gc`와 serving wall-delay sampler. workerd `Tracing.start` 지원을 직접 probe | `Heap.enable`의 `Heap.garbageCollected`와 serving wall-delay sampler |
 
 CPU-only mode는 heap/GC profiler를 시작하지 않는다. allocation/heap-only mode는 CPU profiler를 시작하지 않는다. GC/event-loop mode는 CPU 또는 allocation profiler를 시작하지 않는다. Bun heap은 **retained snapshot**이며 allocation sample/rate가 아니다. V8 allocation은 collected objects를 sampling에 포함하도록 명시한다. sampled bytes를 정확한 allocation count/rate로 표시하지 않는다. 초기 live-only Deno capture가 0 samples였던 실패도 보존한다.
@@ -59,9 +59,17 @@ Node/Next/Deno inspector `/json/list`의 websocket을 선택한다. Bun은 JSC w
 
 ## Evidence와 실패
 
+V8 allocation 종료 전 `getSamplingProfile`을 한 번 호출해 snapshot 변환을 priming한다.
+V8는 트리 변환 중에도 sampling 가능한 문자열을 할당할 수 있다. priming은 snapshot
+일관성의 보장이 아니며, 최종 `stopSampling` 응답의 모든 sample-node 연결을 검증한다.
+중간 snapshot으로 최종 응답을 대체하거나 누락된 node/sample을 보정·삭제하지 않는다.
+priming은 측정 traffic 종료 뒤에 수행하며, 원본에는 종료 처리의 profiler 자체 비용도
+포함될 수 있다. CPU 및 Bun retained-heap 경로에는 이 호출을 추가하지 않는다.
+
 각 invocation은 `results/profiling/<timestamp>-<uuid>/`에 `provenance.json`, `manifest.json`, `report.json`과 조건별 고유 디렉터리를 만든다.
 
 - `protocol.jsonl`: 전송한 method/id/params와 수신한 raw protocol bytes, collector monotonic timestamp.
+- `allocation-prime-protocol.jsonl`: V8 allocation priming 요청과 전체 raw 응답. 최종 응답과 파일을 분리해 각 파일의 64 MiB 한도를 유지한다.
 - `subject.json`, `discovery.json`: runtime identity, serving/launcher PID, isolate id, inspector URL과 process tree.
 - `profile.json`: native V8 CPU/allocation profile, JSC CPU stack samples, JSC heap snapshot 또는 diagnostic output. 원본 stack을 요약으로 대체하지 않는다.
 - phase별 stdout/stderr, `entry.json`의 built entry hash, Next build trace/BUILD_ID, 조건별 provenance bytes/hash.
