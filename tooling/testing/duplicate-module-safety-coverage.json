@@ -2,6 +2,52 @@
   "version": 1,
   "packages": [
     {
+      "package": "@fluojs/auth",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "jwt-passport"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute auth errors through the Passport compatibility surface on Node; patch skew changes only @fluojs/core."
+    },
+    {
+      "package": "@fluojs/auth-http",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "jwt-passport"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute HTTP auth guards, registration and bearer strategies through the Passport compatibility surface on Node; patch skew changes only @fluojs/core."
+    },
+    {
       "package": "@fluojs/cache-manager",
       "status": "not-applicable",
       "topologies": [],
@@ -134,6 +180,26 @@
         "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
       ],
       "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/diagnostics",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/diagnostics/package.json",
+        "packages/diagnostics/src/contracts.test.ts",
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Included in the packed transitive closure and physical artifact inventory through core/runtime dependencies. Portable data contracts and readers do not own any of this fixture's identity-bearing observable surfaces; package-owned contract checks govern reader behavior."
     },
     {
       "package": "@fluojs/discord",
@@ -397,6 +463,30 @@
         "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
       ],
       "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/persistence",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "errors",
+        "rollback"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed dependency closure includes physical persistence copies through core and runtime. The Node fixture exercises common error re-exports and Mongoose rollback without claiming cross-copy transaction-state sharing or additional host support."
     },
     {
       "package": "@fluojs/platform-bun",

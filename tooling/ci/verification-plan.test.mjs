@@ -72,6 +72,12 @@ test('the PR catalog executes reliability receipt regressions without adding a j
   const commands = plan.tasks.find(({ id }) => id === 'tooling-1').commands;
   assert.ok(commands.some(({ executable, argv }) => executable === 'node'
     && argv[0] === '--test' && argv.includes('examples/react-vite-ssr/tests/reliability-handoff.test.mjs')));
+  const packedRunner = commands.find(({ executable, argv }) => executable === 'node'
+    && argv.length === 2 && argv[0] === '--test'
+    && argv[1] === 'examples/react-vite-ssr/tests/verify-background-starter.test.mjs');
+  assert.ok(packedRunner);
+  assert.equal(packedRunner.cwd, '.');
+  assert.equal(packedRunner.env.FLUO_BACKGROUND_EVIDENCE, '/evidence/react-product/runner-regressions');
   assert.equal(plan.tasks.length + 2, 18);
 });
 

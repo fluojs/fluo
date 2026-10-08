@@ -1,13 +1,178 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
 
 import { stopOwnedProcess } from '../src/process-group.mjs';
 import { performanceExitCode, readMeasurementReceipt, requireDevDefinitions, startServers, stopServers } from '../src/run-gate.mjs';
+
+test('FA-V3 run-gate validates integrated config before any smoke or server action', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v3-run-gate-'));
+  const output = new URL(`../results/fa-v3-validation-${randomUUID()}`, import.meta.url).pathname;
+  t.after(() => Promise.all([rm(directory, { recursive: true, force: true }), rm(output, { recursive: true, force: true })]));
+  const config = JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url)));
+  config.measurement = { ...config.measurement, methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    measurementKind: 'production', pairId: 'fixed-runner', pairPhase: 'before',
+    nativeLifetime: { enabled: true, python: '/python' } };
+  config.servers = {};
+  const path = join(directory, 'config.json');
+  await writeFile(path, JSON.stringify(config));
+
+  await assert.rejects(promisify(execFile)(process.execPath, [
+    new URL('../src/run-gate.mjs', import.meta.url).pathname,
+    '--config', path, '--output-dir', output,
+  ]), (error) => error.code === 1 && /all four production servers/u.test(error.stderr) && error.stdout === '');
+});
+
+test('profile pair verification cannot substitute a shared aggregate hash for original child records', async () => {
+  const { verifyProfileEnvironment, beforeProfilePairFlags } = await import('../src/run-gate.mjs');
+  assert.equal(typeof verifyProfileEnvironment, 'function');
+  assert.equal(typeof beforeProfilePairFlags, 'function');
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-profile-pair-'));
+  try {
+    await assert.rejects(verifyProfileEnvironment({ identitySha256: 'alias' }, { runs: [] },
+      {}, directory, true), /environment binding/u);
+    await assert.rejects(beforeProfilePairFlags(join(directory, 'missing.json'), directory,
+      'desktop-native', true), { code: 'ENOENT' });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('isolated host launcher observes the selected running container rather than accepting image strings', async () => {
+  const { observeIsolatedHost } = await import('../src/measure.mjs');
+  assert.equal(typeof observeIsolatedHost, 'function');
+  const commands = [];
+  const inspect = { Id: 'a'.repeat(64), Image: `sha256:${'b'.repeat(64)}`,
+    Config: { Image: 'fixture:image', Hostname: 'container-hostname' },
+    State: { Running: true, Pid: 71, StartedAt: '2026-10-03T00:00:00Z' },
+    HostConfig: { NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0, CpusetCpus: '', Memory: 0, MemorySwap: 0 } };
+  const execute = async (command, args) => {
+    commands.push([command, ...args]);
+    return { stdout: JSON.stringify(args[0] === 'inspect' ? [inspect] : {
+      ID: 'daemon', OperatingSystem: 'OrbStack', KernelVersion: 'linux-test', Architecture: 'aarch64',
+      NCPU: 12, MemTotal: 8392974336, Name: 'orbstack',
+    }) };
+  };
+  const observed = await observeIsolatedHost('fixture-container', execute);
+  assert.equal(observed.container.id, inspect.Id);
+  assert.equal(observed.container.imageId, inspect.Image);
+  assert.equal(observed.vm.logicalCpus, 12);
+  assert.deepEqual(commands.map((command) => command.slice(0, 2)), [['docker', 'inspect'], ['docker', 'info']]);
+  inspect.State.Running = false;
+  await assert.rejects(observeIsolatedHost('fixture-container', execute), /running container/u);
+});
+
+for (const [signal, boundary, exitCode] of [
+  ['SIGINT', 'guest-ready', 130], ['SIGTERM', 'guest-ready', 143],
+  ['SIGTERM', 'before-ready', 143], [null, 'normal', 0], [null, 'error', 7],
+]) {
+  test(`nonTTY launcher ${signal ?? boundary} at ${boundary} reaps its independent guest and rechecks host`, { timeout: 20_000 }, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-isolated-launcher-'));
+    const docker = join(directory, 'docker');
+    const log = join(directory, 'transport.jsonl');
+    const guestPath = join(directory, 'guest.mjs');
+    // This transport leaves remote execution independent of the docker client.
+    // Only an explicit control frame can stop the guest; client death cannot.
+    await writeFile(guestPath, `
+      import { createServer } from 'node:net';
+      import { writeFileSync } from 'node:fs';
+      const server = createServer().listen(0, '127.0.0.1', () => {
+        writeFileSync(${JSON.stringify(join(directory, 'guest.pid'))}, String(process.pid));
+        console.log('OWNED_GUEST_READY ' + process.pid);
+        ${signal ? '' : `server.close(() => process.exit(${exitCode}));`}
+      });
+      process.on('SIGINT', () => server.close());
+      process.on('SIGTERM', () => server.close());
+    `);
+    await writeFile(docker, `#!${process.execPath}
+      const fs = require('node:fs'), cp = require('node:child_process');
+      const args = process.argv.slice(2);
+      const log = ${JSON.stringify(log)};
+      fs.appendFileSync(log, JSON.stringify(args) + '\\n');
+      const inspected = { Id:'container-id', Image:'image-id', Config:{Image:'image',Hostname:'guest'},
+        State:{Running:true,Pid:71,StartedAt:'start'}, HostConfig:{NanoCpus:0,CpuQuota:0,CpuPeriod:0,CpusetCpus:'',Memory:0,MemorySwap:0} };
+      if(args[0] === 'inspect') console.log(JSON.stringify([inspected]));
+      else if(args[0] === 'info') console.log(JSON.stringify({ID:'daemon',NCPU:12,MemTotal:123}));
+      else if(args.includes('command -v node')) console.log(${JSON.stringify(process.execPath)});
+      else {
+        let input = '', invocationId, interrupted, guest;
+        process.stdin.on('data', chunk => {
+          input += chunk;
+          const lines = input.split('\\n'); input = lines.pop();
+          for(const line of lines) {
+            const frame = JSON.parse(line);
+            if(frame.invocation) {
+              invocationId = frame.invocation.invocationId;
+              guest = cp.spawn(${JSON.stringify(process.execPath)}, [${JSON.stringify(guestPath)}],
+                {detached:true,stdio:['ignore','inherit','inherit']});
+              guest.unref();
+              console.log('OWNED_TRANSPORT_STARTED ' + guest.pid);
+              guest.on('exit', (code, signal) => {
+                console.log('OWNED_GUEST_REAPED ' + guest.pid);
+                console.error('ISOLATED_GUEST_REAPED ' + invocationId + ' escalated=false');
+                process.exit(interrupted ? (interrupted === 'SIGINT' ? 130 : 143) : (code ?? (signal ? 1 : 0)));
+              });
+            }
+            if(frame.signal) {
+              interrupted = frame.signal;
+              try { process.kill(guest.pid, frame.signal); } catch(error) {
+                if(error.code !== 'ESRCH') throw error;
+              }
+              fs.appendFileSync(log, JSON.stringify({forwarded:frame.signal})+'\\n');
+            }
+          }
+        });
+      }
+    `);
+    await chmod(docker, 0o755);
+    const host = spawn(process.execPath, ['--input-type=module', '-e',
+      `import {launchIsolatedInvocation} from ${JSON.stringify(new URL('../src/measure.mjs', import.meta.url).href)};
+       await launchIsolatedInvocation(${JSON.stringify(guestPath)}, ['--isolated-container','fixture']);`],
+    { env: { ...process.env, PATH: `${directory}:${process.env.PATH}` }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const exited = once(host, 'exit');
+    const closed = once(host, 'close');
+    let output = '';
+    let guestPid;
+    const ready = new Promise((resolveReady, rejectReady) => {
+      host.stdout.on('data', (chunk) => {
+        output += chunk;
+        const match = output.match(boundary === 'before-ready'
+          ? /OWNED_TRANSPORT_STARTED (\d+)/u : /OWNED_GUEST_READY (\d+)/u);
+        if (match) { guestPid = Number(match[1]); resolveReady(); }
+      });
+      host.stderr.on('data', (chunk) => { output += chunk; });
+      exited.then(() => rejectReady(new Error(`host exited before guest readiness: ${output}`)), rejectReady);
+    });
+    t.after(async () => {
+      host.kill('SIGKILL');
+      if (!guestPid) guestPid = Number(await readFile(join(directory, 'guest.pid'), 'utf8').catch(() => '0'));
+      if (guestPid) {
+        try { process.kill(guestPid, 'SIGKILL'); } catch (error) {
+          if (error.code !== 'ESRCH') throw error;
+        }
+      }
+      await rm(directory, { recursive: true, force: true });
+    });
+    await ready;
+    // Subscribe to exit before the action, and assert actual process liveness.
+    if (signal) {
+      process.kill(guestPid, 0);
+      host.kill(signal);
+    }
+    const [code] = await exited;
+    assert.equal(code, exitCode, output);
+    await closed;
+    assert.throws(() => process.kill(guestPid, 0), { code: 'ESRCH' });
+    const commands = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(commands.filter((entry) => entry[0] === 'inspect').length, 2);
+    if (signal) assert.ok(commands.some((entry) => entry.forwarded === signal));
+    assert.match(output, /OWNED_GUEST_REAPED/u);
+  });
+}
 
 test('representative gate requires observable cold and all three development edits', async () => {
   // Given: the checked-in four-app representative configuration.
@@ -82,18 +247,22 @@ test('waits for a real HTTP ready event and stops the owned process group', asyn
   // Given: an app reports readiness only after binding a socket.
   const command = [
     process.execPath, '-e',
-    'require("node:http").createServer((_, response) => response.end("ready")).listen(0, "127.0.0.1", function () { console.log("READY " + this.address().port) })',
+    'require("node:http").createServer((_, response) => { response.setHeader("x-benchmark-mode", process.env.NODE_ENV ?? "unset"); response.end("ready") }).listen(0, "127.0.0.1", function () { console.log("READY " + this.address().port) })',
   ];
   // When: a pre-registered stdout event reports the bound port.
   const servers = await startServers([
-    { name: 'fixture', command, readyPattern: /READY (\d+)/u,
+    { name: 'fixture', command, env: { NODE_ENV: 'development' }, readyPattern: /READY (\d+)/u,
       urlForMatch: (match) => `http://127.0.0.1:${match[1]}/` },
   ]);
   const server = servers[0];
   assert.ok(server);
   // Then: the real HTTP endpoint responds before the runner proceeds.
-  assert.equal(await (await fetch(server.url)).text(), 'ready');
-  await stopServers(servers);
+  try {
+    assert.equal(await (await fetch(server.url)).text(), 'ready');
+    assert.equal((await fetch(server.url)).headers.get('x-benchmark-mode'), 'production');
+  } finally {
+    await stopServers(servers);
+  }
   await assert.rejects(fetch(server.url, { signal: AbortSignal.timeout(1000) }));
 });
 

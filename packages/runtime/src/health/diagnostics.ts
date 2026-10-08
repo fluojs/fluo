@@ -4,84 +4,8 @@ import type { Provider, Scope } from '@fluojs/di';
 import { getRuntimeClassDiMetadata } from '../internal/core-metadata.js';
 import type { CompiledModule, ModuleType } from '../types.js';
 
-/**
- * Describes the runtime diagnostics graph contract.
- */
-export interface RuntimeDiagnosticsGraph {
-  version: 1;
-  rootModule: string;
-  modules: RuntimeDiagnosticsModule[];
-  relationships: RuntimeDiagnosticsRelationships;
-}
-
-/**
- * Describes the runtime diagnostics module contract.
- */
-export interface RuntimeDiagnosticsModule {
-  name: string;
-  global: boolean;
-  imports: string[];
-  controllers: string[];
-  providers: RuntimeDiagnosticsProvider[];
-  exports: string[];
-}
-
-/**
- * Describes the runtime diagnostics provider contract.
- */
-export interface RuntimeDiagnosticsProvider {
-  token: string;
-  type: 'class' | 'factory' | 'value' | 'existing';
-  scope: Scope;
-  multi: boolean;
-}
-
-/**
- * Describes the runtime diagnostics relationships contract.
- */
-export interface RuntimeDiagnosticsRelationships {
-  moduleImports: Array<{
-    from: string;
-    to: string;
-  }>;
-  moduleExports: Array<{
-    module: string;
-    token: string;
-  }>;
-  moduleProviders: Array<{
-    module: string;
-    token: string;
-    providerType: RuntimeDiagnosticsProvider['type'];
-    scope: Scope;
-    multi: boolean;
-  }>;
-  moduleControllers: Array<{
-    controller: string;
-    module: string;
-  }>;
-}
-
-/**
- * Describes the bootstrap timing phase contract.
- */
-export interface BootstrapTimingPhase {
-  durationMs: number;
-  name:
-    | 'bootstrap_module'
-    | 'register_runtime_tokens'
-    | 'resolve_lifecycle_instances'
-    | 'run_bootstrap_lifecycle'
-    | 'create_dispatcher';
-}
-
-/**
- * Describes the bootstrap timing diagnostics contract.
- */
-export interface BootstrapTimingDiagnostics {
-  phases: BootstrapTimingPhase[];
-  totalMs: number;
-  version: 1;
-}
+import type { BootstrapTimingDiagnostics, BootstrapTimingPhase, RuntimeDiagnosticsGraph, RuntimeDiagnosticsModule, RuntimeDiagnosticsProvider, RuntimeDiagnosticsRelationships } from '@fluojs/diagnostics';
+export type { BootstrapTimingDiagnostics, BootstrapTimingPhase, RuntimeDiagnosticsGraph, RuntimeDiagnosticsModule, RuntimeDiagnosticsProvider, RuntimeDiagnosticsRelationships } from '@fluojs/diagnostics';
 
 function roundMs(value: number): number {
   return Number(value.toFixed(3));

@@ -9,8 +9,10 @@ interface PackageManifest {
 
 const portablePackages = [
   '@fluojs/config',
+  '@fluojs/diagnostics',
   '@fluojs/email',
   '@fluojs/i18n',
+  '@fluojs/persistence',
   '@fluojs/platform-bun',
   '@fluojs/platform-cloudflare-workers',
   '@fluojs/platform-deno',
@@ -52,7 +54,7 @@ function readPackageManifests(): { root: PackageManifest; packages: PackageManif
 }
 
 describe('Node support classification', () => {
-  it('keeps the eight portable public roots free of engines.node', () => {
+  it('keeps the nine portable public roots free of engines.node', () => {
     // Given: every public package is classified at its manifest boundary.
     const { packages } = readPackageManifests();
     const publicManifests = packages.filter((manifest) => !manifest.private);
@@ -60,7 +62,7 @@ describe('Node support classification', () => {
     // When: package managers consume the published Node support claims.
     const omissions = publicManifests.filter((manifest) => manifest.engines?.node === undefined);
 
-    // Then: only the eight portable roots omit engines.
+    // Then: only the nine portable roots omit engines.
     expect(omissions.map((manifest) => manifest.name).sort()).toEqual(portablePackages);
   });
 
@@ -70,9 +72,9 @@ describe('Node support classification', () => {
     const publicManifests = packages.filter((manifest) => !manifest.private);
     const nodeBound = publicManifests.filter((manifest) => !portablePackages.includes(manifest.name));
 
-    // Then: 35 Node-bound public packages remain, each on its classified floor,
+    // Then: 37 Node-bound public packages, including auth and auth-http, use their classified floor,
     // and the private root workspace compiles through the Babel 8 toolchain.
-    expect(nodeBound).toHaveLength(35);
+    expect(nodeBound).toHaveLength(37);
     for (const manifest of nodeBound) {
       expect(manifest.engines?.node, manifest.name).toBe(requiredNodeEngineRange(manifest));
     }

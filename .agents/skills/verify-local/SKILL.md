@@ -22,6 +22,17 @@ request to reproduce with full local CI. Confirm
 the worktree is clean at that head and no implementation child still owns it.
 Run checks only; do not edit source, commit, push, mutate a PR, or merge.
 
+If an explicit operator instruction prohibits full local CI, do not run this
+stage or its plan/release-readiness commands to obtain a receipt. The lead
+records the separate `local-ci-waiver` exception described in
+`../execute-lane/SKILL.md`, bound to the current head, accepted preflight,
+effective policy and selected passing review. Report full local CI as waived,
+not passed or executed; never manufacture a local-check fact or receipt.
+An applicable failed local check still requires fix-back. New heads or
+contract/policy/review changes invalidate the exception and require a fresh
+explicit assertion after the selected reviews; no authority carries forward
+automatically. Focused checks and full remote CI remain required.
+
 ## Verification
 
 Read the preflight verification criteria, then use the existing canonical

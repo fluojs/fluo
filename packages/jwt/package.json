@@ -43,8 +43,10 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
+    "@fluojs/auth": "workspace:^",
     "@fluojs/core": "workspace:^",
-    "@fluojs/di": "workspace:^"
+    "@fluojs/di": "workspace:^",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "devDependencies": {
     "@fluojs/runtime": "workspace:^",

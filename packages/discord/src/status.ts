@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /** Resolved Discord lifecycle state used for diagnostics and health checks. */
 export type DiscordLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
@@ -15,12 +15,7 @@ export interface DiscordStatusAdapterInput {
 }
 
 /** Structured snapshot returned by {@link createDiscordPlatformStatusSnapshot}. */
-export interface DiscordPlatformStatusSnapshot {
-  details: Record<string, unknown>;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  readiness: PlatformReadinessReport;
-}
+export interface DiscordPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 function createReadiness(input: DiscordStatusAdapterInput): PlatformReadinessReport {
   if (input.lifecycleState === 'ready') {

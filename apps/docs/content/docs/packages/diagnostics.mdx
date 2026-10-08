@@ -1,0 +1,102 @@
+---
+title: Shared diagnostics
+description: Portable status, snapshot, graph, trace and timing contracts with version-1 static/report/live readers.
+package: "@fluojs/diagnostics"
+---
+
+`@fluojs/diagnostics` reads diagnostic data without installing application runtime
+implementation or Studio UI. It owns shared declarations and wire readers;
+runtime still owns production, probes, lifecycle and resources. Studio retains
+filters, Mermaid and the viewer, while CLI retains export and sidecar transport.
+
+## Installation
+
+```bash
+pnpm add @fluojs/diagnostics
+```
+
+No module registration is required. Type-only consumers may use a development
+dependency; deployed reader code needs a regular dependency. The root and every
+public subpath have no host builtin dependency, environment lookup, metadata
+installation, I/O, timer or resource creation on import, and declare no
+package-wide Node engine. Studio's Node `>=24.0.0 <27` and CLI's Node
+`>=24.11.0 <27` policies are unchanged.
+
+## Read an artifact
+
+```ts
+import { parseStudioPayload, type StudioInspectionSnapshot } from '@fluojs/diagnostics';
+
+const snapshot: StudioInspectionSnapshot = {
+  generatedAt: '2026-10-08T00:00:00.000Z',
+  readiness: { status: 'ready', critical: false },
+  health: { status: 'healthy' },
+  components: [],
+  diagnostics: [],
+  routes: [{ id: 'GET /posts', controller: 'Posts', handler: 'list', method: 'GET', path: '/posts' }],
+};
+const { payload } = parseStudioPayload(JSON.stringify(snapshot));
+const route = payload.snapshot?.routes?.[0];
+// route: graphNodeId = 'route:GET__posts', kind = 'http', params = []
+```
+
+Raw snapshots, standalone timing, snapshot-plus-timing envelopes and version-1
+reports remain accepted. The reader returns typed `payload` and the original
+`rawJson`; invalid JSON or unsupported formats throw. Static inspect represents
+successful-bootstrap platform/route data, not the compiled DI graph of live mode.
+
+Wire route graphNodeId/kind/params are optional. Parsed routes require them and
+default to `route:<sanitized-id>`, `http`, `[]`. Explicit graphNodeId and arbitrary
+string kind are preserved; malformed supplied values are rejected. Runtime
+producer routes still require all three fields.
+
+## Live, timing and status contracts
+
+`parseStudioLiveEvent(string)` and `validateStudioLiveEvent(unknown)` validate
+complete snapshot/request/timing/diagnostic/restart/disconnect/heartbeat
+envelopes. `isStudioLiveEvent` makes the same boolean decision without mutating
+input. Version 1 and emittedAt/epoch/eventId/sequence/source identities remain
+unchanged. Request traces reject body, headers, payload, rawBody, requestBody and
+responseBody fields; runtime never exposes bodies, cookies, headers, query,
+fragment or raw errors. CLI sidecar's partial ingress, unknown payload storage,
+generated identities and recursive body-like-field rejection remain a separate
+transport boundary.
+
+Timing accepts finite numbers and only bootstrap_module, register_runtime_tokens,
+resolve_lifecycle_instances, run_bootstrap_lifecycle, create_dispatcher.
+Malformed timing is not treated as omitted; three-decimal rounding is runtime
+production. Report's seven summary fields must match snapshot/timing.
+
+`PlatformStatusSnapshot<TDetails>` shares reports and ownership while preserving
+feature-owned lifecycle, critical/reason/code, dependency metadata and typed
+details. Health/readiness and traffic admission are not diagnostic severity.
+Prometheus, logging execution and transport/resource management are excluded.
+
+## Public imports and compatibility
+
+The root exports all shared types and readers. `@fluojs/diagnostics/platform-contract`
+contains platform data; `@fluojs/diagnostics/studio-contracts` contains wire/parsed
+types and readers. Serialized `RuntimeDiagnosticsGraph` types are root exports,
+not a DI execution dependency.
+
+Existing runtime root/devtools, core/internal, Studio root and feature status
+imports remain available. The removed `@fluojs/studio/contracts` is not restored.
+The [package README](https://github.com/fluojs/fluo/blob/main/packages/diagnostics/README.md)
+owns API/default/failure boundaries, and the
+[migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-diagnostics.md)
+describes the optional data-only import change. Use
+[Studio](/docs/packages/studio) when you need filtering, Mermaid or a viewer;
+use [runtime](/docs/packages/runtime) to produce live data and
+[CLI](/docs/packages/cli) to export inspect artifacts.
+
+## Executable evidence
+
+`tooling/docs/fixtures/package-guides/diagnostics/diagnostics-guide.test.ts`
+exercises the example, Studio facade compatibility and report consistency.
+Runtime's `diagnostics-conformance.test.ts` covers real producer round-trips;
+diagnostics' `portable-boundary.test.ts` imports built public entries and checks
+isolated declarations without runtime/Studio installed.
+
+```bash
+pnpm exec vitest run --project tooling tooling/docs/fixtures/package-guides/diagnostics --maxWorkers=1
+```

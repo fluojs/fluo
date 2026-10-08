@@ -126,7 +126,7 @@ describe('Passport.js bridge NestJS migration contract', () => {
       '// token: adapterToken\nconst decoy = "token: adapterToken";',
     ],
     [
-      'packages/passport/src/module.ts',
+      'packages/auth-http/src/module.ts',
       'registry[strategy.name] = strategy.token;',
       'registry[strategy.name] = strategies[0]?.token;',
       '// registry[strategy.name] = strategy.token;\nconst decoy = "registry[strategy.name] = strategy.token";',

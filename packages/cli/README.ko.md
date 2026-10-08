@@ -7,6 +7,17 @@ fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 Reac
 
 ## Canonical command vocabulary
 
+같은 `react-vite-ssr` starter에 `/catalog/session` sign-in과
+`/catalog/session/products`의 authenticated list/search/detail/create/update/delete
+companion을 제공합니다. 기존 HTTP/typegen/`Link`/`useForm` 조립을 사용하며 private
+process-local product는 변경하지 않은 public catalog/editor-cookie demo와 분리합니다.
+Demo session은 production auth나 durable storage가 아닙니다.
+[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)는 shipped code,
+실제 packed dev/production receipt 및 lead-owned 최종 gate를 구분합니다. 원래 수치
+FAIL/INCONCLUSIVE는 공개된 diagnostics이고 quality/correctness/stability/cleanup은
+계속 차단합니다. Lane soak는 1시간, scheduled default는 2시간이며 physical
+device는 PASS 없이 #3906으로 분리합니다.
+
 `fluo new my-react-app --starter react-vite-ssr`는 `/catalog/background`에 동일한 native
 `useForm` background 작업도 제공합니다. 실제 GET search/widget read, stable-id queue
 POST, fresh current-page approval을 사용합니다. `pnpm dev`와 production `build`/`start`는
@@ -51,6 +62,8 @@ pnpm dlx @fluojs/cli new my-app
 ```
 
 ## 릴리스 계약
+
+공유 inspect report와 live envelope 선언은 [`@fluojs/diagnostics`](../diagnostics/README.ko.md)가 소유합니다. CLI는 project-local lazy runtime resolution, bootstrap/close, stdout/stderr 분리, JSON/report wrapping과 output write를 유지하고 Mermaid는 Studio root에 위임합니다. Sidecar는 부분 ingress와 unknown payload를 보관하고 자체 epoch/sequence를 생성하며 recursive body-like-field 거부를 유지합니다. 이를 완전한 wire reader와 동일화하지 않습니다. [선택적 data-only migration](../../docs/getting-started/migrate-diagnostics.ko.md)을 참조하세요.
 
 - `@fluojs/cli`와 생성된 모든 Node HTTP, mixed, microservice, React SSR + Fastify 프로젝트는 Babel 8 compiler toolchain floor인 Node.js `>=24.11.0 <27`을 요구합니다. Node build target은 `node24`, Node starter typings는 `@types/node@^24.0.0`입니다. Bun과 Deno starter는 native engine을 유지하고 Workers의 Node engine은 로컬 CLI/Wrangler tooling만 제한합니다. 업그레이드 전에 [Node.js 마이그레이션](../../docs/reference/node-support.ko.md)을 적용하세요.
 - `@fluojs/cli`는 Node.js `>=24.11.0 <27`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 하고 생성 Babel 8 toolchain이 지원되는 engine 범위 안에 있도록 Node.js `>=24.11.0 <27`을 선언합니다. Node 24.11 미만과 Node 27 이상은 제외되며, Node microservice-only 프로젝트는 같은 `>=24.11.0 <27` 하한을 유지합니다.
@@ -181,6 +194,8 @@ document shell, server/client route snapshot wiring을 함께 다루지 않습�
 `@Router(...)` / `@Path(...)` handler가 HTTP 검증 DTO data로
 `ReactNavigationPage.create(page, { module, props })`를 반환하므로 기존 HTTP
 dispatcher가 계속 authoritative합니다.
+Production shell 전달은 host/proxy가 전체 body를 모으지 않고 chunk를 전달해야 합니다.
+[Fastify streaming 레시피](../platform-fastify/README.ko.md#스트리밍-응답)를 참고하세요.
 
 생성된 공통 셸은 `useRouter().refresh()`로 같은 page에 credential 포함 HTTP 재검증을
 명시적으로 실행합니다. 승인 전에는 셸 자원과 history, 이전 page를 유지하고 승인된
@@ -196,6 +211,15 @@ redirect하며 JavaScript 없이도 form이 동작합니다. 셸을 교체하지
 클릭하세요. 요청 중에는 이전 값이 남고 승인된 새 이름만 history entry 없이 표시됩니다.
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
+생성된 production asset controller는 application instance별로 immutable build 파일의
+bytes를 재사용하고 동시 읽기를 공유합니다. 실패한 읽기는 보관하지 않으며,
+개발 자산은 수정 내용이 반영되도록 다시 읽습니다.
+Node restart runner는 기본 50ms trailing-edge debounce로 source 이벤트를 합칩니다.
+`FLUO_DEV_RELOAD_DEBOUNCE_MS`의 명시적 override는 유지하며, 내용 hash가 같은
+저장은 여전히 application을 재시작하지 않습니다.
+개발 gateway는 대상 JavaScript와 CSS 응답에 streaming gzip을 협상하며 원래 내용과
+backpressure를 유지합니다. 이미 인코딩된 응답, range, HEAD, `no-transform` 응답은
+변환하지 않습니다. 압축 응답은 `Accept-Encoding`에 따라 달라지며 weak ETag를 사용합니다.
 의존성 설치 후 어느 경로든 수동 production build 없이 시작합니다. Vite가 SSR entry를
 변환하며 안정된 개발 gateway가 공개 HTTP port와 WebSocket을 유지합니다. 각 Fastify
 app generation은 임시 private port에서 client module, refresh preamble, CSS를
@@ -236,6 +260,12 @@ application file과 다시 실행할 lifecycle command를 정확히 가리킵니
 미지원 page와 JavaScript 비활성 상태는 native document 이동을 유지합니다. 일반 page를 추가할 때는
 page module과 HTTP handler/DTO만 작성하며 client entry, renderer, manifest, router store를
 편집하지 않습니다.
+생성된 production hydration test는 page를 열기 전에 negotiated GET을 관찰합니다.
+Hydration과 실제 control acknowledgment는 initial-data GET을 추가하지 않아야 하고,
+search는 HTTP approval 한 번을 요구합니다. 실제 build manifest와 browser asset inventory를
+검사하여 첫 상품 page가 search destination을 eager-load하지 않는지도 확인합니다.
+이는 correctness coverage이며 hydration 시간이나 navigation percentile 성능 영수증이 아닙니다.
+[Client delivery diagnostics](../../docs/guides/react-performance-benchmarks.ko.md#client-delivery-diagnostics)를 참고하세요.
 Generated shell은 `ReactNavigationExperience`를 opt-in으로 사용합니다. Pending 및 polite
 상태 알림은 key가 지정된 page slot 밖에 유지되고 destination render 오류는 local reset을
 제공합니다. `@PageMetadata(...)`는 request에서 선택한 title/meta/link descriptor를 SSR과

@@ -154,6 +154,22 @@ an unchecked cast or client matcher.
 ## Production verification
 
 Open `/catalog/session` for the ordinary HTTP login/logout/permission forms.
+Choose **Login A** or **Login B**, then **Authenticated products** to open
+`/catalog/session/products` for guarded list/search and create, or
+`/catalog/session/products/:sku` for detail, update and delete. These forms use
+the existing `useForm` and HTTP DTO/guard/interceptor path: native POST/303/GET
+works without JavaScript, while enhanced forms negotiate `ReactModule.formResult`
+and fresh HTTP follow-up approval. Logout/relogin uses the same session boundary.
+
+The identities `a` and `b`, HttpOnly `catalogSession`/`catalogAccess` cookies and
+fixed `csrf=catalog-demo-token` cookie/form value are demonstration identity,
+permission and CSRF wiring, not production authentication. The authenticated
+products use a separate process-local map shared by both demo identities, not
+durable or per-user storage; restarting the process clears edits and restores
+the seed data. Replace identity/session validation, authorization, CSRF policy
+and persistence in application-owned code before production use. The public
+catalog and editor-cookie demos remain separate.
+
 `ReactModule.formResult({ session: { epoch, reason } })` enters the existing
 provider's session barrier before fresh GET approval. Explicit app notifications
 use `router.sessionChanged`; there is no second notifier or cookie detector.

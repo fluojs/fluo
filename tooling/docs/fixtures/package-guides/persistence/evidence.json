@@ -1,0 +1,24 @@
+{
+  "@fluojs/persistence": {
+    "page": "apps/docs/content/docs/packages/persistence.mdx",
+    "sources": [
+      "packages/persistence/src/index.ts",
+      "packages/persistence/src/transaction.ts",
+      "packages/persistence/src/result-rollback.ts",
+      "packages/persistence/src/request-transaction.ts",
+      "packages/prisma/src/service.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/persistence/persistence.test.ts",
+      "packages/persistence/src/result-rollback.test.ts",
+      "packages/persistence/src/request-transaction.test.ts",
+      "tooling/governance/after-commit-contract.test.ts"
+    ],
+    "compositions": [
+      "Canonical TransactionBoundaryOptions with an existing PrismaService native seam: original result identity, commit-before-hook order and core/persistence constructor equality. This fixture is not real database evidence."
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/governance/after-commit-contract.test.ts tooling/governance/node-support-classification.test.ts tooling/governance/verify-platform-consistency-governance.test.ts tooling/docs/fixtures/package-guides/persistence --maxWorkers=1 -> exit 0, 4 files / 531 tests passed (2026-10-08, Node v26.7.0)"
+    ]
+  }
+}

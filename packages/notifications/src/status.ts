@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /** Resolved notification runtime mode used for diagnostics. */
 export type NotificationsOperationMode =
@@ -42,12 +42,7 @@ export interface NotificationsStatusDetails {
 }
 
 /** Structured snapshot returned by {@link createNotificationsPlatformStatusSnapshot}. */
-export interface NotificationsPlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: NotificationsStatusDetails;
-}
+export interface NotificationsPlatformStatusSnapshot extends PlatformStatusSnapshot<NotificationsStatusDetails> {}
 
 interface ResolvedNotificationsStatusInput {
   bulkQueueThreshold: number;

@@ -1,8 +1,14 @@
-import { Module } from '@fluojs/core';
-import { createReactPageCatalog, Path, ReactModule, Router } from '@fluojs/react';
+import { createServer, request as requestHttp, ServerResponse, type IncomingMessage } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { constants as zlibConstants, createGunzip, createGzip, gzipSync } from 'node:zlib';
+
+import { Inject, Module, Scope } from '@fluojs/core';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
+import { Path, ReactModule, Router, createReactPageCatalog, createReactServerEntry, renderReactResponse } from '@fluojs/react';
 import { Test } from '@fluojs/testing';
-import { createElement } from 'react';
+import { Suspense, createElement, use } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
@@ -44,6 +50,42 @@ const assets = createReactViteAssetManifest({
 });
 if (!assets.ok) throw new Error('The test manifest must be valid.');
 
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
+function bounded<T>(promise: Promise<T>, event = 'socket event'): Promise<T> {
+  let deadline: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      deadline = setTimeout(() => reject(new Error(`${event} deadline expired.`)), 5_000);
+    }),
+  ]).finally(() => clearTimeout(deadline));
+}
+
+function openSocket(port: number, path: string) {
+  const firstChunk = deferred<{ readonly response: IncomingMessage; readonly chunk: string }>();
+  const complete = deferred<string>();
+  const client = requestHttp({ host: '127.0.0.1', port, path });
+  client.on('response', (response) => {
+    const chunks: Buffer[] = [];
+    response.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      if (chunks.length === 1) {
+        firstChunk.resolve({ response, chunk: chunk.toString('utf8') });
+      }
+    });
+    response.on('end', () => complete.resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+  client.end();
+  return { client, firstChunk: firstChunk.promise, complete: complete.promise };
+}
+
 function readHtml(body: unknown): string {
   if (body instanceof Uint8Array) {
     return TEXT_DECODER.decode(body);
@@ -53,6 +95,619 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  for (const transport of ['negotiated', 'native'] as const) {
+    for (const operation of ['create', 'update', 'delete'] as const) {
+      for (const token of ['missing', 'tampered'] as const) {
+        it(`authenticated CSRF: ${transport} ${operation} ${token} -> rejects before writes and preserves persistence`, async () => {
+          const events: CatalogObservation[] = [];
+          const AppModule = createReactViteExampleModule({
+            clientDirectory: new URL('../dist/client/', import.meta.url),
+            presentation: createReactViteExamplePresentation({
+              ...VITE_MANIFEST,
+              'src/navigation-catalog.ts': {
+                file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+              },
+            }),
+            catalogControl: (event) => { events.push(event); },
+          });
+          const adapter = FastifyHttpApplicationAdapter.create({
+            host: '127.0.0.1', port: 0,
+            configureFastify(server) {
+              server.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
+                const fields: Record<string, string | string[]> = Object.create(null);
+                for (const [name, value] of new URLSearchParams(String(body))) {
+                  const prior = fields[name];
+                  fields[name] = prior === undefined ? value : Array.isArray(prior) ? [...prior, value] : [prior, value];
+                }
+                done(null, fields);
+              });
+            },
+          });
+          const app = await FluoFactory.create(AppModule, { ...AppModule.applicationOptions, adapter });
+          await withCleanup(async (defer) => {
+            defer(() => app.close());
+            await app.listen();
+            const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+            if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+            const origin = `http://127.0.0.1:${address.port}`;
+            const cookie = 'catalogSession=a; catalogAccess=allowed; csrf=catalog-demo-token';
+            const read = async () => {
+              const response = await fetch(`${origin}/catalog/session/products`, {
+                headers: { cookie, Accept: 'application/vnd.fluo.react-navigation+json;v=2' },
+              });
+              expect(response.status).toBe(200);
+              return response.json();
+            };
+            const before = await read();
+            const path = operation === 'create' ? '/catalog/session/products/create'
+              : `/catalog/session/products/sku-42/${operation}`;
+            const body = new URLSearchParams(operation === 'delete' ? {} : { display_name: 'CSRF protected product' });
+            if (token === 'tampered') body.set('csrf', 'tampered-token');
+            const headers = { cookie, origin, Accept: transport === 'negotiated'
+              ? 'application/vnd.fluo.form+json;v=1' : 'text/html' };
+            const start = events.length;
+
+            const rejected = await fetch(`${origin}${path}`, { method: 'POST', headers, body, redirect: 'manual' });
+
+            expect(rejected.status).toBe(403);
+            expect(rejected.headers.get('location')).toBeNull();
+            if (transport === 'negotiated') {
+              expect(await rejected.json()).toMatchObject({ error: { code: 'FORBIDDEN', status: 403 } });
+            } else {
+              expect(rejected.headers.get('content-type')).toContain('text/html');
+              await rejected.text();
+            }
+            const observed = events.slice(start);
+            expect(observed.map((event) => event.phase)).toEqual(['middleware', 'guard', 'guard', 'cleanup']);
+            expect(new Set(observed.map((event) => event.scope)).size).toBe(1);
+            expect(observed.filter((event) => event.phase === 'handler' || event.phase === 'commit')).toHaveLength(0);
+            expect(await read()).toEqual(before);
+
+            // The identical identity, origin, DTO and route succeed with only CSRF corrected.
+            body.set('csrf', 'catalog-demo-token');
+            const accepted = await fetch(`${origin}${path}`, { method: 'POST', headers, body, redirect: 'manual' });
+            expect(accepted.status).toBe(transport === 'negotiated' ? 200 : 303);
+            if (transport === 'negotiated') expect(await accepted.json()).toMatchObject({ outcome: 'saved' });
+            else await accepted.text();
+            expect(events.filter((event) => event.phase === 'commit')).toHaveLength(1);
+          });
+        });
+      }
+    }
+  }
+
+  it('authenticated detail: blank SKU -> path validation rejects the matched request and cleans its scope', async () => {
+    // Given: an authenticated request through the real application dispatcher.
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+
+      // When: the test adapter passes a blank path segment to the real dispatcher.
+      const response = await app.request('GET', '/catalog/session/products/ ', {
+        cookies: { catalogSession: 'a', catalogAccess: 'allowed' },
+      }).send();
+
+      // Then: a field-level validation failure is distinct from a route or product miss.
+      const guard = events.find((event) => event.phase === 'guard');
+      expect(guard).toMatchObject({ matched: 'authenticatedDetail' });
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({ error: {
+        code: 'BAD_REQUEST', status: 400,
+        details: [expect.objectContaining({ field: 'sku', source: 'path' })],
+      } });
+      expect(events.some((event) => event.phase === 'handler' || event.phase === 'commit')).toBe(false);
+      expect(events.filter((event) => event.phase === 'cleanup')).toEqual([
+        expect.objectContaining({ scope: guard?.scope, matched: 'authenticatedDetail' }),
+      ]);
+    });
+  });
+
+  it.each([
+    { sku: 'sku-42', name: 'Seeded product', create: false, status: 200 },
+    { sku: 'item-1', name: 'Private product', create: true, status: 200 },
+    { sku: 'unknown-product', name: '', create: false, status: 404 },
+    { sku: 'x', name: '', create: false, status: 404 },
+  ])('authenticated detail: $sku -> $status through a materialized path DTO', async ({ sku, name, create, status }) => {
+    // Given: seeded, newly created or unknown products in an authenticated catalog.
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation({
+        ...VITE_MANIFEST,
+        'src/navigation-catalog.ts': {
+          file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+        },
+      }),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const cookies = { catalogSession: 'a', catalogAccess: 'allowed', csrf: 'catalog-demo-token' };
+      if (create) {
+        const created = await app.request('POST', '/catalog/session/products/create', { cookies })
+          .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+          .header('Accept', 'application/vnd.fluo.form+json;v=1')
+          .body({ display_name: name, csrf: 'catalog-demo-token' }).send();
+        expect(created.status).toBe(200);
+      }
+      events.length = 0;
+
+      // When: the detail request traverses ordinary DTO binding, guards and interceptors.
+      const response = await app.request('GET', `/catalog/session/products/${sku}`, { cookies })
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+
+      // Then: existing product data or domain NotFound remains distinct from validation.
+      expect(response.status).toBe(status);
+      if (status === 200) {
+        expect(response.body).toMatchObject({ destination: { props: {
+          products: [{ sku, name }], selected: sku, authenticatedCrud: true, sessionIdentity: 'a',
+        } } });
+      } else {
+        expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', status: 404 } });
+      }
+      expect(response.headers['X-Catalog-Interceptor']).toBe('approved');
+      expect(events.map((event) => event.phase)).toEqual(['middleware', 'guard', 'interceptor', 'dto', 'handler', 'cleanup']);
+      expect(events.find((event) => event.phase === 'dto')).toMatchObject({ dto: true, matched: 'authenticatedDetail' });
+      expect(new Set(events.map((event) => event.scope)).size).toBe(1);
+    });
+  });
+
+  it.each([
+    { cookies: {}, status: 401 },
+    { cookies: { catalogSession: 'a', catalogAccess: 'forbidden' }, status: 403 },
+  ])('authenticated detail: rejected session -> $status before the handler', async ({ cookies, status }) => {
+    // Given: an anonymous or forbidden session on a valid seeded detail route.
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+
+      // When: the dispatcher runs the existing session guard.
+      const response = await app.request('GET', '/catalog/session/products/sku-42', { cookies }).send();
+
+      // Then: authorization and cleanup remain owned by the HTTP request.
+      expect(response.status).toBe(status);
+      expect(events.map((event) => event.phase)).toEqual(['middleware', 'guard', 'cleanup']);
+      expect(events.find((event) => event.phase === 'guard')).toMatchObject({ matched: 'authenticatedDetail' });
+      expect(new Set(events.map((event) => event.scope)).size).toBe(1);
+    });
+  });
+
+  it('authenticated CRUD: session and permission boundaries -> private reads and persisted writes', async () => {
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation({
+        ...VITE_MANIFEST,
+        'src/navigation-catalog.ts': {
+          file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+        },
+      }),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const cookies = { catalogSession: 'a', catalogAccess: 'allowed', csrf: 'catalog-demo-token' };
+      const write = (path: string, name: string) => app.request('POST', path, { cookies })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ display_name: name, csrf: 'catalog-demo-token' }).send();
+
+      const anonymous = await app.request('GET', '/catalog/session/products').send();
+      const forbidden = await app.request('GET', '/catalog/session/products', {
+        cookies: { ...cookies, catalogAccess: 'forbidden' },
+      }).send();
+      const invalid = await write('/catalog/session/products/create', 'x');
+      const created = await write('/catalog/session/products/create', 'Private product');
+
+      expect(anonymous.status).toBe(401);
+      expect(forbidden.status).toBe(403);
+      expect(invalid.status).toBe(400);
+      expect(created.status).toBe(200);
+      expect(created.body).toMatchObject({ outcome: 'saved', destination: '/catalog/session/products/item-1',
+        data: { sku: 'item-1', name: 'Private product' } });
+      expect((await app.request('GET', '/catalog/item-1').send()).status).toBe(404);
+      const publicList = await app.request('GET', '/catalog')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+      expect(publicList.body).toMatchObject({ destination: { props: {
+        products: [{ sku: 'sku-42', name: 'Seeded product' }],
+      } } });
+      const updated = await write('/catalog/session/products/item-1/update', 'Corrected product');
+      expect(updated.body).toMatchObject({ outcome: 'saved', followUp: 'refresh' });
+      const read = await app.request('GET', '/catalog/session/products', { cookies })
+        .query('q', 'Corrected').header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+      expect(read.body).toMatchObject({ destination: { props: {
+        authenticatedCrud: true, sessionIdentity: 'a', products: [{ sku: 'item-1', name: 'Corrected product' }],
+      } } });
+      const removed = await app.request('POST', '/catalog/session/products/item-1/delete', { cookies })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ csrf: 'catalog-demo-token' }).send();
+      expect(removed.body).toMatchObject({ outcome: 'saved', destination: '/catalog/session/products' });
+      expect((await app.request('GET', '/catalog/session/products/item-1', { cookies }).send()).status).toBe(404);
+      const commits = events.filter((event) => event.phase === 'commit');
+      expect(commits).toHaveLength(3);
+      for (const event of commits) {
+        expect(events.some((cleanup) => cleanup.phase === 'cleanup' && cleanup.scope === event.scope)).toBe(true);
+      }
+      expect((await app.request('GET', '/catalog').send()).status).toBe(200);
+    });
+  });
+
+  it('delivers the HTTP-owned shell through a real Fastify socket before a gated descendant settles', async () => {
+    // Given: the ordinary React HTTP module with a Suspense descendant controlled independently of the handler.
+    const gate = deferred<void>();
+    let descendantResolved = false;
+    function Descendant() {
+      use(gate.promise);
+      descendantResolved = true;
+      return createElement('p', null, 'Descendant ready');
+    }
+
+    @Router('/socket-shell')
+    class ShellRouter {
+      @Path('/')
+      show() {
+        return createReactServerEntry(createElement('html', null,
+          createElement('body', null,
+            createElement('h1', null, 'Shell received'),
+            createElement(Suspense, { fallback: createElement('p', null, 'Descendant pending') },
+              createElement(Descendant)))));
+      }
+    }
+
+    @Module({ imports: [ReactModule.forRoot({ controllers: [ShellRouter] })] })
+    class ShellModule {}
+
+    const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(ShellModule, { adapter });
+    await app.listen();
+    const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+    if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+
+    const socket = openSocket(address.port, '/socket-shell');
+    try {
+      // When: the client receives bytes while the descendant gate is still held.
+      const { response, chunk } = await bounded(socket.firstChunk);
+
+      // Then: the actual HTTP status and shell bytes precede descendant completion.
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['content-type']).toContain('text/html');
+      expect(chunk).toContain('Shell received');
+      expect(chunk).toContain('Descendant pending');
+      expect(descendantResolved).toBe(false);
+      gate.resolve();
+      expect(await bounded(socket.complete)).toContain('Descendant ready');
+    } finally {
+      gate.resolve();
+      socket.client.destroy();
+      await app.close();
+    }
+  });
+
+  it('does not promise socket shell bytes before a required handler await resolves', async () => {
+    // Given: HTTP-owned handler work that must finish before React receives its page entry.
+    const gate = deferred<void>();
+    const enteredHandler = deferred<void>();
+    @Router('/awaited-shell')
+    class AwaitedRouter {
+      @Path('/')
+      async show() {
+        enteredHandler.resolve();
+        await gate.promise;
+        return createReactServerEntry(createElement('h1', null, 'Awaited shell'));
+      }
+    }
+    @Module({ imports: [ReactModule.forRoot({ controllers: [AwaitedRouter] })] })
+    class AwaitedModule {}
+    const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(AwaitedModule, { adapter });
+    await app.listen();
+    const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+    if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+    const socket = openSocket(address.port, '/awaited-shell');
+    try {
+      // When: the handler has begun but its required data is still gated.
+      await bounded(enteredHandler.promise);
+      gate.resolve();
+
+      // Then: the delivered HTML is the result of the completed handler, not proof of pre-await streaming.
+      const { response, chunk } = await bounded(socket.firstChunk);
+      expect(response.statusCode).toBe(200);
+      expect(chunk).toContain('Awaited shell');
+      expect(await bounded(socket.complete)).toContain('Awaited shell');
+    } finally {
+      gate.resolve();
+      socket.client.destroy();
+      await app.close();
+    }
+  });
+
+  it('delivers a gzip-flushed shell through a streaming proxy but labels whole-body gzip as buffered', async () => {
+    // Given: one Fastify React page with an independently gated Suspense descendant.
+    const gate = deferred<void>();
+    let gateReleased = false;
+    function Descendant() {
+      use(gate.promise);
+      return createElement('p', null, 'After gate');
+    }
+    @Router('/proxy-shell')
+    class ProxyRouter {
+      @Path('/')
+      show() {
+        return createReactServerEntry(createElement('html', null,
+          createElement('body', null, createElement('h1', null, 'Early proxy shell'),
+            createElement(Suspense, { fallback: createElement('p', null, 'Pending proxy descendant') },
+              createElement(Descendant)))));
+      }
+    }
+    @Module({ imports: [ReactModule.forRoot({ controllers: [ProxyRouter] })] })
+    class ProxyModule {}
+    const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(ProxyModule, { adapter });
+    await app.listen();
+    const upstreamAddress = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+    if (typeof upstreamAddress !== 'object' || upstreamAddress === null) throw new TypeError('Expected an upstream listener.');
+    const streamingUpstreamData = deferred<void>();
+    const bufferedUpstreamData = deferred<void>();
+    const streaming = createServer((_request, downstream) => {
+      const upstream = requestHttp({ host: '127.0.0.1', port: upstreamAddress.port, path: '/proxy-shell' });
+      upstream.on('response', (response) => {
+        downstream.writeHead(response.statusCode ?? 502, {
+          'content-encoding': 'gzip',
+          'content-type': response.headers['content-type'] ?? 'text/html',
+          vary: 'Accept-Encoding',
+        });
+        const gzip = createGzip({ flush: zlibConstants.Z_SYNC_FLUSH });
+        response.once('data', () => streamingUpstreamData.resolve());
+        response.pipe(gzip).pipe(downstream);
+      });
+      upstream.end();
+    });
+    const buffered = createServer((_request, downstream) => {
+      const upstream = requestHttp({ host: '127.0.0.1', port: upstreamAddress.port, path: '/proxy-shell' });
+      upstream.on('response', (response) => {
+        const chunks: Buffer[] = [];
+        response.once('data', () => bufferedUpstreamData.resolve());
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => {
+          downstream.writeHead(response.statusCode ?? 502, { 'content-encoding': 'gzip' });
+          downstream.end(gzipSync(Buffer.concat(chunks)));
+        });
+      });
+      upstream.end();
+    });
+    await Promise.all([new Promise<void>((resolve) => streaming.listen(0, '127.0.0.1', resolve)),
+      new Promise<void>((resolve) => buffered.listen(0, '127.0.0.1', resolve))]);
+    const streamingAddress = streaming.address();
+    const bufferedAddress = buffered.address();
+    if (typeof streamingAddress !== 'object' || streamingAddress === null
+      || typeof bufferedAddress !== 'object' || bufferedAddress === null) throw new TypeError('Expected proxy listeners.');
+    const streamedFirstHtml = deferred<string>();
+    const streamedComplete = deferred<string>();
+    const streamedClient = requestHttp({ host: '127.0.0.1', port: streamingAddress.port, path: '/' });
+    streamedClient.on('response', (response) => {
+      if (response.headers['content-encoding'] !== 'gzip') {
+        throw new TypeError('Expected gzip at the streaming proxy.');
+      }
+      const gunzip = createGunzip();
+      const chunks: Buffer[] = [];
+      response.pipe(gunzip);
+      gunzip.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+        if (chunks.length === 1) streamedFirstHtml.resolve(chunk.toString('utf8'));
+      });
+      gunzip.on('end', () => streamedComplete.resolve(Buffer.concat(chunks).toString('utf8')));
+    });
+    streamedClient.end();
+    let bufferedArrivedBeforeRelease = false;
+    const bufferedClient = requestHttp({ host: '127.0.0.1', port: bufferedAddress.port, path: '/' });
+    const bufferedComplete = deferred<Buffer>();
+    bufferedClient.on('response', (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => {
+        if (!gateReleased) bufferedArrivedBeforeRelease = true;
+        chunks.push(chunk);
+      });
+      response.on('end', () => bufferedComplete.resolve(Buffer.concat(chunks)));
+    });
+    bufferedClient.end();
+    try {
+      // When: the streaming client receives compressed bytes before releasing the descendant.
+      const first = await bounded(streamedFirstHtml.promise, 'streaming proxy first decoded shell byte');
+      expect(first).toContain('Early proxy shell');
+      await bounded(Promise.all([streamingUpstreamData.promise, bufferedUpstreamData.promise]), 'both proxy upstream bytes');
+      expect(gateReleased).toBe(false);
+      expect(bufferedArrivedBeforeRelease).toBe(false);
+      gateReleased = true;
+      gate.resolve();
+
+      // Then: both hosts complete, but whole-body gzip did not supply a pre-gate client chunk.
+      expect(await bounded(streamedComplete.promise, 'streaming proxy completion')).toContain('After gate');
+      expect((await bounded(bufferedComplete.promise, 'buffered proxy completion')).byteLength).toBeGreaterThan(0);
+      expect(bufferedArrivedBeforeRelease).toBe(false);
+    } finally {
+      gate.resolve();
+      streamedClient.destroy();
+      bufferedClient.destroy();
+      await Promise.all([new Promise<void>((resolve, reject) => streaming.close((error) => error ? reject(error) : resolve())),
+        new Promise<void>((resolve, reject) => buffered.close((error) => error ? reject(error) : resolve()))]);
+      await app.close();
+    }
+  });
+
+  for (const blockedAt of ['source-read', 'socket-drain'] as const) {
+    it(`cancels the unfinished reader and disposes its request scope after ${blockedAt} disconnect`, async () => {
+      // Given: a real Node response, a controlled HWM=0 producer, and a request-owned provider.
+      const canceled = deferred<void>();
+      const disposed = deferred<void>();
+      const writeBlocked = deferred<{ readonly highWaterMark: number; readonly writableLength: number }>();
+      const sourceRead = deferred<void>();
+      const releaseRead = deferred<void>();
+      const responseClosed = deferred<void>();
+      let pulls = 0;
+      let cancellations = 0;
+      let disposals = 0;
+      let drains = 0;
+      let readCalls = 0;
+      let readsInFlight = 0;
+      let maximumReadsInFlight = 0;
+      let readCallsAtWriteFalse = 0;
+      let sourceDesiredSize: number | null | undefined;
+      let blockedSize: { readonly highWaterMark: number; readonly writableLength: number } | undefined;
+      let source: ReadableStream<Uint8Array> | undefined;
+      @Scope('request')
+      class RequestOwner {
+        onDestroy() {
+          disposals++;
+          disposed.resolve();
+        }
+      }
+      @Inject(RequestOwner)
+      @Scope('request')
+      @Controller('/slow-socket')
+      class SlowSocketController {
+        constructor(private readonly owner: RequestOwner) {}
+
+        @Get('/')
+        async stream(_input: undefined, context: RequestContext) {
+          void this.owner;
+          const reply = context.response.raw;
+          if (typeof reply !== 'object' || reply === null) throw new TypeError('Expected a Fastify reply.');
+          const native: unknown = Reflect.get(reply, 'raw');
+          if (!(native instanceof ServerResponse)) throw new TypeError('Expected a Node Fastify response.');
+          native.once('close', () => responseClosed.resolve());
+          native.on('drain', () => { drains++; });
+          const sink = context.response.stream;
+          if (!sink) throw new TypeError('Expected a Fastify streaming response.');
+          const write = sink.write.bind(sink);
+          sink.write = (chunk) => {
+            const accepted = write(chunk);
+            if (!accepted) {
+              readCallsAtWriteFalse = readCalls;
+              writeBlocked.resolve({
+                highWaterMark: native.writableHighWaterMark,
+                writableLength: native.writableLength,
+              });
+            }
+            return accepted;
+          };
+          const readable = new ReadableStream<Uint8Array>({
+            cancel() {
+              cancellations++;
+              releaseRead.resolve();
+              canceled.resolve();
+            },
+            async pull(controller) {
+              pulls++;
+              sourceDesiredSize = controller.desiredSize;
+              if (blockedAt === 'socket-drain') {
+                controller.enqueue(new Uint8Array(4 * 1024 * 1024).fill(65));
+                return;
+              }
+              if (pulls === 1) {
+                controller.enqueue(new TextEncoder().encode('<main>first shell byte</main>'));
+                return;
+              }
+              sourceRead.resolve();
+              await releaseRead.promise;
+            },
+          }, { highWaterMark: 0 });
+          const getReader = readable.getReader.bind(readable);
+          Object.defineProperty(readable, 'getReader', {
+            value: () => {
+              const reader = getReader();
+              const read = reader.read.bind(reader);
+              reader.read = async () => {
+                readCalls++;
+                readsInFlight++;
+                maximumReadsInFlight = Math.max(maximumReadsInFlight, readsInFlight);
+                try {
+                  return await read();
+                } finally {
+                  readsInFlight--;
+                }
+              };
+              return reader;
+            },
+          });
+          source = readable;
+          await renderReactResponse(createReactServerEntry(createElement('main')), context, {
+            renderToReadableStream: async () => readable,
+          });
+        }
+      }
+      @Module({ controllers: [SlowSocketController], providers: [RequestOwner] })
+      class SlowSocketModule {}
+      const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+      const app = await FluoFactory.create(SlowSocketModule, { adapter });
+      await app.listen();
+      const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+      if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+      const socket = requestHttp({ host: '127.0.0.1', port: address.port, path: '/slow-socket' });
+      const responseReady = deferred<IncomingMessage>();
+      socket.on('response', (response) => {
+        if (blockedAt === 'socket-drain') response.pause();
+        responseReady.resolve(response);
+      });
+      socket.end();
+      try {
+        // When: the reader is pending or a genuine socket write reports backpressure, disconnect the client.
+        const response = await bounded(responseReady.promise, 'response headers');
+        expect(response.statusCode).toBe(200);
+        if (blockedAt === 'source-read') {
+          response.resume();
+          await bounded(sourceRead.promise, 'pending source read');
+        } else {
+          const blocked = await bounded(writeBlocked.promise, 'socket write false');
+          blockedSize = blocked;
+          expect(blocked.writableLength).toBeGreaterThanOrEqual(blocked.highWaterMark);
+          expect(pulls).toBe(1);
+        }
+        socket.destroy();
+
+        // Then: no producer read escapes blocked drain, and all request-owned work ends exactly once.
+        await bounded(responseClosed.promise, 'response close');
+        await bounded(canceled.promise, 'reader cancellation');
+        await bounded(disposed.promise, 'request disposal');
+        expect(cancellations).toBe(1);
+        expect(disposals).toBe(1);
+        expect(source?.locked).toBe(false);
+        expect(maximumReadsInFlight).toBe(1);
+        expect(readsInFlight).toBe(0);
+        expect(socket.destroyed).toBe(true);
+        if (blockedAt === 'socket-drain') {
+          expect(pulls).toBe(1);
+          expect(readCalls).toBe(readCallsAtWriteFalse);
+        }
+        console.info('SLOW_SOCKET_EVIDENCE', JSON.stringify({
+          blockedAt, highWaterMark: blockedSize?.highWaterMark ?? null,
+          writableLengthAtFalse: blockedSize?.writableLength ?? null,
+          sourceChunkBytes: blockedAt === 'socket-drain' ? 4 * 1024 * 1024 : 29,
+          pulls, drains, cancellations, disposals, readerLocked: source?.locked,
+          readCalls, readCallsAtWriteFalse, maximumReadsInFlight, readsInFlight,
+          sourceHighWaterMark: 0, sourceDesiredSize,
+        }));
+      } finally {
+        socket.destroy();
+        await app.close();
+      }
+    }, 15_000);
+  }
+
   it('approves the guard destination query through the real HTTP DTO and generated-props page', async () => {
     // Given: the actual catalog router and a build manifest containing its destination.
     const AppModule = createReactViteExampleModule({

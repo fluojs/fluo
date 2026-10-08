@@ -39,7 +39,7 @@ describe('Passport.js bridge source governance', () => {
 
   it('rejects a registry assignment implemented only inside an uncalled decoy', () => {
     // Given
-    const targetPath = 'packages/passport/src/module.ts';
+    const targetPath = 'packages/auth-http/src/module.ts';
     const readWithExecutableDecoy = (relativePath: string): string => {
       const content = read(relativePath);
       if (relativePath !== targetPath) {

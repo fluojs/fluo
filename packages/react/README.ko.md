@@ -7,7 +7,15 @@ fluo를 위한 HTTP-first 풀스택 React application framework이며 package ro
 form, 독립 background 작업 및 session 철회를 제공합니다.
 [풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)과
 [장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)는 해당
-capability와 미실행 whole-product/soak/manual gate를 구분합니다.
+shipped capability, 실제 current-head 실행 및 lead-owned 최종 제품 gate를 구분합니다.
+[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)는
+`/catalog/session/products` authenticated CRUD, jukebox lifetime, packed
+authoring/dev/production과 machine-consumed receipt를 연결합니다. Demo session과
+process-local private product는 production authentication이나 durable storage가 아닙니다.
+최종 #3879의 원래 수치 FAIL/INCONCLUSIVE는 공개된 비차단 diagnostics이며,
+증거 품질/correctness/stability/cleanup 및 Fluo error 0은 계속 필수입니다.
+이번 lane은 완료된 1시간 soak를 요구하고 scheduled 2시간 default를 유지하며,
+physical mobile/tablet은 PASS 없이 #3906으로 명시적으로 분리합니다.
 
 Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요. React는 `0.x`의 `minor` 릴리스를 유지하며 `1.0`으로 승격하지 않습니다.
 
@@ -104,6 +112,12 @@ Generated wiring은 첫 편집에 부수적인 작업을 다음 application file
 Advanced application은 generated renderer를 교체하거나 `createReactServerEntry(...)`에 명시적인
 hydration option을 전달할 수 있으며 아래 stable API도 그대로 사용할 수 있습니다. Runtime-neutral root
 export는 Node.js, Vite, browser code를 import하지 않고, starter는 별도 route matcher를 추가하지 않습니다.
+
+Delivery 증거에서는 emitted shell/shared module과 destination-only module을 구분하고,
+store completion만이 아니라 hydration과 실제 destination render를 관찰합니다.
+[Client delivery diagnostic](../../docs/guides/react-performance-benchmarks.ko.md#client-delivery-diagnostics)은
+build membership, request byte/cache 동작, cold/warm public/private trace를 기록합니다.
+이 correctness 관측은 frozen representative performance gate를 대체하지 않습니다.
 
 ## Stable SSR Mental Model
 
@@ -727,6 +741,15 @@ throw합니다. Recoverable Suspense error는 `onRecoverableError`로 보고되�
 Streaming host에서는 response sink가 일찍 닫히거나 `write(...)` / `waitForDrain()`이 실패하면 완료되지
 않은 React reader를 정확히 한 번 cancel하고 lock을 해제합니다. Sink failure는 reader cancellation cleanup에
 의해 대체되지 않고 원래 failure로 보고됩니다.
+Producer read는 한 번에 하나만 활성화됩니다. Sink `write(...)`가 `false`를 반환한 뒤에는
+`drain` 또는 close 전까지 다음 read를 시작하지 않습니다. 연결이 끊기면 완료되지 않은
+작업을 취소하고 HTTP dispatcher가 request scope를 폐기합니다. 이는 producer 진행
+규칙이지 process 전체 메모리 상한이 아닙니다. HTTP handler가 필요로 하는 `await`가
+끝나고 사이에 있는 모든 host가 부분 response를 flush할 때에만, Suspense descendant가
+gate된 동안 shell이 client에 도착할 수 있습니다. Buffered host는 모든 chunk를 모은
+뒤 최종 연속 배열을 만들고 나서 commit합니다(수집 중 body 약 두 사본과 부가 메모리).
+공개 HTML 출력 크기 제한은 없습니다. [Node/Fastify 배포 레시피](../platform-fastify/README.ko.md#스트리밍-응답)와
+[socket 및 buffered 근거](../../docs/guides/react-performance-benchmarks.ko.md)를 참고하세요.
 
 ## Hydration Asset Contract
 

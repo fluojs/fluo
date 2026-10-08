@@ -2,7 +2,7 @@ import type {
   PersistencePlatformStatusSnapshot,
   PlatformHealthReport,
   PlatformReadinessReport,
-} from '@fluojs/runtime';
+} from '@fluojs/diagnostics';
 
 type MongoosePlatformLifecycleState = 'ready' | 'shutting-down' | 'stopped';
 

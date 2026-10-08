@@ -173,6 +173,241 @@ if (args[0] === 'pr' && args[1] === 'view') {
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog };
 };
 
+const waiverFixture = (t) => {
+  const f = fixture(t);
+  const preflight = f.preflight({
+    scope: ['docs/', '.github/workflows/'], predicted_files: ['docs/guide.md', '.github/workflows/ci.yml'],
+  });
+  f.set('preflight', preflight);
+  f.implement();
+  f.commit('.github/workflows/ci.yml', 'name: fixture CI\n');
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.issues['42'].facts.review.accepted_at = '2026-01-01T00:00:00.000Z';
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const waiver = () => {
+    const { obs } = f.plan();
+    return { laneId: 'fixture', issue: 42, status: 'waived', scope: 'full-local-ci',
+      ...localCheckBinding(obs.review, obs.reviewAcceptedAt), authority: 'explicit-operator-instruction',
+      evidence: { kind: 'accepted-preflight', contractSha256: obs.preflight.sha256, criteria: ['A12', 'V12', 'SE-V05'] } };
+  };
+  return { ...f, acceptedPreflight: preflight, acceptedReview: review, waiver };
+};
+
+test('CLI local-ci-waiver: explicit registration -> separate audit fact without local-check success', (t) => {
+  const f = waiverFixture(t);
+  const head = f.acceptedReview.head_sha;
+  const value = f.waiver();
+  assert.equal(f.plan().decision.action, 'verify-local');
+
+  f.set('local-ci-waiver', value, head);
+
+  const result = f.plan();
+  const facts = JSON.parse(readFileSync(f.lanePath)).issues['42'].facts;
+  assert.equal(result.decision.action, 'create-pr');
+  assert.equal(result.obs.laneId, 'fixture');
+  assert.equal(result.obs.issue, 42);
+  assert.equal(result.obs.localChecks, null);
+  assert.equal(facts['local-checks'], undefined);
+  assert.deepEqual(facts['local-ci-waiver'].value, value);
+  assert.equal(facts['local-ci-waiver'].head, head);
+  assert.equal(new Date(facts['local-ci-waiver'].accepted_at).toISOString(), facts['local-ci-waiver'].accepted_at);
+  assert.deepEqual(result.obs.localCiWaiver, facts['local-ci-waiver']);
+  assert.notEqual(value.preflightSha256, value.evidence.contractSha256);
+  const calls = readFileSync(f.ghLog, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.ok(calls.every((args) => ['issue', 'pr'].includes(args[0]) && args[1] === 'view'));
+});
+
+test('CLI local-ci-waiver: bad or stale payloads -> rejection without lane byte mutation', (t) => {
+  const f = waiverFixture(t);
+  const value = f.waiver();
+  const head = f.acceptedReview.head_sha;
+  const bytes = readFileSync(f.lanePath, 'utf8');
+  for (const bad of [
+    null, [], { status: 'waived' },
+    { ...value, laneId: 'other' }, { ...value, issue: 43 }, { ...value, issue: '42' },
+    { ...value, preflightSha256: value.evidence.contractSha256 },
+    { ...value, reviewSha256: 'f'.repeat(64) },
+    { ...value, reviewAcceptedAt: '2026-01-02T00:00:00.000Z' },
+    { ...value, evidence: { ...value.evidence, contractSha256: value.preflightSha256 } },
+    { ...value, status: 'passed' }, { ...value, scope: 'remote-ci' },
+    { ...value, authority: 'inferred' }, { ...value, valid: true },
+    { ...value, receiptPath: '.omo/verification/missing.json' },
+    { ...value, startedAt: '2026-01-01T00:00:01.000Z' },
+    { ...value, evidence: { ...value.evidence, path: 'invented.json' } },
+    { ...value, evidence: { ...value.evidence, criteria: [] } },
+    { ...value, evidence: { ...value.evidence, criteria: ['A12', 'A12'] } },
+  ]) {
+    f.set('local-ci-waiver', bad, head, false);
+    assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  }
+  f.set('local-ci-waiver', value, 'f'.repeat(40), false);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+
+  f.set('local-ci-waiver', value, head);
+  assert.equal(f.plan().decision.action, 'create-pr');
+});
+
+test('CLI local-ci-waiver: malformed persisted wrappers -> ignored without exceptions', (t) => {
+  const f = waiverFixture(t);
+  const head = f.acceptedReview.head_sha;
+  const value = f.waiver();
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  const fact = { head, value, accepted_at: '2026-01-01T00:00:01.000Z' };
+  for (const bad of [
+    null, [], { ...fact, head: 'f'.repeat(40) }, { head, value },
+    { ...fact, accepted_at: 'invalid' }, { ...fact, receiptSha256: 'a'.repeat(64) },
+    { ...fact, value: { ...value, valid: true } },
+    { ...fact, value: { ...value, laneId: 'other' } },
+    { ...fact, value: { ...value, issue: 43 } },
+    { ...fact, value: { ...value, reviewSha256: 'f'.repeat(64) } },
+  ]) {
+    lane.issues['42'].facts['local-ci-waiver'] = bad;
+    writeFileSync(f.lanePath, JSON.stringify(lane));
+
+    const result = f.plan();
+    assert.equal(result.decision.action, 'verify-local');
+    assert.equal(result.obs.localCiWaiver, null);
+  }
+});
+
+test('CLI local-ci-waiver: applicable failure and invalid receipt -> fix-back with evidence retained', (t) => {
+  const f = waiverFixture(t);
+  const head = f.acceptedReview.head_sha;
+  const value = f.waiver();
+  f.set('local-ci-waiver', value, head);
+  f.set('local-checks', f.verify(), head);
+  rmSync(join(f.worktree, '.omo/verification/receipt.json'));
+  let bytes = readFileSync(f.lanePath, 'utf8');
+
+  f.set('local-ci-waiver', value, head, false);
+
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  assert.equal(f.plan().decision.reason, 'local-checks-failed');
+  f.cli('record', [...f.common, '--phase', 'verify-local', '--result-json', JSON.stringify({
+    ok: false, head_sha: head, evidence: '.omo/verification/failed.log',
+  })]);
+  bytes = readFileSync(f.lanePath, 'utf8');
+  f.set('local-ci-waiver', value, head, false);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  assert.equal(f.plan().decision.reason, 'local-checks-failed');
+  const lane = JSON.parse(bytes);
+  assert.equal(lane.issues['42'].attempts['verify-local'], 1);
+  lane.issues['42'].blocker = { type: 'attempts-exhausted', phase: 'verify-local' };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  bytes = readFileSync(f.lanePath, 'utf8');
+  f.set('local-ci-waiver', value, head, false);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  assert.equal(f.plan().decision.action, 'blocked');
+});
+
+test('CLI local-ci-waiver: successful admission -> unrelated failure history and blockers preserved', (t) => {
+  const f = waiverFixture(t);
+  const value = f.waiver();
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  const entry = lane.issues['42'];
+  entry.attempts['verify-local'] = 3;
+  entry.blocker = { type: 'attempts-exhausted', phase: 'verify-local' };
+  entry.facts['local-checks'] = { head: 'f'.repeat(40), value: { status: 'failed', evidence: 'old-failure.log' } };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+
+  f.set('local-ci-waiver', value, f.acceptedReview.head_sha);
+
+  const after = JSON.parse(readFileSync(f.lanePath)).issues['42'];
+  assert.deepEqual(after.attempts, entry.attempts);
+  assert.deepEqual(after.blocker, entry.blocker);
+  assert.deepEqual(after.facts['local-checks'], entry.facts['local-checks']);
+  assert.equal(f.plan().decision.action, 'blocked');
+});
+
+test('CLI local-ci-waiver: same preflight and unrelated main advance -> binding preserved', (t) => {
+  const f = waiverFixture(t);
+  f.set('local-ci-waiver', f.waiver(), f.acceptedReview.head_sha);
+  const facts = JSON.parse(readFileSync(f.lanePath)).issues['42'].facts;
+  f.set('preflight', f.acceptedPreflight);
+  assert.deepEqual(JSON.parse(readFileSync(f.lanePath)).issues['42'].facts, facts);
+  writeFileSync(join(f.root, 'unrelated.md'), 'unrelated main change\n');
+  f.git(f.root, 'add', 'unrelated.md');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture unrelated main');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+
+  const result = f.plan();
+
+  assert.equal(result.obs.baseSha, f.acceptedPreflight.base_sha);
+  assert.equal(result.decision.action, 'create-pr');
+  assert.deepEqual(result.obs.localCiWaiver, facts['local-ci-waiver']);
+});
+
+test('CLI local-ci-waiver: review or preflight replacement -> cleared waiver and rejected stale replay', (t) => {
+  const f = waiverFixture(t);
+  const head = f.acceptedReview.head_sha;
+  const value = f.waiver();
+  f.set('local-ci-waiver', value, head);
+  f.set('review', f.acceptedReview, head);
+  assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['42'].facts['local-ci-waiver'], undefined);
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.issues['42'].facts.review.accepted_at = '2026-02-01T00:00:00.000Z';
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  let bytes = readFileSync(f.lanePath, 'utf8');
+  f.set('local-ci-waiver', value, head, false);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  assert.equal(f.plan().decision.action, 'verify-local');
+  const renewed = f.waiver();
+  f.set('local-ci-waiver', renewed, head);
+
+  f.set('preflight', f.preflight({
+    scope: ['docs/', '.github/workflows/'], predicted_files: ['.github/workflows/ci.yml'],
+    acceptance: ['Updated acceptance'],
+  }));
+
+  const facts = JSON.parse(readFileSync(f.lanePath)).issues['42'].facts;
+  assert.equal(facts.review, undefined);
+  assert.equal(facts['local-ci-waiver'], undefined);
+  bytes = readFileSync(f.lanePath, 'utf8');
+  f.set('local-ci-waiver', renewed, head, false);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  const review = f.review();
+  f.set('review', review, head);
+  bytes = readFileSync(f.lanePath, 'utf8');
+  f.set('local-ci-waiver', renewed, head, false);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  assert.equal(f.plan().decision.action, 'verify-local');
+});
+
+test('CLI local-ci-waiver: new head or invalid preflight/review -> no carried authority', (t) => {
+  const f = waiverFixture(t);
+  const head = f.acceptedReview.head_sha;
+  const value = f.waiver();
+  f.set('local-ci-waiver', value, head);
+  f.commit('docs/guide.md', 'new implementation head\n');
+  let result = f.plan();
+  assert.equal(result.decision.action, 'review');
+  assert.equal(result.obs.localCiWaiver, null);
+  let bytes = readFileSync(f.lanePath, 'utf8');
+  f.set('local-ci-waiver', value, result.obs.headSha, false);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  result = f.plan();
+  assert.equal(result.decision.action, 'verify-local');
+  bytes = readFileSync(f.lanePath, 'utf8');
+  f.set('local-ci-waiver', value, review.head_sha, false);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  const fresh = f.waiver();
+  f.set('local-ci-waiver', fresh, review.head_sha);
+  assert.equal(f.plan().decision.action, 'create-pr');
+  f.state.issue.body = 'changed contract';
+  f.update();
+  bytes = readFileSync(f.lanePath, 'utf8');
+
+  f.set('local-ci-waiver', fresh, review.head_sha, false);
+
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  assert.equal(f.plan().decision.action, 'preflight');
+  assert.equal(f.plan().obs.localCiWaiver, null);
+});
+
 test('CLI: durable preflight and selected review publish ordinary docs without full local CI', (t) => {
   const f = fixture(t);
   assert.equal(f.plan().decision.action, 'preflight');

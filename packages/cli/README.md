@@ -7,6 +7,17 @@ The canonical CLI for fluo — bootstrap new applications, generate components a
 
 ## Canonical command vocabulary
 
+The same `react-vite-ssr` starter includes `/catalog/session` sign-in and an
+authenticated list/search/detail/create/update/delete companion at
+`/catalog/session/products`, using the existing HTTP/typegen/`Link`/`useForm`
+composition. Private process-local products are separate from the unchanged
+public catalog/editor-cookie demos. These demo sessions are not production auth
+or durable storage. The [product acceptance guide](../../docs/guides/react-product-acceptance.md)
+distinguishes shipped code, actual packed dev/production receipts and lead-owned
+final gates. Original numeric FAIL/INCONCLUSIVE remains disclosed diagnostics;
+quality/correctness/stability/cleanup still block. The lane soak is one hour,
+scheduled default two hours, and physical devices are deferred to #3906, not PASS.
+
 `fluo new my-react-app --starter react-vite-ssr` also ships the same native
 `useForm` background interaction at `/catalog/background`: real GET search and
 widget reads, stable-id queue POSTs and fresh current-page approval. `pnpm dev`
@@ -52,6 +63,8 @@ pnpm dlx @fluojs/cli new my-app
 ```
 
 ## Release Contract
+
+[`@fluojs/diagnostics`](../diagnostics/README.md) owns shared inspect report and live envelope declarations. CLI retains project-local lazy runtime resolution, bootstrap/close, stdout/stderr separation, JSON/report wrapping and output writing; Mermaid remains delegated to Studio root. Sidecar retains partial ingress and unknown payloads, generates its own epoch/sequence and recursively rejects body-like fields. It is not equated with the complete wire reader. See the [optional data-only migration](../../docs/getting-started/migrate-diagnostics.md).
 
 - `@fluojs/cli` and every generated Node HTTP, mixed, microservice, and React SSR + Fastify project require Node.js `>=24.11.0 <27`, the Babel 8 compiler toolchain floor. Node builds target `node24` and Node starters use `@types/node@^24.0.0`. Bun and Deno starters retain native engines; the Workers Node engine constrains only local CLI/Wrangler tooling. Apply the [Node.js migration](../../docs/reference/node-support.md) before upgrading.
 - `@fluojs/cli` requires Node.js `>=24.11.0 <27`; generated Bun, Deno, and Cloudflare Workers starters may target non-Node runtimes, but the CLI process itself runs on Node.js. Generated Node HTTP and mixed projects declare Node.js `>=24.11.0 <27` so listener-level RFC `QUERY` reaches framework dispatch and the generated Babel 8 toolchain stays inside its supported engine range; Node versions below 24.11 and Node 27+ are excluded. Node microservice-only projects retain the same `>=24.11.0 <27` floor.
@@ -183,6 +196,9 @@ the document shell, or the server/client route snapshot wiring. Both explicit `@
 `@Path(...)` handlers in `src/app.ts` return `ReactNavigationPage.create(page, { module, props })`
 with their HTTP-validated DTO data, so the existing HTTP
 dispatcher remains authoritative.
+Production shell delivery depends on the host/proxy forwarding chunks instead of
+collecting the whole body; see the
+[Fastify streaming recipe](../platform-fastify/README.md#streaming-responses).
 
 The generated shared shell includes `useRouter().refresh()` for an explicit same-page
 credentialed HTTP revalidation: it retains shell resources and history, resets page-local
@@ -200,6 +216,16 @@ without replacing the shell, update the product through that HTTP endpoint and c
 approved name replaces it without a history entry.
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
+The generated production asset controller reuses immutable build-file bytes within
+each application instance and shares concurrent reads. Failed reads are discarded;
+development assets are read again so edits remain visible.
+The Node restart runner coalesces source events with a 50 ms trailing-edge debounce
+by default. `FLUO_DEV_RELOAD_DEBOUNCE_MS` retains its explicit override; content
+hashing still prevents unchanged saves from restarting the application.
+The development gateway negotiates streaming gzip for eligible JavaScript and CSS
+responses, retaining decoded content and backpressure. Already encoded, range,
+HEAD and `no-transform` responses are not transformed. Compressed responses vary
+by `Accept-Encoding` and use weak ETags.
 After dependency installation, either starts without an application production build:
 Vite transforms the SSR entry; a stable development gateway serves the public HTTP port
 and WebSocket while each Fastify app generation listens on a private ephemeral port.
@@ -240,6 +266,12 @@ application files and the lifecycle command to rerun. Generated `Link` output re
 and `router.push(...)` performs HTTP-approved soft navigation for build-mapped destinations;
 unsupported pages and disabled JavaScript keep native document navigation. Additional pages
 need a page module and HTTP handler/DTO, not edits to client entry, renderer, manifest, or router store.
+The generated production hydration test observes negotiated GETs before opening the page:
+hydration and acknowledged controls must not trigger an initial-data GET, and search requires
+one HTTP approval. It also checks the actual built manifest and browser asset inventory so
+the search destination is not eagerly loaded by the first product page. This is correctness
+coverage, not a hydration-time or navigation-percentile performance receipt; see
+[client delivery diagnostics](../../docs/guides/react-performance-benchmarks.md#client-delivery-diagnostics).
 The generated shell opts into `ReactNavigationExperience`: pending and polite announcements
 remain outside the keyed page slot, a destination render error offers a local reset, and
 `@PageMetadata(...)` supplies request-selected title/meta/link descriptors to SSR and soft

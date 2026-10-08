@@ -27,10 +27,15 @@ async function loadBuildlessTypegenModules() {
   return { react, runtime, typegen };
 }
 
-async function createGeneratedArtifact() {
+async function createConsumerFixture() {
   const cwd = await mkdtemp(join(tmpdir(), 'fluo-react-navigation-typegen-'));
   tempDirectories.push(cwd);
   await writeFile(join(cwd, 'package.json'), '{"type":"module"}\n', 'utf8');
+  return { cwd };
+}
+
+async function createGeneratedArtifact() {
+  const { cwd } = await createConsumerFixture();
   const outputPath = join(cwd, 'generated', 'react-pages.ts');
   const runtime: TypegenCommandRuntimeOptions = {
     cwd,
@@ -78,7 +83,7 @@ afterEach(async () => {
 
 describe('fluo typegen navigation authoring', () => {
   it('compiles the single guard hook with typed token controls and bounded confirm options', async () => {
-    const fixture = await createGeneratedArtifact();
+    const fixture = await createConsumerFixture();
     const consumerPath = join(fixture.cwd, 'guard-consumer.ts');
     await writeFile(consumerPath, [
       `import { useNavigationGuard, type ReactNavigationDecision, type ReactNavigationGuardOptions } from ${JSON.stringify(reactClientModulePath)};`,
@@ -92,7 +97,7 @@ describe('fluo typegen navigation authoring', () => {
   });
 
   it('rejects wrong guard conditions and attempts to redirect captured controls', async () => {
-    const fixture = await createGeneratedArtifact();
+    const fixture = await createConsumerFixture();
     const consumerPath = join(fixture.cwd, 'invalid-guard-consumer.ts');
     await writeFile(consumerPath, [
       `import { useNavigationGuard } from ${JSON.stringify(reactClientModulePath)};`,

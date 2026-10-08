@@ -125,6 +125,7 @@
           "title": "글 발행을 하나의 작업으로 보장하기",
           "part": 3,
           "packages": [
+            "@fluojs/persistence",
             "@fluojs/prisma"
           ],
           "kind": "chapter"
@@ -151,10 +152,12 @@
         },
         {
           "number": 14,
-          "slug": "ch14-authentication",
+"slug": "ch14-authentication",
           "title": "로그인 상태를 검증하기",
           "part": 4,
           "packages": [
+            "@fluojs/auth",
+            "@fluojs/auth-http",
             "@fluojs/jwt",
             "@fluojs/passport"
           ],
@@ -786,6 +789,7 @@
           "title": "CLI와 Studio가 애플리케이션을 보는 방법",
           "part": 5,
           "packages": [
+            "@fluojs/diagnostics",
             "@fluojs/cli",
             "@fluojs/studio"
           ],

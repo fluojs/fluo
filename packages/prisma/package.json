@@ -43,9 +43,11 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
+    "@fluojs/persistence": "workspace:^",
     "@fluojs/core": "workspace:^",
     "@fluojs/http": "workspace:^",
-    "@fluojs/di": "workspace:^"
+    "@fluojs/di": "workspace:^",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "peerDependencies": {
     "@prisma/client": ">=5.0.0"

@@ -73,6 +73,7 @@
     "di",
     "i18n",
     "runtime",
+    "diagnostics",
     "http",
     "platform-fastify",
     "platform-nodejs",
@@ -86,6 +87,8 @@
     "openapi",
     "graphql",
     "cache-manager",
+    "auth",
+    "auth-http",
     "jwt",
     "passport",
     "redis",
@@ -100,6 +103,7 @@
     "discord",
     "websockets",
     "socket.io",
+    "persistence",
     "prisma",
     "drizzle",
     "mongoose",
@@ -113,7 +117,7 @@
     "vite"
   ],
   "groups": {
-    "foundation": ["core", "config", "di", "i18n", "runtime"],
+    "foundation": ["core", "config", "di", "i18n", "runtime", "diagnostics"],
     "http-runtime": [
       "http",
       "platform-fastify",
@@ -131,7 +135,7 @@
       "graphql",
       "cache-manager"
     ],
-    "auth": ["jwt", "passport"],
+    "auth": ["auth", "auth-http", "jwt", "passport"],
     "infra-messaging": [
       "redis",
       "queue",
@@ -145,7 +149,7 @@
       "discord"
     ],
     "protocol-adapters": ["websockets", "socket.io"],
-    "persistence": ["prisma", "drizzle", "mongoose"],
+    "persistence": ["persistence", "prisma", "drizzle", "mongoose"],
     "operations": ["metrics", "terminus", "throttler"],
     "ui": ["react"],
     "cli": ["cli", "studio", "testing", "vite"]
@@ -209,6 +213,7 @@
     "di": "area:foundation",
     "i18n": "area:foundation",
     "runtime": "area:foundation",
+    "diagnostics": "area:foundation",
     "http": "area:http-runtime",
     "platform-fastify": "area:http-runtime",
     "platform-nodejs": "area:http-runtime",
@@ -222,6 +227,8 @@
     "openapi": "area:request-pipeline",
     "graphql": "area:request-pipeline",
     "cache-manager": "area:request-pipeline",
+    "auth": "area:auth",
+    "auth-http": "area:auth",
     "jwt": "area:auth",
     "passport": "area:auth",
     "redis": "area:infra-messaging",
@@ -236,6 +243,7 @@
     "discord": "area:infra-messaging",
     "websockets": "area:protocol-adapters",
     "socket.io": "area:protocol-adapters",
+    "persistence": "area:persistence",
     "prisma": "area:persistence",
     "drizzle": "area:persistence",
     "mongoose": "area:persistence",

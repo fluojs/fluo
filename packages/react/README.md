@@ -7,7 +7,15 @@ package root. The official composition provides streamed SSR/hydration, approved
 navigation, progressive forms, independent background operations and session
 revocation. The [full-stack product contract](../../docs/contracts/react-fullstack-product.md)
 and [long-session guide](../../docs/guides/react-long-session-reliability.md)
-separate those capabilities from the unexecuted whole-product/soak/manual gate.
+separate shipped capabilities from actual current-head execution and the
+lead-owned final product gate. The [product acceptance guide](../../docs/guides/react-product-acceptance.md)
+connects authenticated CRUD at `/catalog/session/products`, jukebox lifetimes,
+packed authoring/dev/production and machine-consumed receipts. Demo sessions and
+process-local private products are not production authentication or durable storage.
+Original numeric FAIL/INCONCLUSIVE is disclosed nonblocking diagnostics for final
+#3879; evidence quality/correctness/stability/cleanup and zero Fluo errors still
+block. This lane requires a completed one-hour soak, keeps the scheduled two-hour
+default and explicitly defers physical mobile/tablet to #3906 without PASS.
 
 Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages. React remains a `0.x` minor release, not a `1.0` graduation.
 
@@ -108,6 +116,12 @@ The generated wiring moves the incidental first-edit work into discoverable appl
 Advanced applications can replace the generated renderer or pass explicit hydration options to
 `createReactServerEntry(...)`; the stable APIs below remain available. No runtime-neutral root export
 imports Node.js, Vite, or browser code, and the starter does not add another route matcher.
+
+For delivery evidence, distinguish emitted shell/shared modules from destination-only modules,
+and observe hydration plus the rendered destination rather than only store completion.
+The [client delivery diagnostic](../../docs/guides/react-performance-benchmarks.md#client-delivery-diagnostics)
+records build membership, request bytes/cache behavior and cold/warm public/private traces.
+Its correctness observations do not replace the frozen representative performance gate.
 
 ## Stable SSR Mental Model
 
@@ -735,6 +749,16 @@ handler needs to finalize the response itself instead of returning the entry to 
 On streaming hosts, an early response-sink close or a failed `write(...)` / `waitForDrain()` cancels
 the unfinished React reader exactly once and releases its lock. Sink failures remain the reported
 failure rather than being replaced by reader-cancellation cleanup.
+One producer read is active at a time. After a sink `write(...)` returns `false`, no
+next read starts until `drain` or close; disconnect cancels unfinished work and
+the HTTP dispatcher disposes the request scope. This is a producer scheduling
+rule, not a whole-process memory bound. A shell can reach the client while a
+Suspense descendant is gated only after the HTTP handler's required awaits and
+only if every intervening host flushes partial responses. Buffered hosts first
+collect all chunks into a final contiguous array (roughly two body copies plus
+overhead during collection), then commit; no public HTML output-size cap exists.
+See the [Node/Fastify deployment recipe](../platform-fastify/README.md#streaming-responses)
+and [socket and buffered evidence](../../docs/guides/react-performance-benchmarks.md).
 
 ## Hydration Asset Contract
 

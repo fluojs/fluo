@@ -15,6 +15,7 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${BROWSER_TEST_PORT}`,
     channel: 'chrome',
     headless: true,
+    launchOptions: { args: ['--disable-gpu'] },
   },
   webServer: {
     command: 'pnpm start',

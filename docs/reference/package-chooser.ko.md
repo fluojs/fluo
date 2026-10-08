@@ -1,5 +1,7 @@
 # package chooser — 작업에 맞는 패키지 고르기
 
+일반 identity·인증 결과·account-linking 정책은 `@fluojs/auth`, HTTP guard·strategy·credential·refresh integration은 `@fluojs/auth-http`, crypto와 rotation/replay는 `@fluojs/jwt`, Passport.js bridge는 `@fluojs/passport`가 소유합니다. 기존 Passport 예제와 import는 compatibility 경로이며 canonical HTTP 등록은 auth-http의 `AuthModule.forRoot(...)`입니다.
+
 <p><a href="./package-chooser.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 > 현재 `fluo new`가 실제로 무엇을 스캐폴딩하는지 찾고 있다면 [fluo new 지원 매트릭스](./fluo-new-support-matrix.ko.md)를 확인하세요. 이 chooser는 현재 스타터 프리셋만이 아니라 더 넓은 패키지 생태계를 다룹니다.
@@ -63,6 +65,7 @@
 
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
+| ORM 중립 transaction boundary 타입과 오류가 필요함 | `@fluojs/persistence` | canonical 공유 계약 소유자이며 기존 core/ORM import는 호환됩니다. Native transaction과 driver 지원은 각 ORM에 남습니다. [선택적 import 마이그레이션](../getting-started/migrate-persistence-contracts.ko.md)을 참고하세요. |
 | Node.js에서 Prisma 기반 관계형 접근이 필요함 | `@fluojs/prisma` | Node.js `>=24.0.0 <27`용 Prisma ORM 통합에 사용합니다. Root wrapper는 transaction context에 host `AsyncLocalStorage`와 `engines.node >=24.0.0 <27` 계약을 사용하므로, 호환 ALS 경계가 없는 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 raw Prisma-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요. |
 | Node.js 또는 Bun에서 Drizzle 기반 관계형 접근이 필요함 | `@fluojs/drizzle` | Node.js `>=24.0.0 <27`은 전체 지원합니다. Bun 1.4에서는 `drizzle-orm/libsql`처럼 비동기 callback을 끝까지 await하는 드라이버로 루트 wrapper의 예외 기반 트랜잭션을 조건부로 사용합니다. 동기 `drizzle-orm/bun-sqlite`는 ALS가 트랜잭션 handle을 선택해도 뒤따른 예외가 write를 롤백하지 못하므로 지원하지 않으며 `strictTransactions`로도 판별하지 못합니다. Node 24 미만과 Node 27 이상은 지원하지 않습니다. Deno와 Workers는 검증되지 않았으므로 애플리케이션 소유 provider(`useFactory` 또는 `useValue`) 뒤에 raw Drizzle handle을 등록하세요. |
 | Node.js에서 도큐먼트 데이터베이스 접근이 필요함 | `@fluojs/mongoose` | Node.js `>=24.0.0 <27`용 Mongoose 통합에 사용합니다. Root wrapper는 Node의 `node:async_hooks` transaction context를 사용하며 패키지 자체의 지원 범위를 요구합니다. Node 24 미만과 Node 27 이상은 지원하지 않습니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요. |
@@ -76,6 +79,8 @@
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | JWT 서명과 검증이 필요함 | `@fluojs/jwt` | 토큰 발급, 검증, principal 정규화에 사용합니다. |
+| 일반 identity와 인증·account-linking 정책이 필요함 | `@fluojs/auth` | HTTP나 JWT를 로드하지 않는 neutral root입니다. |
+| HTTP 인증과 scope 판정이 필요함 | `@fluojs/auth-http` | AuthModule, guard, bearer/cookie와 refresh 교환을 사용합니다. |
 | Passport 전략 통합이 필요함 | `@fluojs/passport` | Passport 기반 인증 흐름을 연결할 때 사용합니다. |
 | 요청 제한이 필요함 | `@fluojs/throttler` | 속도 제한과 가드 단계 강제에 사용합니다. |
 
@@ -98,6 +103,8 @@
 | Discord 전송이 필요함 | `@fluojs/discord` | webhook-first Discord 통합입니다. |
 
 ## 관측 가능성 및 문서화
+
+Runtime 구현이나 Studio UI 없이 공유 진단 데이터를 다룰 때는 [`@fluojs/diagnostics`](../../packages/diagnostics/README.ko.md)를 사용하세요. Portable status/snapshot/graph/trace/timing 계약과 static/report/live reader를 소유합니다. 기존 import path는 호환되며 filter와 Mermaid는 Studio에 남습니다.
 
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |

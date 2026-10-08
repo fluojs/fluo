@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformStatusSnapshot } from '@fluojs/diagnostics';
 
 /** Resolved email lifecycle state used for diagnostics and health checks. */
 export type EmailLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
@@ -15,12 +15,7 @@ export interface EmailStatusAdapterInput {
 }
 
 /** Structured snapshot returned by {@link createEmailPlatformStatusSnapshot}. */
-export interface EmailPlatformStatusSnapshot {
-  details: Record<string, unknown>;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  readiness: PlatformReadinessReport;
-}
+export interface EmailPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 function createReadiness(input: EmailStatusAdapterInput): PlatformReadinessReport {
   if (input.lifecycleState === 'ready') {

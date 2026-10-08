@@ -2,6 +2,8 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./release-governance.ko.md"><kbd>한국어</kbd></a></p>
 
+The auth/auth-http separation is additive: previous Passport, HTTP Principal and JwtPrincipal imports and class/error/DI identities remain compatible. Changesets owns new-package versioning. Removing imports, forcing a new strategy signature or narrowing Principal requires separate major approval and migration contracts.
+
 ## Stability Tiers
 
 | Tier | Version window | Release rule | Contract level |
@@ -67,6 +69,11 @@ Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`
 
 ## intended publish surface
 
+`@fluojs/diagnostics` is a Preview (`0.x`) portable contract package. Its shared declaration ownership and reader APIs preserve existing public imports and version-1 artifacts; filters, transport, lifecycle and feature status policy remain with their existing packages.
+
+- `@fluojs/diagnostics`
+- `@fluojs/auth`
+- `@fluojs/auth-http`
 - `@fluojs/cache-manager`
 - `@fluojs/cli`
 - `@fluojs/config`
@@ -88,6 +95,7 @@ Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`
 - `@fluojs/notifications`
 - `@fluojs/openapi`
 - `@fluojs/passport`
+- `@fluojs/persistence`
 - `@fluojs/platform-bun`
 - `@fluojs/platform-cloudflare-workers`
 - `@fluojs/platform-deno`

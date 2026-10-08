@@ -34,8 +34,9 @@ import {
   type ReactPageRenderer,
 } from '@fluojs/react';
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
-import { createElement } from 'react';
+import { cloneElement, createElement, isValidElement } from 'react';
 
+import type { ProductDocumentProps } from './page';
 import type { ReactViteExamplePresentation } from './presentation';
 import { createPrefetchPageRouter } from './prefetch-page';
 import { createCatalogRouter, type CatalogControl } from './catalog';
@@ -45,6 +46,10 @@ const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 export type ReactViteExampleModuleOptions = {
   readonly catalogControl?: CatalogControl;
   readonly clientDirectory?: URL;
+  readonly deliveryProbe?: {
+    readonly pending: Promise<void>;
+    readonly release: () => void;
+  };
   readonly presentation?: ReactViteExamplePresentation;
 };
 
@@ -147,9 +152,14 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     return ReactNavigationPage.create(createElement(ProductDocument, {
       catalog: props, navigationBuildId: assets.buildId, preview: false, productName: '',
       routeParams: context.request.params, routeUrl: context.request.url, saved: false, sku: '', stylesheets: assets.css,
-    }), { module: './navigation-catalog.ts', props: { ...props } }, props.sessionDemo ? undefined : { prefetch: 'public' });
+    }), { module: './navigation-catalog.ts', props: { ...props } },
+      props.sessionDemo || props.authenticatedCrud ? undefined : { prefetch: 'public' });
   }, options.catalogControl);
-  const renderPage: ReactPageRenderer = (...args) => presentation().renderPage(...args);
+  const renderPage: ReactPageRenderer = (page, ...args) => presentation().renderPage(
+    options.deliveryProbe && isValidElement<ProductDocumentProps>(page)
+      ? cloneElement(page, { recommendationsGate: options.deliveryProbe.pending }) : page,
+    ...args,
+  );
 
   @Inject(ProductCatalog)
   @Router('/products')
@@ -239,6 +249,15 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
 
   const PrefetchPageRouter = createPrefetchPageRouter(presentation);
 
+  @Controller('/__delivery-probe')
+  class DeliveryProbeController {
+    @Post('/release')
+    release() {
+      options.deliveryProbe?.release();
+      return { released: true };
+    }
+  }
+
   @Router('/deployment')
   class DeploymentRouter {
     @Path('/b-only')
@@ -265,6 +284,8 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
 
   @Controller('/assets')
   class ViteAssetController {
+    readonly #assets = new Map<string, Promise<Buffer>>();
+
     @Get('/:file')
     @RequestDto(AssetRequest)
     async serve(input: AssetRequest, context: RequestContext) {
@@ -273,10 +294,18 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
       }
 
       try {
-      if (options.clientDirectory === undefined) {
-        throw new ReactViteExamplePresentationError('The inspection module has no configured asset directory.');
-      }
-      const body = await readFile(new URL(input.file, options.clientDirectory));
+        if (options.clientDirectory === undefined) {
+          throw new ReactViteExamplePresentationError('The inspection module has no configured asset directory.');
+        }
+        let asset = this.#assets.get(input.file);
+        if (!asset) {
+          asset = readFile(new URL(input.file, options.clientDirectory)).catch((error: unknown) => {
+            this.#assets.delete(input.file);
+            throw error;
+          });
+          this.#assets.set(input.file, asset);
+        }
+        const body = await asset;
         context.response.setHeader('Cache-Control', /-[a-zA-Z0-9_-]{6,}\.(?:js|css|svg)$/u.test(input.file)
           ? 'public, max-age=31536000, immutable'
           : 'public, max-age=300');
@@ -297,7 +326,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   }
 
   @Module({
-    controllers: [ViteAssetController],
+    controllers: [ViteAssetController, ...(options.deliveryProbe ? [DeliveryProbeController] : [])],
     imports: [
       ReactModule.forRoot({
         ...(options.presentation === undefined ? {} : { navigationBuildId: options.presentation.assets.buildId }),

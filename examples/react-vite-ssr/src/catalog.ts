@@ -3,7 +3,7 @@ import { FromBody, FromPath, FromQuery, Post, RequestDto, UseGuards, UseIntercep
   type HttpErrorRepresentationOptions, type RequestContext } from '@fluojs/http';
 import type { MiddlewareContext, Next } from '@fluojs/http';
 import { PageMetadata, Path, Router, ReactModule } from '@fluojs/react';
-import { IsIn, IsString, MinLength } from '@fluojs/validation';
+import { IsIn, IsString, Matches, MinLength } from '@fluojs/validation';
 import type { CatalogPageProps } from './catalog-page';
 
 export type CatalogObservation = {
@@ -78,6 +78,12 @@ class CatalogSearch {
   @IsString()
   q?: string;
 }
+class CatalogDetail {
+  @FromPath('sku')
+  @IsString()
+  @Matches(/\S/)
+  sku = '';
+}
 class QueueWrite {
   @FromBody('csrf')
   csrf = '';
@@ -97,6 +103,8 @@ export function createCatalogRouter<Result>(
   const queue = new Set<string>();
   let queueRevision = 0;
   let sequence = 0;
+  const sessionProducts = new Map<string, string>([['sku-42', 'Seeded product']]);
+  let sessionSequence = 0;
   const matchedKey = Symbol('catalog.matched-handler');
   const event = (context: RequestContext, phase: CatalogObservation['phase'], scope: string,
     extra: Pick<CatalogObservation, 'name' | 'intent' | 'tag' | 'dto'> = {}): CatalogObservation => ({
@@ -152,6 +160,16 @@ export function createCatalogRouter<Result>(
       return true;
     }
   }
+  class ProductSessionGuard {
+    async canActivate({ requestContext, handler }: GuardContext): Promise<boolean> {
+      requestContext.metadata[matchedKey] = handler.methodName;
+      await observe(requestContext, 'guard');
+      const identity = requestContext.request.cookies.catalogSession;
+      if (identity !== 'a' && identity !== 'b') throw new UnauthorizedException('Session expired.');
+      if (requestContext.request.cookies.catalogAccess === 'forbidden') throw new ForbiddenException('Permission denied.');
+      return true;
+    }
+  }
   class CatalogInterceptor {
     readonly id = crypto.randomUUID();
     async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
@@ -166,6 +184,75 @@ export function createCatalogRouter<Result>(
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
   @Router('/catalog')
   class CatalogRouter {
+    @PageMetadata(() => ({ title: 'Authenticated product catalog' }))
+    @Path('/session/products')
+    @RequestDto(CatalogSearch)
+    @UseGuards(ProductSessionGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async authenticatedList(input: CatalogSearch, context: RequestContext) {
+      await observe(context, 'dto', { name: input.q ?? '', dto: input instanceof CatalogSearch });
+      await observe(context, 'handler');
+      return render({ products: Array.from(sessionProducts, ([sku, name]) => ({ sku, name }))
+        .filter((product) => product.name.toLowerCase().includes((input.q ?? '').toLowerCase())),
+        authenticatedCrud: true,
+        ...(context.request.cookies.catalogSession === undefined ? {} : { sessionIdentity: context.request.cookies.catalogSession }),
+        ...(input.q ? { searchQuery: input.q } : {}) }, context);
+    }
+    @PageMetadata(({ request }) => ({ title: `Private product ${request.params.sku ?? ''}` }))
+    @Path('/session/products/:sku')
+    @RequestDto(CatalogDetail)
+    @UseGuards(ProductSessionGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async authenticatedDetail(input: CatalogDetail, context: RequestContext) {
+      await observe(context, 'dto', { dto: input instanceof CatalogDetail });
+      await observe(context, 'handler');
+      const sku = input.sku;
+      const name = sessionProducts.get(sku);
+      if (name === undefined) throw new NotFoundException('Product not found.');
+      return render({ products: [{ sku, name }], selected: sku, authenticatedCrud: true,
+        ...(context.request.cookies.catalogSession === undefined ? {} : { sessionIdentity: context.request.cookies.catalogSession }) }, context);
+    }
+    @Post('/session/products/create')
+    @RequestDto(CatalogWrite)
+    @UseGuards(ProductSessionGuard, SessionWriteGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async authenticatedCreate(input: CatalogWrite, context: RequestContext) {
+      const extra = { name: input.name, intent: input.intent, dto: input instanceof CatalogWrite };
+      const scope = await observe(context, 'dto', extra);
+      await observe(context, 'handler', extra);
+      const sku = `item-${++sessionSequence}`;
+      sessionProducts.set(sku, input.name);
+      await control?.(event(context, 'commit', scope, extra), context);
+      return ReactModule.formResult({ destination: `/catalog/session/products/${sku}`, followUp: 'navigate',
+        data: { sku, name: input.name } });
+    }
+    @Post('/session/products/:sku/update')
+    @RequestDto(CatalogUpdate)
+    @UseGuards(ProductSessionGuard, SessionWriteGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async authenticatedUpdate(input: CatalogUpdate, context: RequestContext) {
+      const extra = { name: input.name, intent: input.intent, dto: input instanceof CatalogUpdate };
+      const scope = await observe(context, 'dto', extra);
+      await observe(context, 'handler', extra);
+      if (!sessionProducts.has(input.sku)) throw new NotFoundException('Product not found.');
+      sessionProducts.set(input.sku, input.name);
+      await control?.(event(context, 'commit', scope, extra), context);
+      return ReactModule.formResult({ destination: `/catalog/session/products/${input.sku}`, followUp: 'refresh',
+        data: { sku: input.sku, name: input.name } });
+    }
+    @Post('/session/products/:sku/delete')
+    @RequestDto(CatalogDelete)
+    @UseGuards(ProductSessionGuard, SessionWriteGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async authenticatedDelete(input: CatalogDelete, context: RequestContext) {
+      const extra = { intent: input.intent, dto: input instanceof CatalogDelete };
+      const scope = await observe(context, 'dto', extra);
+      await observe(context, 'handler', extra);
+      if (!sessionProducts.delete(input.sku)) throw new NotFoundException('Product not found.');
+      await control?.(event(context, 'commit', scope, extra), context);
+      return ReactModule.formResult({ destination: '/catalog/session/products', followUp: 'navigate',
+        data: { sku: input.sku } });
+    }
     @PageMetadata(() => ({ title: 'Background catalog and jukebox' }))
     @Path('/background')
     @RequestDto(CatalogSearch)
@@ -328,22 +415,23 @@ export function createCatalogRouter<Result>(
     html: {
       canRender: ({ handler }) => handler?.controllerToken === CatalogRouter,
       render: ({ validationOrigin, request, error }) => {
+        const authenticated = request.path.startsWith('/catalog/session/products');
         const name: unknown = typeof request.body === 'object' && request.body !== null
           ? Reflect.get(request.body, 'display_name') : undefined;
         const value = typeof name === 'string' ? escape(name.slice(0, 256)) : '';
         // Only the authored display name is retained; tokens and exceptions are not reflected.
         return '<!doctype html><html lang="en"><head><title>Catalog submission</title></head><body><main>'
           + (validationOrigin === undefined
-            ? `<h1>Submission refused (${error.status})</h1><a href="/catalog/login">Sign in as demo editor</a>`
+            ? `<h1>Submission refused (${error.status})</h1><a href="${authenticated ? '/catalog/session' : '/catalog/login'}">${authenticated ? 'Sign in to demo session' : 'Sign in as demo editor'}</a>`
             : `<h1>Correct product input</h1><form method="post" action="${escape(request.path)}" enctype="application/x-www-form-urlencoded">`
-              + `<label for="correct-name">Product name</label><input id="correct-name" name="display_name" value="${value}" minlength="3" required aria-describedby="name-errors">`
+              + `<label for="correct-name">Product name</label><input id="correct-name" name="display_name" value="${value}" minlength="3" required aria-invalid="true" aria-describedby="name-errors">`
               + '<p id="name-errors">Use at least three characters.</p><input type="hidden" name="csrf" value="catalog-demo-token"><button>Save product</button></form>')
-          + '<a href="/catalog">Catalog</a></main></body></html>';
+          + `<a href="${authenticated ? '/catalog/session/products' : '/catalog'}">Catalog</a></main></body></html>`;
       },
     },
   };
   return { router: CatalogRouter, middleware: [CatalogMiddleware], providers: [
-    CatalogGuard, CatalogMiddleware, SessionWriteGuard,
+    CatalogGuard, CatalogMiddleware, SessionWriteGuard, ProductSessionGuard,
     { provide: CatalogProbe, useClass: CatalogProbe, scope: 'request' as const },
     { provide: CatalogInterceptor, useClass: CatalogInterceptor, scope: 'request' as const },
   ], errorRepresentation };

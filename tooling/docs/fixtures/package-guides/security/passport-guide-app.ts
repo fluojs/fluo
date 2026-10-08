@@ -13,7 +13,7 @@ import {
   type AuthStrategyResult,
   AuthenticationFailedError,
   AuthenticationRequiredError,
-} from '@fluojs/passport';
+} from '@fluojs/auth-http';
 
 /**
  * Runnable application for apps/docs/content/docs/packages/passport.mdx.

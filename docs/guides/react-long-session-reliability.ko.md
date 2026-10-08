@@ -11,14 +11,19 @@ private query cache, RPC transport 또는 다른 router를 추가하지 않습�
 [navigation owner](../contracts/react-navigation-payload.ko.md),
 [form owner](../contracts/react-progressive-forms.ko.md)를 따릅니다.
 
-이 변경은 source harness이며 실행한 제품 수용 결과가 아닙니다. Build/run 검증,
-exact-head review, final remote CI, 별도의 2시간 soak는 #3879에 계속 필요합니다.
+Shipped source/harness coverage와 current-head 제품 실행은 별개입니다.
+Focused 실제 journey, three-engine correctness, exact-head review와 final remote
+CI는 #3879에 계속 필요합니다. 이번 lane은 실제 최소 3600000ms의 완료된
+`lane-3886-one-hour` soak를 수용하며 scheduled default는 7200000ms로 유지합니다.
+Historical `ca5e37bb` 완료는 원래 head/raw trace를 유지한 증거이지 current 통합
+증거가 아니며 변경된 seam이 미입증이면 fresh run이 필요합니다.
+[제품 수용 guide](./react-product-acceptance.ko.md)를 따릅니다.
 Maintainer 결정으로 실제 physical mobile/tablet 검증은
 [#3906](https://github.com/fluojs/fluo/issues/3906)으로 분리하며, PASS로 기록하지
 않고 현재 lane의 차단 조건에서도 제외합니다. Clean committed checkout, Node `>=24.11.0 <27`,
 pnpm `10.4.1`, build된 workspace package와 Playwright Chromium/Firefox/WebKit
 binary 및 OS dependency가 필요합니다. 최초 provisioning은 준비된 환경의 run
-판정과 분리합니다. SOURCE-ONLY pass에서는 provisioning과 아래 명령을 실행하지 않습니다.
+판정과 분리합니다. Source 분류만으로 provisioning이나 아래 명령을 통과하지 않습니다.
 
 ## Deterministic workload
 

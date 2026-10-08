@@ -1,11 +1,19 @@
 import { execFile, spawn } from 'node:child_process';
-import { once } from 'node:events';
-import { readFile, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { EventEmitter, once } from 'node:events';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { promisify } from 'node:util';
-import { PROFILES } from './measure.mjs';
+import { promisify, stripVTControlCharacters } from 'node:util';
+import { assertMethodConfig, hashObject } from './fa-v2.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
+import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } from './measure.mjs';
+import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
+import { readServerCpu } from './server-cpu.mjs';
+
+export { reconcileNativeTerminals } from './native-terminal.mjs';
+export { readServerCpu } from './server-cpu.mjs';
 
 const JOURNEYS = ['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox'];
 const execFileAsync = promisify(execFile);
@@ -63,6 +71,22 @@ export function initialRequestCount(requests) {
   return requests.length;
 }
 
+export async function waitForCapturedRequests(network, networkChanges, signal) {
+  const requestIds = [...network.keys()];
+  return new Promise((accept) => {
+    const check = () => {
+      const pendingRequestIds = requestIds.filter((id) => network.has(id));
+      if (pendingRequestIds.length && !signal.aborted) return;
+      networkChanges.off('settled', check);
+      signal.removeEventListener('abort', check);
+      accept({ requestIds, pendingRequestIds });
+    };
+    networkChanges.on('settled', check);
+    signal.addEventListener('abort', check, { once: true });
+    check();
+  });
+}
+
 export function summarizeErrorRate(requests) {
   const settled = requests.filter((request) => request.kind !== 'request-pending');
   return settled.length ? settled.filter((request) =>
@@ -106,7 +130,9 @@ export async function waitForEditMarker(page, edit) {
       const element = document.querySelector(selector);
       const value = element && (expectedStyle
         ? getComputedStyle(element).getPropertyValue(expectedStyle.property) : element.textContent);
-      if (!value?.includes(expected)) return;
+      const style = element && getComputedStyle(element);
+      if (!element?.getClientRects().length || style.visibility === 'hidden' || style.display === 'none'
+        || (expectedStyle ? !value?.includes(expected) : value?.trim() !== expected)) return;
       observer.disconnect();
       document.removeEventListener('load', visible, true);
       clearTimeout(timeout);
@@ -125,14 +151,200 @@ export async function waitForEditMarker(page, edit) {
 }
 
 export async function editSourceFile(edit, cwd) {
-  const path = resolve(cwd, edit.file);
-  if (!path.startsWith(`${resolve(cwd)}/`)) throw new TypeError(`edit outside application: ${edit.file}`);
-  const original = await readFile(path, 'utf8');
-  if (!edit.from || !edit.to || original.split(edit.from).length !== 2) {
+  const root = await realpath(cwd);
+  const path = await realpath(resolve(root, edit.file));
+  if (!path.startsWith(`${root}/`)) throw new TypeError(`edit outside application: ${edit.file}`);
+  const bytes = await readFile(path);
+  const original = bytes.toString('utf8');
+  if (!Buffer.from(original).equals(bytes) || !edit.from || !edit.to || original.split(edit.from).length !== 2) {
     throw new Error(`missing or ambiguous edit stimulus: ${edit.file}`);
   }
-  await writeFile(path, original.replace(edit.from, edit.to));
-  return () => writeFile(path, original);
+  const edited = Buffer.from(original.replace(edit.from, edit.to));
+  const hash = (raw) => createHash('sha256').update(raw).digest('hex');
+  const evidence = { path, file: edit.file, from: edit.from, to: edit.to, occurrences: 1,
+    originalBase64: bytes.toString('base64'), originalSha256: hash(bytes),
+    editedBase64: edited.toString('base64'), editedSha256: hash(edited),
+    restoredBase64: null, restoredSha256: null, writeStartedAtMs: performance.now() };
+  await writeFile(path, edited);
+  evidence.writtenAtMs = performance.now();
+  const restore = async () => {
+    const current = await readFile(path);
+    if (!current.equals(bytes) && !current.equals(edited)) throw new Error('edit source changed outside exact stimulus');
+    if (!current.equals(bytes)) await writeFile(path, bytes);
+    const restored = await readFile(path);
+    if (!restored.equals(bytes)) throw new Error('edit source exact restoration failed');
+    evidence.restoredBase64 = restored.toString('base64');
+    evidence.restoredSha256 = hash(restored);
+    evidence.restoredAtMs = performance.now();
+  };
+  restore.evidence = evidence;
+  return restore;
+}
+
+export function verifyDevEditObservation(observation, edit, sourceProof) {
+  const evidence = observation?.editEvidence;
+  const source = evidence?.source;
+  const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  const original = Buffer.from(source?.originalBase64 ?? '', 'base64');
+  const edited = Buffer.from(source?.editedBase64 ?? '', 'base64');
+  const restored = Buffer.from(source?.restoredBase64 ?? '', 'base64');
+  const interval = observation?.interval;
+  if (!evidence || evidence.schemaVersion !== 1 || !source || source.file !== edit.file
+    || source.from !== edit.from || source.to !== edit.to || source.occurrences !== 1
+    || original.toString().split(edit.from).length !== 2
+    || !Buffer.from(original.toString().replace(edit.from, edit.to)).equals(edited)
+    || !restored.equals(original) || source.originalSha256 !== hash(original)
+    || source.editedSha256 !== hash(edited) || source.restoredSha256 !== hash(restored)
+    || (sourceProof && (source.originalSha256 !== sourceProof.originalSha256
+      || source.file !== sourceProof.file || source.path !== sourceProof.path))
+    || evidence.initial.url !== evidence.final.url || new URL(evidence.initial.url).pathname !== (edit.path ?? '/')
+    || !evidence.initial.documentToken || !evidence.final.documentToken || !evidence.final.visible
+    || evidence.final.text !== edit.expectedText || evidence.initial.text !== edit.from
+    || !evidence.subscribedBeforeStimulus || !Number.isFinite(observation.durationMs)
+    || interval?.clock !== 'node-performance-now-ms'
+    || !Number.isFinite(interval.startedAtMs) || !Number.isFinite(interval.completedAtMs)
+    || interval.completedAtMs - interval.startedAtMs !== observation.durationMs
+    || !(evidence.subscribedAtMs >= interval.startedAtMs)
+    || !(source.writeStartedAtMs >= evidence.subscribedAtMs)
+    || !(source.writtenAtMs >= source.writeStartedAtMs)
+    || !(interval.completedAtMs >= source.writtenAtMs)
+    || !(source.restoredAtMs >= interval.completedAtMs)) {
+    throw new Error('dev edit source/document evidence missing/mismatched');
+  }
+  const sameDocument = evidence.initial.documentToken === evidence.final.documentToken;
+  if (evidence.completion === 'hmr-to-visible') {
+    const update = evidence.update;
+    const commit = evidence.final.reactCommit;
+    const socket = evidence.readiness?.url && new URL(evidence.readiness.url);
+    if (socket) socket.protocol = socket.protocol === 'wss:' ? 'https:' : 'http:';
+    if (!sameDocument || !commit?.matchedHostNode || commit.text !== edit.expectedText
+      || commit.documentToken !== evidence.final.documentToken || !['19.2.8', '19.3.0-canary-cbb046ab-20260731'].includes(commit.version)
+      || !update || update.protocol !== 'vite' || update.message?.type !== 'update'
+      || !update.message.updates?.some((item) => item.type === 'js-update'
+        && [item.path, item.acceptedPath].includes(`/${edit.file}`))
+      || update.requestId !== evidence.readiness?.requestId || update.url !== evidence.readiness?.url) {
+      throw new Error('dev edit actual component HMR evidence missing/mismatched');
+    }
+    if (!socket || socket.origin !== new URL(evidence.initial.url).origin || socket.pathname !== '/'
+      || evidence.readiness.protocol !== 'vite' || evidence.readiness.message?.type !== 'connected'
+      || !Number.isFinite(update.cdpTimestamp) || !Number.isFinite(evidence.readiness.cdpTimestamp)
+      || update.cdpTimestamp < evidence.readiness.cdpTimestamp) {
+      throw new Error('dev edit authenticated HMR socket evidence missing/mismatched');
+    }
+  } else if (sameDocument || !['reload-to-visible', 'fallback-reload-to-visible',
+    'restart-and-reload-to-visible', 'relaunch-to-visible'].includes(evidence.completion)) {
+    throw new Error('dev edit actual main-document replacement evidence missing/mismatched');
+  }
+  if (edit.reload === false && evidence.completion !== 'hmr-to-visible') {
+    throw new Error('selected same-document HMR path unavailable');
+  }
+  if (edit.reload === true && evidence.completion !== 'reload-to-visible') {
+    throw new Error('selected reload path unavailable');
+  }
+}
+
+export function observeReactEditUpdate(cdp, readiness, edit, timeoutMs = 60_000) {
+  let accept;
+  let reject;
+  let timer;
+  const promise = new Promise((resolveUpdate, rejectUpdate) => { accept = resolveUpdate; reject = rejectUpdate; });
+  const cancel = () => { clearTimeout(timer); cdp.off('Network.webSocketFrameReceived', observe); };
+  const observe = ({ requestId, timestamp, response }) => {
+    if (readiness?.protocol !== 'vite' || requestId !== readiness.requestId || response.opcode !== 1) return;
+    let message;
+    try { message = JSON.parse(response.payloadData); } catch { return; }
+    if (message.type !== 'update' || !message.updates?.some((item) =>
+      item.type === 'js-update' && [item.path, item.acceptedPath].includes(`/${edit.file}`))) return;
+    cancel();
+    accept({ protocol: 'vite', requestId, url: readiness.url, message, cdpTimestamp: timestamp });
+  };
+  timer = setTimeout(() => { cancel(); reject(new Error('source-correlated component HMR unavailable')); }, timeoutMs);
+  cdp.on('Network.webSocketFrameReceived', observe);
+  promise.catch(() => {});
+  return { promise, cancel };
+}
+
+export async function observeDevEditDocument(page, edit) {
+  const token = randomUUID();
+  let resolveNavigation;
+  let rejectNavigation;
+  let timer;
+  const navigation = new Promise((accept, reject) => { resolveNavigation = accept; rejectNavigation = reject; });
+  const onNavigation = async (frame) => {
+    if (frame !== page.mainFrame()) return;
+    try {
+      await waitForEditMarker(page, edit);
+      const snapshot = await page.evaluate(() => {
+        window.__benchmarkDevDocument ??= crypto.randomUUID();
+        return { documentToken: window.__benchmarkDevDocument, url: location.href };
+      });
+      if (snapshot.documentToken === token) return;
+      const marker = await page.locator(edit.selector).first().evaluate((element) => ({
+        text: element.textContent.trim(), visible: Boolean(element.getClientRects().length)
+          && getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).display !== 'none',
+      }));
+      resolveNavigation({ ...snapshot, ...marker });
+    } catch (error) { rejectNavigation(error); }
+  };
+  page.on('framenavigated', onNavigation);
+  timer = setTimeout(() => rejectNavigation(new Error('main-document edit completion timeout')), 60_000);
+  navigation.catch(() => {});
+  let initial;
+  try {
+    initial = await page.evaluate(({ token, selector, expectedText }) => {
+      window.__benchmarkDevDocument = token;
+      const element = document.querySelector(selector);
+      const snapshot = { documentToken: token, url: location.href, text: element?.textContent.trim(),
+        visible: Boolean(element?.getClientRects().length) && getComputedStyle(element).visibility !== 'hidden' };
+      let reactCommit = null;
+      const hook = window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      const originalCommit = hook?.onCommitFiberRoot;
+      const commitObserver = function (id, root, ...rest) {
+        const result = originalCommit?.call(this, id, root, ...rest);
+        const target = document.querySelector(selector);
+        const visit = (node) => Boolean(node && (node.stateNode === target || visit(node.child) || visit(node.sibling)));
+        if (target?.textContent.trim() === expectedText && visit(root.current)) {
+          reactCommit = { rendererId: id, version: window.__benchmarkInitialReadiness?.renderers.find((renderer) => renderer.id === id)?.version,
+            documentToken: window.__benchmarkDevDocument, text: target.textContent.trim(),
+            matchedHostNode: true, at: performance.now() };
+        }
+        return result;
+      };
+      if (hook) hook.onCommitFiberRoot = commitObserver;
+      window.__benchmarkDevEdit = new Promise((accept, reject) => {
+        const observe = () => {
+          const target = document.querySelector(selector);
+          if (!target?.getClientRects().length || getComputedStyle(target).visibility === 'hidden'
+            || getComputedStyle(target).display === 'none' || target.textContent.trim() !== expectedText || !reactCommit) return;
+          observer.disconnect();
+          clearTimeout(timeout);
+          accept({ documentToken: window.__benchmarkDevDocument, url: location.href,
+            text: target.textContent.trim(), visible: true, reactCommit });
+        };
+        const observer = new MutationObserver(observe);
+        const timeout = setTimeout(() => { observer.disconnect(); reject(new Error('component marker timeout')); }, 60_000);
+        window.__benchmarkDevEditCancel = () => {
+          observer.disconnect();
+          clearTimeout(timeout);
+          if (hook?.onCommitFiberRoot === commitObserver) hook.onCommitFiberRoot = originalCommit;
+        };
+        observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+      });
+      window.__benchmarkDevEdit.catch(() => {});
+      return snapshot;
+    }, { token, selector: edit.selector, expectedText: edit.expectedText });
+  } catch (error) {
+    clearTimeout(timer);
+    page.off('framenavigated', onNavigation);
+    throw error;
+  }
+  return { initial, subscribedAtMs: performance.now(),
+    wait: () => Promise.any([page.evaluate(() => window.__benchmarkDevEdit), navigation]),
+    async cancel() {
+      clearTimeout(timer);
+      page.off('framenavigated', onNavigation);
+      await page.evaluate(() => window.__benchmarkDevEditCancel?.()).catch(() => {});
+    } };
 }
 
 function percentile(values, quantile) {
@@ -140,7 +352,71 @@ function percentile(values, quantile) {
   return sorted[Math.ceil(quantile * sorted.length) - 1];
 }
 
+// CDP subscriptions are installed before navigation, including the upgrade
+// handshake. A socket opening (or a console log) alone is not HMR readiness.
+export function observeDevReadiness(cdp, readiness, pageUrl, started = performance.now()) {
+  if (!readiness) return { promise: Promise.resolve(null), cancel() {} };
+  if (!['vite', 'next-webpack'].includes(readiness.protocol) || !readiness.path?.startsWith('/')) {
+    throw new TypeError('dev readiness requires an exact protocol and socket path');
+  }
+  const origin = new URL(pageUrl).origin;
+  const sockets = new Map();
+  const subscriptions = [];
+  let cancel;
+  const promise = new Promise((accept, reject) => {
+    const cleanup = () => {
+      clearTimeout(timeout);
+      for (const [name, listener] of subscriptions) cdp.off(name, listener);
+      sockets.clear();
+    };
+    const fail = (error) => { cleanup(); reject(error); };
+    const timeout = setTimeout(() => fail(new Error(`${readiness.protocol} HMR readiness timeout`)),
+      readiness.timeoutMs ?? 60_000);
+    cancel = () => fail(new Error('HMR readiness cancelled'));
+    const on = (name, listener) => { subscriptions.push([name, listener]); cdp.on(name, listener); };
+    const header = (headers, name) => Object.entries(headers ?? {})
+      .find(([key]) => key.toLowerCase() === name)?.[1];
+    on('Network.webSocketCreated', ({ requestId, url }) => {
+      const socket = new URL(url);
+      socket.protocol = socket.protocol === 'wss:' ? 'https:' : 'http:';
+      if (socket.origin !== origin || socket.pathname !== readiness.path) return;
+      if (readiness.protocol === 'next-webpack' && !socket.searchParams.get('id')) return;
+      sockets.set(requestId, { url, upgraded: false });
+    });
+    on('Network.webSocketHandshakeResponseReceived', ({ requestId, response }) => {
+      const socket = sockets.get(requestId);
+      if (!socket || response.status !== 101) return;
+      const protocol = header(response.headers, 'sec-websocket-protocol');
+      if (readiness.protocol === 'vite' ? protocol !== 'vite-hmr' : Boolean(protocol)) return;
+      socket.upgraded = true;
+    });
+    on('Network.webSocketFrameReceived', ({ requestId, timestamp, response }) => {
+      const socket = sockets.get(requestId);
+      if (!socket?.upgraded || response.opcode !== 1) return;
+      let message;
+      try { message = JSON.parse(response.payloadData); } catch { return; }
+      if (!message || typeof message !== 'object') return;
+      if (readiness.protocol === 'vite') {
+        if (message.type !== 'connected') return;
+      } else {
+        if (message.type !== 'sync' || typeof message.hash !== 'string'
+          || !message.hash || !Array.isArray(message.errors) || !Array.isArray(message.warnings)) return;
+        if (message.errors.length) { fail(new Error('Next webpack HMR sync has compilation errors')); return; }
+      }
+      const observation = { protocol: readiness.protocol, requestId, url: socket.url,
+        message, cdpTimestamp: timestamp, elapsedMs: performance.now() - started };
+      cleanup();
+      accept(observation);
+    });
+    on('Network.webSocketClosed', ({ requestId }) => sockets.delete(requestId));
+  });
+  // Navigation can fail before the bounded readiness wait is awaited.
+  promise.catch(() => {});
+  return { promise, cancel };
+}
+
 export async function createBrowserDriver(config, { devMode = false } = {}) {
+  if (config.methodVersion !== undefined) assertMethodConfig(config);
   if (!devMode && (!config.journeys || JOURNEYS.some((name) => !config.journeys[name]))) {
     throw new Error(`browser correctness requires configured journeys: ${JOURNEYS.join(', ')}`);
   }
@@ -158,8 +434,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
     await stopOwnedProcess(server);
   }
 
-  async function createPage(item) {
-    const context = await browser.newContext({ viewport: PROFILES[item.device].viewport });
+  async function createPage(item, owner = browser) {
+    const context = await owner.newContext({ viewport: PROFILES[item.device].viewport });
     const page = await context.newPage();
     const cdp = await context.newCDPSession(page);
     const profile = PROFILES[item.device];
@@ -209,6 +485,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           return { pass: false, steps: [{ name: 'dev-config', pass: false }] };
         }
         const cwd = commands.cwd ?? resolve(import.meta.dirname, `../apps/${item.framework}`);
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
         const started = performance.now();
         const server = spawn(commands.start[0], commands.start.slice(1), {
           cwd, env: { ...process.env, ...commands.env }, stdio: ['ignore', 'pipe', 'pipe'],
@@ -219,7 +496,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           const timeout = setTimeout(() => reject(new Error('dev-ready timeout')), 60_000);
           const onData = (chunk) => {
             log += chunk.toString();
-            if (log.includes(commands.readyPattern)) { clearTimeout(timeout); accept(); }
+            if (stripVTControlCharacters(log).includes(commands.readyPattern)) { clearTimeout(timeout); accept(); }
           };
           server.stdout.on('data', onData);
           server.stderr.on('data', onData);
@@ -227,27 +504,62 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           server.once('exit', (code) => { clearTimeout(timeout); reject(new Error(`dev server exited: ${code}`)); });
         });
         let created;
+        let hmr;
         try {
           await ready;
           created = await createPage(item);
-          const { context, page } = created;
+          const { context, page, cdp } = created;
+          if (commands.reactReadiness) await installInitialReadiness(page, commands.reactReadiness);
+          hmr = observeDevReadiness(cdp, commands.readiness, commands.url ?? item.url, started);
           const response = await page.goto(commands.url ?? item.url, { waitUntil: 'domcontentloaded' });
           if (!response?.ok()) throw new Error(`dev page HTTP ${response?.status()}`);
           await page.locator('h1').first().waitFor({ state: 'visible', timeout: 60_000 });
+          const hmrReadiness = await hmr.promise;
+          const reactReadiness = commands.reactReadiness ? await waitForInitialReadiness(page) : null;
           const readyMs = performance.now() - started;
-          contexts.set(item.runId + item.framework, { context, page, readyMs, serverLog: () => log });
+          const environmentHeadroom = headroomBefore
+            ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
+          const readyStep = { name: 'dev-ready', pass: true, elapsedMs: readyMs,
+            hmrReadiness, reactReadiness, url: commands.url, log,
+            ...(environmentHeadroom ? { environmentHeadroom } : {}) };
+          contexts.set(item.runId + item.framework, { context, page, cdp, readyMs,
+            hmrReadiness, reactReadiness, readyStep, serverLog: () => log });
           devServers.set(item.runId + item.framework, server);
-          return { pass: true, steps: [{ name: 'dev-ready', pass: true, elapsedMs: readyMs, url: commands.url, log }] };
+          return { pass: true, steps: [readyStep] };
         } catch (error) {
+          hmr?.cancel();
           await stopDevServer(server);
           await created?.context.close();
-          return { pass: false, steps: [{ name: 'dev-ready', pass: false, error: String(error), log }] };
+          return { pass: false, steps: [{ name: 'dev-ready', pass: false, error: String(error),
+            reactReadiness: error.cause, log }] };
         }
       }
-      const { context, page } = await createPage(item);
+      const { context, page, cdp } = await createPage(item);
       const steps = [];
+      const events = [];
+      const subscriptions = [];
+      const startedAtMs = performance.now();
+      for (const name of ['Network.requestWillBeSent', 'Network.responseReceived',
+        'Network.loadingFinished', 'Network.loadingFailed', 'Page.domContentEventFired']) {
+        const observe = (data) => events.push({
+          name, observedAtMs: performance.now(),
+          requestId: data.requestId, loaderId: data.loaderId, type: data.type,
+          url: data.request?.url ?? data.response?.url,
+          method: data.request?.method, status: data.response?.status,
+          timestamp: data.timestamp, encodedDataLength: data.encodedDataLength,
+          errorText: data.errorText, canceled: data.canceled,
+        });
+        cdp.on(name, observe);
+        subscriptions.push([cdp, name, observe]);
+      }
+      for (const name of ['domcontentloaded', 'crash', 'close']) {
+        const observe = () => events.push({ name: `page.${name}`, observedAtMs: performance.now() });
+        page.on(name, observe);
+        subscriptions.push([page, name, observe]);
+      }
       let createdPath = null;
       try {
+        await cdp.send('Page.enable');
         for (const name of JOURNEYS) {
           const journey = config.journeys[name];
           const path = resolveJourneyValue(journey.path, createdPath);
@@ -267,23 +579,53 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           if (name === 'create') createdPath = new URL(page.url()).pathname;
           steps.push({ name, pass: true });
         }
-        await context.close();
         return { pass: true, steps };
       } catch (error) {
-        steps.push({ name: JOURNEYS[steps.length], pass: false, error: String(error) });
-        await context.close();
+        steps.push({ name: JOURNEYS[steps.length], pass: false, error: String(error),
+          diagnostics: { startedAtMs, failedAtMs: performance.now(), events } });
         return { pass: false, steps };
+      } finally {
+        for (const [source, name, observe] of subscriptions) source.off(name, observe);
+        await context.close();
       }
     },
     async measure(item) {
-      const { context, page, cdp } = await createPage(item);
+      const native = await createNativeCapture(chromium, item.nativeTraceDirectory, config.nativeLifetime?.enabled
+        ? { ...config.nativeLifetime, measurement: { runId: item.runId, framework: item.framework,
+          profile: item.profile, mode: item.mode,
+          ...(item.methodBinding ? { methodVersion: item.methodVersion, measurementPurpose: item.measurementPurpose,
+            pairId: item.methodBinding.pairId, executionId: item.methodBinding.executionId,
+            ...(item.methodVersion === 'FA-V3' ? { measurementKind: item.measurementKind,
+              pairPhase: item.methodBinding.pairPhase, configSha256: item.methodBinding.configSha256,
+              productSha256: item.methodBinding.productSha256 } : {}) } : {}) } } : undefined);
+      let measurementFailed = false;
+      let measurementError;
+      let observation;
+      let cleanupFailure;
+      try {
+      const { page, cdp } = await createPage(item, native.browser);
+      await native.prepareLifetime(cdp);
+      const lifetimeIdentity = native.lifetimeIdentity;
+      const nativeSubscriptions = [];
+      for (const name of ['Network.requestWillBeSent', 'Network.requestWillBeSentExtraInfo',
+        'Network.responseReceived', 'Network.responseReceivedExtraInfo', 'Network.dataReceived',
+        'Network.loadingFinished', 'Network.loadingFailed', 'Page.frameNavigated', 'Page.frameDetached']) {
+        const observe = (data) => native.ledger.push({ name, data, ...lifetimeIdentity });
+        cdp.on(name, observe);
+        nativeSubscriptions.push([name, observe]);
+      }
+      await cdp.send('Page.enable');
+      await installInitialReadiness(page);
       const requests = [];
       const qualityFailures = [];
       const network = new Map();
+      const networkChanges = new EventEmitter();
       let phase = 'cold';
       let collecting = true;
-      cdp.on('Network.requestWillBeSent', ({ requestId, request, type, redirectResponse }) => {
+      const occurrences = new Map();
+      cdp.on('Network.requestWillBeSent', ({ requestId, loaderId, frameId, initiator, timestamp, wallTime, request, type, redirectResponse }) => {
         if (!collecting) return;
+        occurrences.set(requestId, (occurrences.get(requestId) ?? 0) + 1);
         if (redirectResponse) {
           const previous = network.get(requestId);
           requests.push({
@@ -293,6 +635,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           });
         }
         network.set(requestId, {
+          ...(lifetimeIdentity ? { ...lifetimeIdentity, occurrence: occurrences.get(requestId) } : {}),
+          requestId, loaderId, frameId, initiator, startedTimestamp: timestamp, wallTime, method: request.method,
           url: request.url, resourceType: type?.toLowerCase() ?? 'other', phase,
           documentUrl: page.url(), pageClosed: page.isClosed(), status: null,
           compressedBodyBytes: 0,
@@ -317,15 +661,18 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           entry.bodyBytes = (entry.bodyBytes ?? 0) + dataLength;
         }
       });
-      cdp.on('Network.loadingFailed', ({ requestId, errorText }) => {
+      cdp.on('Network.loadingFailed', ({ requestId, errorText, canceled, timestamp }) => {
         const entry = network.get(requestId);
         if (!collecting || !entry) return;
-        requests.push({ ...entry, kind: 'request-failed', error: errorText });
+        requests.push({ ...entry, kind: 'request-failed', error: errorText, canceled,
+          settledPhase: phase, settledTimestamp: timestamp });
         network.delete(requestId);
+        networkChanges.emit('settled');
       });
-      cdp.on('Network.loadingFinished', ({ requestId, encodedDataLength }) => {
+      cdp.on('Network.loadingFinished', ({ requestId, encodedDataLength, timestamp }) => {
         const entry = network.get(requestId);
         if (!collecting || !entry) return;
+        Object.assign(entry, { settledPhase: phase, settledTimestamp: timestamp });
         if (entry.status === null || (entry.bodyBytes === undefined && ![204, 205, 304].includes(entry.status))) {
           const reason = entry.status === null ? 'HTTP response status unavailable'
             : 'decoded body bytes unavailable: no Network.dataReceived event';
@@ -338,24 +685,74 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           requests.push({ ...entry, transferBytes: encodedDataLength, bodyBytes: entry.bodyBytes ?? 0 });
         }
         network.delete(requestId);
+        networkChanges.emit('settled');
       });
       try {
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
         const listing = new URL(config.journeys.listing.path, item.url).href;
         await page.goto(listing, { waitUntil: 'load' });
+        const initialReadiness = await waitForInitialReadiness(page);
+        // Subscribe before checking the identity inventory: no lost settlement event,
+        // no network-idle heuristic and no waiting for unrelated speculative RSC.
+        const waitForInitialResources = async (ownerPhase) => {
+          await new Promise((accept, reject) => {
+            const check = () => {
+              if ([...network.values()].some((entry) => entry.phase === ownerPhase
+                && ['document', 'script', 'stylesheet'].includes(entry.resourceType))) return;
+              cleanup();
+              accept();
+            };
+            const timeout = setTimeout(() => {
+              cleanup();
+              reject(new Error('initial React completion resource timeout'));
+            }, 10_000);
+            const cleanup = () => {
+              clearTimeout(timeout);
+              networkChanges.off('settled', check);
+            };
+            networkChanges.on('settled', check);
+            check();
+          });
+          const failedInitialResources = requests.filter((entry) => entry.phase === ownerPhase
+            && ['document', 'script', 'stylesheet'].includes(entry.resourceType) && entry.error);
+          if (failedInitialResources.length) throw new Error('initial React completion resource failure');
+        };
+        await waitForInitialResources('cold');
         const cold = await page.evaluate(() => ({
           navigation: performance.getEntriesByType('navigation')[0]?.toJSON() ?? null,
           lcp: window.__benchmarkLcp,
           hydration: performance.getEntriesByName('hydration')[0]?.duration ?? null,
           shell: performance.getEntriesByName('shell-arrival')[0]?.startTime ?? null,
         }));
-        const clientWork = initialClientWork(
-          (await cdp.send('Performance.getMetrics')).metrics,
-          await page.evaluate(() => performance.getEntriesByType('paint').map((entry) => ({
-            name: entry.name, startTime: entry.startTime,
-          }))),
-        );
+        const initialCdpMetrics = (await cdp.send('Performance.getMetrics')).metrics;
+        const initialPaintEntries = await page.evaluate(() => performance.getEntriesByType('paint').map((entry) => ({
+          name: entry.name, startTime: entry.startTime,
+        })));
+        const clientWork = initialClientWork(initialCdpMetrics, initialPaintEntries);
+        const initialRequests = [
+          ...requests.filter((request) => request.phase === 'cold'),
+          ...[...network.values()].filter((request) => request.phase === 'cold')
+            .map((request) => ({ ...request, kind: 'request-pending',
+              unavailable: 'request still in flight at initial completion boundary' })),
+        ];
+        const initialBoundary = {
+          readiness: initialReadiness,
+          sampledAt: await page.evaluate(() => performance.now()),
+          cdpMetrics: initialCdpMetrics,
+          paintEntries: initialPaintEntries,
+          requests: initialRequests,
+          pendingAtWarmTrigger: [...network.values()].map((entry) => ({ ...entry })),
+        };
+        initialBoundary.warmTriggeredAt = await page.evaluate(() => performance.now());
         phase = 'warm';
         await page.goto(listing, { waitUntil: 'load' });
+        const warmReadiness = await waitForInitialReadiness(page);
+        await waitForInitialResources('warm');
+        const warmBoundary = {
+          readiness: warmReadiness,
+          completedAt: await page.evaluate(() => performance.now()),
+          pendingAtInteraction: [...network.values()].map((entry) => ({ ...entry })),
+        };
         const warm = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.toJSON() ?? null);
         const interactions = [];
         phase = 'interaction';
@@ -396,14 +793,21 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           interactions.push(observation);
           if (observation.unavailable) qualityFailures.push(observation.unavailable);
         }
+        // Keep approved DOM latency unchanged. Capture actual HTTP terminals before
+        // closing the context; this finite ID inventory is not producer closure.
+        const finalRequestCapture = await waitForCapturedRequests(network, networkChanges, AbortSignal.timeout(10_000));
+        const captureMetrics = (await native.captureClock(() => cdp.send('Performance.getMetrics'))).metrics;
+        const captureTimestamp = captureMetrics.find((metric) => metric.name === 'Timestamp')?.value;
+        if (!Number.isFinite(captureTimestamp)) throw new Error('native terminal capture monotonic clock unavailable');
         collecting = false;
         for (const entry of network.values()) {
           requests.push({ ...entry, kind: 'request-pending',
             unavailable: 'request still in flight at capture boundary' });
-          qualityFailures.push(`request pending at capture boundary: ${entry.url}`);
         }
         network.clear();
-        const initialRequests = requests.filter((request) => request.phase === 'cold');
+        native.ledger.push({ name: 'capture-boundary', data: { captureTimestamp, finalRequestCapture,
+          ...(item.methodBinding ? { methodBinding: item.methodBinding } : {}) } });
+        for (const [name, observe] of nativeSubscriptions) cdp.off(name, observe);
         const metrics = {};
         const unavailable = {};
         if (cold.navigation) {
@@ -442,16 +846,19 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           metrics.throughputRequestsPerSecond = sent.length * 1000 / elapsedMs;
           requests.push(...sent.map((response) => ({ ...response, url: new URL(throughput.path, item.url).href, resourceType: 'throughput' })));
         }
-        const errorRate = summarizeErrorRate(requests);
-        if (errorRate !== null) metrics.errorRate = errorRate;
         const serverPid = config.serverPids?.[item.framework];
+        let serverCpu;
         let generator;
         {
           const { stdout } = await execFileAsync('ps', ['-p', String(process.pid), '-o', '%cpu=', '-o', 'rss=']);
           const [cpu, rss] = stdout.trim().split(/\s+/).map(Number);
           generator = { pid: process.pid, cpuPercent: cpu, rssBytes: rss * 1024 };
         }
-        if (Number.isSafeInteger(serverPid) && serverPid > 0) {
+        if (['FA-V2', 'FA-V3'].includes(config.methodVersion)) {
+          serverCpu = await readServerCpu(serverPid);
+          metrics.cpuPercent = serverCpu.cpuPercent;
+          metrics.rssBytes = serverCpu.rssBytes;
+        } else if (Number.isSafeInteger(serverPid) && serverPid > 0) {
           const { stdout } = await execFileAsync('ps', ['-p', String(serverPid), '-o', '%cpu=', '-o', 'rss=']);
           const [cpu, rss] = stdout.trim().split(/\s+/).map(Number);
           if (Number.isFinite(cpu) && Number.isFinite(rss)) {
@@ -459,25 +866,71 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             metrics.rssBytes = rss * 1024;
           }
         }
-        return {
-          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions },
+        const environmentHeadroom = headroomBefore
+          ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
+        // Keep the original page lifetime through throughput and post-workload
+        // CPU/RSS snapshots. Only the browser-request cutoff precedes them.
+        const nativeEvidence = await native.read(captureTimestamp);
+        let reconciled = reconcileNativeTerminals(requests, nativeEvidence.log, nativeEvidence.provenance, native.ledger);
+        if (nativeEvidence.lifetime) {
+          const { reconcileNativeLifetime } = await import('./native-lifetime.mjs');
+          const result = reconcileNativeLifetime(reconciled, nativeEvidence.lifetime.observation, native.ledger);
+          reconciled = result.requests;
+          qualityFailures.push(...result.unavailable);
+        }
+        requests.splice(0, requests.length, ...reconciled);
+        finalRequestCapture.cdpPendingRequestIds = finalRequestCapture.pendingRequestIds;
+        finalRequestCapture.pendingRequestIds = requests.filter((entry) => entry.kind === 'request-pending')
+          .map((entry) => entry.requestId);
+        finalRequestCapture.nativeResolvedRequestIds = requests.filter((entry) => entry.nativeTerminal || entry.nativeLifetime)
+          .map((entry) => entry.requestId);
+        finalRequestCapture.captureTimestamp = captureTimestamp;
+        for (const entry of requests.filter((request) => request.kind === 'request-pending')) {
+          qualityFailures.push(`request pending at capture boundary: ${entry.url}`);
+        }
+        const errorRate = summarizeErrorRate(requests);
+        if (errorRate !== null) metrics.errorRate = errorRate;
+        observation = {
+          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary, warmBoundary, finalRequestCapture },
           artifacts: {
+            nativeTerminalObserver: nativeEvidence.provenance,
+            ...(nativeEvidence.lifetime ? { nativeLifetimeObserver: nativeEvidence.lifetime.provenance } : {}),
             cachePolicy: item.mode,
             browserCacheDisabled: cacheSettings(item.mode).cacheDisabled,
             framework: item.framework,
             throughput,
             serverPid,
+            ...(serverCpu ? { serverCpu, serverCpuSha256: hashObject(serverCpu) } : {}),
             generator,
+            ...(environmentHeadroom ? { environmentHeadroom } : {}),
             rscResponseWireBytes: summarizeRscBytes(requests),
             rscMethod: 'separate text/x-component responses only; inline RSC data stays in document bytes',
             fullJourneyRequestCount: requests.length,
             shellArrivalMethod: 'first-contentful-paint',
-            clientWorkMethod: 'CDP Performance.TaskDuration for initial navigation, not hydration alone',
+            clientWorkMethod: 'CDP Performance.TaskDuration through react-initial-completion-v1, not hydration alone',
           },
         };
       } finally {
-        await context.close();
+        for (const [name, observe] of nativeSubscriptions) cdp.off(name, observe);
+        cdp.removeAllListeners();
+        networkChanges.removeAllListeners();
       }
+      } catch (error) {
+        measurementFailed = true;
+        measurementError = error;
+        throw error;
+      } finally {
+        try { await native.close(); } catch (cleanupError) {
+          if (!measurementFailed) cleanupFailure = { error: cleanupError };
+          if (measurementError instanceof Error && measurementError !== cleanupError) {
+            try { measurementError.cause ??= cleanupError; } catch {
+              console.error('native cleanup failed after measurement failure', cleanupError);
+            }
+          }
+        }
+      }
+      if (cleanupFailure) throw cleanupFailure.error;
+      return observation;
     },
     async measureDev(item, _config, kind) {
       const key = item.runId + item.framework;
@@ -486,7 +939,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       if (!owned || !server) throw new Error(`dev server missing: ${key}`);
       const commands = config.dev[item.framework];
       if (kind === 'cold-ready') {
-        return { durationMs: owned.readyMs, event: 'dev-ready' };
+        return { durationMs: owned.readyMs, event: 'dev-ready', hmrReadiness: owned.hmrReadiness,
+          reactReadiness: owned.reactReadiness,
+          ...(owned.readyStep.environmentHeadroom ? { environmentHeadroom: owned.readyStep.environmentHeadroom } : {}) };
       }
       const edit = commands.edits[kind];
       if (!(edit?.file || (Array.isArray(edit?.command) && edit.command.length > 0)) || !edit.selector
@@ -494,14 +949,63 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         throw new Error(`missing ${kind} edit stimulus and visibility marker`);
       }
       const { page } = owned;
-      if (edit.path) await page.goto(new URL(edit.path, commands.url ?? item.url).href, { waitUntil: 'load' });
-      if (item.framework === 'next' && kind === 'react-edit') {
-        await page.locator('[data-benchmark-hydrated="true"]').waitFor({ state: 'attached', timeout: 60_000 });
+      if (edit.path) {
+        const navigationStarted = performance.now();
+        const url = new URL(edit.path, commands.url ?? item.url).href;
+        const hmr = observeDevReadiness(owned.cdp, commands.readiness, url, navigationStarted);
+        try {
+          await page.goto(url, { waitUntil: 'load' });
+          const hmrReadiness = await hmr.promise;
+          const reactReadiness = commands.reactReadiness ? await waitForInitialReadiness(page) : null;
+          const durationMs = performance.now() - navigationStarted;
+          owned.readyMs += durationMs;
+          owned.readyStep.elapsedMs += durationMs;
+          owned.readyStep.editNavigation = { url, durationMs, hmrReadiness, reactReadiness };
+        } finally {
+          hmr.cancel();
+        }
+      }
+      if (kind === 'react-edit' && item.framework === 'fluo' && edit.file
+        && edit.from === 'Editor login' && edit.expectedText === 'Editor login changed') {
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
+        const started = performance.now();
+        const documents = await observeDevEditDocument(page, edit);
+        const readiness = owned.readyStep.editNavigation?.hmrReadiness ?? owned.hmrReadiness;
+        const update = edit.reload === false ? observeReactEditUpdate(owned.cdp, readiness, edit) : null;
+        let restore;
+        try {
+          if (!documents.initial.visible || documents.initial.text !== edit.from) throw new Error('initial React edit marker missing');
+          restore = await editSourceFile(edit, commands.cwd ?? resolve(import.meta.dirname, '../apps/fluo'));
+          const restores = editsToRestore.get(key) ?? [];
+          restores.push(restore);
+          editsToRestore.set(key, restores);
+          const final = await documents.wait();
+          const sameDocument = documents.initial.documentToken === final.documentToken;
+          const actualUpdate = sameDocument && update ? await update.promise : null;
+          const completedAtMs = performance.now();
+          const durationMs = completedAtMs - started;
+          await restore();
+          const completion = sameDocument ? 'hmr-to-visible' : edit.relaunch ? 'relaunch-to-visible'
+            : edit.restartPattern ? 'restart-and-reload-to-visible'
+              : edit.reload ? 'reload-to-visible' : 'fallback-reload-to-visible';
+          return { durationMs, event: `${kind}-visible`,
+            method: sameDocument ? 'hot-update' : 'document-reload',
+            interval: { clock: 'node-performance-now-ms', startedAtMs: started, completedAtMs },
+            editEvidence: { schemaVersion: 1, subscribedBeforeStimulus: true, subscribedAtMs: documents.subscribedAtMs, initial: documents.initial,
+              final, completion, readiness, update: actualUpdate, source: restore.evidence },
+            ...(headroomBefore ? { environmentHeadroom:
+              summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) } : {}) };
+        } finally {
+          await restore?.();
+          update?.cancel();
+          await documents.cancel();
+        }
       }
       const reload = edit.reload === true;
       const before = reload || edit.relaunch ? null : await page.locator(edit.selector).first().evaluate((element, expectedStyle) =>
         expectedStyle ? getComputedStyle(element).getPropertyValue(expectedStyle.property) : element.textContent,
       edit.expectedStyle);
+      const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
       const started = performance.now();
       const restarted = edit.restartPattern ? new Promise((accept, reject) => {
         const timeout = setTimeout(() => {
@@ -517,19 +1021,17 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         server.stdout.on('data', observe);
       }) : null;
       const visible = edit.explicitReload || edit.relaunch ? null : reload
-        ? (restarted ? restarted.then(() => page.reload({ waitUntil: 'load' }))
-          : page.waitForEvent('load', { timeout: 60_000 })).then(async () => {
+        ? (restarted ? restarted.then(() => page.reload({ waitUntil: 'commit' }))
+          : page.waitForEvent('framenavigated', {
+            predicate: (frame) => frame === page.mainFrame(), timeout: 60_000,
+          })).then(async () => {
           const element = page.locator(edit.selector);
           await element.waitFor({ state: 'visible', timeout: 60_000 });
           if (edit.expectedText) {
             await element.filter({ hasText: edit.expectedText }).waitFor({ state: 'visible', timeout: 60_000 });
             return;
           }
-          const value = await element.evaluate((target, expectedStyle) => expectedStyle
-            ? getComputedStyle(target).getPropertyValue(expectedStyle.property) : target.textContent, edit.expectedStyle);
-          if (!value?.includes(edit.expectedStyle?.value ?? edit.expectedText)) {
-            throw new Error(`${kind} marker not visible after reload`);
-          }
+          await waitForEditMarker(page, edit);
         })
         : Promise.any([page.evaluate(({ selector, expectedText, expectedStyle, previous }) => new Promise((resolveVisible, rejectVisible) => {
           const observer = new MutationObserver(() => {
@@ -587,7 +1089,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             await waitForEditMarker(restartedPage, edit);
           }
         } else if (edit.explicitReload) {
-          await page.reload({ waitUntil: 'load' });
+          await page.reload({ waitUntil: 'commit' });
           await page.locator(edit.selector).filter({ hasText: edit.expectedText }).waitFor({ state: 'visible', timeout: 60_000 });
         } else {
           await visible;
@@ -602,8 +1104,14 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         durationMs: performance.now() - started,
         event: `${kind}-visible`,
         method: edit.relaunch ? 'dev-server-relaunch' : edit.restartPattern
-          ? 'restart-and-reload' : edit.explicitReload ? 'document-reload' : 'hot-update',
+          ? 'restart-and-reload' : edit.explicitReload || reload ? 'document-reload' : 'hot-update',
+        ...(edit.relaunch ? { restartReadiness: contexts.get(key).readyStep } : {}),
+        ...(headroomBefore ? { environmentHeadroom:
+          summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) } : {}),
       };
+      if (headroomBefore) {
+        result.environmentHeadroom = summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom());
+      }
       return result;
     },
     async close() {

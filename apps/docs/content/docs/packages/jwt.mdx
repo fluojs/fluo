@@ -4,6 +4,8 @@ description: How @fluojs/jwt signs access tokens, verifies them into a normalize
 package: "@fluojs/jwt"
 ---
 
+`JwtPrincipal` extends the shared `Principal` from `@fluojs/auth`. JWT retains claim validation/normalization and refresh rotation/replay; `@fluojs/auth-http` is the canonical owner of HTTP credentials, guards and refresh exchange. Earlier Passport imports remain compatible.
+
 `@fluojs/jwt` is the token core of fluo's security stack. It signs JWT access tokens, verifies them into a single normalized identity shape (`JwtPrincipal`), and — when configured — runs the refresh-token lifecycle: issuance, rotation, replay detection, and revocation. It is deliberately HTTP-agnostic: nothing in this package reads requests, sets status codes, or knows what a controller is. Route protection lives in [`@fluojs/passport`](/docs/packages/passport), which consumes this package's verifier.
 
 Three boundaries define what the package is *not*:

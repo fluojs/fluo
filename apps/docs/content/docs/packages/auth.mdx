@@ -1,0 +1,39 @@
+---
+title: Auth
+description: Transport-neutral identity, authentication strategies and account-linking policy.
+package: "@fluojs/auth"
+---
+
+`@fluojs/auth` owns the shared `Principal`, strategy input/result contracts, authentication errors and conservative account-linking policy. Its root depends only on core and does not load HTTP guards, JWT verification, Passport.js or runtime orchestration. Node support is `>=24.0.0 <27`.
+
+```sh
+pnpm add @fluojs/auth
+```
+
+## A neutral strategy
+
+```ts
+import { type AuthStrategy, type Principal } from '@fluojs/auth';
+
+class ServiceStrategy implements AuthStrategy<{ identity: string }> {
+  authenticate(input: { identity: string }): Principal {
+    return { subject: input.identity, claims: {} };
+  }
+}
+```
+
+The input is explicitly parameterized; no common base class is required. Results are a Principal, explicit `{ authenticated: false }`, or `{ handled: true, principal?: Principal }`. The transport decides whether absence or completion permits execution. This contract does not promise automatic cross-protocol execution.
+
+Principal preserves mutable subject/claims plus optional issuer, audience, roles and scopes. HTTP re-exports it and JWT's `JwtPrincipal` extends it without changing normalization.
+
+## Account linking and errors
+
+Use `createConservativeAccountLinkPolicy()` and `resolveAccountLinking(context, policy?, options?)` with application-supplied identities/candidates. Existing links are deduplicated; ambiguity reports `AccountLinkConflictError` and its candidate IDs. Explicit linking requires confirmation and a valid target. Without policy the default is skipped; explicit `fallback: 'create-account'` requests creation. Persistence, account merges and consent remain application-owned.
+
+Authentication errors retain the versioned legacy Passport owner; `isAuthError` aliases `isPassportError` and does not trust matching error codes alone. Old Passport exports share the same classes and account policy token.
+
+## Choose the integration
+
+Use [auth-http](/docs/packages/auth-http) for HTTP guard execution and [Passport](/docs/packages/passport) only for Passport.js action binding or existing compatibility imports. JWT owns signing, claim verification and refresh rotation.
+
+Evidence: `tooling/docs/fixtures/package-guides/security/auth-guide.test.ts`, `packages/auth/src/runtime-boundary.test.ts`, and the [package owner](https://github.com/fluojs/fluo/blob/main/packages/auth/README.md).

@@ -7,6 +7,7 @@
     "node": ">=24.11.0 <27"
   },
   "scripts": {
+    "dev": "node ../../src/fluo-dev.mjs",
     "build": "vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
     "start": "node dist/server/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -23,8 +24,12 @@
   },
   "devDependencies": {
     "@fluojs/vite": "link:../../../../../packages/vite",
+    "@vitejs/plugin-react": "6.1.1",
+    "@types/node": "22.19.15",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "esbuild": "0.28.1",
+    "tsx": "4.23.1",
     "typescript": "6.0.2",
     "vite": "8.2.2"
   }

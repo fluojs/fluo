@@ -145,6 +145,41 @@ function createDeferred(): { readonly promise: Promise<void>; readonly resolve: 
 }
 
 describe('renderReactResponse', () => {
+  it('keeps a buffered host uncommitted until the gated descendant finishes', async () => {
+    // Given: a host without a response stream and an independently gated second chunk.
+    const gate = createDeferred();
+    const producedFirst = createDeferred();
+    const response = createResponse();
+    Object.defineProperty(response, 'stream', { value: undefined });
+    const context = createTestContext(response);
+    const renderToReadableStream: ReactReadableStreamRenderer = async () => new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(TEXT_ENCODER.encode('<main>Buffered shell</main>'));
+        producedFirst.resolve();
+        void gate.promise.then(() => {
+          controller.enqueue(TEXT_ENCODER.encode('<p>Buffered descendant</p>'));
+          controller.close();
+        });
+      },
+    });
+
+    // When: the source produced its shell but the descendant is still gated.
+    const render = renderReactResponse(createReactServerEntry(createElement('main')), context, {
+      renderToReadableStream,
+    });
+    await producedFirst.promise;
+
+    // Then: only complete HTML may commit on a buffered host.
+    expect(response.committed).toBe(false);
+    expect(response.statusCode).toBeUndefined();
+    expect(response.chunks).toEqual([]);
+    gate.resolve();
+    await render;
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(response.chunks.join('')).toContain('Buffered descendant');
+  });
+
   it('streams successful React HTML with deterministic content type and status', async () => {
     const response = createResponse();
     const context = createTestContext(response);

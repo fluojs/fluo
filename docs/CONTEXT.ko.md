@@ -1,5 +1,9 @@
 # fluo — AI Context Document
 
+공유 진단 데이터와 static/report/live reader 소유권은 [`@fluojs/diagnostics`](../packages/diagnostics/README.ko.md)에 위임합니다. Runtime/core/Studio/status 호환성, wire와 parsed route field 및 CLI ingress 경계는 [선택적 import migration](./getting-started/migrate-diagnostics.ko.md)을 참조하세요. Runtime은 lifecycle/resource를, Studio는 filter/Mermaid/UI를 소유합니다.
+
+일반 identity·인증 결과·account-linking 정책은 `@fluojs/auth`, HTTP guard·strategy·credential·refresh integration은 `@fluojs/auth-http`, crypto와 rotation/replay는 `@fluojs/jwt`, Passport.js bridge는 `@fluojs/passport`가 소유합니다. 기존 Passport 예제와 import는 compatibility 경로이며 canonical HTTP 등록은 auth-http의 `AuthModule.forRoot(...)`입니다.
+
 Background HTTP 작업은 기존 `useForm`의 additive `mode: 'background'`와
 `method: 'get' | 'post'`를 사용하며 생략하면 legacy navigation POST/busy skip을
 유지합니다. [Form owner](./contracts/react-progressive-forms.ko.md)는 독립 latest-wins
@@ -11,6 +15,10 @@ private result는 public prefetch에 들어가지 않습니다. Example과 packa
 <!-- fluo:prisma-api-unification: module-owned-registration -->
 
 <!-- fluo:transaction-contract: explicit-target -->
+공통 transaction primitive의 소유권은 `@fluojs/persistence`에 있고 core/ORM 오류와
+runtime request helper는 직접 재노출을 유지합니다. [트랜잭션 owner](./architecture/transactions.ko.md),
+[primitive API](../packages/persistence/README.ko.md), [선택적인 import 전환](./getting-started/migrate-persistence-contracts.ko.md)을 읽으세요.
+Native 실행·observer·cleanup은 ORM에 남으며 portability는 driver 지원을 넓히지 않습니다.
 <!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->
 
 트랜잭션 데코레이터의 canonical 경로는 명시적인 target accessor입니다.

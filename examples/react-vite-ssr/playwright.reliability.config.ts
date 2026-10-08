@@ -8,6 +8,7 @@ export default defineConfig({
   testMatch: soak ? 'long-session-soak.spec.ts' : [
     'long-session.spec.ts', 'long-session-ownership.spec.ts', 'long-session-cache.spec.ts',
     'background-interactions.spec.ts', 'session-transition.spec.ts',
+    'product-acceptance.spec.ts', 'product-faults.spec.ts',
   ],
   retries: 0,
   workers: 1,
@@ -19,7 +20,7 @@ export default defineConfig({
     ?? 'node_modules/.cache/react-reliability-report.json' }]],
   use: { baseURL: `http://127.0.0.1:${port}`, headless: true, actionTimeout: 10_000, navigationTimeout: 10_000 },
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
+    { name: 'chromium', use: { browserName: 'chromium', launchOptions: { args: ['--disable-gpu'] } } },
     { name: 'firefox', use: { browserName: 'firefox' } },
     { name: 'webkit', use: { browserName: 'webkit' } },
   ],

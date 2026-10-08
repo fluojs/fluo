@@ -1,5 +1,7 @@
 # package chooser — pick packages by task
 
+Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.
+
 <p><strong><kbd>English</kbd></strong> <a href="./package-chooser.ko.md"><kbd>한국어</kbd></a></p>
 
 > Looking for what `fluo new` actually scaffolds today? See the [fluo new support matrix](./fluo-new-support-matrix.md). This chooser covers the broader package ecosystem, not just current starter presets.
@@ -63,6 +65,7 @@
 
 | condition | package choice | notes |
 | --- | --- | --- |
+| Need ORM-neutral transaction boundary types and errors | `@fluojs/persistence` | Canonical shared contract owner; existing core/ORM imports remain compatible. Native transactions and driver support stay with each ORM. See the [optional import migration](../getting-started/migrate-persistence-contracts.md). |
 | Need Prisma-based relational access on Node.js | `@fluojs/prisma` | Use for Node.js `>=24.0.0 <27` Prisma ORM integration. The root wrapper uses host `AsyncLocalStorage` for transaction context and `engines.node >=24.0.0 <27`; runtimes without a compatible ALS boundary should register raw Prisma-compatible handles behind application-owned providers until a runtime-specific transaction-context adapter is documented. |
 | Need Drizzle-based relational access on Node.js or Bun | `@fluojs/drizzle` | Full Node.js `>=24.0.0 <27` support; Bun 1.4 conditionally uses the root wrapper with an async callback-awaiting driver such as `drizzle-orm/libsql` for exception-based transactions. Synchronous `drizzle-orm/bun-sqlite` is unsupported: ALS can select a transaction handle even when later errors cannot roll back writes; `strictTransactions` does not detect this. Node versions below 24 and Node 27+ are unsupported. Deno and Workers remain unverified; register raw Drizzle handles behind application-owned providers (`useFactory` or `useValue`) there. |
 | Need document database access on Node.js | `@fluojs/mongoose` | Use for Node.js `>=24.0.0 <27` Mongoose integration. The root wrapper uses Node's `node:async_hooks` transaction context and uses a package-owned Node support contract; Node versions below 24 and Node 27+ are unsupported. Non-Node runtimes should register raw Mongoose-compatible handles behind application-owned providers until a runtime-specific transaction-context adapter is documented. |
@@ -76,6 +79,8 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need JWT signing and verification | `@fluojs/jwt` | Use for token issuance, verification, and principal normalization. |
+| Need neutral identity and authentication/account-linking policy | `@fluojs/auth` | No HTTP or JWT integration at the root. |
+| Need HTTP authentication and scopes | `@fluojs/auth-http` | Use AuthModule, guards, bearer/cookie and refresh exchange. |
 | Need Passport strategy integration | `@fluojs/passport` | Use when bridging Passport-based auth flows. |
 | Need request throttling | `@fluojs/throttler` | Use for rate limiting and guard-stage enforcement. |
 
@@ -98,6 +103,8 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | Need Discord delivery | `@fluojs/discord` | Webhook-first Discord integration. |
 
 ## observability & docs
+
+For shared diagnostic data without runtime implementation or Studio UI, use [`@fluojs/diagnostics`](../../packages/diagnostics/README.md). It owns portable status/snapshot/graph/trace/timing contracts and static/report/live readers. Existing import paths remain compatible; filters and Mermaid remain Studio-owned.
 
 | condition | package choice | notes |
 | --- | --- | --- |

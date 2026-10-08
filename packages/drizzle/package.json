@@ -43,9 +43,11 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
+    "@fluojs/persistence": "workspace:^",
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
-    "@fluojs/runtime": "workspace:^"
+    "@fluojs/runtime": "workspace:^",
+    "@fluojs/diagnostics": "workspace:^"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.45.2"

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const cookieAuthModulePath = 'packages/passport/src/cookie/cookie-auth-module.ts';
+const cookieAuthModulePath = 'packages/auth-http/src/cookie/cookie-auth-module.ts';
 const platformGovernancePath = 'tooling/governance/verify-platform-consistency-governance.mjs';
 
 function findCookieAuthForRoot(sourceFile) {

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type Baseline, evaluatePerformance, type MeasurementRun, type Metric } from '../src/evaluate.ts';
+import { type Baseline, evaluatePerformance as evaluateVersionedPerformance, type MeasurementRun, type Metric } from '../src/evaluate.ts';
+
+const evaluatePerformance = (baseline: Baseline, runs: readonly MeasurementRun[]) =>
+  evaluateVersionedPerformance(baseline, runs, 'historical-v1');
 
 const values = {
   coldTtfbMs: 80,
@@ -87,6 +90,29 @@ test('fails a stable relative regression even below its absolute budget', () => 
   assert.equal(result.verdict, 'fail');
   assert.ok(result.checks.some((check) =>
     check.metric === 'warmTtfbMs' && check.reason === 'relative-band' && check.verdict === 'fail'));
+});
+
+test('accepts the exact decimal relative boundary without multiplication rounding failure', () => {
+  // Given: the observed Linux CPU boundary is 0.9 against 0.6 with a 1.5 band.
+  const configured: Baseline = { ...baseline, profiles: { desktop: {
+    mode: 'matched-cache', absoluteBudgets, relativeBands: { ...relativeBands, cpuPercent: 1.5 },
+  } } };
+  const samples = runs().map((run) => ({
+    ...run, metrics: { ...run.metrics, cpuPercent: run.framework === 'fluo' ? 0.9 : 0.6 },
+  }));
+  // When / Then: equality passes; the configured band is not widened.
+  assert.equal(evaluatePerformance(configured, samples).verdict, 'pass');
+});
+
+test('rejects an actual decimal relative breach immediately above the boundary', () => {
+  const configured: Baseline = { ...baseline, profiles: { desktop: {
+    mode: 'matched-cache', absoluteBudgets, relativeBands: { ...relativeBands, cpuPercent: 1.5 },
+  } } };
+  const samples = runs().map((run) => ({
+    ...run, metrics: { ...run.metrics, cpuPercent: run.framework === 'fluo' ? 0.9000001 : 0.6 },
+  }));
+  assert.ok(evaluatePerformance(configured, samples).checks.some((check) =>
+    check.metric === 'cpuPercent' && check.reason === 'relative-band' && check.verdict === 'fail'));
 });
 
 test('fails a confirmed throughput shortfall with higher-is-better comparison', () => {

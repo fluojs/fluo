@@ -79,6 +79,9 @@ describe('React SSR + Vite scaffold', () => {
     const snapshot = readDirectorySnapshot(targetDirectory);
     const packageJson: unknown = JSON.parse(snapshot['package.json'] ?? '{}');
 
+    expect(snapshot['src/catalog.ts']).toBe(readFileSync(
+      new URL('./templates/react-vite-ssr/src/catalog.ts.ejs', import.meta.url), 'utf8',
+    ));
     expect(packageJson).toEqual(expect.objectContaining({
       dependencies: expect.objectContaining({
         // This deterministically proves the emitted range resolves the workspace React release version.
@@ -145,6 +148,9 @@ describe('React SSR + Vite scaffold', () => {
       'tests/long-session-run.ts',
       'tests/long-session.spec.ts',
       'tests/navigation-guard.spec.ts',
+      'tests/product-acceptance.spec.ts',
+      'tests/product-authoring.spec.ts',
+      'tests/product-faults.spec.ts',
       'tests/production-hydration.spec.ts',
       'tests/reliability-control.ts',
       'tests/session-transition.spec.ts',

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 import { PRODUCTS, SESSION_COOKIE, SONGS } from '../fixture/domain.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
 
 const baseline = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url), 'utf8'));
 const profileIds = [
@@ -10,6 +11,24 @@ const profileIds = [
   'tablet-native',
   'tablet-matched-cache',
 ];
+
+test('initial completion observes actual production React, passive effects and Suspense', async ({ page }, testInfo) => {
+  await installInitialReadiness(page);
+  const response = await page.goto('/', { waitUntil: 'load' });
+  const readiness = await waitForInitialReadiness(page);
+  expect(response?.status()).toBe(200);
+  expect(readiness.method).toBe('react-initial-completion-v1');
+  expect(readiness.completedAt).toBeGreaterThanOrEqual(readiness.loadAt);
+  expect(readiness.events.some((entry) => entry.event === 'post-passive')).toBe(true);
+  const latest = readiness.events.at(-1);
+  expect(latest.isDehydrated).toBe(false);
+  expect(latest.pendingLanes).toBe(0);
+  expect(latest.suspensePending).toBe(0);
+  expect(latest.passivePending).toBe(false);
+  await testInfo.attach('initial-readiness', {
+    body: JSON.stringify(readiness, null, 2), contentType: 'application/json',
+  });
+});
 
 test('the missing-product response displays an error in the production browser', async ({ page }) => {
   // Given: the seeded catalog has no product at this URL.
@@ -29,6 +48,48 @@ test('Next products expose client hydration before development edits', async ({ 
   await expect(page.locator('[data-benchmark-hydrated="true"]')).toBeAttached();
 });
 
+test('Fluo listing does not load unrelated destination controls', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  const scripts = [];
+  page.on('response', (response) => {
+    if (response.request().resourceType() === 'script') scripts.push(response);
+  });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Product catalog');
+  const code = (await Promise.all(scripts.map((response) => response.text()))).join('\n');
+  expect(code.includes('edit-name')).toBe(false);
+  expect(code.includes('data-approved-view')).toBe(false);
+});
+
+test('Fluo hydrates from one HTTP-selected initial data transfer', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  await page.goto('/');
+  const transfer = await page.locator('#fluo-initial-page').textContent();
+  const initial = JSON.parse(transfer);
+  expect(initial.version).toBe(2);
+  expect(initial.destination.props.data.products).toHaveLength(PRODUCTS.length);
+  expect(await page.locator('html').getAttribute('data-benchmark-page')).toBeNull();
+  await page.locator(`a[href="/products/${PRODUCTS[0].sku}"]`).first().click();
+  await expect(page).toHaveURL(new RegExp(`/products/${PRODUCTS[0].sku}$`, 'u'));
+  await expect(page.getByText(PRODUCTS[0].name).first()).toBeVisible();
+});
+
+test('Fluo catalog defers the audio resource until approved jukebox navigation', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  await page.goto('/');
+  await expect(page.getByTestId('jukebox-resource')).toHaveCount(0);
+  await page.evaluate(() => { window.__benchmarkDocument = 'catalog-shell'; });
+  await page.locator('nav[aria-label="Main navigation"] a[href="/jukebox/songs"]').click();
+  await expect(page.locator('[data-approved-view="songs"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__benchmarkDocument)).toBe('catalog-shell');
+  const resource = page.getByTestId('jukebox-resource');
+  await expect(resource).toHaveAttribute('data-instance', /.+/u);
+  const identity = await resource.getAttribute('data-instance');
+  await page.locator('nav[aria-label="Main navigation"] a[href="/jukebox/qr"]').click();
+  await expect(page.locator('[data-approved-view="qr"]')).toBeVisible();
+  await expect(resource).toHaveAttribute('data-instance', identity);
+});
+
 test('public listing, detail, and production asset budgets', async ({ page }, testInfo) => {
   // Given: a fresh production browser observing its actual network responses.
   const assets = [];
@@ -37,9 +98,11 @@ test('public listing, detail, and production asset budgets', async ({ page }, te
     responses.push(response);
     if (/\.(?:js|css)(?:\?|$)/u.test(new URL(response.url()).pathname)) assets.push(response);
   });
+  await installInitialReadiness(page);
 
   // When: the anonymous visitor opens the real SSR listing.
   const navigation = await page.goto('/');
+  await waitForInitialReadiness(page);
   expect(navigation?.status()).toBe(200);
 
   // Then: the seeded catalog and route-specific detail are visible.

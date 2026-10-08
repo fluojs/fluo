@@ -31,7 +31,7 @@ MusicKit 근거가 아닙니다. 정확한 제공 의미는 [form owner](./react
 | --- | --- | --- | --- |
 | 첫 실행 | S: scaffold/install/`pnpm dev` 후 첫 HTTP page; F: 잘못된 bootstrap/asset에 실행 가능한 오류, 거짓 ready 없음; C: 중단 시 child/watcher와 앱 종료. | **범위를 한정해 출시된 두 page 조립**이며 전체 CRUD는 아닙니다. `packages/cli/src/new/templates/react-vite-ssr/`와 생성 앱 dev/production browser가 direct GET, hydration, native anchor를 검증합니다. | [#3871](https://github.com/fluojs/fluo/issues/3871), #3879; generated app dev browser 및 production startup. |
 | 페이지 추가 | S: 명시적 HTTP `@Path`와 build-mapped browser destination을 한 공식 경로로 추가; F: 잘못되거나 중복된 route/없는 module은 명확히 실패; C: 중단된 request가 일부 page를 commit하지 않음. | **범위를 한정해 제공된 authoring path.** 셋째 page 생성 소비자는 page/handler/DTO와 선택적 link만 수정했고 renderer/entry/manifest/store 수정은 없었습니다. 없는 module은 HTML commit 전에 실패하며 같은 #3880 typegen이 query wire input, module props, saved data를 연결합니다. Packaged dev/production consumer 근거는 계속 필요합니다. | #3871, [#3880](https://github.com/fluojs/fluo/issues/3880); consumer compile fixture, 실제 dispatcher, 생성 앱 browser. |
-| SSR | S: 첫 GET에서 HTTP-matched shell/content stream; F: commit 전 오류는 HTTP status/error를 유지하고 abort 시 자원 해제; C: request abort가 진행 중 stream을 취소. | **Shipped baseline; verification gap**: 실제 shell 전달, slow client, 자원 예산. `packages/react/README.md`, `examples/react-vite-ssr/src/app.test.ts`. | [#3885](https://github.com/fluojs/fluo/issues/3885); production HTTP socket/slow client 및 #3879 browser. |
+| SSR | S: 첫 GET에서 HTTP-matched shell/content stream; F: commit 전 오류는 HTTP status/error를 유지하고 abort 시 자원 해제; C: request abort가 진행 중 stream을 취소. | **제공된 baseline; 범위가 정해진 socket 근거, 성능 판정 대기.** 빌드된 Fastify product route는 일반 middleware/asset과 flush하는 gzip proxy를 거쳐 gated shell을 전달하지만 body 전체를 모으는 gzip은 버퍼링합니다. 일시 정지된 client의 연결을 끊으면 제어된 미완료 reader를 취소하고 request scope를 폐기합니다. Browser 첫 paint나 이 정확성 테스트만으로 server 자원 예산 통과를 주장하지 않습니다. `examples/react-vite-ssr/tests/ssr-delivery.spec.ts`, `src/app.test.ts`. | [#3885](https://github.com/fluojs/fluo/issues/3885); exact-head production server 지표와 buffered host RSS는 #3879 전체 제품 수용과 분리합니다. |
 | Hydration | S: 서버 URL/params와 build asset으로 warning 없이 interactive shell hydrate; F: 없는 asset/mismatch를 진단하며 조용히 성공 처리하지 않음; C: unmount 시 browser 구독 정리. | **범위를 한정해 제공된 조립.** 생성 앱은 dev/production browser에서 hydration diagnostic 없이 shell을 유지하고 page state를 reset합니다. #3884는 다른 authoring 경로가 아닌 측정된 병목을 소유합니다. | #3871, [#3884](https://github.com/fluojs/fluo/issues/3884); production browser 및 bundle trace. |
 | 이동 | S: HTTP 승인 후에만 URL/params를 commit하고 shell/resource identity 유지; F: 일시적 network/5xx 및 복구 가능한 매핑된 import 실패에서 기존 화면 보존, 재시도 표시, 자동 blank/셸 파괴 없음; C: 이전 요청 결과는 commit/fallback 금지. | 공식 network/5xx/매핑된 import 실패 기본값과 low-level opt-in이 **shipped**입니다. 생성 starter와 production 예제의 실패 browser가 자원 identity, operation/ack 및 mount/cleanup을 확인합니다. | [#3864](https://github.com/fluojs/fluo/issues/3864), #3871; production browser 실패 주입 및 생성 조립. |
 | history와 미저장 편집 | S: back/forward마다 새 HTTP 승인, 승인 URL과 화면 일치; F: 실패한 traversal은 URL/history/화면 일치로 복구; C: opt-in dirty edit가 입력 손실·중복 entry 없이 push/replace/back/forward를 거절. | 기존 store의 `useNavigationGuard`와 tagged same-document 복원을 통한 **scoped opt-in 승인**입니다. Untagged/cross-document entry는 native 경계를 유지합니다. `packages/react/src/client-navigation-guard.test.ts`, `examples/react-vite-ssr/tests/navigation-guard.spec.ts`. | #3864, [#3882](https://github.com/fluojs/fluo/issues/3882); production 및 packaged dev/production back/forward, dirty-form·session race. |
@@ -147,6 +147,44 @@ packaged starter session 여정은 범위가 한정된 근거이며 #3879의 전
 기능 존재, 작성 비용, 타입 안전성 칸은 문서 근거 또는 명시적으로 wiring에서 추론한 내용이지 동일 CRUD/주크박스 browser 작업의 통과 증거가 아닙니다. [#3883](https://github.com/fluojs/fluo/issues/3883)이 최적화 **전에** stable version, 같은 workload/cache policy, desktop/low-end 환경과 절대/상대 numeric budget을 고정합니다. #3884/#3885가 client/server 경로를 측정·수정하고 #3886/#3879가 장기 정확성을 검증합니다. 이 roadmap은 경쟁 API 동등성이나 1.0 승인이 아닙니다.
 
 ## 근거와 검증 한계
+
+Production 성능 수용은 [FA-V3 방법](../guides/react-performance-benchmarks.ko.md#fa-v3-동일-실행-production-수용)을
+따릅니다. 기존 numeric budget, 200 requests/concurrency 8, 5회 measured/2회 warmup,
+네 framework/네 profile과 22개 client/6개 server metric을 유지하지만 독립
+spread/MAD repeatability veto는 제거하고 모든 관측 min/max의 결정 안정성을
+검사합니다. 이는 confidence interval이나 미래 보장이 아닙니다. Fresh before/after의
+`FA-V3` / `integrated` production capture에서 metric, request inventory/cutoff와
+canonical source-bound native 증거를 같은 실행에서 수집·인증해야 합니다.
+별도 counterpart의 terminal을 차용할 수 없습니다. FA-V2의 분리된 timing/
+native-conformance 명령과 unversioned receipt는 historical이며 FA-V3로
+재분류하거나 재사용하지 않습니다. Development/HMR은 별도로 인증한
+비침습적 timing 증거를 유지합니다. 원래 ownership/coverage/
+retirement/raw exit와 pending-request quality는 필수입니다. Method 구현이나
+focused 테스트는 성능 pair PASS, #3884/#3885 종료 또는 #3879 제품 수용이 아닙니다.
+
+활성 FA-V3에서는 같은 실행에서 완전히 관측·인증한 peer cancellation/error를
+raw 증거와 계산된 peer `errorRate`에 그대로 포함합니다. 양수 peer rate만으로
+metric 없는 수집 품질 실패로 분류하지 않습니다. Fluo `errorRate`는 measured와
+warmup 모두 0이어야 하며 기존 Fluo absolute/errorRate budget과 peer numeric
+비교는 유지합니다. Correctness 실패, unavailable/missing terminal/native hook/
+schema/coverage, `qualityFailures`, ownership/cleanup 실패와 품질 INCONCLUSIVE는
+양쪽 단계 모두 통과할 수 없습니다. FA-V2의 historical quality 분류와 이전 raw/verdict를
+보존하고 replay를 fresh 수용 PASS로 재분류하지 않습니다. 아래 수치 정책에 따라
+인증된 canonical historical before/final 증거를 유지하며, fresh current-head 통합
+correctness, exact-head 세 review와 full GitHub CI는 계속 필요합니다.
+
+최종 #3879 수용에는 운영자의 2026-10-06
+`whole_product_numeric_acceptance=apply` 결정을 적용합니다. BEFORE와 AFTER의
+원래 수치 FAIL/INCONCLUSIVE는 공개된 비차단 diagnostics입니다. 기존 absolute
+budget, peer band, 관측 min/max 판정, profile, workload, pinned peer 및 raw
+verdict를 그대로 보존하며 PASS로 바꾸지 않습니다. 출처·환경·method 인증,
+완전한 inventory, 유효하고 누락 없는 metric, 품질, correctness, stability와
+ownership/cleanup 실패는 계속 차단합니다. Fluo measured와 warmup error rate는
+양쪽 단계 모두 0이어야 합니다. FA-V2/FA-V3 evaluator의 원래 수치 판정도 유지합니다.
+인증된 역사적 증거는 원래 collector/evaluator head와 실제 파일 hash, 명시적
+seam equivalence 및 한계를 유지한 별도 reference이며 현재 통합 제품의 fresh
+measurement가 아닙니다. 수치 diagnostics를 green으로 만들기 위한 재수집이나
+최적화는 하지 않습니다.
 
 Source seam: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. 기존 테스트: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; [navigation payload 계약](./react-navigation-payload.ko.md)에 HTTP/prefetch 추가 근거가 있습니다. 이는 **기존** 동작 기록이며 이 변경에서 새 browser/performance 실행을 했다는 뜻이 아닙니다. 예제의 native form과 짧은 shell counter는 실제 유료 player나 향후 제품 게이트가 아닙니다. Docs 검증은 link/구조와 EN/KO 쌍을 확인할 뿐 미래 runtime 성공은 보장하지 않습니다. 영향받는 FluoBlog 17장과 FluoShop 4장 companion은 기존 native 실습을 유지하며 typed 계약을 적용합니다. 원고 검증은 해당 DB/browser 실행 근거가 아닙니다.
 

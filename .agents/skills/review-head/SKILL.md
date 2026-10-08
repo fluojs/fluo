@@ -46,6 +46,11 @@ the selected reviews pass. Ordinary changes proceed directly to publication
 after focused checks and reviews; full remote CI follows publication.
 
 Use `scripts/contracts.mjs` to aggregate exactly one result per selected axis.
+Before aggregation or rejecting any envelope, retain each raw reviewer response
+with `lane-v4-cli.mjs retro-record --kind review` (see `../retrospective-lane/SKILL.md`).
+Record lead adjudications/reproductions as separate incident observations.
+This preserves false, stale, missing-input and confirmed blockers instead of
+overwriting them with the final PASS; it never substitutes for this review gate.
 Reject missing, duplicate, malformed, unexpected, or stale evidence. Never
 invent a skipped reviewer's PASS. Concrete remediation produces canonical
 blockers; unavailable intent or authority produces `needs-human-check`.

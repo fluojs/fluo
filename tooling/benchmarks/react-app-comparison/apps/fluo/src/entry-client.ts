@@ -3,11 +3,9 @@ import { loadReactInitialNavigationDestination, type ReactNavigationModules } fr
 import { createElement, type ReactNode } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 
-import { BenchmarkDocument, type PageData } from './document';
+import { BenchmarkDocument } from './document';
 import './styles.css';
 
-const state: { readonly data: PageData; readonly editor: boolean } =
-  JSON.parse(document.documentElement.dataset.benchmarkPage ?? '');
 const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vite-style]')]
   .map((link) => link.getAttribute('href'))
   .filter((href): href is string => href !== null);
@@ -23,9 +21,14 @@ const initial = await loadReactInitialNavigationDestination(initialJson, navigat
 if (!initial.ok) {
   throw new Error(`The HTTP document destination is unavailable: ${initial.reason}`);
 }
+const editor = initial.payload.destination.props.editor;
+if (typeof editor !== 'boolean') {
+  throw new TypeError('The HTTP-selected destination has no editor state.');
+}
 
 hydrateRoot(document, createElement(BenchmarkDocument, {
-  ...state,
+  editor,
+  initialElement: createElement(initial.component, initial.payload.destination.props),
   initialPage: { json: initialJson, payload: initial.payload },
   navigationModules,
   navigationBuildId,

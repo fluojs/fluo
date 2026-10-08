@@ -1,0 +1,27 @@
+{
+  "@fluojs/diagnostics": {
+    "page": "apps/docs/content/docs/packages/diagnostics.mdx",
+    "sources": [
+      "packages/diagnostics/README.md",
+      "packages/diagnostics/package.json",
+      "packages/diagnostics/src/index.ts",
+      "packages/diagnostics/src/platform-contract.ts",
+      "packages/diagnostics/src/studio-contracts.ts",
+      "packages/diagnostics/src/diagnostics.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/diagnostics/diagnostics-guide.test.ts",
+      "packages/diagnostics/src/portable-boundary.test.ts",
+      "packages/runtime/src/diagnostics-conformance.test.ts"
+    ],
+    "compositions": [
+      "legacy optional wire route -> diagnostics normalization -> identical Studio public facade",
+      "version-1 report -> shared reader -> snapshot/timing summary consistency"
+    ],
+    "verifiedCommands": [
+      "pnpm build -> exit 0; log: packages/diagnostics/.evidence/build-current.log",
+      "pnpm typecheck -> exit 0; log: packages/diagnostics/.evidence/typecheck-final.log",
+      "pnpm exec vitest run --project tooling tooling/docs/fixtures/package-guides/diagnostics --maxWorkers=1 -> 2 passed; log: packages/diagnostics/.evidence/guide-current.log"
+    ]
+  }
+}

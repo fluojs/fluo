@@ -2,16 +2,11 @@ import type {
   PlatformDiagnosticIssue,
   PlatformHealthReport,
   PlatformReadinessReport,
-  PlatformSnapshot,
-} from '@fluojs/runtime';
+  PlatformStatusSnapshot,
+} from '@fluojs/diagnostics';
 
 /** Snapshot payload describing passport readiness, health, ownership, and diagnostic details. */
-export interface PassportPlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+export interface PassportPlatformStatusSnapshot extends PlatformStatusSnapshot {}
 
 /** Input contract for deriving passport platform health and readiness diagnostics. */
 export interface PassportStatusAdapterInput {

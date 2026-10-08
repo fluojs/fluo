@@ -4,9 +4,9 @@ import type { Provider } from '@fluojs/di';
 import type { GuardContext, Principal } from '@fluojs/http';
 import type { OnApplicationShutdown } from '@fluojs/runtime';
 
-import { AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
-import { normalizePrincipalScopes } from '../scope.js';
-import type { AuthHandledResult, AuthStrategy, AuthStrategyRegistration } from '../types.js';
+import { AuthenticationFailedError, AuthenticationRequiredError } from '@fluojs/auth';
+import { normalizePrincipalScopes } from '@fluojs/auth-http/internal/scope';
+import type { AuthHandledResult, AuthStrategy, AuthStrategyRegistration } from '@fluojs/auth-http';
 
 interface PassportJsActionBindings {
   error?: (error: unknown) => void;

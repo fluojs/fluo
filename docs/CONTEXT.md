@@ -1,5 +1,9 @@
 # fluo — AI Context Document
 
+Shared diagnostic data and static/report/live reader ownership is delegated to [`@fluojs/diagnostics`](../packages/diagnostics/README.md). Use the [optional import migration](./getting-started/migrate-diagnostics.md) for runtime/core/Studio/status compatibility, wire versus parsed route fields and CLI ingress boundaries. Runtime owns lifecycle/resources; Studio owns filters/Mermaid/UI.
+
+Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.
+
 Background HTTP interactions use the existing `useForm` with additive
 `mode: 'background'` and `method: 'get' | 'post'`; omitted options retain legacy
 navigation POST/busy skipping. The [form owner](./contracts/react-progressive-forms.md)
@@ -11,6 +15,10 @@ enter public prefetch. Example and packaged starter use `/catalog/background`.
 <!-- fluo:prisma-api-unification: module-owned-registration -->
 
 <!-- fluo:transaction-contract: explicit-target -->
+Shared transaction primitive ownership is `@fluojs/persistence`; core/ORM errors and
+runtime request helpers remain direct re-exports. Read the [transaction owner](./architecture/transactions.md),
+[primitive API](../packages/persistence/README.md), and [optional import migration](./getting-started/migrate-persistence-contracts.md).
+Native execution, observers and cleanup remain ORM-owned; portability does not broaden driver support.
 <!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->
 
 Transaction decorators use an explicit target accessor as the canonical path:

@@ -11,11 +11,30 @@ fault/recovery traces and quiescent checkpoints. The explicit test build uses
 for Chromium/Firefox/WebKit. Default browser coverage excludes the long-session
 files, especially the separate two-hour soak.
 
-These are source fixtures, not completed execution evidence. Follow the
+Shipped source coverage is separate from current-head execution evidence. Follow the
 [long-session guide](../../docs/guides/react-long-session-reliability.md) for exact
 commands, raw heap/RSS limitations, packaged dev/production, the separate soak
 workflow and #3879's exact-head receipt consumer. Physical mobile/tablet checks
-remain external requirements; desktop viewport coverage cannot pass them.
+are explicitly deferred to #3906, not PASS; desktop viewport coverage cannot pass them.
+
+## Authenticated product companion
+
+Open `/catalog/session`, choose **Login A** or **Login B**, then
+**Authenticated products**. `/catalog/session/products` connects guarded
+list/search/detail and native/enhanced create/update/delete, invalid/correct/save,
+logout/relogin and confirmed process-local persistence. Private products do not
+enter the unchanged public catalog or its public prefetch results. This is demo
+HttpOnly identity/permissions and fixed-token CSRF, not production authentication
+or durable/per-user storage.
+
+The [product acceptance guide](../../docs/guides/react-product-acceptance.md)
+documents the 20-row matrix, sealed packed third-page/dev/production journeys
+and authentic receipt consumer. Code presence is not product PASS. Final #3879
+keeps original numerical FAIL/INCONCLUSIVE as disclosed nonblocking diagnostics,
+while validity/quality/correctness/stability/cleanup and zero Fluo errors block.
+The lane soak needs a complete fresh one-hour trace when changed seams are not
+proven equivalent; scheduled default stays two hours. Reviews, canonical waiver
+and full GitHub CI remain lead-owned; full local CI is prohibited in this lane.
 
 ## Background interaction companion
 
@@ -175,6 +194,20 @@ client entry and a JavaScript-disabled context. It fails on
 missing or non-200 bootstrap/style assets, hydration warnings or errors, an identifier-prefix
 mismatch, a counter that does not hydrate, client navigation whose URL and server-rendered route
 state do not agree, or a native form that cannot complete its `POST` → `303` → `GET` flow.
+`src/app.test.ts` also exercises a separately gated Suspense descendant over a real
+Fastify HTTP socket, pending-read and paused-client disconnect cleanup, and an
+incrementally flushed gzip proxy versus a whole-body-buffering proxy. The
+`tests/ssr-delivery.spec.ts` production test starts the **built** example with
+`REACT_SSR_DELIVERY_PROBE=1`: the regular DTO-bound product route keeps its
+application middleware, CSP and built asset route, while an HTTP test-only
+release endpoint controls its recommendations descendant. The built route
+also verifies the flushed gzip and whole-body-buffered gzip proxy outcomes
+through actual Node HTTP sockets. The standard
+`build`/`start` path does not register that endpoint unless the flag is set. The
+browser's first paint is not the socket's first shell byte. A page handler
+that awaits required data cannot stream before that await resolves. The
+[Fastify streaming recipe](../../packages/platform-fastify/README.md#streaming-responses)
+defines the tested compression boundary; untested cloud proxies are not implied.
 
 ## negotiated destination workflow
 

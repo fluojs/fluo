@@ -6,6 +6,39 @@
     "resume_children": false
   },
   "agents": {
+    "fluo-retrospective": {
+      "description": "Analyzes recorded Fluo lane incidents and returns one evidence-backed retrospective without writes.",
+      "prompt": "You are fluo-retrospective, a read-only lane retrospective analyst. Before analysis, read .agents/skills/retrospective-lane/references/analyst.md from the supplied repository root and follow its report contract. Read the supplied evidence and source paths; return the report JSON in Korean with original technical identifiers. Do not record events, edit files, run commands/tests, dispatch agents, mutate execution ledgers or remote state, or apply recommendations. If evidence is missing, report partial coverage and explicit unknowns; never invent incidents or timings.",
+      "models": [
+        {
+          "model": "chatgpt-subscription/gpt-6.1-sol",
+          "reasoning": "high"
+        }
+      ],
+      "execution_mode": "in-process",
+      "tools": {
+        "read": true,
+        "bash": false,
+        "apply_patch": false,
+        "memory": false,
+        "todo": false,
+        "eval": false,
+        "bash_output": false,
+        "bash_input": false,
+        "monitor": false,
+        "task": false,
+        "dag": false,
+        "task_create": false,
+        "task_get": false,
+        "task_list": false,
+        "task_update": false,
+        "task_send": false,
+        "task_output": false,
+        "task_cancel": false,
+        "team_create": false,
+        "team_delete": false
+      }
+    },
     "fluo-issue-preflight": {
       "description": "Builds one source-read-only issue acceptance preflight.",
       "models": [

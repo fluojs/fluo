@@ -473,11 +473,18 @@ test('keeps the official page slot and navigation controls reachable at mobile w
 test('keeps native new tabs and full-document fallback on server rejection', async ({ page, context }) => {
   // Given: a hydrated page with a native anchor and a request rejected by HTTP validation.
   await page.goto('/admin/qr');
-  const tabPromise = context.waitForEvent('page');
-  await page.getByRole('link', { name: 'Open admin songs' }).click({ modifiers: ['Meta'] });
+  await expect(page.getByRole('heading', { name: 'Admin QR' })).toBeVisible();
+  const originalUrl = page.url();
+  const originalDocument = await page.evaluateHandle(() => document);
+  const tabPromise = context.waitForEvent('page', { timeout: 10_000 });
+  await page.getByRole('link', { name: 'Open admin songs' }).click({ modifiers: ['ControlOrMeta'] });
   const tab = await tabPromise;
   await expect(tab.getByRole('heading', { name: 'Admin songs' })).toBeVisible();
+  expect(page.url()).toBe(originalUrl);
+  expect(await originalDocument.evaluate((documentBefore) => documentBefore === document)).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Admin QR' })).toBeVisible();
   await tab.close();
+  await originalDocument.dispose();
   await page.evaluate(() => { window.__softNavigationDocument = 'before-fallback'; });
   const rejected = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/products/x'
