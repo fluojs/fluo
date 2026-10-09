@@ -114,3 +114,31 @@ native mutation, ordered-cookie, identity and real-listener assertions.
 `stream-only-green-20261008.log` records 19 files / 306 passing adapter tests,
 Express typecheck, Biome and documentation parity with exit 0. Whole-request
 performance of the stream-only candidate is still unverified.
+
+## Prospective stream-only screen: candidate rejected
+
+The three alternating BEFORE/candidate blocks on `d261198ec003f7ec9d5f62c019b5d8e179368a3a`
+completed with exit 0 and 18 samples. All six invocations had clean source,
+fresh builds, identical harness digest and zero invalid attempts or traffic
+errors. The root `.omo/verification/3912-express-paired-d261198ec-*` files retain
+the plan, raw samples, log and summary under their original identities.
+
+Fluo throughput median decreased 1.29% and every paired throughput ratio was
+below one. CPU/request median increased 4.87%; one paired ratio was
+1.0508237154627784, exceeding the frozen 1.05 ceiling despite acceptable CPU
+stability. The p95 median increased 11.72%, while candidate and paired p95
+variation exceeded the 5% stability threshold. That latency result remains
+inconclusive, not passing. Native and Nest controls remained stable.
+
+The stream-only candidate is rejected without repeat-until-pass. Production
+response construction and README text are restored to the accepted base;
+the candidate-only Changeset is removed because there is no remaining public
+implementation change. All added contract tests remain unchanged.
+The resulting test/report-only state still requires its focused checks,
+remaining platform analysis, exact-head reviews and remote CI. This is not
+an issue-completion or no-improvement-needed verdict.
+
+`restored-baseline-green-20261009.log` records exit 0 for the exact-base source
+and README comparison, changed-file Biome, all 19 adapter test files / 306 tests,
+Express typecheck and EN/KO parity. LSP reported no source errors. No test was
+deleted, skipped or weakened when removing the rejected implementation.

@@ -149,7 +149,6 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
 - **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
-- **Response facade snapshot**: Native header와 정규화된 mutable header record는 dispatch 전에 snapshot으로 보존합니다. Stable stream facade는 첫 접근 시 생성합니다. 반복 접근은 직접 record mutation과 명시적인 facade 교체를 포함해 identity를 보존하며, native header를 쓰려면 `setHeader(...)`를 사용합니다. Ordered cookie와 native stream backpressure, cancellation, error는 기존 의미를 유지합니다.
 - **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, adapter가 열린 상태에서 `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, 동시 startup 호출자의 단일 in-flight listen lifecycle 및 dispatcher 재사용, `close()` 중 해당 공유 retry loop를 abort 및 join한 뒤 shutdown 완료 보고, close 진행 중 `listen()` reject, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, close 후 adapter를 다시 listen할 때 native route descriptor 갱신, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
 
 ## 공개 API 개요

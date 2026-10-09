@@ -580,8 +580,6 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
       .filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined)
       .map(([name, value]) => [name, typeof value === 'number' ? String(value) : value]),
   );
-  let stream: FrameworkResponseStream | undefined;
-  let streamInitialized = false;
 
   let frameworkResponse: ExpressFrameworkResponse;
   frameworkResponse = {
@@ -589,17 +587,7 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
     earlyHints: createNodeEarlyHintsCapability(response, () => frameworkResponse.committed),
     headers,
     raw: response,
-    get stream() {
-      if (!streamInitialized) {
-        stream = createFrameworkResponseStream(response);
-        streamInitialized = true;
-      }
-      return stream;
-    },
-    set stream(value) {
-      stream = value;
-      streamInitialized = true;
-    },
+    stream: createFrameworkResponseStream(response),
     redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('Location', location);
