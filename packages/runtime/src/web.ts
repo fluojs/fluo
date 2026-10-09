@@ -200,6 +200,8 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   statusCode?: number;
   statusSet?: boolean;
 
+  private headerValues = this.headers;
+  private headerNames: Map<string, string> | undefined = new Map();
   private finalizedResponse?: Response;
   private resolveResponseReady: (response: Response) => void = () => undefined;
   private responseStream?: WebResponseStream;
@@ -208,6 +210,22 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   readonly responseReady = new Promise<Response>((resolve) => {
     this.resolveResponseReady = resolve;
   });
+
+  constructor() {
+    Object.defineProperty(this, 'headers', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        // Once exposed, the mutable map can change without setHeader.
+        this.headerNames = undefined;
+        return this.headerValues;
+      },
+      set: (value: Record<string, string | string[]>) => {
+        this.headerNames = undefined;
+        this.headerValues = value;
+      },
+    });
+  }
 
   get stream(): WebFrameworkResponseStream {
     return this.getOrCreateResponseStream();
@@ -227,14 +245,14 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
 
     const serialized = serializeWebResponseBody(
       body,
-      typeof this.headers['Content-Type'] === 'string'
-        ? this.headers['Content-Type']
-        : typeof this.headers['content-type'] === 'string'
-          ? this.headers['content-type']
+      typeof this.headerValues['Content-Type'] === 'string'
+        ? this.headerValues['Content-Type']
+        : typeof this.headerValues['content-type'] === 'string'
+          ? this.headerValues['content-type']
           : undefined,
     );
 
-    if (serialized.defaultContentType && !hasHeader(this.headers, 'content-type')) {
+    if (serialized.defaultContentType && !this.hasHeader('content-type')) {
       this.setHeader('Content-Type', serialized.defaultContentType);
     }
 
@@ -248,7 +266,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
       return;
     }
 
-    if (!hasHeader(this.headers, 'content-type')) {
+    if (!this.hasHeader('content-type')) {
       this.setHeader('Content-Type', 'application/json; charset=utf-8');
     }
 
@@ -257,14 +275,24 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   }
 
   setHeader(name: string, value: string | string[]): void {
-    const existingHeaderName = findHeaderName(this.headers, name) ?? name;
+    const lowerName = name.toLowerCase();
+    const existingHeaderName = (this.headerNames
+      ? this.headerNames.get(lowerName)
+      : findHeaderName(this.headerValues, name)) ?? name;
 
-    if (name.toLowerCase() === 'set-cookie') {
-      this.headers[existingHeaderName] = mergeSetCookieHeader(this.headers[existingHeaderName], value);
-      return;
+    this.headerValues[existingHeaderName] = lowerName === 'set-cookie'
+      ? mergeSetCookieHeader(this.headerValues[existingHeaderName], value)
+      : value;
+
+    if (this.headerNames && Object.hasOwn(this.headerValues, existingHeaderName)) {
+      this.headerNames.set(lowerName, existingHeaderName);
     }
+  }
 
-    this.headers[existingHeaderName] = value;
+  private hasHeader(name: string): boolean {
+    return this.headerNames
+      ? this.headerNames.has(name.toLowerCase())
+      : hasHeader(this.headerValues, name);
   }
 
   setStatus(code: number): void {
@@ -275,7 +303,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   toResponse(): Response {
     if (!this.finalizedResponse) {
       const init: ResponseInit = {
-        headers: toResponseHeaders(this.headers),
+        headers: toResponseHeaders(this.headerValues),
         status: this.statusCode ?? 200,
       };
       const nativeResponseBody = isResponseBodyForbidden(init.status)

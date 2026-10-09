@@ -126,3 +126,36 @@ body mismatches and status mismatches. It is explicitly marked
 The corrected preflight keeps ordinary local verification focused. Full
 repository verification remains required in final-head GitHub CI; the failed
 local release-readiness invocation has not been relabeled as successful.
+
+## Follow-up candidate: response-owned header index
+
+The first candidate at `fbae0e55bd6a8438715f2002af74c2e6c385fe96` did not establish
+a speedup. Its bounded Bun comparison retained six BEFORE and six AFTER samples:
+Fluo medians changed by +1.55% throughput, -5.58% p99, -1.25% CPU/request and
+-2.04% sampled peak RSS, but throughput/latency/CPU ranges overlap. A separate
+CPU pair had 23.40% versus 24.04% inclusive `findHeaderName` samples; removing
+the callback changed self attribution rather than proving less total work.
+Those original timings and profiles remain INCONCLUSIVE and retained outside
+this source commit.
+
+The next candidate indexes names only while the response owns its initially
+empty header map. Reading `headers` permanently discards the index because the
+returned record can be mutated directly. Assigning a replacement map also
+discards it. Subsequent lookups use the live own-enumerable search, retaining
+first casing, deletion, replacement, arrays and cookies. Internal response
+methods use the same backing record without falsely treating their own access
+as external mutation.
+
+The first new test incorrectly counted all pipeline normalization as initial
+security-header work. Diagnostic stacks identified one initial write and three
+later response-policy/live-lookup calls. The corrected measurement boundary is
+the controller entry: disabling the index produced 8 normalizations against
+the expected 1, with an assertion-level failure in
+`../header-index-mutation-red-20261008.log`. Restoring the index passed all 515
+tests in 36 related files and runtime typecheck, recorded in
+`../header-index-green-corrected-20261008.log` with exit 0. Temporary stack
+logging and the mutation were removed.
+
+This is a verified correctness/cost-count candidate, not a measured speedup.
+Real-host revalidation and exact-source performance comparison for this new
+candidate remain required; the first candidate's receipts are not relabeled.

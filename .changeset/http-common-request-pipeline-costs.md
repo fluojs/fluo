@@ -2,4 +2,4 @@
 "@fluojs/runtime": patch
 ---
 
-Avoid temporary key arrays and callbacks when matching Web response header names, while preserving case-insensitive replacement, mutable header maps, and independent Set-Cookie fields.
+Avoid repeated Web response header-name searches while the response owns its header map. Reading or replacing the mutable map restores live case-insensitive lookup, preserving direct mutations, original casing, and independent Set-Cookie fields.

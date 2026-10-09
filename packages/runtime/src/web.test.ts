@@ -42,11 +42,14 @@ function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T
 }
 
 describe('dispatchWebRequest', () => {
-  it('dispatches default security headers without allocating response header key arrays', async () => {
+  it('applies initial security headers without repeated name normalization or key arrays', async () => {
+    let securityHeaderNormalizations = 0;
+    let normalizationsBeforeHandler: number | undefined;
     @Controller('/header-cost')
     class HeaderCostController {
       @Get('/')
       get() {
+        normalizationsBeforeHandler = securityHeaderNormalizations;
         return { ok: true };
       }
     }
@@ -61,7 +64,14 @@ describe('dispatchWebRequest', () => {
       rootContainer: new Container().register(HeaderCostController),
     });
     const keys = Object.keys;
+    const lowercase = String.prototype.toLowerCase;
     let allocatedHeaderKeyArrays = 0;
+    const nameNormalization = vi.spyOn(String.prototype, 'toLowerCase').mockImplementation(function(this: string) {
+      if (this === 'Content-Security-Policy') {
+        securityHeaderNormalizations += 1;
+      }
+      return lowercase.call(this);
+    });
     const keyAllocation = vi.spyOn(Object, 'keys').mockImplementation((value) => {
       if (value === frameworkResponse.headers) {
         allocatedHeaderKeyArrays += 1;
@@ -73,6 +83,7 @@ describe('dispatchWebRequest', () => {
       await dispatcher.dispatch(frameworkRequest, frameworkResponse);
     } finally {
       keyAllocation.mockRestore();
+      nameNormalization.mockRestore();
     }
 
     const response = frameworkResponse.toResponse();
@@ -81,13 +92,14 @@ describe('dispatchWebRequest', () => {
     expect(response.headers.get('content-type')).toContain('application/json');
     await expect(response.json()).resolves.toEqual({ ok: true });
     expect(allocatedHeaderKeyArrays).toBe(0);
+    expect(normalizationsBeforeHandler).toBe(1);
   });
 
   it('keeps first own enumerable header casing through direct mutations and map replacement', async () => {
     const factory = createWebRequestResponseFactory();
     const request = new Request('https://runtime.test/header-mutations');
     const response = factory.createResponse(request.signal, request);
-    response.headers['X-Custom'] = 'first';
+    response.setHeader('X-Custom', 'first');
     response.headers['x-custom'] = 'second';
     response.setHeader('X-CUSTOM', ['replacement', 'array']);
     expect(response.headers['X-Custom']).toEqual(['replacement', 'array']);
@@ -127,6 +139,21 @@ describe('dispatchWebRequest', () => {
     expect(nativeResponse.headers.get('content-type')).toBe('application/custom');
     expect(response.toResponse()).toBe(nativeResponse);
     await expect(nativeResponse.text()).resolves.toBe('body');
+  });
+
+  it('uses a replaced header map after internal writes without an earlier read', async () => {
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/header-replacement');
+    const response = factory.createResponse(request.signal, request);
+    response.setHeader('X-Original', 'initial');
+    response.headers = { 'x-ORIGINAL': 'replacement' };
+
+    response.setHeader('X-Original', 'updated');
+    await response.send('body');
+
+    expect(response.headers['x-ORIGINAL']).toBe('updated');
+    expect(Object.hasOwn(response.headers, 'X-Original')).toBe(false);
+    expect(response.toResponse().headers.get('x-original')).toBe('updated');
   });
 
   it.each([204, 205, 304])('keeps Web header overrides on body-forbidden status %i', async (status) => {
