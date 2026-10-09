@@ -156,3 +156,40 @@ three interrupted CLI fixture files outside the worktree at
 `75528788303eedac10ee0930e54262673578f046f7536539dc844486b69a7b18`).
 The complete archive read passed before removing those three generated,
 untracked CLI files. No tracked CLI or React implementation was changed.
+
+## Timing evidence repair and Linux verification
+
+Commit `bb1bda5f9c2c5ef0d6d0cf20b811da08779e08df` preserves successful warmup
+measurements and authenticates the measured process using startup identity,
+runtime/executable and source/build hashes, and the OS listener owner.
+Startup hashing changes the process-to-ready boundary; it does not install
+request-path profiling. The harness suite passed 151 tests, typecheck and
+changed-file Biome. Raw evidence is under `timing-repair-1791512355621/`.
+
+The finite actual-host check recorded 12 targets with three warmup requests
+and three measured requests each. Ten Node/Bun/Deno/Next App/Pages targets
+authenticated successfully. Both local Workers targets remain explicitly
+`unsupported` / `not-certified`: launcher stdout cannot authenticate the
+application isolate, and the existing inspector-based method does not
+establish uninstrumented timing. These records cannot certify Workers
+performance. No deployment or final performance matrix was run.
+
+The lead found that the canonical Linux image lacks `lsof`. A real Linux
+regression run reproduced `spawn lsof ENOENT` in eight of nine tests
+(`timing-linux-lsof-red2-20261009.log`). The earlier host-mounted esbuild
+attempt used a macOS binary and never reached the regression; a subsequent
+npm-exec attempt ran no tests. Neither is a passing check.
+
+Linux now verifies listening TCP socket inodes against the serving process's
+file descriptors through `/proc`; macOS retains its existing OS listener
+lookup. The exact same canonical image, without installing `lsof`, passed all
+10 identity tests after the fix. Only the matching esbuild 0.28.1 Linux binary
+was installed inside the disposable container. The added foreign-listener
+case rejects an otherwise valid identity when another process owns the port.
+macOS passed the same 10 tests, harness typecheck, changed-file Biome and
+diff checks. See `timing-linux-procfs-green-20261009.log` and
+`timing-mac-procfs-green-20261009.log`.
+
+Cloudflare account clarification timed out. Account availability and external
+deployment authority remain unconfirmed; no login or deployment was attempted.
+All other outstanding issue acceptance and exact-head gates remain open.

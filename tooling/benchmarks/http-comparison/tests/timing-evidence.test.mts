@@ -68,7 +68,7 @@ test('runScenario: successful finite HTTP phases -> preserves raw warmup and ser
   }
 });
 
-for (const defect of ['missing', 'nonce', 'pid', 'runtime', 'build', 'instrumented', 'endpoint'] as const) {
+for (const defect of ['missing', 'nonce', 'pid', 'runtime', 'build', 'instrumented', 'endpoint', 'listener'] as const) {
   test(`authenticateTimingIdentity: real HTTP with ${defect} identity -> rejects the subject`, { timeout: 20_000 }, async () => {
     // Given
     const setup = await condition();
@@ -83,6 +83,7 @@ for (const defect of ['missing', 'nonce', 'pid', 'runtime', 'build', 'instrument
       env: { ...prepared.env, BENCH_TIMING_NONCE: prepared.nonce },
       onOutput: (_target, stream, bytes) => { if (stream === 'stdout') stdout += String(bytes); },
     });
+    const foreignListener = createServer();
     try {
       await waitForTarget(children[0]);
       const response = await fetch(`http://127.0.0.1:${target.port}`, { signal: AbortSignal.timeout(5_000) });
@@ -100,9 +101,24 @@ for (const defect of ['missing', 'nonce', 'pid', 'runtime', 'build', 'instrument
         stdout = `BENCH_TIMING_IDENTITY ${JSON.stringify(identity)}\n`;
       }
 
+      let measuredPort = target.port;
+      if (defect === 'listener') {
+        const listening = once(foreignListener, 'listening');
+        foreignListener.listen(0, '127.0.0.1');
+        await listening;
+        const address = foreignListener.address();
+        assert.ok(address && typeof address !== 'string');
+        measuredPort = address.port;
+      }
+
       // When / Then
-      await assert.rejects(authenticateTimingIdentity(prepared, stdout, pid, target.port, defect === 'endpoint' ? '192.0.2.1' : '127.0.0.1'), TimingIdentityFailure);
+      await assert.rejects(authenticateTimingIdentity(prepared, stdout, pid, measuredPort, defect === 'endpoint' ? '192.0.2.1' : '127.0.0.1'), TimingIdentityFailure);
     } finally {
+      if (foreignListener.listening) {
+        const closed = once(foreignListener, 'close');
+        foreignListener.close();
+        await closed;
+      }
       await stopTargets(children);
       setup.journal.finish();
       await rm(setup.directory, { recursive: true, force: true });

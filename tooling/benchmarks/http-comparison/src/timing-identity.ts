@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, readlink } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -79,13 +79,36 @@ export async function authenticateTimingIdentity(
   if (lines.length !== 1) throw new TimingIdentityFailure('Missing or duplicate serving identity', { stdout });
   const identity = object(JSON.parse(lines[0].slice(prefix.length)));
   const tree = await processTreeSample(launcherPid);
-  const listener = await execute('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']);
-  const pids = [...new Set(listener.stdout.trim().split(/\s+/).map(Number))];
+  let listenerStdout: string;
+  let pids: number[];
+  if (process.platform === 'linux') {
+    const tables = await Promise.all(['tcp', 'tcp6'].map((name) => readFile(`/proc/net/${name}`, 'utf8')));
+    const sockets = tables.flatMap((table) => table.trim().split('\n').slice(1)
+      .map((line) => line.trim().split(/\s+/))
+      .filter((fields) => fields[3] === '0A' && Number.parseInt(fields[1].split(':')[1], 16) === port)
+      .map((fields) => fields[9]));
+    const directory = `/proc/${launcherPid}/fd`;
+    const descriptors = await Promise.all((await readdir(directory)).map(async (fd) => {
+      try {
+        return { fd, link: await readlink(join(directory, fd)) };
+      } catch (error) {
+        // A non-listener descriptor may close between enumeration and readlink.
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return { fd, link: null };
+        throw error;
+      }
+    }));
+    pids = sockets.length > 0 && sockets.every((inode) => descriptors.some(({ link }) => link === `socket:[${inode}]`))
+      ? [launcherPid] : [];
+    listenerStdout = JSON.stringify({ method: 'procfs-listening-inodes-and-process-fds', launcherPid, sockets, descriptors, tables });
+  } else {
+    listenerStdout = (await execute('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'])).stdout;
+    pids = [...new Set(listenerStdout.trim().split(/\s+/).map(Number))];
+  }
   const runtime = object(identity.runtime);
   const addresses = await lookup(serverHost, { all: true });
   const localAddresses = new Set(Object.values(networkInterfaces()).flatMap((entries) => entries?.map((entry) => entry.address) ?? []));
   if (addresses.length === 0 || addresses.some((entry) => !localAddresses.has(entry.address))) {
-    throw new TimingIdentityFailure('Measured endpoint is not on the authenticated local serving host', { serverHost, addresses, listener: listener.stdout });
+    throw new TimingIdentityFailure('Measured endpoint is not on the authenticated local serving host', { serverHost, addresses, listener: listenerStdout });
   }
   const nodeFamily = ['fastify', 'express', 'nodejs', 'nextjs'].some((platform) => prepared.target.endsWith(`-${platform}`))
     || prepared.target.endsWith('-nextjs-pages');
@@ -100,7 +123,7 @@ export async function authenticateTimingIdentity(
     || typeof identity.executable !== 'string' || typeof identity.executableSha256 !== 'string'
     || identity.executableSha256 !== sha256(await readFile(identity.executable))
     || identity.inspectorUrl !== null || !Array.isArray(identity.instrumentationFlags) || identity.instrumentationFlags.length !== 0) {
-    throw new TimingIdentityFailure('Serving runtime/source/build/listener identity mismatch or instrumentation enabled', { identity, expected: prepared, tree, listener: listener.stdout });
+    throw new TimingIdentityFailure('Serving runtime/source/build/listener identity mismatch or instrumentation enabled', { identity, expected: prepared, tree, listener: listenerStdout });
   }
   // Re-read after startup: loading a different or modified build is not accepted.
   for (const [path, hash] of Object.entries(prepared.artifacts)) {
@@ -109,7 +132,7 @@ export async function authenticateTimingIdentity(
   return {
     ...identity, status: 'authenticated' as const, instrumentation: 'none' as const,
     pid: launcherPid, launcherPid, runtime, source: prepared.source, build: prepared.build,
-    linkage: { method: 'startup-nonce-and-local-endpoint-OS-listening-PID', serverHost, addresses, listenerStdout: listener.stdout, tree },
+    linkage: { method: 'startup-nonce-and-local-endpoint-OS-listening-PID', serverHost, addresses, listenerStdout, tree },
     rawStartupIdentity: lines[0],
     limitations: ['Startup attestation hashing is included in process-to-ready; it installs no request-path instrumentation. Build hashes identify files, not exclusive framework CPU costs.'],
   };
