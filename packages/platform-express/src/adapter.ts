@@ -575,8 +575,11 @@ function createExpressRequestResponseFactory(
 }
 
 function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkResponse {
-  const headerSnapshot = response.getHeaders();
-  let headers: FrameworkResponse['headers'] | undefined;
+  const headers = Object.fromEntries(
+    Object.entries(response.getHeaders())
+      .filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined)
+      .map(([name, value]) => [name, typeof value === 'number' ? String(value) : value]),
+  );
   let stream: FrameworkResponseStream | undefined;
   let streamInitialized = false;
 
@@ -584,16 +587,7 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
   frameworkResponse = {
     committed: response.headersSent || response.writableEnded,
     earlyHints: createNodeEarlyHintsCapability(response, () => frameworkResponse.committed),
-    get headers() {
-      return headers ??= Object.fromEntries(
-        Object.entries(headerSnapshot)
-          .filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined)
-          .map(([name, value]) => [name, typeof value === 'number' ? String(value) : value]),
-      );
-    },
-    set headers(value) {
-      headers = value;
-    },
+    headers,
     raw: response,
     get stream() {
       if (!streamInitialized) {
@@ -659,12 +653,12 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
       if (lowerName === 'set-cookie') {
         const merged = mergeSetCookieHeader(response.getHeader(name), value);
         response.setHeader(name, merged);
-        (headers ?? headerSnapshot)[name] = merged;
+        this.headers[name] = merged;
         return;
       }
 
       response.setHeader(name, value);
-      (headers ?? headerSnapshot)[name] = value;
+      this.headers[name] = value;
     },
     setStatus(code: number) {
       response.status(code);

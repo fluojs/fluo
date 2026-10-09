@@ -94,3 +94,23 @@ These are correctness and release-metadata results, not measured speedups.
 Fastify/Node cost attribution, serialized exact-source BEFORE/AFTER measurements,
 other-platform nonregression, independent exact-head review and remote CI remain
 open issue-acceptance work.
+
+## Whole-request diagnostic rejected the combined candidate
+
+The clean BEFORE at `1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18` and clean
+candidate `a39c0456f65ae71408f72820a5eb7514de09505f` used identical benchmark
+source for 18 completed equivalent/minimal/concurrency-64 samples, with native,
+Fluo and Nest controls and no invalid attempts or traffic mismatches.
+Fluo throughput median fell 5.04%, CPU/request rose 4.51%, p95 rose 4.79% and
+p99 rose 2.65%; before/after ranges for those metrics did not overlap. Native
+and Nest controls were stable or slightly faster. Raw files and hashes remain
+under the root `.omo/verification/3912-express-minimal-*` paths.
+
+This candidate is rejected, not marked within a retrospectively chosen budget.
+Header normalization has been restored to its original eager snapshot path;
+only stream-facade deferral remains as the next candidate. The newly added
+snapshot tests now assert that restored eager behavior while retaining their
+native mutation, ordered-cookie, identity and real-listener assertions.
+`stream-only-green-20261008.log` records 19 files / 306 passing adapter tests,
+Express typecheck, Biome and documentation parity with exit 0. Whole-request
+performance of the stream-only candidate is still unverified.

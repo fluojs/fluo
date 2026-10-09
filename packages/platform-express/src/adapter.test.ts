@@ -997,7 +997,7 @@ describe('@fluojs/platform-express', () => {
     { middleware: true, path: '/lazy-response/headers' },
     { middleware: false, path: '//lazy-response//headers' },
     { middleware: true, path: '//lazy-response//headers' },
-  ])('response snapshot: $path with middleware=$middleware -> normalizes only on first read', async ({ middleware, path }) => {
+  ])('response snapshot: $path with middleware=$middleware -> retains eager normalization and native snapshots', async ({ middleware, path }) => {
     let snapshotReads = 0;
     const nativeMiddleware: RequestHandler = (_request, response, next) => {
       response.setHeader('x-snapshot', 'initial');
@@ -1072,8 +1072,8 @@ describe('@fluojs/platform-express', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      expect(body.readsBefore).toBe(0);
-      expect(body.readsAfterFirst).toBeGreaterThan(0);
+      expect(body.readsBefore).toBeGreaterThan(0);
+      expect(body.readsAfterFirst).toBe(body.readsBefore);
       expect(body.readsAfterRepeated).toBe(body.readsAfterFirst);
       expect(body).toMatchObject({
         array: ['alpha', 'beta'],
