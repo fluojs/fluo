@@ -175,3 +175,41 @@ same exposure state. It retains live lookup after map exposure or replacement.
 `../header-index-boundary-green-20261008.log` records 36 files / 517 passing
 tests, runtime typecheck and Biome with exit 0; both files have clean LSP
 diagnostics. This correction changes no performance verdict.
+
+## Header-index candidate rejected after matched long-window comparison
+
+The short-window comparison retained 12 valid samples but exceeded the frozen
+stability thresholds. A separate BEFORE-only calibration with 30-second warmup
+and 60-second measurement established a stable baseline for Bun minimal /
+equivalent / concurrency 64. No candidate samples entered that calibration.
+
+The subsequent three alternating matched blocks used the identical repaired
+harness (`d98bed2a02e515af706c09d6a334573457dc4cb56332758dbe4a384792cdf50c`).
+BEFORE executed at `d67bc44fdda5cd5e4e959f69ff838b6200d5e941`, with framework
+packages identical to `1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18`.
+The measurement-only candidate merge `80af7ab1732ca50d11fa9908744fd7e287bdb056`
+has framework packages identical to `253c9c5bb5d99e3202521554636a9757a26c65cb`.
+All 12 samples have authenticated Bun 1.4.2 serving identities, preserved
+warmup measurements, fresh builds, clean source and zero traffic errors.
+The root `3911-bun-matched-long-80af7ab-*` verification artifacts retain
+the plan, six raw files, log, hashes and metric summary.
+
+Throughput median changed +1.12%, CPU/request -1.06%, p95 -0.77% and p99 -0.74%.
+These metrics and native controls met the frozen variation and pair limits.
+Candidate RSS CV was 11.19% and paired RSS CV 10.53%, above the 5% limit;
+one RSS pair increased 18.98%, above the 10% budget. The overall result is
+INCONCLUSIVE, not within budget. This does not establish the causal source
+of RSS variation, but it does not justify retaining the added cache.
+
+The response-owned index, mutable cell and headers accessors are removed.
+Production source returns exactly to the earlier allocation-only candidate
+`fbae0e55bd6a8438715f2002af74c2e6c385fe96`. The first test again asserts only
+the retained temporary-key-array optimization; its index-only normalization
+counter and assertion are withdrawn with that rejected feature. All header
+behavior, freeze, transparent Proxy, replacement and cookie tests remain.
+No general speedup or final issue acceptance is claimed.
+
+`../allocation-only-restored-green-20261009.log` records exit 0 for exact
+production-source equality with `fbae0e55bd6a8438715f2002af74c2e6c385fe96`,
+changed-file Biome, 36 related files / 517 passing tests, runtime typecheck
+and diff checks. LSP reported no errors in either changed TypeScript file.
