@@ -134,3 +134,25 @@ this stage's assigned evidence scope. This does not claim that the stock E2E
 passed. The comparison fixtures themselves were production-built and exercised
 over HTTP as reported above; the later whole-issue gate still owns any required
 stock E2E evidence with an approved output boundary.
+
+## Lead stock E2E verification
+
+The preceding stock E2E limitation describes the worker handoff. The lead ran
+the existing suite without modifying its tests or output boundary. The first
+attempt stopped at `Missing react`; its log and partial evidence remain retained.
+Pointing `FLUO_E2E_NEXT_ROOT` to the existing frozen comparison-harness installation
+resolved the dependency lookup without installing or changing dependencies.
+
+On source head `481f601e46e44f2f5cf6118f59a8db817f4a1234`, the existing Next
+production E2E passed all 54 tests with exit 0. The raw log is
+`lead-next-e2e-benchmark-deps-20261008.log`; native test evidence is retained at
+`.omo/platform-nextjs-e2e-QFNc8U` in this worktree and must be archived before
+worktree cleanup. This closes the stock E2E gap, not representative performance,
+full remote CI, or actual deployed Workers acceptance.
+
+The lead archived all local issue-3914 evidence, both stock E2E attempts and the
+three interrupted CLI fixture files outside the worktree at
+`.omo/3914-local-evidence-481f601e-20261008.tar.gz` (809,165 bytes; SHA-256
+`75528788303eedac10ee0930e54262673578f046f7536539dc844486b69a7b18`).
+The complete archive read passed before removing those three generated,
+untracked CLI files. No tracked CLI or React implementation was changed.

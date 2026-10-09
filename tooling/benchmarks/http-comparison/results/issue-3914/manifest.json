@@ -18,6 +18,15 @@
     }
   },
   "checks": {
+    "stockNextE2e": {
+      "status": "passed",
+      "tests": 54,
+      "head": "481f601e46e44f2f5cf6118f59a8db817f4a1234",
+      "nextDependencyRoot": "tooling/benchmarks/http-comparison",
+      "log": "lead-next-e2e-benchmark-deps-20261008.log",
+      "evidence": ".omo/platform-nextjs-e2e-QFNc8U",
+      "exitCode": 0
+    },
     "harnessTests": 142,
     "workersTests": 54,
     "nextTests": 105,
@@ -31,11 +40,17 @@
   },
   "unverified": {
     "releaseReadiness": "watcher-timeout; no completed verdict; full sequence not repeated in focused-only stage",
-    "stockNextE2e": "hardcoded persistent .omo output is outside assigned evidence boundary",
     "deployedWorkers": "account/project/endpoint, authority, credential availability, budget/quota, telemetry, isolate generation unknown",
     "representativePerformance": "lead-owned; not run"
   },
   "preservedOutOfScopeFixture": "packages/cli/src/fixtures/typegen-check-process-WawAA2/",
+  "preservedFixtureDisposition": {
+    "status": "archived-and-removed-from-worktree",
+    "archive": ".omo/3914-local-evidence-481f601e-20261008.tar.gz",
+    "archiveSha256": "75528788303eedac10ee0930e54262673578f046f7536539dc844486b69a7b18",
+    "archiveBytes": 809165,
+    "archiveReadExit": 0
+  },
   "preservedOutOfScopeFiles": [
     "packages/cli/src/fixtures/typegen-check-process-WawAA2/app.ts",
     "packages/cli/src/fixtures/typegen-check-process-WawAA2/tsconfig.json",
