@@ -156,6 +156,36 @@ describe('dispatchWebRequest', () => {
     expect(response.toResponse().headers.get('x-original')).toBe('updated');
   });
 
+  it('keeps header reads and nested map updates working after freezing the response object', () => {
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/frozen-response');
+    const response = factory.createResponse(request.signal, request);
+    response.setHeader('X-Frozen', 'initial');
+    Object.freeze(response);
+
+    expect(response.headers['X-Frozen']).toBe('initial');
+    response.setHeader('x-frozen', 'updated');
+
+    expect(response.headers['X-Frozen']).toBe('updated');
+  });
+
+  it('shares header exposure state through a transparent response proxy', () => {
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/proxied-response');
+    const original = factory.createResponse(request.signal, request);
+    const response = new Proxy(original, {});
+    response.setHeader('X-Proxy', 'initial');
+    const headers = response.headers;
+    delete headers['X-Proxy'];
+    headers['x-proxy'] = 'external';
+
+    response.setHeader('X-PROXY', 'updated');
+
+    expect(original.headers).toBe(headers);
+    expect(headers['x-proxy']).toBe('updated');
+    expect(Object.hasOwn(headers, 'X-PROXY')).toBe(false);
+  });
+
   it.each([204, 205, 304])('keeps Web header overrides on body-forbidden status %i', async (status) => {
     const factory = createWebRequestResponseFactory();
     const request = new Request('https://runtime.test/body-forbidden');

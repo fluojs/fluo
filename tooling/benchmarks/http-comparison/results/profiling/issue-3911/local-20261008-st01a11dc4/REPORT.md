@@ -159,3 +159,19 @@ logging and the mutation were removed.
 This is a verified correctness/cost-count candidate, not a measured speedup.
 Real-host revalidation and exact-source performance comparison for this new
 candidate remain required; the first candidate's receipts are not relabeled.
+
+## Freeze and transparent-proxy boundary correction
+
+The lead reproduced a header-read failure after `Object.freeze(response)`:
+clearing an ordinary instance field attempted to write a frozen property.
+Moving it to a native private field fixed that case but broke method calls
+through a transparent response Proxy. Both assertion-level failures are
+retained in `header-index-frozen-red-20261008.log` and
+`header-index-proxy-red-20261008.log` in the parent evidence directory.
+
+The final implementation keeps the lookup state in one internal mutable cell,
+so the public object can be shallow-frozen and transparent receivers share the
+same exposure state. It retains live lookup after map exposure or replacement.
+`../header-index-boundary-green-20261008.log` records 36 files / 517 passing
+tests, runtime typecheck and Biome with exit 0; both files have clean LSP
+diagnostics. This correction changes no performance verdict.

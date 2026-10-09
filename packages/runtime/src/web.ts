@@ -201,7 +201,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   statusSet?: boolean;
 
   private headerValues = this.headers;
-  private headerNames: Map<string, string> | undefined = new Map();
+  private readonly headerIndex: { names: Map<string, string> | undefined } = { names: new Map() };
   private finalizedResponse?: Response;
   private resolveResponseReady: (response: Response) => void = () => undefined;
   private responseStream?: WebResponseStream;
@@ -217,11 +217,11 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
       enumerable: true,
       get: () => {
         // Once exposed, the mutable map can change without setHeader.
-        this.headerNames = undefined;
+        this.headerIndex.names = undefined;
         return this.headerValues;
       },
       set: (value: Record<string, string | string[]>) => {
-        this.headerNames = undefined;
+        this.headerIndex.names = undefined;
         this.headerValues = value;
       },
     });
@@ -276,22 +276,24 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
 
   setHeader(name: string, value: string | string[]): void {
     const lowerName = name.toLowerCase();
-    const existingHeaderName = (this.headerNames
-      ? this.headerNames.get(lowerName)
+    const headerNames = this.headerIndex.names;
+    const existingHeaderName = (headerNames
+      ? headerNames.get(lowerName)
       : findHeaderName(this.headerValues, name)) ?? name;
 
     this.headerValues[existingHeaderName] = lowerName === 'set-cookie'
       ? mergeSetCookieHeader(this.headerValues[existingHeaderName], value)
       : value;
 
-    if (this.headerNames && Object.hasOwn(this.headerValues, existingHeaderName)) {
-      this.headerNames.set(lowerName, existingHeaderName);
+    if (headerNames && Object.hasOwn(this.headerValues, existingHeaderName)) {
+      headerNames.set(lowerName, existingHeaderName);
     }
   }
 
   private hasHeader(name: string): boolean {
-    return this.headerNames
-      ? this.headerNames.has(name.toLowerCase())
+    const headerNames = this.headerIndex.names;
+    return headerNames
+      ? headerNames.has(name.toLowerCase())
       : hasHeader(this.headerValues, name);
   }
 
