@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 2.0.3
+
+### Patch Changes
+
+- [#3920](https://github.com/fluojs/fluo/pull/3920) [`b12916c`](https://github.com/fluojs/fluo/commit/b12916c80959c43d8df37e45c72ec5410bcc180b) Thanks [@ayden94](https://github.com/ayden94)! - Preserve configuration snapshot replacement and trusted snapshot adoption while removing private literal-key access lint diagnostics.
+
+- Updated dependencies [[`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf), [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035)]:
+  - @fluojs/core@2.1.3
+
 ## 2.0.2
 
 ### Patch Changes

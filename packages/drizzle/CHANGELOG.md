@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#3851](https://github.com/fluojs/fluo/pull/3851) [`ae7ac12`](https://github.com/fluojs/fluo/commit/ae7ac128cf6555ae752031f57390a5f186fe8016) Thanks [@ayden94](https://github.com/ayden94)! - Reject duplicate unnamed `DrizzleModule.forRoot(...)` and `forRootAsync(...)` registrations at bootstrap, before async options factories or lifecycle wrappers can claim a database. Each application container now permits one unnamed default alongside independently owned named clients.
+
+  Migration: Applications composing multiple unnamed Drizzle modules must keep one default registration and give every additional module a distinct `name`. Inject additional clients through their matching `getDrizzle*Token(name)` tokens instead of relying on a later unnamed registration replacing the default and its disposal hook. An explicitly named `default` client remains distinct from the unnamed default.
+
+### Minor Changes
+
+- [#3850](https://github.com/fluojs/fluo/pull/3850) [`b09163b`](https://github.com/fluojs/fluo/commit/b09163b28b7a7c8b093d904f7eefe360729ac33f) Thanks [@ayden94](https://github.com/ayden94)! - Document and verify conditional Bun 1.4 support for the root Drizzle wrapper with async transaction drivers such as libsql, including real commit, rollback, routing, and shutdown coverage. Synchronous bun:sqlite transactions remain unsupported.
+
+### Patch Changes
+
+- [#3929](https://github.com/fluojs/fluo/pull/3929) [`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf) Thanks [@ayden94](https://github.com/ayden94)! - Extract shared transaction contracts, Result rollback policy, hook settlement,
+  and active request work into the independent portable `@fluojs/persistence`
+  package. Existing core, runtime, and ORM public imports remain compatible and
+  re-export the canonical constructors without wrappers. Driver observation and
+  native transaction execution remain in their ORM packages.
+
+- [#3930](https://github.com/fluojs/fluo/pull/3930) [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035) Thanks [@ayden94](https://github.com/ayden94)! - Introduce portable `@fluojs/diagnostics` as the single owner of shared platform status, graph, trace, timing and static/report/live data contracts and readers. Existing runtime, core/internal, Studio root and feature status imports remain compatible. Preserve wire version 1, legacy route normalization, validation/privacy behavior, typed status details, Node support and runtime resource/lifecycle ownership.
+
+  Migration: existing imports and stored artifacts require no changes. New data-only consumers may install `@fluojs/diagnostics` instead of runtime or Studio implementation. Filters, Mermaid rendering and viewer APIs stay in `@fluojs/studio`; the previously removed `@fluojs/studio/contracts` subpath is not restored. See `docs/getting-started/migrate-diagnostics.md`.
+
+- Updated dependencies [[`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf), [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035)]:
+  - @fluojs/persistence@0.1.0
+  - @fluojs/core@2.1.3
+  - @fluojs/runtime@3.1.3
+  - @fluojs/diagnostics@0.2.0
+
 ## 2.1.2
 
 ### Patch Changes

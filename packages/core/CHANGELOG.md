@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## 2.1.3
+
+### Patch Changes
+
+- [#3929](https://github.com/fluojs/fluo/pull/3929) [`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf) Thanks [@ayden94](https://github.com/ayden94)! - Extract shared transaction contracts, Result rollback policy, hook settlement,
+  and active request work into the independent portable `@fluojs/persistence`
+  package. Existing core, runtime, and ORM public imports remain compatible and
+  re-export the canonical constructors without wrappers. Driver observation and
+  native transaction execution remain in their ORM packages.
+
+- [#3930](https://github.com/fluojs/fluo/pull/3930) [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035) Thanks [@ayden94](https://github.com/ayden94)! - Introduce portable `@fluojs/diagnostics` as the single owner of shared platform status, graph, trace, timing and static/report/live data contracts and readers. Existing runtime, core/internal, Studio root and feature status imports remain compatible. Preserve wire version 1, legacy route normalization, validation/privacy behavior, typed status details, Node support and runtime resource/lifecycle ownership.
+
+  Migration: existing imports and stored artifacts require no changes. New data-only consumers may install `@fluojs/diagnostics` instead of runtime or Studio implementation. Filters, Mermaid rendering and viewer APIs stay in `@fluojs/studio`; the previously removed `@fluojs/studio/contracts` subpath is not restored. See `docs/getting-started/migrate-diagnostics.md`.
+
+- Updated dependencies [[`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf), [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035)]:
+  - @fluojs/persistence@0.1.0
+  - @fluojs/diagnostics@0.2.0
+
 ## 2.1.2
 
 ### Patch Changes

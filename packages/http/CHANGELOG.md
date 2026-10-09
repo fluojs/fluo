@@ -2,6 +2,69 @@
 
 ## [Unreleased]
 
+## 3.2.0
+
+### Minor Changes
+
+- [#3903](https://github.com/fluojs/fluo/pull/3903) [`63920ab`](https://github.com/fluojs/fluo/commit/63920ab592ec57e39c3155906b0068de26238b5a) Thanks [@ayden94](https://github.com/ayden94)! - Extend the existing React typegen workflow with compiler-derived HTTP query
+  bindings, build-mapped page props, and native form field/saved-data contracts.
+  Add the type-only `HttpWire<Server, Wire>` converter-input declaration and
+  authoritative HTTP version-selection provenance.
+
+  Generated artifact version 2 includes source/type-only/configuration freshness
+  and limited JSON decoders. Regenerate older artifacts before enabling typegen
+  checks in application typecheck and build scripts. Strict generated consumers
+  must use the registered browser module/props pairs and the existing
+  `useForm({ action, contract })` path rather than copied DTO interfaces or casts.
+
+- [#3901](https://github.com/fluojs/fluo/pull/3901) [`adedc3a`](https://github.com/fluojs/fluo/commit/adedc3a1f4dcdfde8c9325d063ce36cfbb5f5d7e) Thanks [@ayden94](https://github.com/ayden94)! - Add one progressive native HTTP form path through `useForm` and the existing
+  React provider, with `ReactModule.formResult` for confirmed persistence.
+  Preserve native POST/303/GET, HTTP-owned DTO/auth/CSRF/status/error behavior,
+  and v2 navigation build identity.
+
+  Expose typed independent pending/dirty state, bounded safe field/form rejection,
+  skipped busy activation, uncertain persistence, and separately typed post-save
+  read outcomes with GET-only recovery. There is no automatic POST retry or native
+  POST replay. Existing HTML error configuration and explicit refresh semantics
+  remain compatible.
+
+  Include production CRUD in the official Vite starter and runnable example.
+  Upgrade the affected React/HTTP/CLI releases together; follow
+  `docs/getting-started/migrate-react-progressive-forms.md` for native encoding,
+  safe error projection, destination policies and recovery UI.
+
+- [#3855](https://github.com/fluojs/fluo/pull/3855) [`985dcd0`](https://github.com/fluojs/fluo/commit/985dcd0e532bc63d59253bafc0a9bf8cf73781f6) Thanks [@ayden94](https://github.com/ayden94)! - Add an opt-in, HTTP-negotiated React navigation payload for matched GET pages. Browser clients can validate the server-confirmed URL and params and render an explicitly Vite-built destination while direct document requests, errors, and existing Link/router navigation remain unchanged.
+
+- [#3867](https://github.com/fluojs/fluo/pull/3867) [`8f7c69d`](https://github.com/fluojs/fluo/commit/8f7c69d3c0c50b8a0cbd6abff51dba4d08e67991) Thanks [@ayden94](https://github.com/ayden94)! - Add opt-in hover and viewport React navigation prefetch with a scoped, bounded, single-use public payload cache, and grant reuse only for explicit identity-independent pages after the HTTP response passes final credential, status, cookie, and cache-header checks. Ordinary navigation remains credentialed and fresh by default.
+
+### Patch Changes
+
+- [#3931](https://github.com/fluojs/fluo/pull/3931) [`a719508`](https://github.com/fluojs/fluo/commit/a7195088aaaa787db909bcdb63e1fe31bf15bfa3) Thanks [@ayden94](https://github.com/ayden94)! - Separate transport-neutral identity, authentication results, strategies and account-linking policy into `@fluojs/auth`, and HTTP guards, registration, bearer, cookie and refresh integration into `@fluojs/auth-http`.
+
+  Passport.js action binding remains in `@fluojs/passport`. Existing Passport, HTTP Principal and JWT JwtPrincipal imports remain compatible, including class tokens, metadata and versioned error identities. New applications use auth/auth-http as the canonical owners; JWT signing, verification and refresh rotation semantics are unchanged.
+
+- [#3856](https://github.com/fluojs/fluo/pull/3856) [`a34789a`](https://github.com/fluojs/fluo/commit/a34789af807b87f134feb66f756ab1242946bf05) Thanks [@ayden94](https://github.com/ayden94)! - Add a Bun-supported filesystem static asset source for the portable HTTP middleware, with contained snapshot reads and optional precompressed representation selection. Document its HTTP middleware integration and clarify that React Vite asset manifests map URLs while applications serve the bytes.
+
+- [#3902](https://github.com/fluojs/fluo/pull/3902) [`00525a8`](https://github.com/fluojs/fluo/commit/00525a81b37166889cbf9d742d5a7cc0ca2b92ef) Thanks [@ayden94](https://github.com/ayden94)! - Preserve canonical HTTP error statuses for exact GET v2 React navigation requests
+  when an HTML error provider is configured. Authentication and not-found errors
+  no longer become 406 responses; unsupported media, versions and methods retain
+  ordinary error negotiation.
+
+- [#3900](https://github.com/fluojs/fluo/pull/3900) [`942f673`](https://github.com/fluojs/fluo/commit/942f673d34d58a9093d7012253913aec9143ff45) Thanks [@ayden94](https://github.com/ayden94)! - Require v2 React navigation payloads and build identity for production navigation; derive the identity from the complete Vite manifest and asset base. The generated React starter serves hashed same-origin assets and offers explicit recovery across deployments.
+
+  Consumers of the previous v1 negotiation must pass the manifest-derived `navigationBuildId` to `ReactModule.forRoot(...)` and `ReactClientRouterProvider`, update their Accept handling to `v=2`, and deploy retained old-build assets before switching the manifest. Old v1 tabs use document fallback; no automatic reload or cross-origin CDN support is implied.
+
+- [#3863](https://github.com/fluojs/fluo/pull/3863) [`12c47ae`](https://github.com/fluojs/fluo/commit/12c47ae9a3da31bc6a6d336ccfc6f5f61d11674d) Thanks [@ayden94](https://github.com/ayden94)! - Use the existing Link and router methods to render HTTP-approved React destinations without
+  reloading, with confirmed history and route hooks, fresh back/forward approval, and full-document
+  fallback for unsupported or rejected responses.
+
+  Clarify HTTP ownership of React navigation approval and history traversal in the shipped
+  @fluojs/http English and Korean package documentation.
+
+- Updated dependencies [[`a719508`](https://github.com/fluojs/fluo/commit/a7195088aaaa787db909bcdb63e1fe31bf15bfa3), [`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf), [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035)]:
+  - @fluojs/auth@0.2.0
+  - @fluojs/core@2.1.3
+
 ## 3.1.3
 
 ### Patch Changes

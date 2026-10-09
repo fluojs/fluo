@@ -8,7 +8,7 @@
     "pubsub",
     "in-process"
   ],
-  "version": "3.1.2",
+  "version": "3.1.3",
   "private": false,
   "license": "MIT",
   "repository": {
