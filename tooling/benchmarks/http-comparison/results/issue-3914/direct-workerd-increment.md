@@ -76,6 +76,27 @@ Full root release-readiness / canonical local CI / remote CI는 수행하지 않
 최종 source는 커밋 전 dirty snapshot으로 검증했으며 source/build digest를 보존했다.
 이 로컬 검증을 새 performance acceptance 또는 deployed acceptance로 재표시하지 않는다.
 
+## Parent Linux verification and fix-back
+
+Canonical Linux 이미지 복구는 428초, exit 0이었다. 환경 준비 시간이며
+CI 또는 benchmark 소요 시간으로 계산하지 않는다. 해당 이미지에는 `ss`가
+없었고 기존 실제 HTTP identity 테스트가 `spawn ss ENOENT`로 실패했다.
+`linux-listeners.ts`로 기존 procfs inode/fd 검사를 공유하여 새 도구 설치 없이
+ordinary HTTP와 profiler HTTP/inspector listener 모두의 PID 소유권을 확인한다.
+
+- Linux RED: `.omo/verification/3914-linux-workerd-red-5ae77c763.log`, exit 1.
+- Linux GREEN: `.omo/verification/3914-linux-procfs-green.log`, 22/22, exit 0.
+- Linux CPU: `.omo/verification/3914-linux-procfs-profiles.log`, 두 target 모두
+  supported, exit 0. 원본은 `.worktrees/measure-linux-before-d67/tooling/benchmarks/http-comparison/results/issue-3914/linux-procfs-profiles/`.
+- macOS: typecheck 통과, 수정 source 세 파일 Biome 통과, 전체 168/168,
+  exit 0. `.omo/verification/3914-macos-procfs-checks-corrected.log`.
+  최초 lint 실행은 benchmark cwd에서 ignore 파일을 찾지 못해 실패했으며
+  `.omo/verification/3914-macos-procfs-checks.log`에 보존했다.
+- 변경 source 세 파일 LSP error 0, `git diff --check` 통과.
+
+Linux 검증은 전용 checkout `5ae77c763`에 수정 source 디렉터리를 read-only
+bind mount하여 실행했다. 새 성능 baseline이나 deployed 검증이 아니다.
+
 ## No-release rationale
 
 `CONTRIBUTING.md`의 Changesets 기준에 따라 public `@fluojs/*`의 동작, API,

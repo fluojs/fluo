@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { readdir, readFile, readlink } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
+import { linuxListeners } from './linux-listeners';
 import { object, sha256 } from './profile-report';
 import { sourceSnapshot, WORKSPACE_ROOT } from './provenance';
 import { processTreeSample } from './resources';
@@ -99,24 +100,10 @@ export async function authenticateTimingIdentity(
   let listenerStdout: string;
   let pids: number[];
   if (process.platform === 'linux') {
-    const tables = await Promise.all(['tcp', 'tcp6'].map((name) => readFile(`/proc/net/${name}`, 'utf8')));
-    const sockets = tables.flatMap((table) => table.trim().split('\n').slice(1)
-      .map((line) => line.trim().split(/\s+/))
-      .filter((fields) => fields[3] === '0A' && Number.parseInt(fields[1].split(':')[1], 16) === port)
-      .map((fields) => fields[9]));
-    const directory = `/proc/${launcherPid}/fd`;
-    const descriptors = await Promise.all((await readdir(directory)).map(async (fd) => {
-      try {
-        return { fd, link: await readlink(join(directory, fd)) };
-      } catch (error) {
-        // A non-listener descriptor may close between enumeration and readlink.
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return { fd, link: null };
-        throw error;
-      }
-    }));
-    pids = sockets.length > 0 && sockets.every((inode) => descriptors.some(({ link }) => link === `socket:[${inode}]`))
-      ? [launcherPid] : [];
-    listenerStdout = JSON.stringify({ method: 'procfs-listening-inodes-and-process-fds', launcherPid, sockets, descriptors, tables });
+    const listeners = await linuxListeners(launcherPid);
+    const sockets = listeners.sockets.filter((socket) => socket.port === port);
+    pids = sockets.length > 0 && sockets.every((socket) => socket.owned) ? [launcherPid] : [];
+    listenerStdout = JSON.stringify(listeners);
   } else {
     listenerStdout = (await execute('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'])).stdout;
     pids = [...new Set(listenerStdout.trim().split(/\s+/).map(Number))];

@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { linuxListeners } from './linux-listeners';
 import { object, sha256 } from './profile-report';
 import type { AppShape } from './scenarios';
 import type { TargetConfig } from './targets';
@@ -118,14 +119,19 @@ export async function workerdProcessProof(pid: number, inspectorPort?: number) {
   for (const [path, hash] of Object.entries(state.artifacts)) {
     if (sha256(await readFile(path)) !== hash) throw new WorkerdFailure('workerd launch artifact changed', { path, hash });
   }
-  const listeners = process.platform === 'linux'
-    ? (await execute('ss', ['-ltnp'])).stdout
-    : (await execute('lsof', ['-nP', '-a', '-p', String(pid), '-iTCP', '-sTCP:LISTEN', '-Fpn'])).stdout;
-  const addresses = process.platform === 'linux'
-    ? listeners.split('\n').filter((line) => line.includes(`pid=${pid},`)).map((line) => line.trim().split(/\s+/)[3])
-    : listeners.split('\n').filter((line) => line.startsWith('n')).map((line) => line.slice(1));
+  let listeners: string;
+  let listeningPorts: number[];
+  if (process.platform === 'linux') {
+    const snapshot = await linuxListeners(pid);
+    listeners = JSON.stringify(snapshot);
+    listeningPorts = snapshot.sockets.filter((socket) => socket.owned).map((socket) => socket.port);
+  } else {
+    listeners = (await execute('lsof', ['-nP', '-a', '-p', String(pid), '-iTCP', '-sTCP:LISTEN', '-Fpn'])).stdout;
+    listeningPorts = listeners.split('\n').filter((line) => line.startsWith('n'))
+      .map((line) => Number(line.slice(line.lastIndexOf(':') + 1)));
+  }
   const ports = [state.port, ...(inspectorPort === undefined ? [] : [inspectorPort])];
-  if (addresses.length !== ports.length || ports.some((port) => !addresses.some((address) => address.endsWith(`:${port}`)))) {
+  if (listeningPorts.length !== ports.length || ports.some((port) => !listeningPorts.includes(port))) {
     throw new WorkerdFailure('workerd HTTP/inspector listener ownership mismatch', { listeners, ports });
   }
   return {
