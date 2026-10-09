@@ -83,10 +83,10 @@ try {
             subject: session.subject, identityPath: session.identityPath,
           });
         } finally {
-          session?.close();
-          await stopTargets(processes);
-          if (raw.failure) throw raw.failure;
+          try { await session?.close(); }
+          finally { await stopTargets(processes); }
         }
+        if (raw.failure) throw raw.failure;
         receipts.push({ ...receipt, artifacts: await raw.artifacts() });
         console.log(`CORRECTNESS PASS ${configuration}/${target.name}/${scenario.name}`);
       }

@@ -3,10 +3,12 @@ import { LoadProcessFailure } from './load';
 import { ResourceMeasurementFailure } from './resources';
 import { TimingIdentityFailure } from './timing-identity';
 import { TrafficFailure } from './traffic';
+import { WorkerdFailure } from './workerd';
 
 export function failureEvidence(error: unknown): unknown {
   if (!(error instanceof Error)) return { message: String(error) };
   if (error instanceof TimingIdentityFailure) return { name: error.name, message: error.message, identity: error.evidence };
+  if (error instanceof WorkerdFailure) return { name: error.name, message: error.message, workerd: error.evidence };
   if (error instanceof TrafficFailure) return { name: error.name, message: error.message, traffic: error.diagnostics };
   if (error instanceof ResourceMeasurementFailure) {
     return { name: error.name, message: error.message, serverSamples: error.samples, cause: failureEvidence(error.cause) };

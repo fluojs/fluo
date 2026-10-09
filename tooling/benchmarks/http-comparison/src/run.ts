@@ -109,13 +109,12 @@ export async function runScenario(scenario: ScenarioConfig, run: {
   for (const target of rotated) {
   const condition = { configuration: CONFIGURATION, scenario: scenario.name, target: target.name, connections, repeat: run.repeat };
   await journal.record({ ...condition, phase: 'startup' }, samples, async (complete) => {
-  const identityPreparation = await prepareTimingIdentity(target);
+  const identityPreparation = await prepareTimingIdentity(target, scenario.appShape);
   let stdout = '';
   const start = performance.now();
   const processes = startTargets(scenario.appShape, [target], {
     timingIdentity: true,
-    env: identityPreparation.status === 'prepared'
-      ? { ...identityPreparation.env, BENCH_TIMING_NONCE: identityPreparation.nonce } : {},
+    env: { ...identityPreparation.env, BENCH_TIMING_NONCE: identityPreparation.nonce },
     onOutput: (_target, stream, bytes) => { if (stream === 'stdout') stdout += String(bytes); },
   });
   try {
@@ -124,8 +123,7 @@ export async function runScenario(scenario: ScenarioConfig, run: {
     const pid = processes[0].pid;
     if (pid === undefined) throw new Error(`Missing server PID for ${target.name}`);
     journal.current = { ...condition, phase: 'serving-identity', stdout };
-    const servingIdentity = identityPreparation.status === 'prepared'
-      ? await authenticateTimingIdentity(identityPreparation, stdout, pid, target.port) : identityPreparation;
+    const servingIdentity = await authenticateTimingIdentity(identityPreparation, stdout, pid, target.port);
     let warmup: Measurement | undefined;
     const traffic = (target: TargetConfig, duration: number) => ({
       url: `http://${process.env.BENCH_SERVER_HOST ?? '127.0.0.1'}:${target.port}`,
@@ -148,9 +146,7 @@ export async function runScenario(scenario: ScenarioConfig, run: {
         process.stdout.write(`  measuring ${target.label} (${MEASURE_SEC}s)...`);
         const measured = await monitorServer(pid, () => load(traffic(target, MEASURE_SEC), `${scenario.name}/${target.label}`), serverSamples);
         journal.current = { ...condition, phase: 'serving-identity-after-measurement', processToReadyMs, firstRequest, warmup, servingIdentity, measurement: measured.value, serverSamples };
-        if (identityPreparation.status === 'prepared') {
-          await authenticateTimingIdentity(identityPreparation, stdout, pid, target.port);
-        }
+        await authenticateTimingIdentity(identityPreparation, stdout, pid, target.port);
         process.stdout.write(' done\n');
         return {
           label: target.label, ...measured.value, server: measured.server, warmup, servingIdentity,
@@ -160,6 +156,12 @@ export async function runScenario(scenario: ScenarioConfig, run: {
     });
     complete(measured[0]);
     journal.current = { ...condition, phase: 'teardown', measurementCompleted: true };
+  } catch (error) {
+    journal.current = {
+      ...condition, ...(typeof journal.current === 'object' && journal.current !== null ? journal.current : {}),
+      startupStdout: stdout,
+    };
+    throw error;
   } finally {
     await stopTargets(processes);
   }

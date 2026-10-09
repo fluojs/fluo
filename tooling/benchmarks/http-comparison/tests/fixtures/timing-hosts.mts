@@ -42,8 +42,8 @@ try {
     assert.ok(sample.warmup);
     assert.equal(sample.warmup.result.requests.total, 3);
     assert.ok(sample.warmup.latencyHistogramMicros.length > 0);
-    assert.equal(sample.servingIdentity?.status, target.platform === 'workers' ? 'unsupported' : 'authenticated');
-    assert.equal(sample.servingIdentity?.instrumentation, target.platform === 'workers' ? 'not-certified' : 'none');
+    assert.equal(sample.servingIdentity?.status, 'authenticated');
+    assert.equal(sample.servingIdentity?.instrumentation, 'none');
     if (sample.servingIdentity?.status === 'authenticated') {
       assert.ok(sample.servingIdentity.pid > 0);
       assert.ok(Object.keys(sample.servingIdentity.runtime).length > 0);

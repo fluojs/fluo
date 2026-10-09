@@ -8,7 +8,9 @@ import { promisify } from 'node:util';
 import { object, sha256 } from './profile-report';
 import { sourceSnapshot, WORKSPACE_ROOT } from './provenance';
 import { processTreeSample } from './resources';
+import type { AppShape } from './scenarios';
 import { buildCommands, nextFixtureDirectory, type TargetConfig, WDIR } from './targets';
+import { workerdConfig, workerdExecutable, workerdProcessProof, workerdSubject, writeWorkerdConfig } from './workerd';
 
 const execute = promisify(execFile);
 const prefix = 'BENCH_TIMING_IDENTITY ';
@@ -30,24 +32,19 @@ async function buildFiles(directory: string): Promise<string[]> {
   return files;
 }
 
-export async function prepareTimingIdentity(target: TargetConfig) {
-  if (target.platform === 'workers') {
-    return {
-      status: 'unsupported' as const,
-      target: target.name,
-      instrumentation: 'not-certified' as const,
-      reason: 'Wrangler stdout and listening proxy PID do not authenticate the application isolate. The existing isolate protocol requires an active inspector; it cannot certify uninstrumented timing.',
-    };
-  }
-  const script = target.platform === 'nextjs' ? target.args[0]
-    : target.args.find((arg) => /\.(?:js|mjs|cjs)$/.test(arg));
+export async function prepareTimingIdentity(target: TargetConfig, appShape: AppShape = 'read-search-local') {
+  const worker = target.platform === 'workers' ? workerdConfig(target, appShape, process.env.BENCH_CONFIGURATION ?? 'default') : undefined;
+  if (worker) writeWorkerdConfig(worker);
+  const script = worker?.bundle ?? (target.platform === 'nextjs' ? target.args[0]
+    : target.args.find((arg) => /\.(?:js|mjs|cjs)$/.test(arg)));
   if (!script) throw new TimingIdentityFailure('Missing serving entry', { target });
   const entry = isAbsolute(script) ? script : join(WDIR, script);
   const directory = target.platform === 'nextjs'
     ? join(WDIR, nextFixtureDirectory(target), '.next') : dirname(entry);
   const source = await sourceSnapshot(WDIR);
   const files = [...new Set([entry, join(WDIR, 'src/timing-bootstrap.mjs'), join(WORKSPACE_ROOT, 'pnpm-lock.yaml'), ...Object.keys(source).map((path) => join(WDIR, path)), ...await buildFiles(directory),
-    ...(target.platform === 'nextjs' ? [join(directory, 'BUILD_ID'), join(directory, 'trace')] : [])])].sort();
+    ...(target.platform === 'nextjs' ? [join(directory, 'BUILD_ID'), join(directory, 'trace')] : []),
+    ...(worker ? [worker.path, worker.metafile, workerdExecutable()] : [])])].sort();
   const artifacts = Object.fromEntries(await Promise.all(files.map(async (file) => [file, sha256(await readFile(file))])));
   const sourceIdentity = {
     gitHead: (await execute('git', ['rev-parse', 'HEAD'], { cwd: WORKSPACE_ROOT })).stdout.trim(),
@@ -56,7 +53,7 @@ export async function prepareTimingIdentity(target: TargetConfig) {
     lockfiles: Object.fromEntries(await Promise.all([WORKSPACE_ROOT, WDIR].map(async (root) => [join(root, 'pnpm-lock.yaml'), sha256(await readFile(join(root, 'pnpm-lock.yaml')))]))),
   };
   return {
-    status: 'prepared' as const, nonce: randomUUID(), target: target.name, entry,
+    status: 'prepared' as const, nonce: randomUUID(), target: target.name, entry, worker,
     artifacts, artifactsSha256: sha256(JSON.stringify(artifacts)), source: sourceIdentity,
     build: { commands: [...buildCommands], scope: 'serving entry and target output tree; linked dependency provenance remains in environment' },
     env: {
@@ -76,8 +73,28 @@ export async function authenticateTimingIdentity(
   serverHost = process.env.BENCH_SERVER_HOST ?? '127.0.0.1',
 ) {
   const lines = stdout.split('\n').filter((line) => line.startsWith(prefix));
-  if (lines.length !== 1) throw new TimingIdentityFailure('Missing or duplicate serving identity', { stdout });
-  const identity = object(JSON.parse(lines[0].slice(prefix.length)));
+  if (!prepared.worker && lines.length !== 1) throw new TimingIdentityFailure('Missing or duplicate serving identity', { stdout });
+  let identity: Record<string, unknown>;
+  if (prepared.worker) {
+    const subject = workerdSubject(launcherPid);
+    const proof = await workerdProcessProof(launcherPid);
+    const executable = workerdExecutable();
+    if (subject.launch.args[1] !== prepared.worker.path
+      || subject.messages.length !== 1 || subject.messages[0].event !== 'listen'
+      || subject.messages[0].socket !== 'http' || subject.messages[0].port !== port) {
+      throw new TimingIdentityFailure('Direct workerd config/control identity mismatch', { proof, expected: prepared });
+    }
+    // This is parent-side native-process evidence, never a collector or isolate attestation.
+    identity = {
+      nonce: prepared.nonce, target: prepared.target, pid: launcherPid, entry: prepared.entry,
+      artifacts: prepared.artifacts, artifactsSha256: prepared.artifactsSha256,
+      executable, executableSha256: sha256(await readFile(executable)),
+      runtime: proof.runtime,
+      inspectorUrl: null, instrumentationFlags: [], opaqueIsolateId: 'not-observed',
+      application: { service: 'benchmark', configuredApplicationServices: 1, config: prepared.worker.path, bundle: prepared.worker.bundle },
+      nativeProcessEvidence: proof,
+    };
+  } else identity = object(JSON.parse(lines[0].slice(prefix.length)));
   const tree = await processTreeSample(launcherPid);
   let listenerStdout: string;
   let pids: number[];
@@ -132,8 +149,15 @@ export async function authenticateTimingIdentity(
   return {
     ...identity, status: 'authenticated' as const, instrumentation: 'none' as const,
     pid: launcherPid, launcherPid, runtime, source: prepared.source, build: prepared.build,
-    linkage: { method: 'startup-nonce-and-local-endpoint-OS-listening-PID', serverHost, addresses, listenerStdout, tree },
-    rawStartupIdentity: lines[0],
-    limitations: ['Startup attestation hashing is included in process-to-ready; it installs no request-path instrumentation. Build hashes identify files, not exclusive framework CPU costs.'],
+    opaqueIsolateId: prepared.worker ? 'not-observed' as const : null,
+    linkage: {
+      method: prepared.worker ? 'native-executable-config-bundle-control-fd-and-local-endpoint-OS-listening-PID' : 'startup-nonce-and-local-endpoint-OS-listening-PID',
+      serverHost, addresses, listenerStdout, tree,
+    },
+    rawStartupIdentity: prepared.worker ? stdout : lines[0],
+    ...(prepared.worker ? { evidenceOrigin: 'parent-side-native-process-config-bundle-and-OS-listener', resourceBoundary: 'direct-workerd-single-application-v1' } : {}),
+    limitations: [prepared.worker
+      ? 'Local launch-to-ready includes parent-side config/artifact hashing. Native process and one configured application service are authenticated; opaque isolate ID is not observed. No request-path instrumentation.'
+      : 'Startup attestation hashing is included in process-to-ready; it installs no request-path instrumentation. Build hashes identify files, not exclusive framework CPU costs.'],
   };
 }

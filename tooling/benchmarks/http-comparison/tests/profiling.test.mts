@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { createServer } from 'node:http';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { before, test } from 'node:test';
 import { load } from '../src/load';
 import { selectProfileTargets } from '../src/profile';
 import {
-  profileCompleteness, requestSamples, sha256, timingCompleteness, validateCapture,
-  type ProfileCapture, type ProfileRun, type StageTimingSample,
+  type ProfileCapture, type ProfileRun,
+  profileCompleteness, type RawArtifact, requestSamples, type StageTimingSample, sha256, timingCompleteness, validateCapture,
 } from '../src/profile-report';
-import { monitorServer } from '../src/resources';
 import { RawCapture, RuntimeCapture } from '../src/profiling';
+import { monitorServer } from '../src/resources';
 import { SCENARIOS, STAGE_SCENARIOS } from '../src/scenarios';
 import { TARGETS, targetLaunch } from '../src/targets';
 
@@ -163,14 +163,58 @@ test('optional inspector launch preserves default args and isolates runtime flag
     assert.deepEqual(target.args, TARGETS.find((item) => item.name === target.name)?.args);
     assert.ok(!ordinary.args.some((arg) => arg.startsWith('--inspect=')));
     if (target.platform === 'workers') {
-      assert.equal(instrumented.args[instrumented.args.indexOf('--inspector-port') + 1], '35333');
-      assert.ok(instrumented.args.includes('BENCH_CONFIGURATION:equivalent'));
+      assert.ok(instrumented.args.includes('--inspector-addr=127.0.0.1:35333'));
+      assert.ok(instrumented.args[1].endsWith('read-search-local-equivalent.capnp'));
       assert.ok(!instrumented.args.includes('--trace-gc'));
     } else {
       assert.ok(instrumented.args.some((arg) => arg.startsWith('--inspect=127.0.0.1:35333')));
       assert.equal(instrumented.args.includes('--trace-gc'), !['bun', 'deno'].includes(target.platform));
     }
   }
+});
+
+test('Workers ordinary launch: local application -> native serving executable without inspector or proxy', () => {
+  const target = TARGETS.find((item) => item.name === 'native-workers');
+  assert.ok(target);
+
+  const launch = targetLaunch(target, 'stage-minimal');
+
+  assert.match(launch.command, /\/workerd$/);
+  assert.equal(launch.args[0], 'serve');
+  assert.ok(launch.args.includes('--control-fd=3'));
+  assert.ok(!launch.args.some((arg) => /inspector|profiler/.test(arg)));
+  assert.ok(!launch.args.includes('dev'));
+});
+
+test('RuntimeCapture.close: Workers context enabled -> disables Runtime and awaits socket close exactly once', { timeout: 5_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-workerd-close-'));
+  const target = TARGETS.find((item) => item.name === 'native-workers');
+  assert.ok(target);
+  const calls: string[] = [];
+  let acknowledge: () => void = () => {};
+  let entered: () => void = () => {};
+  const socketClosed = new Promise<void>((resolve) => { acknowledge = resolve; });
+  const closeEntered = new Promise<void>((resolve) => { entered = resolve; });
+  const inspector = {
+    async call(method: string) { calls.push(method); return {}; },
+    async close() { calls.push('socket.close'); entered(); await socketClosed; },
+  };
+  const capture: unknown = Reflect.construct(RuntimeCapture, [target, inspector, new RawCapture(directory, directory)]);
+  assert.ok(capture instanceof RuntimeCapture);
+  try {
+    let complete = false;
+    const closing = capture.close().then(() => { complete = true; });
+    await closeEntered;
+
+    assert.equal(complete, false);
+    assert.deepEqual(calls, ['Runtime.disable', 'socket.close']);
+    acknowledge();
+    await closing;
+    await capture.close();
+
+    assert.equal(complete, true);
+    assert.deepEqual(calls, ['Runtime.disable', 'socket.close']);
+  } finally { acknowledge(); await rm(directory, { recursive: true, force: true }); }
 });
 
 test('CPU validity rejects startup-only samples and accepts request stack ancestry', () => {
@@ -586,6 +630,96 @@ test('canonical Next graceful SIGTERM exit 143 preserves flushed profile validit
   // When / Then
   assert.deepEqual(validateCapture(next, raw), []);
   assert.notEqual(validateCapture({ ...capture, runs: next.runs }, raw).length, 0);
+});
+
+test('direct workerd flushed capture: SIGINT intent/drain distinction -> rejects unrequested interruptions and abnormal exits', () => {
+  const { capture, raw } = fixture();
+  const runtime = { host: 'workerd', version: 'workerd 2025-06-04', executable: '/runtime/workerd' };
+  const subject = {
+    kind: 'application-isolate' as const, pid: 123, launcherPid: 123,
+    isolateId: 'actual-isolate-fixture', inspectorUrl: 'ws://127.0.0.1:1234/benchmark', runtime,
+  };
+  const identity = Buffer.from(JSON.stringify({
+    ...subject, runtimePid: null, workerRuntime: true, command: '/runtime/workerd serve config.capnp',
+  }));
+  raw.set('attempt/subject.json', identity);
+  const extra: RawArtifact[] = [];
+  const record = (kind: RawArtifact['kind'], path: string, value: unknown) => {
+    const bytes = Buffer.from(JSON.stringify(value));
+    raw.set(path, bytes);
+    const artifact = { kind, path, bytes: bytes.length, sha256: sha256(bytes) };
+    extra.push(artifact);
+    return artifact;
+  };
+  const profile = capture.artifacts.find((artifact) => artifact.kind === 'profile');
+  assert.ok(profile);
+  const runs = capture.runs.map((run): ProfileRun => {
+    const server = { ...run.server, rootPid: 123 };
+    const traffic = record('diagnostics', `attempt/${run.phase}.traffic.json`, { value: run.value, server });
+    const intent = {
+      owner: 'profile-collector', target: 'native-workers', phase: run.phase, pid: 123,
+      traffic: { path: traffic.path, bytes: traffic.bytes, sha256: traffic.sha256, materializedMs: 2.1 },
+      profile: run.phase === 'capture' ? { path: profile.path, bytes: profile.bytes, sha256: profile.sha256, materializedMs: 2.2 } : null,
+    };
+    record('identity', `attempt/${run.phase}.shutdown-intent.json`, intent);
+    const shutdown = record('identity', `attempt/${run.phase}.shutdown.json`, {
+      pid: 123, intent, requestedSignal: 'SIGINT', requestedMs: 3, signalSent: true,
+      exitObservedMs: 4, drainedMs: 5, stdoutDrained: true, stderrDrained: true, forced: false,
+    });
+    return {
+      ...run, server, shutdownPath: shutdown.path,
+      exit: { code: null, signal: 'SIGINT' },
+      launch: { ...run.launch, command: runtime.executable, args: ['serve', 'config.capnp', '--control-fd=3'] },
+    };
+  });
+  const worker: ProfileCapture = {
+    ...capture, subject, condition: { ...capture.condition, target: 'native-workers', platform: 'workers' },
+    artifacts: [...capture.artifacts.map((artifact) => artifact.kind === 'identity'
+      ? { ...artifact, bytes: identity.length, sha256: sha256(identity) } : artifact), ...extra],
+    runs,
+  };
+
+  assert.deepEqual(validateCapture(worker, raw), []);
+
+  for (const defect of ['unrequested', 'signal-not-sent', 'interrupted-before-intent', 'stdout-not-drained', 'stderr-not-drained', 'profile-not-materialized'] as const) {
+    const changedRaw = new Map(raw);
+    const path = 'attempt/capture.shutdown.json';
+    const original = changedRaw.get(path);
+    assert.ok(original);
+    const receipt = JSON.parse(Buffer.from(original).toString());
+    if (defect === 'unrequested') receipt.intent = null;
+    if (defect === 'signal-not-sent') receipt.signalSent = false;
+    if (defect === 'interrupted-before-intent') receipt.exitObservedMs = 2.5;
+    if (defect === 'stdout-not-drained') receipt.stdoutDrained = false;
+    if (defect === 'stderr-not-drained') receipt.stderrDrained = false;
+    if (defect === 'profile-not-materialized') {
+      receipt.intent.profile = null;
+      const intentPath = 'attempt/capture.shutdown-intent.json';
+      changedRaw.set(intentPath, Buffer.from(JSON.stringify(receipt.intent)));
+    }
+    const bytes = Buffer.from(JSON.stringify(receipt));
+    changedRaw.set(path, bytes);
+    const changed: ProfileCapture = { ...worker, artifacts: worker.artifacts.map((artifact) => {
+      const data = changedRaw.get(artifact.path);
+      assert.ok(data);
+      return { ...artifact, bytes: data.length, sha256: sha256(data) };
+    }) };
+    assert.ok(validateCapture(changed, changedRaw).includes('partial-or-invalid-traffic'), defect);
+  }
+  for (const defect of ['proxy', 'foreign-pid', 'missing-control', 'forced-kill'] as const) {
+    const changed: ProfileCapture = { ...worker, runs: worker.runs.map((run) => ({
+      ...run,
+      server: defect === 'foreign-pid' ? { ...run.server, rootPid: 456 } : run.server,
+      exit: defect === 'forced-kill' ? { code: null, signal: 'SIGKILL' } : run.exit,
+      launch: defect === 'proxy' ? { ...run.launch, command: 'node' }
+        : defect === 'missing-control' ? { ...run.launch, args: ['serve', 'config.capnp'] } : run.launch,
+    })) };
+    assert.ok(validateCapture(changed, raw).includes('partial-or-invalid-traffic'), defect);
+  }
+  const node = fixture();
+  assert.ok(validateCapture({
+    ...node.capture, runs: node.capture.runs.map((run) => ({ ...run, exit: { code: null, signal: 'SIGINT' } })),
+  }, node.raw).includes('partial-or-invalid-traffic'));
 });
 
 function timingSamples(): StageTimingSample[] {
