@@ -1,8 +1,13 @@
 import type { EnvironmentSummary } from './provenance';
+import type { authenticateTimingIdentity, TimingPreparation } from './timing-identity';
 import type { Measurement } from './traffic';
 import { histogramPercentile } from './traffic';
 
-export interface TargetResult extends Measurement { readonly label: string }
+export interface TargetResult extends Measurement {
+  readonly label: string;
+  readonly warmup?: Measurement;
+  readonly servingIdentity?: Awaited<ReturnType<typeof authenticateTimingIdentity>> | Extract<TimingPreparation, { status: 'unsupported' }>;
+}
 export interface ScenarioResult {
   readonly name: string;
   readonly description: string;

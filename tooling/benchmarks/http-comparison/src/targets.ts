@@ -140,6 +140,7 @@ export function runCommand(command: string, args: string[]): Promise<void> {
 }
 
 export interface TargetLaunchOptions {
+  readonly timingIdentity?: boolean;
   readonly inspectorPort?: number;
   readonly gcTrace?: boolean;
   readonly env?: Readonly<Record<string, string>>;
@@ -151,6 +152,14 @@ export function targetLaunch(target: TargetConfig, appShape: AppShape, options: 
   const configuration = options.env?.BENCH_CONFIGURATION ?? process.env.BENCH_CONFIGURATION ?? 'default';
   const args = target.platform === 'workers' ? [...target.args, '--var', `BENCH_APP_SHAPE:${appShape}`, '--var', `BENCH_CONFIGURATION:${configuration}`]
     : target.platform === 'deno' ? [...target.args, appShape] : [...target.args];
+  if (options.timingIdentity && target.platform !== 'workers') {
+    const bootstrap = join(WDIR, 'src/timing-bootstrap.mjs');
+    if (target.platform === 'deno') {
+      const index = args.findIndex((arg) => arg.endsWith('.mjs'));
+      args[index] = bootstrap;
+    } else if (target.platform === 'bun') args.splice(1, 0, '--preload', bootstrap);
+    else args.unshift('--import', bootstrap);
+  }
   if (options.inspectorPort !== undefined) {
     const address = `127.0.0.1:${options.inspectorPort}`;
     switch (target.platform) {
