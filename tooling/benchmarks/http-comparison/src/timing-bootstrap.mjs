@@ -1,14 +1,21 @@
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 // One startup attestation, before the host starts. No HTTP interception, timers,
 // inspector connection or profiler is installed in the measured process.
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+async function digestFile(path) {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path, { highWaterMark: 64 * 1024 })) {
+    hash.update(chunk);
+  }
+  return hash.digest('hex');
+}
 const files = JSON.parse(process.env.BENCH_TIMING_FILES);
 const hashes = {};
-for (const file of files) hashes[file] = digest(await readFile(file));
+for (const file of files) hashes[file] = await digestFile(file);
 const deno = Reflect.get(globalThis, 'Deno');
 const bun = Reflect.get(globalThis, 'Bun');
 const runtime = deno ? { ...deno.version } : { ...process.versions };
@@ -22,7 +29,7 @@ const identity = {
   pid: deno ? deno.pid : process.pid,
   runtime,
   executable: deno ? deno.execPath() : process.execPath,
-  executableSha256: digest(await readFile(deno ? deno.execPath() : process.execPath)),
+  executableSha256: await digestFile(deno ? deno.execPath() : process.execPath),
   entry: process.env.BENCH_TIMING_ENTRY,
   artifacts: hashes,
   artifactsSha256: digest(JSON.stringify(hashes)),

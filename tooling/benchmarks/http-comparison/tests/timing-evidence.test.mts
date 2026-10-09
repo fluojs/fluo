@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -6,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { EvidenceJournal } from '../src/evidence';
 import type { TargetResult } from '../src/report';
 import { runScenario } from '../src/run';
@@ -13,6 +16,31 @@ import { startTargets, stopTargets, type TargetConfig, waitForTarget } from '../
 import { authenticateTimingIdentity, prepareTimingIdentity, TimingIdentityFailure } from '../src/timing-identity';
 
 const fixture = fileURLToPath(new URL('./fixtures/timing-server.mjs', import.meta.url));
+
+test('timing bootstrap: serving digests use bounded hash inputs instead of whole executable buffers', { timeout: 20_000 }, async () => {
+  const bootstrap = fileURLToPath(new URL('../src/timing-bootstrap.mjs', import.meta.url));
+  const probe = fileURLToPath(new URL('./fixtures/timing-hash-input-probe.mjs', import.meta.url));
+  const { stdout, stderr } = await promisify(execFile)(process.execPath, ['--import', probe, bootstrap], {
+    env: {
+      ...process.env,
+      BENCH_TIMING_FILES: JSON.stringify([fixture]),
+      BENCH_TIMING_ENTRY: fixture,
+      BENCH_TIMING_NONCE: 'bounded-hash-regression',
+      BENCH_TARGET: 'native-nodejs',
+      BENCH_TIMING_IMPORT_ENTRY: '0',
+    },
+    timeout: 15_000,
+  });
+  const line = stdout.split('\n').find((value) => value.startsWith('BENCH_TIMING_IDENTITY '));
+  assert.ok(line);
+  const identity = JSON.parse(line.slice('BENCH_TIMING_IDENTITY '.length));
+  assert.equal(identity.artifacts[fixture], createHash('sha256').update(await readFile(fixture)).digest('hex'));
+  assert.equal(identity.executableSha256, createHash('sha256').update(await readFile(process.execPath)).digest('hex'));
+  const maximum = stderr.match(/HASH_INPUT_MAX_BYTES=(\d+)/);
+  assert.ok(maximum);
+  assert.ok(Number(maximum[1]) > 0, 'The probe must observe actual hashing');
+  assert.ok(Number(maximum[1]) <= 64 * 1024, `Hash input exceeded 64KiB: ${maximum[1]} bytes`);
+});
 
 async function condition() {
   const reservation = createServer();

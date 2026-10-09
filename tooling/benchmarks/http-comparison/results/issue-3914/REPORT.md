@@ -193,3 +193,39 @@ diff checks. See `timing-linux-procfs-green-20261009.log` and
 Cloudflare account clarification timed out. Account availability and external
 deployment authority remain unconfirmed; no login or deployment was attempted.
 All other outstanding issue acceptance and exact-head gates remain open.
+
+## Bounded startup hashing
+
+A separate BEFORE-only on/off diagnostic identified a measurable startup
+observer burden: authenticated runs used 119.48-122.73 MiB, compared with
+79.91-82.41 MiB with startup attestation disabled. The three paired deltas
+were 38.52, 39.19 and 42.83 MiB. These short diagnostic runs are not candidate
+acceptance and do not establish a production leak or explain every prior
+RSS outlier. The disabled arm deliberately lacks an authenticated receipt.
+
+The bootstrap previously read each file, including the serving executable,
+into a whole Buffer before hashing. A deterministic child-process regression
+observed `Hash input exceeded 64KiB: 121911744 bytes` before the fix.
+It checks actual hash-update inputs and exact SHA-256 equality, not prose,
+source strings or GC timing. `timing-hash-buffer-red-20261009.log` preserves
+that assertion-level RED.
+
+The bootstrap now streams file hashing in 64 KiB chunks. Its digests, nonce,
+runtime/executable, build-file and OS listener identity checks are unchanged.
+The full harness passed 153 tests plus typecheck and Biome; Linux passed
+all 11 identity regressions. The actual-host check passed 12 conditions,
+with 10 authenticated Node/Bun/Deno/Next App/Pages hosts and the same two
+explicitly unsupported Workers hosts. Logs are `timing-hash-stream-green-20261009.log`,
+`timing-linux-stream-hash-green-20261009.log` and `stream-hash-hosts-20261009.log`;
+the latter's raw receipt is `stream-hash-hosts-20261009.json`.
+
+The unchanged on/off diagnostic after the fix observed authenticated RSS of
+84.95-87.59 MiB and disabled RSS of 79.98-80.73 MiB, paired differences of
+4.97, 6.86 and 6.86 MiB. This confirms reduced observer burden, not zero
+overhead or a final full-duration regression verdict. No amount is subtracted
+from acceptance RSS; both future arms must use the same repaired harness.
+Budget limits and all historical INCONCLUSIVE results remain unchanged.
+
+Both raw diagnostics, summaries and their script are preserved under root
+`.omo/verification/3911-bootstrap-*`. The temporary worktree diagnostic script
+was copied there unchanged before removal. No framework package source changed.
