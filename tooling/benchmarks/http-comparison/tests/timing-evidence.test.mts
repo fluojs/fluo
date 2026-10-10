@@ -17,7 +17,7 @@ import { authenticateTimingIdentity, prepareTimingIdentity, TimingIdentityFailur
 
 const fixture = fileURLToPath(new URL('./fixtures/timing-server.mjs', import.meta.url));
 
-test('timing bootstrap: serving digests use bounded hash inputs instead of whole executable buffers', { timeout: 20_000 }, async () => {
+test('timing bootstrap: serving digests bound individual and cumulative hash buffers', { timeout: 20_000 }, async () => {
   const bootstrap = fileURLToPath(new URL('../src/timing-bootstrap.mjs', import.meta.url));
   const probe = fileURLToPath(new URL('./fixtures/timing-hash-input-probe.mjs', import.meta.url));
   const { stdout, stderr } = await promisify(execFile)(process.execPath, ['--import', probe, bootstrap], {
@@ -40,6 +40,10 @@ test('timing bootstrap: serving digests use bounded hash inputs instead of whole
   assert.ok(maximum);
   assert.ok(Number(maximum[1]) > 0, 'The probe must observe actual hashing');
   assert.ok(Number(maximum[1]) <= 64 * 1024, `Hash input exceeded 64KiB: ${maximum[1]} bytes`);
+  const backing = stderr.match(/HASH_BACKING_TOTAL_BYTES=(\d+)/);
+  assert.ok(backing);
+  assert.ok(Number(backing[1]) > 0, 'The probe must observe actual binary backing storage');
+  assert.ok(Number(backing[1]) <= 64 * 1024, `Cumulative hash backing storage exceeded 64KiB: ${backing[1]} bytes`);
 });
 
 async function condition() {
