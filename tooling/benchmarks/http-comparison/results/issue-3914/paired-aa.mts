@@ -12,8 +12,8 @@ export const CONDITION = {
   minimumCompletedRequests: 20_000,
 } as const;
 export const BLOCKS = [['N', 'X', 'Y', 'N'], ['N', 'Y', 'X', 'N'], ['N', 'X', 'Y', 'N']] as const;
-const CV = { throughputRps: 0.03, serverCpuMicrosPerRequest: 0.03, p95Ms: 0.05, p99Ms: 0.075, rssBytes: 0.05 } as const;
-const LIMITS = {
+export const CV = { throughputRps: 0.03, serverCpuMicrosPerRequest: 0.03, p95Ms: 0.05, p99Ms: 0.075, rssBytes: 0.05 } as const;
+export const LIMITS = {
   throughputRps: { minimum: 0.95 }, serverCpuMicrosPerRequest: { maximum: 1.05 },
   p95Ms: { maximum: 1.10 }, p99Ms: { maximum: 1.15 }, rssBytes: { maximum: 1.10 },
 } as const;
@@ -117,7 +117,8 @@ export function frozenPlan(input: unknown) {
       executable: absolute(generator.executable), hostname: text(generator.hostname) },
   };
 }
-type FrozenPlan = ReturnType<typeof frozenPlan>;
+export type FrozenPlan = ReturnType<typeof frozenPlan>;
+export { absolute, array, equal, hash, integer, object, positive, precision, sha256, text };
 
 function cv(values: number[]): number {
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -152,7 +153,7 @@ function observedDuration(value: unknown, requested: number): void {
   if (positive(value) < requested - 0.01) throw new AAInputFailure('Traffic ended before the requested duration');
 }
 
-function readRecord(input: unknown, index: number, plan: FrozenPlan) {
+export function readRecord(input: unknown, index: number, plan: FrozenPlan) {
   const record = object(input);
   const block = Math.floor(index / 4);
   const slot = index % 4;
@@ -257,6 +258,15 @@ function readRecord(input: unknown, index: number, plan: FrozenPlan) {
 }
 
 export function evaluateAA(planInput: unknown, evidenceInput: unknown) {
+  return evaluatePaired(() => {
+    const plan = frozenPlan(planInput);
+    equal(plan.targetArtifactsSha256.X, plan.targetArtifactsSha256.Y, 'same BEFORE build');
+    return plan;
+  }, evidenceInput);
+}
+
+// Source-specific comparisons supply authentic per-run descriptors; raw records are never rewritten.
+export function evaluatePaired(planAt: (index: number) => FrozenPlan, evidenceInput: unknown) {
   const evidenceErrors: string[] = [];
   const inconclusive: string[] = [];
   const budgetBreaches: { metric: Metric; observation: string; ratio: number }[] = [];
@@ -265,13 +275,12 @@ export function evaluateAA(planInput: unknown, evidenceInput: unknown) {
     ratios: number[]; ratioCv: number; medianRatio: number;
   }[] = [];
   try {
-    const plan = frozenPlan(planInput);
-    equal(plan.targetArtifactsSha256.X, plan.targetArtifactsSha256.Y, 'same BEFORE build');
+    const firstPlan = planAt(0);
     const evidence = object(evidenceInput);
     equal(evidence.invalidAttempts, [], 'invalid attempts');
     const rawRecords = array(evidence.records);
     equal(rawRecords.length, 12, 'exact run count');
-    const records = rawRecords.map((record, index) => readRecord(record, index, plan));
+    const records = rawRecords.map((record, index) => readRecord(record, index, index === 0 ? firstPlan : planAt(index)));
     if (new Set(records.map((record) => record.pid)).size !== 12 || new Set(records.map((record) => record.nonce)).size !== 12) throw new AAInputFailure('Duplicate serving process identity');
     if (new Set(records.map((record) => record.generatorPid)).size !== 12
       || new Set(records.map((record) => record.generatorNonce)).size !== 12) throw new AAInputFailure('Reused generator across server runs');
