@@ -229,3 +229,65 @@ Budget limits and all historical INCONCLUSIVE results remain unchanged.
 Both raw diagnostics, summaries and their script are preserved under root
 `.omo/verification/3911-bootstrap-*`. The temporary worktree diagnostic script
 was copied there unchanged before removal. No framework package source changed.
+
+## 2026-10-11 evidence update
+
+This section supersedes earlier environment-availability statements, not their
+historical results. It does not establish issue completion or a performance
+improvement in a public package.
+
+The direct local workerd path now authenticates the native process, listener,
+bundle and configuration without an ordinary-timing inspector. Its finite
+correctness and separate CPU capture evidence are described in
+`direct-workerd-increment.md`. The earlier Wrangler-host `unsupported` records
+remain preserved and are not reclassified. Local process identity is not proof
+of a deployed isolate's cold-start identity.
+
+Actual Workers Free deployment correctness was subsequently verified at source
+`f18b264fd26ea2e5818d374b080d0640645d549e`: 44 immutable Version URL conditions,
+180 new controlled requests, no invalid attempts and exit 0. Including the
+preserved production attempts and diagnostics, the controlled total is 204 of
+the declared 250-request cap. Two failed production-routing attempts remain in
+their original receipt. Version URL correctness does not establish production
+traffic allocation, isolate cold start, framework-exclusive CPU/RSS, throughput,
+capacity or performance-budget acceptance. No paid plan or add-on was enabled.
+The exact summary is `.omo/verification/3914-version-url-correctness-summary-20261011.json`;
+the raw receipt is `deployed-version-url-correctness-20261011.json`.
+
+The measurement corrections and subsequent experiments have separate verdicts:
+
+| Source or experiment | Completed evidence | Scope of conclusion |
+| --- | --- | --- |
+| `70407cfe9` CPU precision correction | Independent Linux process RED/GREEN against procfs counters; explicit 0.01-second quantum | Repairs precision, not all variability |
+| `aaaa62305` original paired A/A | 12 runs; 46,766,937 measured requests | INCONCLUSIVE; original records retained |
+| `9d1d0addc` continuous local generator A/A | 12 runs; 47,216,486 measured requests | Within unchanged budgets for one Linux/Bun condition only |
+| Shared header candidate on OrbStack | 12 runs; 48,134,492 measured requests | INCONCLUSIVE: p95 paired CV 5.323% exceeded 5%; no budget breaches |
+| Baseline-only scheduling diagnostic | Four instrumented runs; 15,735,475 measured requests | Diagnostic only; not candidate acceptance |
+| `b7b4aaa5f` NAS same-code A/A | 12 runs; 4,607,948 measured requests; 1,144.898 seconds | Within unchanged budgets for the declared NAS/Bun condition only |
+
+The NAS condition is Bun 1.4.2, Linux x64, `stage-minimal`, `equivalent`,
+concurrency 64, 30-second warmup and 60-second measurement. Both framework arms
+use the same baseline package tree from
+`1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18`. The NAS's Linux 4.4 kernel remains
+outside the documented Node 24/Bun support limits despite observed compatibility.
+The calibration does not change that support boundary or establish capacity.
+Initial NAS provisioning took 355 seconds; fresh build and 68 passing focused
+tests took 635.827 seconds, separately from measurement. All 15 recovered raw
+JSON files matched their NAS SHA-256 values. The complete binding and raw paths
+are in `.omo/verification/nas-benchmark-20261011/summary.json`.
+
+The Node-family collector at
+`6ddddba7b8e1b0519ff6760ae98931152869f661` separates explicit calibration and
+candidate modes for Node.js, Fastify and Express. Its full macOS harness run
+passed 369 tests with one Linux-only skip and zero failures; focused tests,
+typecheck and changed-file lint also passed. This is implementation validation,
+not Linux Node candidate acceptance. A Bun calibration cannot satisfy its
+platform-specific Node calibration binding.
+
+Remaining work includes the source-bound shared candidate comparison, all
+required affected conditions, local Workers and production Next App/Pages
+comparisons, explicit deployed metric limitations, final exact-head reviews,
+remote CI and lane completion. No additional platform-specific optimization is
+claimed without a confirmed Fluo-exclusive bottleneck. These private benchmark
+and evidence changes do not modify public package behavior or require a
+Changeset.
