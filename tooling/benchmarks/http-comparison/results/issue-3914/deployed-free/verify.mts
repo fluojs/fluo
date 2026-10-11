@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { EvidenceJournal, failureEvidence } from '../../../src/evidence';
@@ -65,13 +65,21 @@ if (!process.argv.includes('--execute')) {
           journal.current = condition;
           const name = `fluo-3914-${target.product}-20261011`;
           const baseUrl = `https://${name}.wpfekdml.workers.dev`;
-          const bundle = join(directory, `${target.product}-bundle/server.js`);
+          const baseBundle = await readFile(join(directory, `${target.product}-bundle/server.js`));
+          const conditionDirectory = join(directory, 'condition-bundles', configuration, target.product, scenario.name);
+          await mkdir(conditionDirectory, { recursive: true });
+          const bundle = join(conditionDirectory, 'server.js');
+          const marker = `\n// finite-correctness condition: ${configuration}/${target.name}/${scenario.name}\n`;
+          const deployedBundle = Buffer.concat([baseBundle, Buffer.from(marker)]);
+          // Bindings-only updates may reuse an isolate containing the previous app.
+          // Distinct code bytes avoid relying on such reuse; this is not cold-start proof.
+          await writeFile(bundle, deployedBundle, { flag: 'wx' });
           const args = [
             join(WDIR, 'node_modules/wrangler/bin/wrangler.js'), 'deploy', bundle,
             '--no-bundle', '--config', join(directory, `${target.product}.wrangler.json`),
             '--var', `BENCH_APP_SHAPE:${scenario.appShape}`, '--var', `BENCH_CONFIGURATION:${configuration}`,
           ];
-          const deployment: Record<string, unknown> = { ...condition, name, baseUrl, bundleSha256: sha256(await readFile(bundle)), command: process.execPath, args, startedAt: new Date().toISOString() };
+          const deployment: Record<string, unknown> = { ...condition, name, baseUrl, baseBundleSha256: sha256(baseBundle), bundleSha256: sha256(deployedBundle), marker, command: process.execPath, args, startedAt: new Date().toISOString() };
           deployments.push(deployment);
           journal.flush();
           const deployed = await execute(process.execPath, args, {

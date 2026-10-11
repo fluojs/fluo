@@ -1,4 +1,5 @@
 /native-bundle/
 /fluo-bundle/
+/condition-bundles/
 !native.wrangler.json
 !fluo.wrangler.json
