@@ -11,6 +11,14 @@ export const CONDITION = {
   configuration: 'equivalent', connections: 64, warmupSeconds: 30, measureSeconds: 60,
   minimumCompletedRequests: 20_000,
 } as const;
+// Private shared helpers accept only these declared subjects, never arbitrary conditions.
+export type NodeSubject = {
+  readonly platform: 'nodejs' | 'fastify' | 'express';
+  readonly mode: 'calibration' | 'candidate';
+};
+export function pairedCondition(subject?: NodeSubject) {
+  return subject ? { ...CONDITION, platform: subject.platform, runtimeVersion: '24.21.0' } as const : CONDITION;
+}
 export const BLOCKS = [['N', 'X', 'Y', 'N'], ['N', 'Y', 'X', 'N'], ['N', 'X', 'Y', 'N']] as const;
 export const CV = { throughputRps: 0.03, serverCpuMicrosPerRequest: 0.03, p95Ms: 0.05, p99Ms: 0.075, rssBytes: 0.05 } as const;
 export const LIMITS = {
@@ -117,7 +125,9 @@ export function frozenPlan(input: unknown) {
       executable: absolute(generator.executable), hostname: text(generator.hostname) },
   };
 }
-export type FrozenPlan = ReturnType<typeof frozenPlan>;
+export type FrozenPlan = Omit<ReturnType<typeof frozenPlan>, 'condition'> & {
+  condition: ReturnType<typeof pairedCondition>;
+};
 export { absolute, array, equal, hash, integer, object, positive, precision, sha256, text };
 
 function cv(values: number[]): number {
@@ -153,7 +163,7 @@ function observedDuration(value: unknown, requested: number): void {
   if (positive(value) < requested - 0.01) throw new AAInputFailure('Traffic ended before the requested duration');
 }
 
-export function readRecord(input: unknown, index: number, plan: FrozenPlan) {
+export function readRecord(input: unknown, index: number, plan: FrozenPlan, subject?: NodeSubject) {
   const record = object(input);
   const block = Math.floor(index / 4);
   const slot = index % 4;
@@ -162,7 +172,8 @@ export function readRecord(input: unknown, index: number, plan: FrozenPlan) {
   equal(record.block, block, 'block');
   equal(record.slot, slot, 'slot');
   equal(record.arm, arm, 'arm order');
-  equal(record.condition, CONDITION, 'record condition');
+  const condition = pairedCondition(subject);
+  equal(record.condition, condition, 'record condition');
   equal(record.identity, {
     head: plan.head, frameworkSource: plan.frameworkSource, collectorSha256: plan.collectorSha256,
     harnessSha256: plan.harnessSha256, buildReceiptSha256: plan.buildReceipt.sha256,
@@ -172,12 +183,13 @@ export function readRecord(input: unknown, index: number, plan: FrozenPlan) {
   const endedMs = positive(record.endedMs);
   if (endedMs <= startedMs) throw new AAInputFailure('Invalid run interval');
   const raw = object(record.raw);
-  equal(raw.label, arm === 'N' ? 'native-bun' : 'fluo-bun', 'target');
+  equal(raw.label, `${arm === 'N' ? 'native' : 'fluo'}-${condition.platform}`, 'target');
   const identity = object(raw.servingIdentity);
   equal(identity.status, 'authenticated', 'serving authentication');
   equal(identity.instrumentation, 'none', 'instrumentation');
   const runtime = object(identity.runtime);
-  equal(runtime.bun, CONDITION.runtimeVersion, 'serving runtime');
+  equal(runtime[subject ? 'node' : 'bun'], condition.runtimeVersion, 'serving runtime');
+  if (subject && (runtime.bun !== undefined || runtime.deno !== undefined)) throw new AAInputFailure('Non-Node serving runtime');
   equal(identity.executableSha256, plan.runtimeExecutableSha256, 'serving executable');
   equal(identity.target, raw.label, 'serving target');
   equal(identity.artifactsSha256, plan.targetArtifactsSha256[arm], 'serving build');
@@ -266,7 +278,7 @@ export function evaluateAA(planInput: unknown, evidenceInput: unknown) {
 }
 
 // Source-specific comparisons supply authentic per-run descriptors; raw records are never rewritten.
-export function evaluatePaired(planAt: (index: number) => FrozenPlan, evidenceInput: unknown) {
+export function evaluatePaired(planAt: (index: number) => FrozenPlan, evidenceInput: unknown, subject?: NodeSubject) {
   const evidenceErrors: string[] = [];
   const inconclusive: string[] = [];
   const budgetBreaches: { metric: Metric; observation: string; ratio: number }[] = [];
@@ -280,7 +292,7 @@ export function evaluatePaired(planAt: (index: number) => FrozenPlan, evidenceIn
     equal(evidence.invalidAttempts, [], 'invalid attempts');
     const rawRecords = array(evidence.records);
     equal(rawRecords.length, 12, 'exact run count');
-    const records = rawRecords.map((record, index) => readRecord(record, index, index === 0 ? firstPlan : planAt(index)));
+    const records = rawRecords.map((record, index) => readRecord(record, index, index === 0 ? firstPlan : planAt(index), subject));
     if (new Set(records.map((record) => record.pid)).size !== 12 || new Set(records.map((record) => record.nonce)).size !== 12) throw new AAInputFailure('Duplicate serving process identity');
     if (new Set(records.map((record) => record.generatorPid)).size !== 12
       || new Set(records.map((record) => record.generatorNonce)).size !== 12) throw new AAInputFailure('Reused generator across server runs');

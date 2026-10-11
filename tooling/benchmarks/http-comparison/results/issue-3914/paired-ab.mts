@@ -6,16 +6,22 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import type { EvidenceJournal } from '../../src/evidence';
-import type { FrozenPlan } from './paired-aa.mjs';
+import type { FrozenPlan, NodeSubject } from './paired-aa.mjs';
 import {
   AAInputFailure, absolute, array, BLOCKS, CONDITION, CV, equal, evaluatePaired,
-  hash, integer, LIMITS, object, precision, readRecord, sha256, text,
+  hash, integer, LIMITS, object, pairedCondition, precision, readRecord, sha256, text,
 } from './paired-aa.mjs';
 
 const execute = promisify(execFile);
 const COLLECTOR = fileURLToPath(import.meta.url);
 const VALIDATOR = fileURLToPath(new URL('./paired-aa.mts', import.meta.url));
 const ORDER = BLOCKS.flat();
+function collectorPath(subject?: NodeSubject) {
+  return subject ? fileURLToPath(new URL('./paired-node.mts', import.meta.url)) : COLLECTOR;
+}
+function collectorName(subject?: NodeSubject) {
+  return subject ? 'paired-node.mts' : 'paired-ab.mts';
+}
 type Arm = (typeof ORDER)[number];
 const FIXED_ENV = {
   BENCH_CONFIGURATION: 'equivalent', BENCH_WARMUP_SEC: '30', BENCH_MEASURE_SEC: '60',
@@ -40,10 +46,16 @@ function artifactMap(value: unknown): Record<string, string> {
  * Paths are canonical absolute paths. Artifacts include prepared inputs and lockfiles.
  */
 export function frozenABPlan(input: unknown) {
+  return frozenSourcePlan(input);
+}
+
+export function frozenSourcePlan(input: unknown, subject?: NodeSubject) {
   const plan = object(input);
-  equal(plan.schema, 'paired-ab-v1', 'schema');
+  const condition = pairedCondition(subject);
+  equal(plan.schema, subject ? 'paired-node-v1' : 'paired-ab-v1', 'schema');
+  if (subject) equal(plan.mode, subject.mode, 'explicit Node mode');
   equal(plan.status, 'FROZEN', 'plan freeze');
-  equal(plan.condition, CONDITION, 'condition');
+  equal(plan.condition, condition, 'condition');
   equal(plan.blocks, BLOCKS, 'order');
   equal(plan.maxCv, CV, 'CV policy');
   equal(plan.ratioLimits, LIMITS, 'budget policy');
@@ -65,7 +77,13 @@ export function frozenABPlan(input: unknown) {
     generator: { protocol: 'local-session-v1', node: text(generator.node),
       executable: absolute(generator.executable), hostname: text(generator.hostname) },
     generatorExecutableSha256: hash(freeze.generatorExecutableSha256),
+    ...(subject ? { orchestratorSha256: hash(freeze.orchestratorSha256) } : {}),
   };
+  if (subject) {
+    equal(shared.generator.node, 'v24.21.0', 'Node generator runtime');
+    equal(shared.generator.executable, shared.runtimeExecutable, 'Node generator executable');
+    equal(shared.generatorExecutableSha256, shared.runtimeExecutableSha256, 'Node generator executable hash');
+  }
   const inputs = object(plan.arms);
   equal(Object.keys(inputs).sort(), ['N', 'X', 'Y'], 'arm descriptors');
   const parseArm = (arm: Arm) => {
@@ -83,7 +101,7 @@ export function frozenABPlan(input: unknown) {
     }
     const targetDigest = hash(item.targetArtifactsSha256);
     return {
-      ...shared, status: 'FROZEN', condition: CONDITION, blocks: BLOCKS,
+      ...shared, status: 'FROZEN', condition, blocks: BLOCKS,
       cwd, workspace, head: gitSha(item.head), frameworkSource: gitSha(item.frameworkSource),
       packagesTree: gitSha(item.packagesTree), artifacts,
       targetArtifactsSha256: { N: targetDigest, X: targetDigest, Y: targetDigest },
@@ -93,13 +111,23 @@ export function frozenABPlan(input: unknown) {
   const arms = { N: parseArm('N'), X: parseArm('X'), Y: parseArm('Y') };
   equal(arms.N.frameworkSource, arms.X.frameworkSource, 'baseline source');
   equal(arms.N.packagesTree, arms.X.packagesTree, 'baseline packages tree');
-  if (arms.Y.packagesTree === arms.X.packagesTree || arms.Y.frameworkSource === arms.X.frameworkSource
+  if (subject?.mode === 'calibration') {
+    for (const arm of [arms.N, arms.Y]) {
+      equal(arm.frameworkSource, arms.X.frameworkSource, 'calibration framework source');
+      equal(arm.packagesTree, arms.X.packagesTree, 'calibration packages tree');
+      equal(arm.head, arms.X.head, 'calibration head');
+      equal(arm.cwd, arms.X.cwd, 'calibration checkout');
+    }
+    equal(arms.X.targetArtifactsSha256, arms.Y.targetArtifactsSha256, 'calibration same build');
+  } else if (arms.Y.packagesTree === arms.X.packagesTree || arms.Y.frameworkSource === arms.X.frameworkSource
     || arms.Y.head === arms.X.head || arms.Y.cwd === arms.X.cwd) {
     throw new AAInputFailure('Candidate must have a distinct source, packages tree and checkout');
   }
   return {
-    schema: 'paired-ab-v1', status: 'FROZEN', orderSeed: text(plan.orderSeed),
-    previousPolicySha256: hash(plan.previousPolicySha256), calibrationPlanSha256: hash(plan.calibrationPlanSha256),
+    schema: subject ? 'paired-node-v1' : 'paired-ab-v1', status: 'FROZEN', orderSeed: text(plan.orderSeed),
+    ...(subject ? { mode: subject.mode, condition } : {}),
+    previousPolicySha256: hash(plan.previousPolicySha256),
+    calibrationPlanSha256: subject?.mode === 'calibration' ? null : hash(plan.calibrationPlanSha256),
     protocol: { path: absolute(protocol.path), sha256: hash(protocol.sha256) }, ...shared, arms,
   };
 }
@@ -115,9 +143,13 @@ export function flushJournalPhases(journal: EvidenceJournal): void {
 }
 
 export function evaluateAB(planInput: unknown, evidenceInput: unknown) {
+  return evaluateSourcePaired(planInput, evidenceInput);
+}
+
+export function evaluateSourcePaired(planInput: unknown, evidenceInput: unknown, subject?: NodeSubject) {
   // Parsing happens inside the shared evaluator's evidence-error boundary.
   return evaluatePaired((index) => {
-    const plan = frozenABPlan(planInput);
+    const plan = frozenSourcePlan(planInput, subject);
     const evidence = object(evidenceInput);
     equal(evidence.planSha256, sha256(JSON.stringify(planInput)), 'evidence plan binding');
     const records = array(evidence.records).map(object);
@@ -142,7 +174,7 @@ export function evaluateAB(planInput: unknown, evidenceInput: unknown) {
       }
     }
     return plan.arms[arm];
-  }, evidenceInput);
+  }, evidenceInput, subject);
 }
 
 export async function digestFile(path: string, expected: string, label: string) {
@@ -160,7 +192,7 @@ async function verifyPackageOutput(directory: string, artifacts: Record<string, 
 }
 
 /** Verify immutable inputs before and after each run, without build or install commands. */
-export async function verifyArm(plan: ABPlan, arm: Arm) {
+export async function verifyArm(plan: ABPlan, arm: Arm, subject?: NodeSubject) {
   const descriptor = plan.arms[arm];
   const git = async (...args: string[]) => (await execute('git', args, { cwd: descriptor.workspace, timeout: 10_000 })).stdout.trim();
   equal(await realpath(descriptor.cwd), descriptor.cwd, 'canonical arm cwd');
@@ -168,11 +200,13 @@ export async function verifyArm(plan: ABPlan, arm: Arm) {
   equal(await git('status', '--porcelain', '--untracked-files=normal'), '', 'clean arm source');
   equal(await git('rev-parse', 'HEAD:packages'), descriptor.packagesTree, 'checkout packages tree');
   equal(await git('rev-parse', `${descriptor.frameworkSource}:packages`), descriptor.packagesTree, 'framework packages tree');
-  await digestFile(join(descriptor.cwd, 'results/issue-3914/paired-ab.mts'), plan.collectorSha256, 'arm collector');
+  await digestFile(join(descriptor.cwd, 'results/issue-3914', collectorName(subject)), plan.collectorSha256, 'arm collector');
+  if (subject) await digestFile(join(descriptor.cwd, 'results/issue-3914/paired-ab.mts'), hash(plan.orchestratorSha256), 'arm orchestrator');
   await digestFile(join(descriptor.cwd, 'results/issue-3914/paired-aa.mts'), plan.validatorSha256, 'arm validator');
   await digestFile(plan.runtimeExecutable, plan.runtimeExecutableSha256, 'Bun executable');
   await digestFile(plan.generator.executable, plan.generatorExecutableSha256, 'generator executable');
-  equal((await execute(plan.runtimeExecutable, ['--version'], { timeout: 10_000 })).stdout.trim(), CONDITION.runtimeVersion, 'Bun runtime');
+  equal((await execute(plan.runtimeExecutable, ['--version'], { timeout: 10_000 })).stdout.trim(),
+    subject ? 'v24.21.0' : CONDITION.runtimeVersion, 'serving runtime');
   await digestFile(descriptor.buildReceipt.path, descriptor.buildReceipt.sha256, 'build receipt');
   const receipt = object(JSON.parse(await readFile(descriptor.buildReceipt.path, 'utf8')));
   equal(receipt.head, descriptor.head, 'build head');
@@ -273,6 +307,7 @@ export async function launchCollector(
 export async function sequenceRuns(
   outputRoot: string,
   run: (ordinal: number, arm: Arm, prefix: string) => Promise<{ child: ChildOutcome; payload: unknown; cwd: string }>,
+  subject?: NodeSubject,
 ) {
   const records: unknown[] = [];
   const attempts: unknown[] = [];
@@ -309,7 +344,7 @@ export async function sequenceRuns(
       equal(payload.ordinal, ordinal, 'child ordinal');
       equal(payload.arm, arm, 'child arm');
       records.push({
-        ordinal, block: Math.floor(ordinal / 4), slot: ordinal % 4, arm, condition: CONDITION,
+        ordinal, block: Math.floor(ordinal / 4), slot: ordinal % 4, arm, condition: pairedCondition(subject),
         startedMs, endedMs, child, cwd: result.cwd, identity: payload.identity, raw: payload.raw,
       });
       active = null;
@@ -325,20 +360,28 @@ export async function sequenceRuns(
   }
 }
 
-async function loadPlan(path: string, expectedHash?: string) {
+async function loadPlan(path: string, expectedHash?: string, subject?: NodeSubject) {
   const bytes = await readFile(path);
   if (expectedHash !== undefined) equal(sha256(bytes), hash(expectedHash), 'unchanged plan bytes');
   const input: unknown = JSON.parse(bytes.toString());
-  const plan = frozenABPlan(input);
+  const plan = frozenSourcePlan(input, subject);
   equal(resolve(path), plan.planPath, 'frozen plan path');
   return { bytes, input, plan };
 }
 
-async function verifyProtocol(plan: ABPlan) {
+export async function verifyProtocol(plan: ABPlan, subject?: NodeSubject) {
   await digestFile(plan.protocol.path, plan.protocol.sha256, 'prospective protocol');
-  const protocol = object(JSON.parse(await readFile(plan.protocol.path, 'utf8')));
+  validateProtocol(JSON.parse(await readFile(plan.protocol.path, 'utf8')), plan, subject);
+}
+
+export function validateProtocol(input: unknown, plan: ABPlan, subject?: NodeSubject) {
+  const protocol = object(input);
   equal(protocol.status, 'FROZEN', 'protocol freeze');
-  equal(protocol.condition, CONDITION, 'protocol condition');
+  equal(protocol.condition, pairedCondition(subject), 'protocol condition');
+  if (subject) {
+    equal(protocol.schema, 'paired-node-v1', 'Node protocol schema');
+    equal(protocol.mode, subject.mode, 'Node protocol mode');
+  }
   equal(protocol.blocks, BLOCKS, 'protocol order');
   for (const [key, value] of Object.entries({
     maxCv: CV, ratioLimits: LIMITS, freshServerPerRun: true, automaticAdditionalRepeats: 0,
@@ -349,12 +392,22 @@ async function verifyProtocol(plan: ABPlan) {
   equal(protocol.candidateFrameworkSource, plan.arms.Y.frameworkSource, 'protocol candidate');
   equal(protocol.baselinePackagesTree, plan.arms.X.packagesTree, 'protocol baseline tree');
   equal(protocol.candidatePackagesTree, plan.arms.Y.packagesTree, 'protocol candidate tree');
-  equal(object(protocol.calibration).planSha256, plan.calibrationPlanSha256, 'calibration binding');
-  equal(object(protocol.calibration).verdict, 'OBSERVED_WITHIN_BUDGET_FOR_DECLARED_SCOPE', 'calibration verdict');
+  if (subject?.mode !== 'calibration') {
+    const calibration = object(protocol.calibration);
+    equal(calibration.planSha256, plan.calibrationPlanSha256, 'calibration binding');
+    equal(calibration.verdict, 'OBSERVED_WITHIN_BUDGET_FOR_DECLARED_SCOPE', 'calibration verdict');
+    if (subject) {
+      equal(calibration.schema, 'paired-node-v1', 'Node calibration schema');
+      equal(calibration.mode, 'calibration', 'Node calibration mode');
+      equal(calibration.condition, pairedCondition(subject), 'Node calibration condition');
+      equal(calibration.frameworkSource, plan.arms.X.frameworkSource, 'Node calibration source');
+      equal(calibration.packagesTree, plan.arms.X.packagesTree, 'Node calibration packages tree');
+    }
+  }
 }
 
-async function singleRun(planPath: string, planHash: string, ordinalText: string, outputPath: string) {
-  const { plan } = await loadPlan(planPath, planHash);
+export async function singleRun(planPath: string, planHash: string, ordinalText: string, outputPath: string, subject?: NodeSubject) {
+  const { plan } = await loadPlan(planPath, planHash, subject);
   const ordinal = Number(ordinalText);
   if (!Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= ORDER.length) throw new AAInputFailure('Invalid single-run ordinal');
   const arm = ORDER[ordinal];
@@ -363,10 +416,10 @@ async function singleRun(planPath: string, planHash: string, ordinalText: string
   equal(outputPath, join(plan.outputRoot, `run-${ordinal}-${arm}.child.json`), 'single-run output');
   fixedEnvironment(plan);
   for (const [key, value] of Object.entries(FIXED_ENV)) process.env[key] = value;
-  await digestFile(COLLECTOR, plan.collectorSha256, 'collector content');
+  await digestFile(collectorPath(subject), plan.collectorSha256, 'collector content');
   await digestFile(VALIDATOR, plan.validatorSha256, 'validator content');
-  await verifyProtocol(plan);
-  await verifyArm(plan, arm);
+  await verifyProtocol(plan, subject);
+  await verifyArm(plan, arm, subject);
   const { environmentSummary } = await import('../../src/provenance');
   const { EvidenceJournal } = await import('../../src/evidence');
   const { prepareTimingIdentity } = await import('../../src/timing-identity');
@@ -377,9 +430,11 @@ async function singleRun(planPath: string, planHash: string, ordinalText: string
   equal(environment.git.dirty, false, 'collector clean');
   equal(environment.benchmarkSource.sha256, plan.harnessSha256, 'shared harness content');
   const scenario = selectSuite('stages').find((item) => item.name === CONDITION.scenario);
-  const target = AVAILABLE_TARGETS.find((item) => item.name === (arm === 'N' ? 'native-bun' : 'fluo-bun'));
+  const condition = pairedCondition(subject);
+  const target = AVAILABLE_TARGETS.find((item) => item.name === `${arm === 'N' ? 'native' : 'fluo'}-${condition.platform}`);
   if (!scenario || !target) throw new AAInputFailure('Missing fixed scenario or target');
-  const prepared = await prepareTimingIdentity(target, scenario.appShape);
+  const servingTarget = subject ? { ...target, command: plan.runtimeExecutable } : target;
+  const prepared = await prepareTimingIdentity(servingTarget, scenario.appShape);
   equal(prepared.artifactsSha256, descriptor.targetArtifactsSha256[arm], 'prepared target build');
   for (const [path, digest] of Object.entries(prepared.artifacts)) equal(descriptor.artifacts[path], digest, 'prepared frozen artifact');
   const samples: import('../../src/report').TargetResult[] = [];
@@ -395,16 +450,16 @@ async function singleRun(planPath: string, planHash: string, ordinalText: string
   journal.flush();
   try {
     const { runScenario } = await import('../../src/run');
-    await runScenario(scenario, { index: 0, repeat: ordinal, targets: [target], connections: 64, samples, journal });
+    await runScenario(scenario, { index: 0, repeat: ordinal, targets: [servingTarget], connections: 64, samples, journal });
     equal(samples.length, 1, 'single result');
     raw = samples[0];
-    await verifyArm(plan, arm);
-    await loadPlan(planPath, planHash);
-    await verifyProtocol(plan);
+    await verifyArm(plan, arm, subject);
+    await loadPlan(planPath, planHash, subject);
+    await verifyProtocol(plan, subject);
     const checked = readRecord({
-      ordinal, block: Math.floor(ordinal / 4), slot: ordinal % 4, arm, condition: CONDITION,
+      ordinal, block: Math.floor(ordinal / 4), slot: ordinal % 4, arm, condition,
       identity, raw, startedMs: 1, endedMs: 2,
-    }, ordinal, descriptor);
+    }, ordinal, descriptor, subject);
     if (checked.generatorPid === process.pid || checked.pid === process.pid) throw new AAInputFailure('Sampler process alias');
     if (!checked.precisionResolved) throw new AAInputFailure('Unresolved CPU precision');
   } catch (error) {
@@ -416,26 +471,30 @@ async function singleRun(planPath: string, planHash: string, ordinalText: string
 }
 
 export async function collectAB(planPath: string, outputPath: string, planOnly = false) {
-  const { bytes, input, plan } = await loadPlan(planPath);
+  return collectSourcePaired(planPath, outputPath, planOnly);
+}
+
+export async function collectSourcePaired(planPath: string, outputPath: string, planOnly = false, subject?: NodeSubject) {
+  const { bytes, input, plan } = await loadPlan(planPath, undefined, subject);
   if (planOnly) return plan;
   equal(resolve(outputPath), plan.outputRoot, 'frozen output path');
-  equal(COLLECTOR, join(plan.arms.N.cwd, 'results/issue-3914/paired-ab.mts'), 'parent baseline checkout');
+  equal(collectorPath(subject), join(plan.arms.N.cwd, 'results/issue-3914', collectorName(subject)), 'parent baseline checkout');
   const env = fixedEnvironment(plan);
-  await digestFile(COLLECTOR, plan.collectorSha256, 'parent collector');
+  await digestFile(collectorPath(subject), plan.collectorSha256, 'parent collector');
   await digestFile(VALIDATOR, plan.validatorSha256, 'parent validator');
-  await verifyProtocol(plan);
-  for (const arm of ['N', 'X', 'Y'] as const) await verifyArm(plan, arm);
+  await verifyProtocol(plan, subject);
+  for (const arm of ['N', 'X', 'Y'] as const) await verifyArm(plan, arm, subject);
   await mkdir(outputPath, { recursive: false });
   await writeFile(join(outputPath, 'plan.json'), bytes, { flag: 'wx' });
   let evidence: { records: unknown[]; invalidAttempts: unknown[] };
   try {
     evidence = await sequenceRuns(outputPath, async (ordinal, arm, prefix) => {
-      await loadPlan(planPath, sha256(bytes));
-      await verifyProtocol(plan);
+      await loadPlan(planPath, sha256(bytes), subject);
+      await verifyProtocol(plan, subject);
       const descriptor = plan.arms[arm];
       const childPath = `${prefix}.child.json`;
       const child = await launchCollector(plan.generator.executable, [
-        '--import', 'tsx', join(descriptor.cwd, 'results/issue-3914/paired-ab.mts'),
+        '--import', 'tsx', join(descriptor.cwd, 'results/issue-3914', collectorName(subject)),
         '--single-run', planPath, sha256(bytes), String(ordinal), childPath,
       ], descriptor.cwd, prefix, env);
       let payload: unknown = null;
@@ -446,7 +505,7 @@ export async function collectAB(planPath: string, outputPath: string, planOnly =
         }
       }
       return { child, payload, cwd: descriptor.cwd };
-    });
+    }, subject);
   } catch (error) {
     const partial = object(JSON.parse(await readFile(join(outputPath, 'parent-journal.json'), 'utf8')));
     evidence = { records: array(partial.records), invalidAttempts: array(partial.invalidAttempts) };
@@ -454,7 +513,8 @@ export async function collectAB(planPath: string, outputPath: string, planOnly =
   }
   const boundEvidence = { ...evidence, planSha256: sha256(JSON.stringify(input)), planFileSha256: sha256(bytes) };
   await writeFile(join(outputPath, 'evidence.json'), JSON.stringify(boundEvidence, null, 2), { flag: 'wx' });
-  const decision = evaluateAB(input, boundEvidence);
+  const decision = { ...evaluateSourcePaired(input, boundEvidence, subject),
+    ...(subject ? { schema: 'paired-node-v1', mode: subject.mode, condition: pairedCondition(subject) } : {}) };
   await writeFile(join(outputPath, 'decision.json'), JSON.stringify(decision, null, 2), { flag: 'wx' });
   return decision;
 }
