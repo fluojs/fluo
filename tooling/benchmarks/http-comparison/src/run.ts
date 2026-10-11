@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EvidenceJournal } from './evidence';
-import { load } from './load';
+import { LoadProcessFailure, LocalLoadSession, load } from './load';
 import { environmentSummary, WORKSPACE_ROOT } from './provenance';
 import { printReport, type ScenarioResult, summarizeRuns, type TargetResult } from './report';
 import { monitorServer, type ProcessSample } from './resources';
@@ -102,6 +102,7 @@ export async function runScenario(scenario: ScenarioConfig, run: {
   index: number; repeat: number; targets: readonly TargetConfig[]; connections: number;
   samples: TargetResult[]; journal: EvidenceJournal;
   amount?: number;
+  loadClientEntry?: string;
 }): Promise<void> {
   const { index, targets, connections, samples, journal } = run;
   const offset = index % targets.length;
@@ -117,6 +118,9 @@ export async function runScenario(scenario: ScenarioConfig, run: {
     env: { ...identityPreparation.env, BENCH_TIMING_NONCE: identityPreparation.nonce },
     onOutput: (_target, stream, bytes) => { if (stream === 'stdout') stdout += String(bytes); },
   });
+  let session: LocalLoadSession | undefined;
+  let runFailure: unknown;
+  let cleanupFailures: unknown[] = [];
   try {
     await Promise.all(processes.map(waitForTarget));
     const processToReadyMs = performance.now() - start;
@@ -130,13 +134,17 @@ export async function runScenario(scenario: ScenarioConfig, run: {
       duration, connections, requests: targetRequests(target, scenario.requests),
       ...(run.amount === undefined ? {} : { amount: run.amount }),
     });
+    if (process.env.BENCH_LOAD_PROCESS === '1' && process.env.BENCH_SSH_HOST === undefined) {
+      session = await LocalLoadSession.open(run.loadClientEntry);
+    }
+    const phaseLoad: typeof load = session ? session.load.bind(session) : load;
     journal.current = { ...condition, phase: 'cold-request', processToReadyMs, servingIdentity };
-    const firstRequest = await load({ ...traffic(target, 1), connections: 1, amount: 1 }, `${target.name} cold request`);
+    const firstRequest = await phaseLoad({ ...traffic(target, 1), connections: 1, amount: 1 }, `${target.name} cold request`);
     const measured = await measureTargets([target], {
       warmup: async (target) => {
         journal.current = { ...condition, phase: 'warmup', processToReadyMs, firstRequest, servingIdentity };
         process.stdout.write(`  warming ${target.label} (${WARMUP_SEC}s)...`);
-        warmup = await load(traffic(target, WARMUP_SEC), `${scenario.name}/${target.label} warm-up`);
+        warmup = await phaseLoad(traffic(target, WARMUP_SEC), `${scenario.name}/${target.label} warm-up`);
         journal.current = { ...condition, phase: 'warmup-completed', processToReadyMs, firstRequest, warmup, servingIdentity };
         process.stdout.write(' done\n');
       },
@@ -144,7 +152,7 @@ export async function runScenario(scenario: ScenarioConfig, run: {
         const serverSamples: ProcessSample[] = [];
         journal.current = { ...condition, phase: 'measurement', processToReadyMs, firstRequest, warmup, servingIdentity, serverSamples };
         process.stdout.write(`  measuring ${target.label} (${MEASURE_SEC}s)...`);
-        const measured = await monitorServer(pid, () => load(traffic(target, MEASURE_SEC), `${scenario.name}/${target.label}`), serverSamples);
+        const measured = await monitorServer(pid, () => phaseLoad(traffic(target, MEASURE_SEC), `${scenario.name}/${target.label}`), serverSamples);
         journal.current = { ...condition, phase: 'serving-identity-after-measurement', processToReadyMs, firstRequest, warmup, servingIdentity, measurement: measured.value, serverSamples };
         await authenticateTimingIdentity(identityPreparation, stdout, pid, target.port);
         process.stdout.write(' done\n');
@@ -161,10 +169,17 @@ export async function runScenario(scenario: ScenarioConfig, run: {
       ...condition, ...(typeof journal.current === 'object' && journal.current !== null ? journal.current : {}),
       startupStdout: stdout,
     };
-    throw error;
+    runFailure = error;
   } finally {
-    await stopTargets(processes);
+    const cleanup = await Promise.allSettled([session?.close(), stopTargets(processes)]);
+    cleanupFailures = cleanup.flatMap((result) => result.status === 'rejected' ? [result.reason] : []);
   }
+  if (cleanupFailures.length > 0) {
+    const diagnostics = cleanupFailures.map((error) => error instanceof Error ? error.stack : String(error)).join('\n');
+    if (runFailure instanceof Error) throw new LoadProcessFailure(runFailure, '', `Generator/server teardown failed:\n${diagnostics}`);
+    throw new AggregateError(cleanupFailures, 'Generator/server teardown failed');
+  }
+  if (runFailure !== undefined) throw runFailure;
   });
   }
 }

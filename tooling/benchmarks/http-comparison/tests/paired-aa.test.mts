@@ -20,6 +20,7 @@ function plan() {
     subjects: { N: 'native-bun', X: 'fluo-bun at the same BEFORE source', Y: 'fluo-bun at the same BEFORE source' },
     automaticAdditionalRepeats: 0, outlierDeletionAllowed: false, freshServerPerRun: true,
     maximumCpuQuantizationFraction: 0.01,
+    generatorLifetime: 'one-local-session-per-server-run',
     maxCv: { throughputRps: 0.03, serverCpuMicrosPerRequest: 0.03, p95Ms: 0.05, p99Ms: 0.075, rssBytes: 0.05 },
     ratioLimits: {
       throughputRps: { minimum: 0.95 }, serverCpuMicrosPerRequest: { maximum: 1.05 },
@@ -30,6 +31,7 @@ function plan() {
       containerIdentity: 'fixture-linux-bun', cpuPrecision, planPath: '/prepared/plan.json',
       outputRoot: '/prepared/unique-output', buildReceipt: { path: '/prepared/build.json', sha256: digest },
       artifacts, targetArtifactsSha256: { N: buildHash, X: buildHash, Y: buildHash },
+      generator: { protocol: 'local-session-v1', node: process.version, executable: process.execPath, hostname: 'fixture-host' },
     },
   };
 }
@@ -50,6 +52,7 @@ function evidence() {
     records: BLOCKS.flatMap((arms, block) => arms.map((arm, slot) => {
       const ordinal = block * 4 + slot;
       const pid = ordinal + 100;
+      const generator = { ...declared.freeze.generator, pid: ordinal + 10_000, nonce: `generator-${ordinal}` };
       return {
         ordinal, block, slot, arm, condition: CONDITION, startedMs: ordinal * 100_000 + 1, endedMs: ordinal * 100_000 + 90_001,
         identity: {
@@ -57,9 +60,9 @@ function evidence() {
           harnessSha256: digest, buildReceiptSha256: digest, containerIdentity: declared.freeze.containerIdentity,
         },
         raw: {
-          ...traffic(), label: arm === 'N' ? 'native-bun' : 'fluo-bun',
-          warmup: traffic(10_000, 1_000, 1_000, 30),
-          coldStart: { processToReadyMs: 1, firstRequest: traffic(1, 1, 1_000, 1, 1) },
+          ...traffic(), label: arm === 'N' ? 'native-bun' : 'fluo-bun', generator,
+          warmup: { ...traffic(10_000, 1_000, 1_000, 30), generator: { ...generator } },
+          coldStart: { processToReadyMs: 1, firstRequest: { ...traffic(1, 1, 1_000, 1, 1), generator: { ...generator } } },
           servingIdentity: {
             status: 'authenticated', instrumentation: 'none', target: arm === 'N' ? 'native-bun' : 'fluo-bun',
             pid, launcherPid: pid, nonce: `nonce-${ordinal}`, runtime: { bun: '1.4.2' },
@@ -156,6 +159,18 @@ for (const [name, mutate] of [
   ['cold-traffic', (input: ReturnType<typeof evidence>) => { input.records[0].raw.coldStart.firstRequest.statusMismatches = 1; }],
   ['identity', (input: ReturnType<typeof evidence>) => { input.records[0].identity.frameworkSource = head; }],
   ['serving-runtime', (input: ReturnType<typeof evidence>) => { input.records[0].raw.servingIdentity.runtime.bun = '1.4.1'; }],
+  ['warmup-generator-restart', (input: ReturnType<typeof evidence>) => { input.records[0].raw.warmup.generator.pid += 100; }],
+  ['cold-generator-nonce', (input: ReturnType<typeof evidence>) => { input.records[0].raw.coldStart.firstRequest.generator.nonce = 'other'; }],
+  ['generator-runtime', (input: ReturnType<typeof evidence>) => { input.records[0].raw.generator.node = 'other'; }],
+  ['generator-server-alias', (input: ReturnType<typeof evidence>) => {
+    const row = input.records[0].raw;
+    for (const measurement of [row, row.warmup, row.coldStart.firstRequest]) measurement.generator.pid = row.server.rootPid;
+  }],
+  ['reused-generator', (input: ReturnType<typeof evidence>) => {
+    const reused = input.records[0].raw.generator;
+    const row = input.records[1].raw;
+    for (const measurement of [row, row.warmup, row.coldStart.firstRequest]) measurement.generator = { ...reused };
+  }],
   ['dirty-source', (input: ReturnType<typeof evidence>) => { input.records[0].raw.servingIdentity.source.gitStatus = ' M file'; }],
   ['bad-histogram', (input: ReturnType<typeof evidence>) => { input.records[0].raw.latencyHistogramMicros[0][1] -= 1; }],
   ['nonfinite', (input: ReturnType<typeof evidence>) => { input.records[0].raw.result.requests.average = NaN; }],

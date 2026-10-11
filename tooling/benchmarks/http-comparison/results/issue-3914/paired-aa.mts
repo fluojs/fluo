@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
@@ -81,6 +82,7 @@ export function describePlan(input: unknown) {
   equal(plan.outlierDeletionAllowed, false, 'outlier deletion');
   equal(plan.freshServerPerRun, true, 'fresh server');
   equal(plan.maximumCpuQuantizationFraction, 0.01, 'CPU quantization bound');
+  equal(plan.generatorLifetime, 'one-local-session-per-server-run', 'generator lifetime');
   equal(plan.subjects, {
     N: 'native-bun', X: 'fluo-bun at the same BEFORE source', Y: 'fluo-bun at the same BEFORE source',
   }, 'subjects');
@@ -102,6 +104,8 @@ export function frozenPlan(input: unknown) {
   const targets = object(freeze.targetArtifactsSha256);
   equal(targets.X, targets.Y, 'same BEFORE build');
   const receipt = object(freeze.buildReceipt);
+  const generator = object(freeze.generator);
+  equal(generator.protocol, 'local-session-v1', 'generator protocol');
   return {
     ...description, head, collectorSha256: hash(freeze.collectorSha256),
     harnessSha256: hash(freeze.harnessSha256), runtimeExecutableSha256: hash(freeze.runtimeExecutableSha256),
@@ -109,6 +113,8 @@ export function frozenPlan(input: unknown) {
     planPath: absolute(freeze.planPath), outputRoot: absolute(freeze.outputRoot),
     buildReceipt: { path: absolute(receipt.path), sha256: hash(receipt.sha256) },
     artifacts, targetArtifactsSha256: { N: hash(targets.N), X: hash(targets.X), Y: hash(targets.Y) },
+    generator: { protocol: 'local-session-v1', node: text(generator.node),
+      executable: absolute(generator.executable), hostname: text(generator.hostname) },
   };
 }
 type FrozenPlan = ReturnType<typeof frozenPlan>;
@@ -184,7 +190,14 @@ function readRecord(input: unknown, index: number, plan: FrozenPlan) {
   const pid = integer(identity.pid);
   equal(identity.launcherPid, pid, 'launcher PID');
   const nonce = text(identity.nonce);
+  const generator = object(raw.generator);
+  const generatorPid = integer(generator.pid);
+  const generatorNonce = text(generator.nonce);
+  equal(generator, { ...plan.generator, pid: generatorPid, nonce: generatorNonce }, 'generator identity');
+  if (generatorPid === pid) throw new AAInputFailure('Generator and server share a process');
   const cold = object(raw.coldStart);
+  equal(object(cold.firstRequest).generator, generator, 'cold generator continuity');
+  equal(object(raw.warmup).generator, generator, 'warmup generator continuity');
   positive(cold.processToReadyMs);
   const first = traffic(cold.firstRequest);
   equal(first.completed, 1, 'cold completions');
@@ -206,6 +219,7 @@ function readRecord(input: unknown, index: number, plan: FrozenPlan) {
     const processes = array(sample.processes).map(object);
     const pids = processes.map((process) => integer(process.pid));
     if (!pids.includes(pid) || new Set(pids).size !== pids.length) throw new AAInputFailure('Invalid sampled tree');
+    if (pids.includes(generatorPid)) throw new AAInputFailure('Generator included in server resource tree');
     const rss = processes.reduce((sum, process) => sum + positive(process.rssKiB) * 1_024, 0);
     const counters = processes.map((process) => {
       const seconds = process.cpuSeconds;
@@ -239,7 +253,7 @@ function readRecord(input: unknown, index: number, plan: FrozenPlan) {
     p95Ms: measured.p95, p99Ms: measured.p99, rssBytes,
   };
   for (const value of Object.values(metrics)) positive(value);
-  return { arm, block, pid, nonce, startedMs, endedMs, metrics, completed: measured.completed, precisionResolved };
+  return { arm, block, pid, nonce, generatorPid, generatorNonce, startedMs, endedMs, metrics, completed: measured.completed, precisionResolved };
 }
 
 export function evaluateAA(planInput: unknown, evidenceInput: unknown) {
@@ -259,6 +273,8 @@ export function evaluateAA(planInput: unknown, evidenceInput: unknown) {
     equal(rawRecords.length, 12, 'exact run count');
     const records = rawRecords.map((record, index) => readRecord(record, index, plan));
     if (new Set(records.map((record) => record.pid)).size !== 12 || new Set(records.map((record) => record.nonce)).size !== 12) throw new AAInputFailure('Duplicate serving process identity');
+    if (new Set(records.map((record) => record.generatorPid)).size !== 12
+      || new Set(records.map((record) => record.generatorNonce)).size !== 12) throw new AAInputFailure('Reused generator across server runs');
     if (records.some((record, i) => i > 0 && record.startedMs < records[i - 1].endedMs)) throw new AAInputFailure('Overlapping runs');
     for (const record of records) {
       if (record.completed < 20_000) inconclusive.push(`run ${records.indexOf(record)}: insufficient completed requests`);
@@ -299,6 +315,9 @@ export async function collectAA(planPath: string, outputPath: string, planOnly =
   equal(resolve(planPath), plan.planPath, 'frozen plan path');
   equal(resolve(outputPath), plan.outputRoot, 'frozen output path');
   equal(process.platform, 'linux', 'collector OS');
+  equal(process.version, plan.generator.node, 'generator runtime');
+  equal(process.execPath, plan.generator.executable, 'generator executable');
+  equal(hostname(), plan.generator.hostname, 'generator host');
   equal(plan.targetArtifactsSha256.X, plan.targetArtifactsSha256.Y, 'same BEFORE build');
   equal(sha256(await readFile(COLLECTOR)), plan.collectorSha256, 'collector source');
   // Never rebuild frozen inputs. The prepared environment supplies the receipt and artifacts.
@@ -374,6 +393,7 @@ export async function collectAA(planPath: string, outputPath: string, planOnly =
         active = null;
         journal.flush();
         const check = readRecord(records[ordinal], ordinal, plan);
+        if (check.generatorPid === process.pid) throw new AAInputFailure('Generator shares the resource sampler process');
         if (!check.precisionResolved) throw new AAInputFailure('CPU precision metadata is unavailable or differs from freeze; collection stopped');
       }
     }
