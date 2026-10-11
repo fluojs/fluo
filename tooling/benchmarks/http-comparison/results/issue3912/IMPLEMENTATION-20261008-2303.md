@@ -142,3 +142,39 @@ an issue-completion or no-improvement-needed verdict.
 and README comparison, changed-file Biome, all 19 adapter test files / 306 tests,
 Express typecheck and EN/KO parity. LSP reported no source errors. No test was
 deleted, skipped or weakened when removing the rejected implementation.
+
+## 2026-10-11: distinct request-shell memoization candidate
+
+Starting head is `d1684b9061f3af24235ec7c39db718fd92fa4e49`. The Node request
+helper still matched framework base `1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18`.
+The lead confirmed that `createDeferredFrameworkRequestShell` belongs to the
+approved #3912 file `packages/platform-nodejs/src/node/internal-node-request.ts`;
+HTTP/runtime/DI ownership remains with #3911.
+
+The repeated `node-request-normalization` profile identifies request-shell
+construction as a candidate (3.0980% / 2.7560% sampled self share). These shares
+are not absolute cost or proof of an improvement. This candidate replaces
+cookie/query memoization wrapper construction with per-request cached getter
+values. Headers, signal observation, connection metadata, provided query
+snapshots and body handling remain on their existing paths.
+
+Eight additional contract tests passed on the unchanged implementation first
+(10/10 total), then passed on the candidate. They preserve unread metadata,
+first/repeated access, cached identity, synchronous factory failure retry,
+explicit snapshots, signal callbacks and request isolation. No behavior RED
+is claimed for this behavior-preserving optimization.
+
+Lead logs under repository-root `.omo/verification/`:
+
+- `3912-request-memo-baseline-20261011.log`: 10/10 contract tests, exit 0.
+- `3912-request-memo-candidate-check-20261011.log`: affected closure builds,
+  three platform typechecks, 19 files / 314 adapter tests, changed-file Biome
+  and stable Changeset validation, exit 0.
+- `3912-request-memo-governance-20261011.log`: 16 example files / 102 tests,
+  platform consistency governance and 475 governance tests, exit 0.
+
+The candidate includes a patch Changeset for `@fluojs/platform-nodejs`.
+Its whole-request performance is still unverified. Neither rejected Express
+response candidate is restored, and prior FAIL/INCONCLUSIVE data is unchanged.
+Deno performance is excluded by the owner's 2026-10-11 scope instruction;
+existing Deno support and functional regression coverage remain.

@@ -218,13 +218,14 @@ export function createDeferredFrameworkRequestShell<RawRequest>({
   const hasQuerySnapshot = query !== undefined;
   const hasLazySignal = typeof signal === 'function';
   const resolveHeaders = headersFactory ? createMemoizedValue(headersFactory) : () => headers ?? {};
-  const resolveCookies = createMemoizedValue(() => parseCookieHeader(cookieHeader ?? resolveHeaders().cookie));
-  const resolveQuery = hasQuerySnapshot ? undefined : createMemoizedValue(() => queryFactory?.() ?? {});
+  let resolvedCookies: ReturnType<typeof parseCookieHeader> | undefined;
+  let resolvedQuery: QueryRecord | undefined;
 
   const frameworkRequest = {
     connection: connection ?? snapshotNodeConnection(raw),
     get cookies() {
-      return resolveCookies();
+      resolvedCookies ??= parseCookieHeader(cookieHeader ?? resolveHeaders().cookie);
+      return resolvedCookies;
     },
     get headers() {
       return resolveHeaders();
@@ -256,7 +257,8 @@ export function createDeferredFrameworkRequestShell<RawRequest>({
       configurable: true,
       enumerable: true,
       get() {
-        return resolveQuery!();
+        resolvedQuery ??= queryFactory?.() ?? {};
+        return resolvedQuery;
       },
     });
   }
