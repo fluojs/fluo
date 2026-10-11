@@ -1,13 +1,111 @@
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { posix } from 'node:path';
 import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
 let clockTicks: Promise<number> | undefined;
 export interface ProcessSample {
+  readonly driftDiagnostic?: {
+    readonly purpose: 'diagnostic-only';
+    readonly sampledAtEpochMs: number;
+    readonly linux: DiagnosticReading<{
+      readonly systemStat: DiagnosticReading<string>;
+      readonly cpuPressure: DiagnosticReading<string>;
+      readonly processes: readonly {
+        readonly pid: number;
+        readonly logicalProcessor: DiagnosticReading<number>;
+        readonly schedstat: DiagnosticReading<ReturnType<typeof procSchedstat>>;
+        readonly cgroupCpu: DiagnosticReading<{
+          readonly directory: string;
+          readonly quota: DiagnosticReading<string>;
+          readonly throttling: DiagnosticReading<string>;
+          readonly pressure: DiagnosticReading<string>;
+        }>;
+      }[];
+    }>;
+  };
   readonly wallMs: number;
   readonly cpuTimeResolutionSeconds: number;
   readonly processes: readonly { readonly pid: number; readonly parent: number; readonly rssKiB: number; readonly cpuSeconds: number; readonly command: string }[];
+}
+
+export type DiagnosticReading<T> =
+  | { readonly status: 'readable'; readonly value: T }
+  | { readonly status: 'unsupported'; readonly reason: string }
+  | { readonly status: 'read-error'; readonly path: string; readonly error: string };
+
+export async function diagnosticRead<T>(path: string, parse: (text: string) => T): Promise<DiagnosticReading<T>> {
+  try {
+    return { status: 'readable', value: parse(await readFile(path, 'utf8')) };
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    return { status: 'read-error', path, error: error.message };
+  }
+}
+
+export function procLogicalProcessor(stat: string): number {
+  const end = stat.lastIndexOf(')');
+  const value = stat.slice(end + 2).trim().split(/\s+/)[36];
+  const processor = Number(value);
+  if (end < 0 || value === undefined || !Number.isSafeInteger(processor) || processor < 0) {
+    throw new Error('Unsupported procfs logical processor');
+  }
+  return processor;
+}
+
+export function procSchedstat(text: string) {
+  const fields = text.trim().split(/\s+/);
+  if (fields.length !== 3 || fields.some((field) => !/^\d+$/.test(field))) {
+    throw new Error('Unsupported procfs schedstat');
+  }
+  // Keep nanosecond counters lossless even beyond Number.MAX_SAFE_INTEGER.
+  return { executionNs: fields[0], waitNs: fields[1], slices: fields[2] };
+}
+
+export function cgroupCpuDirectory(membership: string, mountinfo: string): DiagnosticReading<string> {
+  const group = membership.split('\n').find((line) => line.startsWith('0::'))?.slice(3);
+  const mount = mountinfo.split('\n').find((line) => line.includes(' - cgroup2 '));
+  if (!group || !mount) return { status: 'unsupported', reason: 'Unified cgroup v2 CPU mount not observed' };
+  const fields = mount.split(' ');
+  const decode = (value: string) => value.replace(/\\([0-7]{3})/g, (_match, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)));
+  const root = decode(fields[3]);
+  const point = decode(fields[4]);
+  const relative = posix.relative(root, group);
+  if (relative.startsWith('..') || !posix.isAbsolute(root) || !posix.isAbsolute(point)) {
+    throw new Error('Cgroup membership is outside observed mount root');
+  }
+  return { status: 'readable', value: posix.join(point, relative) };
+}
+
+async function processDriftDiagnostic(pid: number) {
+  const prefix = `/proc/${pid}`;
+  const [logicalProcessor, schedstat, membership, mounts] = await Promise.all([
+    diagnosticRead(`${prefix}/stat`, procLogicalProcessor),
+    diagnosticRead(`${prefix}/schedstat`, procSchedstat),
+    diagnosticRead(`${prefix}/cgroup`, String),
+    diagnosticRead(`${prefix}/mountinfo`, String),
+  ]);
+  const cgroupCpu = await (async () => {
+    if (membership.status !== 'readable') return membership;
+    if (mounts.status !== 'readable') return mounts;
+    let resolved: DiagnosticReading<string>;
+    try {
+      resolved = cgroupCpuDirectory(membership.value, mounts.value);
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      return { status: 'read-error' as const, path: `${prefix}/mountinfo`, error: error.message };
+    }
+    if (resolved.status !== 'readable') return resolved;
+    const directory = resolved.value;
+    const [quota, throttling, pressure] = await Promise.all([
+      diagnosticRead(posix.join(directory, 'cpu.max'), String),
+      diagnosticRead(posix.join(directory, 'cpu.stat'), String),
+      diagnosticRead(posix.join(directory, 'cpu.pressure'), String),
+    ]);
+    return { status: 'readable' as const, value: { directory, quota, throttling, pressure } };
+  })();
+  return { pid, logicalProcessor, schedstat, cgroupCpu };
 }
 
 export class ResourceMeasurementFailure extends Error {
@@ -65,7 +163,20 @@ export async function processTreeSample(rootPid: number): Promise<ProcessSample>
   const cpuTimeResolutionSeconds = frequency === undefined
     ? Math.max(...selected.map(({ psTime }) => 10 ** -(psTime.split('.')[1]?.length ?? 0)))
     : 1 / frequency;
-  return { wallMs: performance.now(), cpuTimeResolutionSeconds, processes };
+  const diagnostic = process.env.BENCH_DIAGNOSTIC_DRIFT === '1' ? {
+    driftDiagnostic: {
+      purpose: 'diagnostic-only' as const,
+      sampledAtEpochMs: Date.now(),
+      linux: process.platform !== 'linux'
+        ? { status: 'unsupported' as const, reason: `Linux procfs unavailable on ${process.platform}; physical frequency, thermals and core assignment not observed` }
+        : { status: 'readable' as const, value: {
+          systemStat: await diagnosticRead('/proc/stat', String),
+          cpuPressure: await diagnosticRead('/proc/pressure/cpu', String),
+          processes: await Promise.all(processes.map(({ pid }) => processDriftDiagnostic(pid))),
+        } },
+    },
+  } : {};
+  return { wallMs: performance.now(), cpuTimeResolutionSeconds, processes, ...diagnostic };
 }
 
 export async function monitorServer<T>(rootPid: number, action: () => Promise<T>, samples: ProcessSample[] = []) {

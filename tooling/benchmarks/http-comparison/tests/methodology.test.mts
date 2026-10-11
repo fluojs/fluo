@@ -5,11 +5,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import * as report from '../src/report';
-import * as workloads from '../src/shared/workloads';
-import { measureTargets, shoot, TrafficFailure } from '../src/traffic';
 import { failureEvidence } from '../src/evidence';
+import * as report from '../src/report';
 import { monitorServer, ResourceMeasurementFailure } from '../src/resources';
+import * as workloads from '../src/shared/workloads';
+import { DriftLatencyWindows, measureTargets, shoot, TrafficFailure } from '../src/traffic';
 
 async function withServer(handler: (req: IncomingMessage, res: ServerResponse) => void, check: (url: string) => Promise<void>) {
   const server = createServer(handler);
@@ -32,6 +32,71 @@ const sequence = [
   { path: '/first', method: 'GET' as const, expectedBody: 'first', expectedStatus: 200 },
   { path: '/second', method: 'GET' as const, expectedBody: 'second', expectedStatus: 200 },
 ];
+
+test('DriftLatencyWindows: exact epoch edges and empty interval -> half-open aligned bins', () => {
+  const bins = new DriftLatencyWindows('measurement', 19_999);
+  bins.record(19_999, 10);
+  bins.record(20_000, 20);
+  bins.record(20_001, 20);
+  bins.record(40_000, 40);
+
+  const diagnostic = bins.finish(40_001);
+
+  assert.deepEqual(diagnostic.windows.map((window) => [
+    window.startedAtEpochMs, window.endedAtEpochMs, window.responseCount, window.latencyHistogramMicros,
+  ]), [[10_000, 20_000, 1, [[10, 1]]], [20_000, 30_000, 2, [[20, 2]]],
+    [30_000, 40_000, 0, []], [40_000, 50_000, 1, [[40, 1]]]]);
+  assert.equal(diagnostic.windows[0].observedStartedAtEpochMs, 19_999);
+  assert.equal(diagnostic.windows[3].observedEndedAtEpochMs, 40_001);
+});
+
+test('shoot: opt-in finite HTTP phases -> independent window counts reconcile and failures retain data', { timeout: 10_000 }, async () => {
+  const previous = process.env.BENCH_DIAGNOSTIC_DRIFT;
+  process.env.BENCH_DIAGNOSTIC_DRIFT = '1';
+  try {
+    await withServer((request, response) => {
+      response.statusCode = request.url === '/bad' ? 503 : 200;
+      response.end('first');
+    }, async (url) => {
+      for (const [label, amount] of [['cold', 1], ['warmup', 3], ['measurement', 5]] as const) {
+        const measurement = await shoot({ url, duration: 1, amount, connections: 1, requests: [sequence[0]] }, label);
+
+        const diagnostic = measurement.driftDiagnostic;
+        assert.ok(diagnostic);
+        assert.equal(diagnostic.label, label);
+        assert.equal(diagnostic.purpose, 'diagnostic-only');
+        assert.equal(measurement.result.requests.total, amount);
+        assert.equal(diagnostic.windows.reduce((sum, window) => sum + window.responseCount, 0), amount);
+        const pooled = new Map<number, number>();
+        for (const window of diagnostic.windows) {
+          assert.equal(window.startedAtEpochMs % 10_000, 0);
+          assert.equal(window.responseCount, window.latencyHistogramMicros.reduce((sum, [, count]) => sum + count, 0));
+          for (const [micros, count] of window.latencyHistogramMicros) pooled.set(micros, (pooled.get(micros) ?? 0) + count);
+        }
+        assert.deepEqual([...pooled].sort(([a], [b]) => a - b), [...measurement.latencyHistogramMicros].sort(([a], [b]) => a - b));
+      }
+      await assert.rejects(shoot({ url, duration: 1, amount: 2, connections: 1,
+        requests: [{ ...sequence[0], path: '/bad' }] }, 'failed'), (error: unknown) => {
+        assert.ok(error instanceof TrafficFailure);
+        assert.ok(error.diagnostics.driftDiagnostic && error.diagnostics.result);
+        assert.equal(error.diagnostics.driftDiagnostic.windows.reduce((sum, window) => sum + window.responseCount, 0),
+          error.diagnostics.result.requests.total);
+        return true;
+      });
+      for (const setting of [undefined, '0']) {
+        if (setting === undefined) delete process.env.BENCH_DIAGNOSTIC_DRIFT;
+        else process.env.BENCH_DIAGNOSTIC_DRIFT = setting;
+
+        const ordinary = await shoot({ url, duration: 1, amount: 1, connections: 1, requests: [sequence[0]] }, 'ordinary');
+
+        assert.equal(Object.hasOwn(ordinary, 'driftDiagnostic'), false);
+      }
+    });
+  } finally {
+    if (previous === undefined) delete process.env.BENCH_DIAGNOSTIC_DRIFT;
+    else process.env.BENCH_DIAGNOSTIC_DRIFT = previous;
+  }
+});
 
 test('retains available server samples alongside failed traffic diagnostics', { timeout: 10_000 }, async () => {
   // Given

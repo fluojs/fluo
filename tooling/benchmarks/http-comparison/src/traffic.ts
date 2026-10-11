@@ -18,6 +18,7 @@ export interface ClientCpu {
 }
 
 export interface Measurement {
+  readonly driftDiagnostic?: ReturnType<DriftLatencyWindows['finish']>;
   readonly result: Result;
   readonly statusMismatches: number;
   readonly clientCpu: ClientCpu;
@@ -35,6 +36,7 @@ export interface TrafficOptions {
 }
 
 export interface TrafficDiagnostics {
+  readonly driftDiagnostic?: ReturnType<DriftLatencyWindows['finish']>;
   readonly result: Result | null;
   readonly statusMismatches: number;
   readonly latencyHistogramMicros: readonly (readonly [number, number])[];
@@ -45,6 +47,37 @@ export class TrafficFailure extends Error {
   constructor(message: string, readonly diagnostics: TrafficDiagnostics) {
     super(message);
     this.name = 'TrafficFailure';
+  }
+}
+
+// One accumulator per shoot: phases never share latency counters.
+export class DriftLatencyWindows {
+  private readonly bins = new Map<number, Map<number, number>>();
+
+  constructor(private readonly label: string, private readonly startedAtEpochMs: number) {}
+
+  record(epochMs: number, latencyMicros: number): void {
+    const start = Math.floor(epochMs / 10_000) * 10_000;
+    const histogram = this.bins.get(start) ?? new Map<number, number>();
+    histogram.set(latencyMicros, (histogram.get(latencyMicros) ?? 0) + 1);
+    this.bins.set(start, histogram);
+  }
+
+  finish(endedAtEpochMs: number) {
+    const windows = [];
+    for (let start = Math.floor(this.startedAtEpochMs / 10_000) * 10_000;
+      start <= Math.floor(endedAtEpochMs / 10_000) * 10_000; start += 10_000) {
+      const histogram = [...(this.bins.get(start) ?? new Map<number, number>())];
+      windows.push({
+        startedAtEpochMs: start, endedAtEpochMs: start + 10_000,
+        observedStartedAtEpochMs: Math.max(start, this.startedAtEpochMs),
+        observedEndedAtEpochMs: Math.min(start + 10_000, endedAtEpochMs),
+        responseCount: histogram.reduce((sum, [, count]) => sum + count, 0),
+        latencyHistogramMicros: histogram,
+      });
+    }
+    return { purpose: 'diagnostic-only' as const, label: this.label, windowMs: 10_000,
+      startedAtEpochMs: this.startedAtEpochMs, endedAtEpochMs, windows };
   }
 }
 
@@ -65,6 +98,7 @@ export function shoot(options: TrafficOptions, label: string): Promise<Measureme
     let bodyMismatches = 0;
     let statusMismatches = 0;
     const latencyCounts = new Map<number, number>();
+    const drift = process.env.BENCH_DIAGNOSTIC_DRIFT === '1' ? new DriftLatencyWindows(label, Date.now()) : undefined;
     const cpuStart = process.cpuUsage();
     const wallStart = process.hrtime.bigint();
     const instance = autocannon({
@@ -95,9 +129,10 @@ export function shoot(options: TrafficOptions, label: string): Promise<Measureme
         userMicros: usage.user, systemMicros: usage.system, wallMicros,
         coreEquivalentPercent: (usage.user + usage.system) / wallMicros * 100,
       };
+      const diagnostic = drift ? { driftDiagnostic: drift.finish(Date.now()) } : {};
       if (error || !result) {
         reject(new TrafficFailure(`${label}: ${error?.message ?? 'autocannon returned no result'}`, {
-          result: result ?? null, statusMismatches, clientCpu, latencyHistogramMicros: [...latencyCounts],
+          result: result ?? null, statusMismatches, clientCpu, latencyHistogramMicros: [...latencyCounts], ...diagnostic,
         }));
         return;
       }
@@ -108,11 +143,12 @@ export function shoot(options: TrafficOptions, label: string): Promise<Measureme
       }).filter(([, count]) => count !== 0);
       if (failures.length > 0 || result.requests.total === 0) {
         reject(new TrafficFailure(`${label} returned invalid benchmark traffic: ${JSON.stringify(Object.fromEntries(failures))}; completed=${result.requests.total}`, {
-          result: checkedResult, statusMismatches, clientCpu, latencyHistogramMicros: [...latencyCounts],
+          result: checkedResult, statusMismatches, clientCpu, latencyHistogramMicros: [...latencyCounts], ...diagnostic,
         }));
         return;
       }
       resolve({
+        ...diagnostic,
         result: checkedResult,
         statusMismatches,
         latencyHistogramMicros: [...latencyCounts],
@@ -127,6 +163,7 @@ export function shoot(options: TrafficOptions, label: string): Promise<Measureme
     instance.on('response', (_client, _status, _bytes, responseTime) => {
       const micros = Math.round(responseTime * 1_000);
       latencyCounts.set(micros, (latencyCounts.get(micros) ?? 0) + 1);
+      drift?.record(Date.now(), micros);
     });
   });
 }
