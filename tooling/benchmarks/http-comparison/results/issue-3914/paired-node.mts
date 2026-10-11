@@ -1,20 +1,21 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import type { NodeSubject } from './paired-aa.mjs';
-import { AAInputFailure, equal, object, pairedCondition } from './paired-aa.mjs';
+import { AAInputFailure, object, pairedCondition } from './paired-aa.mjs';
 import { collectSourcePaired, evaluateSourcePaired, frozenSourcePlan, singleRun, validateProtocol } from './paired-ab.mjs';
 
-/** Node-only paired-node-v1. No CLI overrides for the frozen timing condition. */
+/** Two closed Node profiles. No CLI overrides for the frozen timing condition. */
 export function nodeSubject(input: unknown): NodeSubject {
   const plan = object(input);
-  equal(plan.schema, 'paired-node-v1', 'Node schema');
+  const schema = plan.schema;
+  if (schema !== 'paired-node-v1' && schema !== 'paired-node-180-v1') throw new AAInputFailure('Unsupported Node schema');
   const platform = object(plan.condition).platform;
   const mode = plan.mode;
   if (platform !== 'nodejs' && platform !== 'fastify' && platform !== 'express') {
     throw new AAInputFailure('Unsupported Node platform');
   }
   if (mode !== 'calibration' && mode !== 'candidate') throw new AAInputFailure('Explicit Node mode required');
-  return { platform, mode };
+  return { platform, mode, schema };
 }
 
 export function frozenNodePlan(input: unknown) {
@@ -26,7 +27,7 @@ export function evaluateNode(plan: unknown, evidence: unknown) {
   try {
     const subject = nodeSubject(plan);
     return { ...evaluateSourcePaired(plan, evidence, subject),
-      schema: 'paired-node-v1', mode: subject.mode, condition: pairedCondition(subject) };
+      schema: subject.schema, mode: subject.mode, condition: pairedCondition(subject) };
   } catch (error) {
     if (!(error instanceof AAInputFailure)) throw error;
     return { verdict: 'FAIL_EVIDENCE', evidenceErrors: [error.message], inconclusive: [],

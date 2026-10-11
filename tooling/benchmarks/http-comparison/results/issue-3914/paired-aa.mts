@@ -15,9 +15,11 @@ export const CONDITION = {
 export type NodeSubject = {
   readonly platform: 'nodejs' | 'fastify' | 'express';
   readonly mode: 'calibration' | 'candidate';
+  readonly schema?: 'paired-node-v1' | 'paired-node-180-v1';
 };
 export function pairedCondition(subject?: NodeSubject) {
-  return subject ? { ...CONDITION, platform: subject.platform, runtimeVersion: '24.21.0' } as const : CONDITION;
+  return subject ? { ...CONDITION, platform: subject.platform, runtimeVersion: '24.21.0',
+    measureSeconds: subject.schema === 'paired-node-180-v1' ? 180 : 60 } as const : CONDITION;
 }
 export const BLOCKS = [['N', 'X', 'Y', 'N'], ['N', 'Y', 'X', 'N'], ['N', 'X', 'Y', 'N']] as const;
 export const CV = { throughputRps: 0.03, serverCpuMicrosPerRequest: 0.03, p95Ms: 0.05, p99Ms: 0.075, rssBytes: 0.05 } as const;
@@ -217,10 +219,10 @@ export function readRecord(input: unknown, index: number, plan: FrozenPlan, subj
   equal(first.result.connections, 1, 'cold concurrency');
   const warmup = traffic(raw.warmup);
   equal(warmup.result.connections, 64, 'warmup concurrency');
-  observedDuration(warmup.result.duration, 30);
+  observedDuration(warmup.result.duration, condition.warmupSeconds);
   const measured = traffic(raw);
   equal(measured.result.connections, 64, 'measurement concurrency');
-  observedDuration(measured.result.duration, 60);
+  observedDuration(measured.result.duration, condition.measureSeconds);
   const server = object(raw.server);
   equal(server.subject, 'server-process-tree', 'resource subject');
   equal(server.rootPid, pid, 'resource root');

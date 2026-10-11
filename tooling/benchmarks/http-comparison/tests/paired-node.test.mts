@@ -5,11 +5,141 @@ import { join } from 'node:path';
 import { before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { AAInputFailure, BLOCKS, object, sha256 } from '../results/issue-3914/paired-aa.mjs';
-import { digestFile, launchCollector, sequenceRuns } from '../results/issue-3914/paired-ab.mjs';
-import { evaluateNode, frozenNodePlan, validateNodeProtocol } from '../results/issue-3914/paired-node.mjs';
+import { AAInputFailure, BLOCKS, CONDITION, object, sha256 } from '../results/issue-3914/paired-aa.mjs';
+import { collectorDeadline, digestFile, launchCollector, pairedEnvironment, sequenceRuns } from '../results/issue-3914/paired-ab.mjs';
+import { evaluateNode, frozenNodePlan, nodeSubject, validateNodeProtocol } from '../results/issue-3914/paired-node.mjs';
 import type { EvidenceFixture } from './fixtures/paired-node-evidence.mjs';
 import { evidenceFixture, planFixture, protocolFixture } from './fixtures/paired-node-evidence.mjs';
+
+function longPlan(platform: Parameters<typeof planFixture>[0] = 'nodejs', mode: Parameters<typeof planFixture>[1] = 'candidate') {
+  const plan = planFixture(platform, mode);
+  return { ...plan, schema: 'paired-node-180-v1', condition: {
+    ...plan.condition, platform, runtimeVersion: '24.21.0' as const, measureSeconds: 180 as const,
+  } };
+}
+
+function longEvidence(plan = longPlan()) {
+  const evidence = evidenceFixture(plan);
+  for (const row of evidence.records) {
+    row.raw.result.duration = 180;
+    row.raw.server.wallSeconds = 180;
+    row.raw.server.samples[1].wallMs = 180_001;
+    row.startedMs = row.ordinal * 300_000 + 1;
+    row.endedMs = row.startedMs + 210_000;
+  }
+  return evidence;
+}
+
+function longProtocol(plan = longPlan()) {
+  const protocol = protocolFixture(plan);
+  return { ...protocol, schema: plan.schema,
+    calibration: { ...protocol.calibration, schema: plan.schema } };
+}
+
+test('evaluateNode: paired-node-180-v1 authentic evidence -> accepts closed extended profile', () => {
+  const plan = longPlan();
+  const evidence = longEvidence(plan);
+
+  const result = evaluateNode(plan, evidence);
+
+  assert.equal(result.verdict, 'OBSERVED_WITHIN_BUDGET_FOR_DECLARED_SCOPE');
+  assert.equal(frozenNodePlan(plan).schema, 'paired-node-180-v1');
+});
+
+for (const platform of ['nodejs', 'fastify', 'express'] as const) {
+  for (const mode of ['calibration', 'candidate'] as const) {
+    test(`evaluateNode: paired-node-180-v1 ${platform} ${mode} -> binds profile protocol and immutable evidence`, () => {
+      const plan = longPlan(platform, mode);
+      const evidence = longEvidence(plan);
+      const before = JSON.stringify(evidence);
+
+      const result = evaluateNode(plan, evidence);
+
+      assert.equal(result.verdict, 'OBSERVED_WITHIN_BUDGET_FOR_DECLARED_SCOPE');
+      assert.ok('schema' in result && 'condition' in result);
+      assert.equal(result.schema, plan.schema);
+      assert.deepEqual(result.condition, plan.condition);
+      assert.equal(JSON.stringify(evidence), before);
+      validateNodeProtocol(longProtocol(plan), plan);
+      const frozen = frozenNodePlan(plan);
+      for (const arm of Object.values(frozen.arms)) {
+        assert.deepEqual(arm.condition, plan.condition);
+        assert.equal(arm.collectorSha256, plan.freeze.collectorSha256);
+        assert.equal(arm.validatorSha256, plan.freeze.validatorSha256);
+        assert.equal(arm.orchestratorSha256, plan.freeze.orchestratorSha256);
+      }
+    });
+  }
+}
+
+for (const [schema, duration] of [
+  ['paired-node-v1', 180], ['paired-node-180-v1', 60],
+  ['paired-node-180-v1', 181], ['paired-node-180-v1', 1], ['paired-node-181-v1', 180],
+] as const) {
+  test(`frozenNodePlan: ${schema} with ${duration}s -> rejects schema or arbitrary timing mismatch`, () => {
+    const plan = longPlan();
+    Object.assign(plan, { schema });
+    Object.assign(plan.condition, { measureSeconds: duration });
+
+    assert.throws(() => frozenNodePlan(plan), AAInputFailure);
+    assert.equal(evaluateNode(plan, longEvidence(plan)).verdict, 'FAIL_EVIDENCE');
+  });
+}
+
+for (const [name, mutate] of [
+  ['short-window', (e: ReturnType<typeof longEvidence>) => { e.records[0].raw.result.duration = 60; }],
+  ['short-condition', (e: ReturnType<typeof longEvidence>) => { Object.assign(e.records[0].condition, { measureSeconds: 60 }); }],
+  ['runtime', (e: ReturnType<typeof longEvidence>) => { e.records[0].raw.servingIdentity.runtime.node = '24.20.0'; }],
+  ['source', (e: ReturnType<typeof longEvidence>) => { e.records[2].raw.servingIdentity.source.gitHead = e.records[1].raw.servingIdentity.source.gitHead; }],
+  ['authentication', (e: ReturnType<typeof longEvidence>) => { e.records[0].raw.servingIdentity.status = 'prepared'; }],
+  ['instrumentation', (e: ReturnType<typeof longEvidence>) => { e.records[0].raw.servingIdentity.instrumentation = 'diagnostic'; }],
+] as const) {
+  test(`evaluateNode: paired-node-180-v1 ${name} failure -> rejects contaminated evidence`, () => {
+    const plan = longPlan();
+    const evidence = longEvidence(plan);
+    mutate(evidence);
+
+    assert.equal(evaluateNode(plan, evidence).verdict, 'FAIL_EVIDENCE');
+  });
+}
+
+for (const [name, mutate] of [
+  ['protocol-schema', (p: ReturnType<typeof longProtocol>) => { p.schema = 'paired-node-v1'; }],
+  ['protocol-window', (p: ReturnType<typeof longProtocol>) => { Object.assign(p.condition, { measureSeconds: 60 }); }],
+  ['calibration-schema', (p: ReturnType<typeof longProtocol>) => { p.calibration.schema = 'paired-node-v1'; }],
+  ['calibration-window', (p: ReturnType<typeof longProtocol>) => { Object.assign(p.calibration.condition, { measureSeconds: 60 }); }],
+  ['calibration-platform', (p: ReturnType<typeof longProtocol>) => { p.calibration.condition.platform = 'express'; }],
+] as const) {
+  test(`validateNodeProtocol: paired-node-180-v1 ${name} -> refuses cross-window or platform calibration`, () => {
+    const plan = longPlan();
+    const protocol = structuredClone(longProtocol(plan));
+    mutate(protocol);
+
+    assert.throws(() => validateNodeProtocol(protocol, plan), AAInputFailure);
+  });
+}
+
+test('validateNodeProtocol: long calibration for legacy candidate -> refuses reverse window contamination', () => {
+  const plan = planFixture();
+  const protocol = protocolFixture(plan);
+  Object.assign(protocol.calibration, { schema: 'paired-node-180-v1',
+    condition: { ...plan.condition, measureSeconds: 180 } });
+
+  assert.throws(() => validateNodeProtocol(protocol, plan), AAInputFailure);
+});
+
+test('pairedEnvironment: closed Node profiles -> phase lengths and bounded overhead without changing Bun defaults', () => {
+  const short = nodeSubject(planFixture());
+  const long = nodeSubject(longPlan());
+
+  assert.deepEqual(pairedEnvironment(short), pairedEnvironment());
+  assert.equal(pairedEnvironment(long).BENCH_WARMUP_SEC, '30');
+  assert.equal(pairedEnvironment(long).BENCH_MEASURE_SEC, '180');
+  assert.equal(collectorDeadline(), 180_000);
+  assert.equal(collectorDeadline(short), 180_000);
+  assert.equal(collectorDeadline(long), 300_000);
+  assert.equal(CONDITION.measureSeconds, 60);
+});
 
 for (const platform of ['nodejs', 'fastify', 'express'] as const) {
   for (const mode of ['calibration', 'candidate'] as const) {
@@ -204,6 +334,7 @@ let directory: string;
 let generatorEntry: string;
 const cwd = fileURLToPath(new URL('../', import.meta.url));
 const childEntry = fileURLToPath(new URL('./fixtures/paired-node-child.mts', import.meta.url));
+const longChildEntry = fileURLToPath(new URL('./fixtures/paired-node-180-child.mts', import.meta.url));
 const collector = fileURLToPath(new URL('../results/issue-3914/paired-node.mts', import.meta.url));
 before(async () => {
   directory = await mkdtemp(join(cwd, 'results/issue-3914/paired-node-check-'));
@@ -276,6 +407,42 @@ test('sequenceRuns: early Node collector exit -> preserves diagnostics and stops
   assert.equal((journal.attempts as unknown[]).length, 1);
 });
 
+test('sequenceRuns: paired-node-180-v1 finite real HTTP -> preserves declared phases and bounded children', {
+  timeout: BLOCKS.flat().length * (20_000 + 5_000) + 10_000,
+}, async () => {
+  const output = join(directory, 'finite-180');
+  await mkdir(output);
+  const subject = nodeSubject(longPlan('nodejs', 'calibration'));
+
+  const evidence = await sequenceRuns(output, async (ordinal, arm, prefix) => {
+    const payloadPath = `${prefix}.child.json`;
+    const child = await launchCollector(process.execPath, [
+      '--import', 'tsx', longChildEntry, 'finite', payloadPath, String(ordinal), arm, generatorEntry,
+    ], cwd, prefix, { ...process.env, ...pairedEnvironment(subject) }, 20_000);
+    return { child, cwd, payload: JSON.parse(await readFile(payloadPath, 'utf8')) };
+  }, subject);
+
+  const rows = evidence.records.map(object);
+  assert.deepEqual(rows.map((row) => row.arm), BLOCKS.flat());
+  assert.equal(new Set(rows.map((row) => object(object(row.raw).generator).pid)).size, 12);
+  for (const row of rows) {
+    assert.deepEqual(row.condition, longPlan().condition);
+    const raw = object(row.raw);
+    assert.deepEqual(object(raw.warmup).generator, raw.generator);
+    assert.deepEqual(object(object(raw.coldStart).firstRequest).generator, raw.generator);
+    assert.equal(object(object(raw.result).requests).total, 3);
+    assert.equal(object(raw.servingIdentity).status, 'authenticated');
+    const profile = JSON.parse(await readFile(join(output, `run-${row.ordinal}-${row.arm}.child.json.profile.json`), 'utf8'));
+    assert.deepEqual(profile, {
+      schema: 'paired-node-180-v1', durations: [1, 30, 180], amounts: [1, 3, 3],
+    });
+    for (const pid of [object(row.child).pid, object(raw.generator).pid, object(raw.servingIdentity).pid]) {
+      assert.equal(typeof pid, 'number');
+      if (typeof pid === 'number') assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+    }
+  }
+});
+
 test('launchCollector: event-driven Node timeout -> bounded kill retains exact exit receipt', { timeout: 10_000 }, async () => {
   const prefix = join(directory, 'timeout');
   const output = `${prefix}.child.json`;
@@ -317,5 +484,28 @@ test('Node CLI: finite override and diagnostic environment -> fail closed outsid
       cwd, join(directory, name), env, 5_000);
 
     assert.equal(result.exitCode, 1);
+  }
+});
+
+test('Node CLI: paired-node-180-v1 plan-only -> preserves closed condition and rejects timing arguments', async () => {
+  const plan = longPlan();
+  const path = join(directory, 'long-plan.json');
+  plan.freeze.planPath = path;
+  await writeFile(path, JSON.stringify(plan));
+
+  const result = await launchCollector(process.execPath, ['--import', 'tsx', collector, '--plan-only', path],
+    cwd, join(directory, 'long-cli'), process.env, 5_000);
+
+  assert.equal(result.exitCode, 0);
+  const frozen = JSON.parse(await readFile(join(directory, 'long-cli.stdout.log'), 'utf8'));
+  assert.equal(frozen.schema, plan.schema);
+  assert.deepEqual(frozen.condition, plan.condition);
+  for (const [name, args, env] of [
+    ['timing', ['--plan-only', path, '--measure-seconds=181'], process.env],
+    ['diagnostic', ['--collect', path, join(directory, 'long-production')], { ...process.env, BENCH_DIAGNOSTIC_DRIFT: '1' }],
+  ] as const) {
+    const outcome = await launchCollector(process.execPath, ['--import', 'tsx', collector, ...args],
+      cwd, join(directory, `long-${name}`), env, 5_000);
+    assert.equal(outcome.exitCode, 1);
   }
 });

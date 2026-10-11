@@ -28,6 +28,16 @@ const FIXED_ENV = {
   BENCH_CONNECTIONS: '64', BENCH_CONCURRENCY_SWEEP: '64', BENCH_LOAD_PROCESS: '1',
 } as const;
 
+export function pairedEnvironment(subject?: NodeSubject) {
+  return { ...FIXED_ENV, BENCH_MEASURE_SEC: String(pairedCondition(subject).measureSeconds) };
+}
+
+export function collectorDeadline(subject?: NodeSubject) {
+  const condition = pairedCondition(subject);
+  // Retain the legacy 90s non-load allowance and the separate 5s forced teardown.
+  return (condition.warmupSeconds + condition.measureSeconds + 90) * 1_000;
+}
+
 function gitSha(value: unknown): string {
   const result = text(value);
   if (!/^[a-f0-9]{40}$/.test(result)) throw new AAInputFailure('Expected full Git SHA');
@@ -52,7 +62,7 @@ export function frozenABPlan(input: unknown) {
 export function frozenSourcePlan(input: unknown, subject?: NodeSubject) {
   const plan = object(input);
   const condition = pairedCondition(subject);
-  equal(plan.schema, subject ? 'paired-node-v1' : 'paired-ab-v1', 'schema');
+  equal(plan.schema, subject ? subject.schema ?? 'paired-node-v1' : 'paired-ab-v1', 'schema');
   if (subject) equal(plan.mode, subject.mode, 'explicit Node mode');
   equal(plan.status, 'FROZEN', 'plan freeze');
   equal(plan.condition, condition, 'condition');
@@ -124,7 +134,7 @@ export function frozenSourcePlan(input: unknown, subject?: NodeSubject) {
     throw new AAInputFailure('Candidate must have a distinct source, packages tree and checkout');
   }
   return {
-    schema: subject ? 'paired-node-v1' : 'paired-ab-v1', status: 'FROZEN', orderSeed: text(plan.orderSeed),
+    schema: subject ? subject.schema ?? 'paired-node-v1' : 'paired-ab-v1', status: 'FROZEN', orderSeed: text(plan.orderSeed),
     ...(subject ? { mode: subject.mode, condition } : {}),
     previousPolicySha256: hash(plan.previousPolicySha256),
     calibrationPlanSha256: subject?.mode === 'calibration' ? null : hash(plan.calibrationPlanSha256),
@@ -224,7 +234,8 @@ export async function verifyArm(plan: ABPlan, arm: Arm, subject?: NodeSubject) {
   }
 }
 
-function fixedEnvironment(plan: ABPlan) {
+function fixedEnvironment(plan: ABPlan, subject?: NodeSubject) {
+  const fixed = pairedEnvironment(subject);
   equal(process.platform, CONDITION.os, 'collector OS');
   equal(process.version, plan.generator.node, 'collector Node');
   equal(process.execPath, plan.generator.executable, 'collector executable');
@@ -232,10 +243,10 @@ function fixedEnvironment(plan: ABPlan) {
   equal(process.env.BENCH_CONTAINER_IDENTITY, plan.containerIdentity, 'container identity');
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith('BENCH_') || key === 'BENCH_CONTAINER_IDENTITY') continue;
-    if (!(key in FIXED_ENV)) throw new AAInputFailure(`Unsupported collection environment ${key}`);
-    equal(value, Reflect.get(FIXED_ENV, key), key);
+    if (!(key in fixed)) throw new AAInputFailure(`Unsupported collection environment ${key}`);
+    equal(value, Reflect.get(fixed, key), key);
   }
-  return { ...process.env, ...FIXED_ENV };
+  return { ...process.env, ...fixed };
 }
 
 export type ChildOutcome = {
@@ -379,7 +390,7 @@ export function validateProtocol(input: unknown, plan: ABPlan, subject?: NodeSub
   equal(protocol.status, 'FROZEN', 'protocol freeze');
   equal(protocol.condition, pairedCondition(subject), 'protocol condition');
   if (subject) {
-    equal(protocol.schema, 'paired-node-v1', 'Node protocol schema');
+    equal(protocol.schema, subject.schema ?? 'paired-node-v1', 'Node protocol schema');
     equal(protocol.mode, subject.mode, 'Node protocol mode');
   }
   equal(protocol.blocks, BLOCKS, 'protocol order');
@@ -397,7 +408,7 @@ export function validateProtocol(input: unknown, plan: ABPlan, subject?: NodeSub
     equal(calibration.planSha256, plan.calibrationPlanSha256, 'calibration binding');
     equal(calibration.verdict, 'OBSERVED_WITHIN_BUDGET_FOR_DECLARED_SCOPE', 'calibration verdict');
     if (subject) {
-      equal(calibration.schema, 'paired-node-v1', 'Node calibration schema');
+      equal(calibration.schema, subject.schema ?? 'paired-node-v1', 'Node calibration schema');
       equal(calibration.mode, 'calibration', 'Node calibration mode');
       equal(calibration.condition, pairedCondition(subject), 'Node calibration condition');
       equal(calibration.frameworkSource, plan.arms.X.frameworkSource, 'Node calibration source');
@@ -414,8 +425,9 @@ export async function singleRun(planPath: string, planHash: string, ordinalText:
   const descriptor = plan.arms[arm];
   equal(resolve(process.cwd()), descriptor.cwd, 'single-run cwd');
   equal(outputPath, join(plan.outputRoot, `run-${ordinal}-${arm}.child.json`), 'single-run output');
-  fixedEnvironment(plan);
-  for (const [key, value] of Object.entries(FIXED_ENV)) process.env[key] = value;
+  fixedEnvironment(plan, subject);
+  // Set the profile before any serving-harness import captures phase lengths.
+  for (const [key, value] of Object.entries(pairedEnvironment(subject))) process.env[key] = value;
   await digestFile(collectorPath(subject), plan.collectorSha256, 'collector content');
   await digestFile(VALIDATOR, plan.validatorSha256, 'validator content');
   await verifyProtocol(plan, subject);
@@ -479,7 +491,7 @@ export async function collectSourcePaired(planPath: string, outputPath: string, 
   if (planOnly) return plan;
   equal(resolve(outputPath), plan.outputRoot, 'frozen output path');
   equal(collectorPath(subject), join(plan.arms.N.cwd, 'results/issue-3914', collectorName(subject)), 'parent baseline checkout');
-  const env = fixedEnvironment(plan);
+  const env = fixedEnvironment(plan, subject);
   await digestFile(collectorPath(subject), plan.collectorSha256, 'parent collector');
   await digestFile(VALIDATOR, plan.validatorSha256, 'parent validator');
   await verifyProtocol(plan, subject);
@@ -496,7 +508,7 @@ export async function collectSourcePaired(planPath: string, outputPath: string, 
       const child = await launchCollector(plan.generator.executable, [
         '--import', 'tsx', join(descriptor.cwd, 'results/issue-3914', collectorName(subject)),
         '--single-run', planPath, sha256(bytes), String(ordinal), childPath,
-      ], descriptor.cwd, prefix, env);
+      ], descriptor.cwd, prefix, env, collectorDeadline(subject));
       let payload: unknown = null;
       try { payload = JSON.parse(await readFile(childPath, 'utf8')); }
       catch (error) {
@@ -514,7 +526,7 @@ export async function collectSourcePaired(planPath: string, outputPath: string, 
   const boundEvidence = { ...evidence, planSha256: sha256(JSON.stringify(input)), planFileSha256: sha256(bytes) };
   await writeFile(join(outputPath, 'evidence.json'), JSON.stringify(boundEvidence, null, 2), { flag: 'wx' });
   const decision = { ...evaluateSourcePaired(input, boundEvidence, subject),
-    ...(subject ? { schema: 'paired-node-v1', mode: subject.mode, condition: pairedCondition(subject) } : {}) };
+    ...(subject ? { schema: subject.schema ?? 'paired-node-v1', mode: subject.mode, condition: pairedCondition(subject) } : {}) };
   await writeFile(join(outputPath, 'decision.json'), JSON.stringify(decision, null, 2), { flag: 'wx' });
   return decision;
 }
