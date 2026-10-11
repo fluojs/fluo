@@ -13,7 +13,7 @@ import { AVAILABLE_TARGETS, targetRequests, WDIR } from '../../../src/targets';
 
 const execute = promisify(execFile);
 const directory = join(WDIR, 'results/issue-3914/deployed-free');
-const output = join(WDIR, 'results/issue-3914/deployed-free-correctness-20261011.json');
+const output = join(WDIR, 'results/issue-3914/deployed-version-url-correctness-20261011.json');
 const evidenceRoot = process.env.FLUO_VERIFICATION_ROOT;
 const targets = ['native-workers', 'fluo-workers'].map((name) => {
   const target = AVAILABLE_TARGETS.find((candidate) => candidate.name === name);
@@ -24,9 +24,9 @@ const scenarios = selectSuite('all');
 const configurations = ['default', 'equivalent'] as const;
 const additionalRequests = targets.reduce((total, target) => total + configurations.length
   * scenarios.reduce((count, scenario) => count + targetRequests(target, scenario.requests).length * 3, 0), 0);
-const plan = { expectedConditions: targets.length * scenarios.length * configurations.length, initialRequests: 20, additionalRequests, maximumRequests: 200 };
+const plan = { expectedConditions: targets.length * scenarios.length * configurations.length, initialRequests: 24, additionalRequests, maximumRequests: 250 };
 assert.equal(plan.expectedConditions, 44);
-assert.equal(plan.initialRequests + additionalRequests, plan.maximumRequests);
+assert.ok(plan.initialRequests + additionalRequests <= plan.maximumRequests);
 
 if (!process.argv.includes('--execute')) {
   console.log(JSON.stringify({ ...plan, execution: 'not-started' }));
@@ -35,12 +35,14 @@ if (!process.argv.includes('--execute')) {
   assert.equal(existsSync(output), false, 'Never overwrite or automatically repeat an existing collection');
   const account = object(JSON.parse(await readFile(join(evidenceRoot, '3914-cloudflare-account-observation-20261011.json'), 'utf8')));
   const initial = object(JSON.parse(await readFile(join(evidenceRoot, '3914-free-workers-http-20261011.json'), 'utf8')));
+  const diagnosis = object(JSON.parse(await readFile(join(evidenceRoot, '3914-free-native-after-publish-diagnostic-20261011.json'), 'utf8')));
   assert.equal(account.workersPlan, 'Free');
   assert.equal(account.displayedPrice, '$0');
   assert.equal(account.accountId, process.env.CLOUDFLARE_ACCOUNT_ID);
   assert.equal(account.workersSubdomain, 'wpfekdml.workers.dev');
-  assert.equal(initial.requestsSent, plan.initialRequests);
+  assert.equal(initial.requestsSent, 20);
   assert.equal(initial.failure, null);
+  assert.equal(diagnosis.controlledRequestsSoFar, plan.initialRequests);
   const sourceHead = (await execute('git', ['rev-parse', 'HEAD'], { cwd: WORKSPACE_ROOT })).stdout.trim();
   assert.equal((await execute('git', ['status', '--porcelain'], { cwd: WORKSPACE_ROOT })).stdout.trim(), '', 'Execute only a clean source head');
   const deployments: Record<string, unknown>[] = [];
@@ -48,10 +50,12 @@ if (!process.argv.includes('--execute')) {
   const completed: Record<string, unknown>[] = [];
   let requestsSent = plan.initialRequests;
   const journal = new EvidenceJournal(output, () => ({
-    kind: 'bounded-deployed-workers-correctness', notPerformanceBaseline: true,
+    kind: 'remote-version-url-correctness', notPerformanceBaseline: true,
     sourceHead, plan, requestsSent, deployments, requests, completed,
     limitations: [
       'Deployment IDs are not opaque isolate identities or proof of isolate cold start.',
+      'Version URLs execute uploaded versions with their resources, not the production traffic allocation.',
+      'Cloudflare does not expose Version URL logs through Wrangler tail; production tail evidence is retained separately.',
       'This collector does not measure framework-exclusive CPU, RSS, throughput or a performance budget.',
       'Different Cloudflare locations and unobserved provider-originated requests remain outside the controlled request count.',
     ],
@@ -64,9 +68,9 @@ if (!process.argv.includes('--execute')) {
           const condition = { configuration, target: target.name, scenario: scenario.name, appShape: scenario.appShape };
           journal.current = condition;
           const name = `fluo-3914-${target.product}-20261011`;
-          const baseUrl = `https://${name}.wpfekdml.workers.dev`;
+          const productionUrl = `https://${name}.wpfekdml.workers.dev`;
           const baseBundle = await readFile(join(directory, `${target.product}-bundle/server.js`));
-          const conditionDirectory = join(directory, 'condition-bundles', configuration, target.product, scenario.name);
+          const conditionDirectory = join(directory, 'version-url-bundles', configuration, target.product, scenario.name);
           await mkdir(conditionDirectory, { recursive: true });
           const bundle = join(conditionDirectory, 'server.js');
           const marker = `\n// finite-correctness condition: ${configuration}/${target.name}/${scenario.name}\n`;
@@ -75,11 +79,11 @@ if (!process.argv.includes('--execute')) {
           // Distinct code bytes avoid relying on such reuse; this is not cold-start proof.
           await writeFile(bundle, deployedBundle, { flag: 'wx' });
           const args = [
-            join(WDIR, 'node_modules/wrangler/bin/wrangler.js'), 'deploy', bundle,
+            join(WDIR, 'node_modules/wrangler/bin/wrangler.js'), 'versions', 'upload', '--script', bundle,
             '--no-bundle', '--config', join(directory, `${target.product}.wrangler.json`),
             '--var', `BENCH_APP_SHAPE:${scenario.appShape}`, '--var', `BENCH_CONFIGURATION:${configuration}`,
           ];
-          const deployment: Record<string, unknown> = { ...condition, name, baseUrl, baseBundleSha256: sha256(baseBundle), bundleSha256: sha256(deployedBundle), marker, command: process.execPath, args, startedAt: new Date().toISOString() };
+          const deployment: Record<string, unknown> = { ...condition, name, productionUrl, baseBundleSha256: sha256(baseBundle), bundleSha256: sha256(deployedBundle), marker, command: process.execPath, args, startedAt: new Date().toISOString() };
           deployments.push(deployment);
           journal.flush();
           const deployed = await execute(process.execPath, args, {
@@ -93,10 +97,14 @@ if (!process.argv.includes('--execute')) {
             throw error;
           });
           Object.assign(deployment, { stdout: deployed.stdout, stderr: deployed.stderr, completedAt: new Date().toISOString(), exitCode: 0 });
-          const version = deployed.stdout.match(/Current Version ID:\s*([a-f0-9-]{36})/);
+          const version = deployed.stdout.match(/Worker Version ID:\s*([a-f0-9-]{36})/);
           assert.ok(version, 'Deployment must return its actual version ID');
-          assert.ok(deployed.stdout.includes(baseUrl), 'Deployment must return the expected owned workers.dev URL');
+          const preview = deployed.stdout.match(/Version Preview URL:\s*(https:\/\/[^\s]+)/);
+          assert.ok(preview, 'Upload must return an available immutable Version URL');
+          const baseUrl = `https://${version[1].slice(0, 8)}-${name}.wpfekdml.workers.dev`;
+          assert.equal(preview[1], baseUrl, 'Version URL must identify this uploaded version and owned Worker');
           deployment.versionId = version[1];
+          deployment.versionUrl = baseUrl;
           journal.flush();
           const cases = targetRequests(target, scenario.requests);
           const check = async (request: (typeof cases)[number], wave: string, requestIndex: number) => {
@@ -137,7 +145,7 @@ if (!process.argv.includes('--execute')) {
         }
       }
     }
-    assert.equal(requestsSent, plan.maximumRequests);
+    assert.equal(requestsSent, plan.initialRequests + plan.additionalRequests);
     assert.equal(completed.length, plan.expectedConditions);
   } catch (error) {
     journal.fail(error);
