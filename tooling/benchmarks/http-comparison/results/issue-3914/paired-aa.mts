@@ -143,6 +143,9 @@ function median(values: number[]): number {
 }
 function traffic(value: unknown) {
   const measurement = object(value);
+  if ('driftDiagnostic' in measurement) {
+    throw new AAInputFailure('Unexpected driftDiagnostic in acceptance traffic');
+  }
   const result = object(measurement.result);
   for (const key of ['errors', 'timeouts', 'non2xx', 'mismatches']) equal(result[key], 0, `traffic ${key}`);
   equal(measurement.statusMismatches, 0, 'traffic status');
@@ -231,6 +234,9 @@ export function readRecord(input: unknown, index: number, plan: FrozenPlan, subj
   const cpuSeconds = positive(server.cpuSeconds);
   const samples = array(server.samples).map((entry) => {
     const sample = object(entry);
+    if ('driftDiagnostic' in sample) {
+      throw new AAInputFailure('Unexpected driftDiagnostic in acceptance resource samples');
+    }
     const processes = array(sample.processes).map(object);
     const pids = processes.map((process) => integer(process.pid));
     if (!pids.includes(pid) || new Set(pids).size !== pids.length) throw new AAInputFailure('Invalid sampled tree');
@@ -334,6 +340,9 @@ export async function collectAA(planPath: string, outputPath: string, planOnly =
   const bytes = await readFile(planPath);
   const input: unknown = JSON.parse(bytes.toString());
   if (planOnly) return describePlan(input);
+  if (process.env.BENCH_DIAGNOSTIC_DRIFT !== undefined) {
+    throw new AAInputFailure('Unsupported collection environment BENCH_DIAGNOSTIC_DRIFT');
+  }
   const plan = frozenPlan(input);
   equal(resolve(planPath), plan.planPath, 'frozen plan path');
   equal(resolve(outputPath), plan.outputRoot, 'frozen output path');

@@ -22,6 +22,25 @@ test('evaluateAB: authentic source-specific identities -> passes without raw rew
   assert.notEqual(evidence.records[1].raw.servingIdentity.source.gitHead, evidence.records[2].raw.servingIdentity.source.gitHead);
 });
 
+for (const phase of ['cold', 'warmup', 'measurement', 'resource-first', 'resource-last'] as const) {
+  for (const [markerName, marker] of [['object', { purpose: 'diagnostic-only' }], ['null', null]] as const) {
+    test(`evaluateAB: diagnostic marker ${phase}/${markerName} -> rejects otherwise valid evidence`, () => {
+      const plan = planFixture();
+      const evidence = evidenceFixture(plan);
+      const raw = evidence.records[0].raw;
+      const phases = {
+        cold: raw.coldStart.firstRequest, warmup: raw.warmup, measurement: raw,
+        'resource-first': raw.server.samples[0], 'resource-last': raw.server.samples[1],
+      };
+      Object.assign(phases[phase], { driftDiagnostic: marker });
+
+      const result = evaluateAB(plan, evidence);
+
+      assert.equal(result.verdict, 'FAIL_EVIDENCE');
+    });
+  }
+}
+
 for (const [name, mutate] of [
   ['wrong-arm', (e: EvidenceFixture) => { e.records[1].arm = 'Y'; }],
   ['wrong-source', (e: EvidenceFixture) => { e.records[2].raw.servingIdentity.source.gitHead = e.records[1].raw.servingIdentity.source.gitHead; }],

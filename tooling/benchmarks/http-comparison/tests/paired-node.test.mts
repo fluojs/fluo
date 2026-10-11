@@ -36,6 +36,29 @@ function longProtocol(plan = longPlan()) {
     calibration: { ...protocol.calibration, schema: plan.schema } };
 }
 
+for (const [profile, fixture] of [
+  ['60s', () => { const plan = planFixture(); return { plan, evidence: evidenceFixture(plan) }; }],
+  ['180s', () => { const plan = longPlan(); return { plan, evidence: longEvidence(plan) }; }],
+] as const) {
+  for (const phase of ['cold', 'warmup', 'measurement', 'resource-first', 'resource-last'] as const) {
+    for (const [markerName, marker] of [['object', { purpose: 'diagnostic-only' }], ['null', null]] as const) {
+      test(`evaluateNode: diagnostic marker ${profile}/${phase}/${markerName} -> rejects otherwise valid evidence`, () => {
+        const { plan, evidence } = fixture();
+        const raw = evidence.records[0].raw;
+        const phases = {
+          cold: raw.coldStart.firstRequest, warmup: raw.warmup, measurement: raw,
+          'resource-first': raw.server.samples[0], 'resource-last': raw.server.samples[1],
+        };
+        Object.assign(phases[phase], { driftDiagnostic: marker });
+
+        const result = evaluateNode(plan, evidence);
+
+        assert.equal(result.verdict, 'FAIL_EVIDENCE');
+      });
+    }
+  }
+}
+
 test('evaluateNode: paired-node-180-v1 authentic evidence -> accepts closed extended profile', () => {
   const plan = longPlan();
   const evidence = longEvidence(plan);

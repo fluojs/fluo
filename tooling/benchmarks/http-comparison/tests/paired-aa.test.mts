@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { BLOCKS, CONDITION, describePlan, evaluateAA, frozenPlan } from '../results/issue-3914/paired-aa.mjs';
+import { AAInputFailure, BLOCKS, collectAA, CONDITION, describePlan, evaluateAA, frozenPlan } from '../results/issue-3914/paired-aa.mjs';
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const digest = sha('fixture');
@@ -107,6 +109,47 @@ test('evaluateAA: stable paired drifting arms -> passes without arm or global na
   assert.ok(result.observations.every((metric) => metric.xCv > 0.03 && metric.globalNativeCv > 0.03));
   assert.ok(result.observations.every((metric) => metric.ratios.every((ratio) => ratio === 1)));
 });
+
+for (const phase of ['cold', 'warmup', 'measurement', 'resource-first', 'resource-last'] as const) {
+  for (const [markerName, marker] of [['object', { purpose: 'diagnostic-only' }], ['null', null]] as const) {
+    test(`evaluateAA: diagnostic marker ${phase}/${markerName} -> rejects otherwise valid evidence`, () => {
+      const input = evidence();
+      const raw = input.records[0].raw;
+      const phases = {
+        cold: raw.coldStart.firstRequest, warmup: raw.warmup, measurement: raw,
+        'resource-first': raw.server.samples[0], 'resource-last': raw.server.samples[1],
+      };
+      Object.assign(phases[phase], { driftDiagnostic: marker });
+
+      const result = evaluateAA(plan(), input);
+
+      assert.equal(result.verdict, 'FAIL_EVIDENCE');
+    });
+  }
+}
+
+for (const value of ['1', '0', '']) {
+  test(`collectAA: diagnostic environment ${JSON.stringify(value)} -> rejects before collection`, async () => {
+    const directory = await mkdtemp(fileURLToPath(new URL('../results/issue-3914/paired-aa-diagnostic-check-', import.meta.url)));
+    const input = plan();
+    input.freeze.planPath = join(directory, 'plan.json');
+    input.freeze.outputRoot = join(directory, 'output');
+    await writeFile(input.freeze.planPath, JSON.stringify(input));
+    const previous = process.env.BENCH_DIAGNOSTIC_DRIFT;
+    process.env.BENCH_DIAGNOSTIC_DRIFT = value;
+    try {
+      await assert.rejects(collectAA(input.freeze.planPath, input.freeze.outputRoot), (error: unknown) =>
+        error instanceof AAInputFailure && error.message.includes('BENCH_DIAGNOSTIC_DRIFT'));
+    } finally {
+      if (previous === undefined) {
+        delete process.env.BENCH_DIAGNOSTIC_DRIFT;
+      } else {
+        process.env.BENCH_DIAGNOSTIC_DRIFT = previous;
+      }
+      await rm(directory, { recursive: true });
+    }
+  });
+}
 
 test('evaluateAA: within-block native drift -> inconclusive without normalizing budgets', () => {
   const input = evidence();
