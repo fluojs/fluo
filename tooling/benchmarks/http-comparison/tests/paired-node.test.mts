@@ -221,7 +221,11 @@ test('digestFile: changed Node build artifact -> rejects immutable bytes', async
   await assert.rejects(digestFile(path, sha256('frozen'), 'Node build'), AAInputFailure);
 });
 
-test('sequenceRuns: finite real HTTP Node children -> fixed order and isolated continuous generators', { timeout: 60_000 }, async () => {
+test('sequenceRuns: finite real HTTP Node children -> fixed order and isolated continuous generators', {
+  // Each of the 12 sequential children retains its 20s deadline and 5s teardown.
+  // The parent watchdog must accommodate those bounds on slower supported hosts.
+  timeout: BLOCKS.flat().length * (20_000 + 5_000) + 10_000,
+}, async () => {
   const output = join(directory, 'finite');
   await mkdir(output);
   const subject = { platform: 'nodejs', mode: 'calibration' } as const;
