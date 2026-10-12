@@ -41,8 +41,9 @@ Dispatch all selected axes in one background task batch. Each child stays
 read-only and reports against the same head and preflight contract. Missing
 PR checks before a PR exists are not missing local evidence: the verification
 axis judges regression coverage and the implementer's focused test results.
-Full local CI, when required for CI execution/configuration changes, runs after
-the selected reviews pass. Ordinary changes proceed directly to publication
+Full local CI runs only for explicitly requested reproduction or diagnosis,
+after the selected reviews pass. All approved changes, including
+CI/configuration, manifests and lockfiles, proceed directly to publication
 after focused checks and reviews; full remote CI follows publication.
 
 Use `scripts/contracts.mjs` to aggregate exactly one result per selected axis.
@@ -86,7 +87,8 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs set-fact --root . --lan
 
 Return `pass | block | needs-human-check`, the head and preflight binding,
 effective axes, individual envelopes, and canonical blockers. Record the
-review fact through `execute-lane`; it decides fix-back, required full local CI,
-or publication.
+review fact through `execute-lane`; it decides fix-back or publication.
+An absent full local CI receipt or waiver is not a gate; applicable current-head
+local failures still require fix-back, and omission is never a local CI PASS.
 Do not push, create/update a PR, merge, or clean up. Review checkout cleanup
 belongs to the lead's lane cleanup, not reviewer authority.

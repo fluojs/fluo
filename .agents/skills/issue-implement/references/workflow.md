@@ -161,9 +161,12 @@ retry or escalation.
 
 Stop at the validated local commit. The lane dispatches selected review using
 the unchanged preflight policy on that exact head, then `sync-pr` for remote
-synchronization. CI execution/configuration changes additionally pass
-`verify-local` for full canonical local CI before publication. Every fix-back
+synchronization. `verify-local` remains available after selected review for
+explicitly requested full local reproduction or diagnosis; CI/configuration,
+manifests and lockfiles do not automatically require its receipt or a waiver.
+Every fix-back
 new head needs focused checks and selected re-review. Neither focused-check
-receipts nor blocker reconciliation substitute for independent review, required
-full local CI, or full exact-head GitHub CI. No push, PR mutation, merge, cleanup, or publish occurs
+receipts nor blocker reconciliation substitute for independent review or full
+exact-head GitHub CI. Report omitted full local CI as not run, never PASS.
+Applicable current-head local failures still require fix-back. No push, PR mutation, merge, cleanup, or publish occurs
 in this stage, and there is no standalone orchestration or DAG requirement.

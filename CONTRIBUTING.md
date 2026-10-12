@@ -28,14 +28,18 @@ fluo uses a monorepo structure managed by `pnpm`.
 
 ## verifying before you push
 
-For ordinary changes, run focused checks for the changed behavior (including
+For all approved changes, including CI/configuration, manifests and lockfiles,
+run focused checks for the changed behavior (including
 affected typechecks and real-surface tests where applicable), retain the results,
 and complete the selected exact-head reviews before opening or updating a PR.
 Full GitHub CI is required on the final PR head before merge.
 
-CI execution/configuration changes additionally require full canonical local
-verification from a clean worktree after review and before publication. Use the
-same command when full local reproduction is explicitly needed:
+Full canonical local verification is not an automatic publication prerequisite;
+no full local receipt or waiver is required. Applicable current-head local
+failures, including receipt revalidation failures, still require fix-back.
+Report omitted full local CI as not run, never as passed or with an invented
+receipt. For explicitly requested full local reproduction or diagnosis, run
+from a clean worktree after selected review:
 
 ```sh
 pnpm verify:local --base-ref <approved-base-sha>
@@ -157,5 +161,7 @@ fluo maintains strict behavioral contracts. Before opening a PR, ensure you have
 - Link related issues or discussions when they exist. If there is no issue, summarize the problem and intended outcome in the PR description.
 - Include a `.changeset/*.md` file only when the PR has consumer-visible release impact for public `@fluojs/*` packages.
 - Before pushing, run the focused checks and selected reviews required for the
-  change. When full local verification is required, also run `pnpm verify:local`
-  and attach its exact-head receipt. Full GitHub CI remains required before merge.
+  change. Only for explicitly requested full local reproduction or diagnosis,
+  run `pnpm verify:local` after review and attach its authenticated exact-head
+  receipt or failure evidence. Full GitHub CI, mergeability and merge authority
+  remain required before merge.

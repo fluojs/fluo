@@ -5,7 +5,7 @@ import {
 	ATTEMPT_CEILING,
 	applyChildResult,
 	decideNext,
-	requiresFullLocalCI,
+	isValidLocalCiWaiver,
 	localCheckBinding,
 	summarizeTransitions,
 	trackStalls,
@@ -121,7 +121,7 @@ test('C1: a reviewed ordinary issue without a full receipt proceeds to publicati
 	assert.equal(next.action, 'create-pr');
 });
 
-test('focused-first: actual CI and harness changes require a full local receipt', () => {
+test('focused-first: reviewed CI and harness changes -> publication without full local receipt', () => {
 	for (const path of [
 		'.github/workflows/ci.yml', '.github/actions/setup/action.yml',
 		'tooling/ci/verify-local.mjs', 'tooling/ci/verify-local.test.mjs',
@@ -142,22 +142,28 @@ test('focused-first: actual CI and harness changes require a full local receipt'
 		'.agents/skills/issue-preflight/scripts/contracts.mjs',
 		'.agents/workflow-contracts/receipt.schema.json',
 	]) {
-		assert.equal(requiresFullLocalCI([path]), true, path);
-	}
-	for (const path of [
-		'packages/http/src/router.ts', 'packages/http/src/router.test.ts',
-		'docs/contracts/testing-guide.md', '.agents/skills/execute-lane/SKILL.md',
-		'.github/copilot-instructions.md', 'tooling/docs/verify-docs-locale-parity.test.mjs',
-	]) {
-		assert.equal(requiresFullLocalCI([path]), false, path);
-	}
-	assert.equal(requiresFullLocalCI(['docs/guide.md', 'tooling/ci/verify-local.mjs']), true);
-	for (const files of [null, undefined, [], [''], ['../unknown'], ['docs/guide.md', null]]) {
-		assert.equal(requiresFullLocalCI(files), true);
+		const obs = makeObs({
+			changedFiles: [path], localChecks: null, review: null,
+			preflight: createPreflight({
+				issue: binding.issue, issue_sha256: binding.issueSha256, base_sha: binding.baseSha,
+				scope: [path], non_scope: [], acceptance: ['Preserve verification gates'],
+				validation: ['node --test'], predicted_files: [path],
+			}),
+		});
+		const pathPolicy = evaluatePreflight(obs.preflight, obs).policy;
+		obs.review = buildReviewFact({
+			head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256, active_axes: pathPolicy.active_axes,
+			reviews: pathPolicy.active_axes.map((reviewer) => ({
+				reviewer, reviewed_head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256,
+				verdict_signal: 'PASS', blockers: [],
+			})),
+		}, obs.headSha, pathPolicy);
+
+		assert.equal(decideNext(makeLane(), obs).action, 'create-pr', path);
 	}
 });
 
-test('focused-first: reviewed source heads publish without a full receipt, but CI changes do not', () => {
+test('focused-first: reviewed CI heads -> publication unless applicable local failure exists', () => {
 	assert.equal(decideNext(makeLane(), makeObs({ localChecks: null })).action, 'create-pr');
 	const ciObs = makeObs({
 		changedFiles: ['tooling/ci/verify-local.mjs'], localChecks: null,
@@ -177,7 +183,7 @@ test('focused-first: reviewed source heads publish without a full receipt, but C
 			verdict_signal: 'PASS', blockers: [],
 		})),
 	}, ciObs.headSha, ciPolicy);
-	assert.equal(decideNext(makeLane(), ciObs).action, 'verify-local');
+	assert.equal(decideNext(makeLane(), ciObs).action, 'create-pr');
 	ciObs.localChecks = { ...localCheckBinding(ciObs.review, acceptedAt), status: 'failed', head: ciObs.headSha };
 	assert.equal(decideNext(makeLane(), ciObs).reason, 'local-checks-failed');
 });
@@ -198,16 +204,16 @@ const makeWaivedObs = () => {
 	return obs;
 };
 
-test('local-ci-waiver: exact operator exception -> publication without a local receipt', () => {
+test('local-ci-waiver: optional operator audit -> publication without local evidence', () => {
 	const obs = makeWaivedObs();
 
-	assert.equal(decideNext(makeLane(), { ...obs, localCiWaiver: null }).action, 'verify-local');
+	assert.equal(decideNext(makeLane(), { ...obs, localCiWaiver: null }).action, 'create-pr');
 	assert.equal(decideNext(makeLane(), obs).action, 'create-pr');
 	assert.equal(obs.localChecks, null);
 	assert.notEqual(obs.localCiWaiver.value.preflightSha256, obs.preflight.sha256);
 });
 
-test('local-ci-waiver: stale or malformed stored facts -> mandatory local gate', () => {
+test('local-ci-waiver: stale or malformed stored facts -> rejected audit binding', () => {
 	const mutations = [
 		['head', (f) => { f.head = 'f'.repeat(40); }],
 		['lane', (f) => { f.value.laneId = 'other'; }],
@@ -238,14 +244,18 @@ test('local-ci-waiver: stale or malformed stored facts -> mandatory local gate',
 		const obs = makeWaivedObs();
 		mutate(obs.localCiWaiver);
 
-		assert.equal(decideNext(makeLane(), obs).action, 'verify-local', name);
+		assert.equal(isValidLocalCiWaiver(obs.localCiWaiver, {
+			headSha: obs.headSha, laneId: obs.laneId, issue: obs.issue,
+			contractSha256: obs.preflight.sha256, binding: localCheckBinding(obs.review, obs.reviewAcceptedAt),
+		}), false, name);
+		assert.equal(decideNext(makeLane(), obs).action, 'create-pr', name);
 	}
 	for (const localCiWaiver of [null, [], true, 'waived']) {
-		assert.equal(decideNext(makeLane(), { ...makeWaivedObs(), localCiWaiver }).action, 'verify-local');
+		assert.equal(decideNext(makeLane(), { ...makeWaivedObs(), localCiWaiver }).action, 'create-pr');
 	}
 });
 
-test('local-ci-waiver: changed current review content or acceptance -> explicit registration required', () => {
+test('local-ci-waiver: changed current review content or acceptance -> stale audit rejected', () => {
 	for (const change of [
 		(obs) => { obs.reviewAcceptedAt = '2026-01-02T00:00:00.000Z'; },
 		(obs) => { obs.review.reviews.reverse(); },
@@ -253,7 +263,11 @@ test('local-ci-waiver: changed current review content or acceptance -> explicit 
 		const obs = makeWaivedObs();
 		change(obs);
 
-		assert.equal(decideNext(makeLane(), obs).action, 'verify-local');
+		assert.equal(isValidLocalCiWaiver(obs.localCiWaiver, {
+			headSha: obs.headSha, laneId: obs.laneId, issue: obs.issue,
+			contractSha256: obs.preflight.sha256, binding: localCheckBinding(obs.review, obs.reviewAcceptedAt),
+		}), false);
+		assert.equal(decideNext(makeLane(), obs).action, 'create-pr');
 	}
 });
 

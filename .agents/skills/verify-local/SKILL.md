@@ -1,6 +1,6 @@
 ---
 name: verify-local
-description: Run full local CI for CI execution/configuration changes or explicit reproduction after selected reviews pass; return evidence without reviewing, pushing, or orchestrating.
+description: Run full local CI only for explicitly requested reproduction or diagnosis after selected reviews pass; return evidence without reviewing, pushing, or orchestrating.
 ---
 
 # Verify local
@@ -8,8 +8,10 @@ description: Run full local CI for CI execution/configuration changes or explici
 This stage belongs to `execute-lane`. The lead owns verification and its
 receipt. This stage follows selected review PASS, not the other way around.
 The verification reviewer has already assessed focused tests and coverage.
-Ordinary changes proceed from focused checks and selected reviews directly to
-publication and full GitHub CI. This stage retains the full canonical runner;
+All approved changes, including CI/configuration, manifests and lockfiles,
+proceed from focused checks and selected reviews directly to publication and
+full GitHub CI without a local receipt or waiver requirement.
+This stage retains the full canonical runner;
 it does not replace focused checks with a shortened canonical receipt.
 
 ## Input and authority
@@ -17,21 +19,20 @@ it does not replace focused checks with a shortened canonical receipt.
 Require lane/issue identity, the accepted preflight, absolute implementation
 worktree, pinned `base_sha` and current head, selected-axis PASS, and
 lead-observed changed paths.
-Run lane `plan` and require `verify-local` for that exact head, or an explicit
-request to reproduce with full local CI. Confirm
+Require an explicit request to reproduce or diagnose with full local CI;
+lane `plan` does not automatically select this stage for any changed path.
+Use its fresh observations to confirm the accepted preflight and selected
+review PASS at the exact head. Confirm
 the worktree is clean at that head and no implementation child still owns it.
 Run checks only; do not edit source, commit, push, mutate a PR, or merge.
 
 If an explicit operator instruction prohibits full local CI, do not run this
-stage or its plan/release-readiness commands to obtain a receipt. The lead
-records the separate `local-ci-waiver` exception described in
-`../execute-lane/SKILL.md`, bound to the current head, accepted preflight,
-effective policy and selected passing review. Report full local CI as waived,
-not passed or executed; never manufacture a local-check fact or receipt.
-An applicable failed local check still requires fix-back. New heads or
-contract/policy/review changes invalidate the exception and require a fresh
-explicit assertion after the selected reviews; no authority carries forward
-automatically. Focused checks and full remote CI remain required.
+stage or its plan/release-readiness commands to obtain a receipt. Report full
+local CI as not run (or waived under that instruction), not passed or executed;
+never manufacture a local-check fact or receipt. The optional `local-ci-waiver`
+audit in `../execute-lane/SKILL.md` is not required for publication and cannot
+override failures. An applicable failed local check still requires fix-back.
+Focused checks and full remote CI remain required.
 
 ## Verification
 
@@ -105,6 +106,6 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs record --root <repo-roo
 The lead retains the failed output and translates concrete failures into
 canonical fix-back blockers. The CLI binds failure to the current head and
 review so `plan` selects fix-back; an old-head report is rejected. A new review
-clears the review-bound failure; the engine re-evaluates whether full local CI
-is required for the actual issue diff. Unresolved failures must remain review
+clears the review-bound failure; it does not automatically request another full
+local run. Unresolved failures must remain review
 blockers rather than being erased by a new PASS.
