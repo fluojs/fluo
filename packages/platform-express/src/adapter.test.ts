@@ -1,8 +1,3 @@
-import {
-  type ExpressTestApplicationOptions as BootstrapExpressApplicationOptions,
-  createExpressTestApplication as bootstrapExpressApplication,
-  startExpressTestApplication as runExpressApplication,
-} from './test-support/application.js';
 import { readFileSync } from 'node:fs';
 import {
   createServer as createHttpServer,
@@ -27,8 +22,8 @@ import {
   HttpException,
   type InterceptorContext,
   type MiddlewareContext,
-  Post,
   PayloadTooLargeException,
+  Post,
   Query,
   Redirect,
   type RequestContext,
@@ -58,11 +53,15 @@ import type {
 } from 'express';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
-
 import {
   ExpressHttpApplicationAdapter,
   isExpressMultipartTooLargeError,
 } from './adapter.js';
+import {
+  type ExpressTestApplicationOptions as BootstrapExpressApplicationOptions,
+  createExpressTestApplication as bootstrapExpressApplication,
+  startExpressTestApplication as runExpressApplication,
+} from './test-support/application.js';
 
 const createExpressAdapter = ExpressHttpApplicationAdapter.create;
 
@@ -988,6 +987,179 @@ describe('@fluojs/platform-express', () => {
           status: 500,
         },
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    { middleware: false, path: '/lazy-response/headers' },
+    { middleware: true, path: '/lazy-response/headers' },
+    { middleware: false, path: '//lazy-response//headers' },
+    { middleware: true, path: '//lazy-response//headers' },
+  ])('response snapshot: $path with middleware=$middleware -> retains eager normalization and native snapshots', async ({ middleware, path }) => {
+    let snapshotReads = 0;
+    const nativeMiddleware: RequestHandler = (_request, response, next) => {
+      response.setHeader('x-snapshot', 'initial');
+      response.setHeader('x-native-count', 42);
+      response.setHeader('x-native-array', ['alpha', 'beta']);
+      response.setHeader('x-remove', 'initial');
+      response.setHeader('__proto__', 'native-header');
+      response.setHeader('Set-Cookie', ['native=one; Path=/', 'native=two; Path=/']);
+      const getHeaders = response.getHeaders.bind(response);
+      response.getHeaders = () => new Proxy(getHeaders(), {
+        get(target, name, receiver) {
+          if (typeof name === 'string') {
+            snapshotReads += 1;
+          }
+          return Reflect.get(target, name, receiver);
+        },
+      });
+      next();
+    };
+
+    @Controller('/lazy-response')
+    class LazyResponseController {
+      @Get('/headers')
+      headers(_input: undefined, context: RequestContext) {
+        const readsBefore = snapshotReads;
+        const raw = context.response.raw as ExpressResponse;
+        raw.setHeader('x-snapshot', 'later');
+        raw.setHeader('x-native-count', 99);
+        raw.setHeader('x-native-array', ['later']);
+        context.response.setHeader('X-Fluo', 'written-before-read');
+        const snapshot = context.response.headers;
+        const readsAfterFirst = snapshotReads;
+        const sameSnapshot = snapshot === context.response.headers;
+        snapshot['X-Local'] = 'local';
+        delete snapshot['x-remove'];
+        context.response.setHeader('Set-Cookie', 'fluo=three; Path=/');
+
+        return {
+          array: snapshot['x-native-array'],
+          cookies: snapshot['Set-Cookie'],
+          count: snapshot['x-native-count'],
+          fluo: snapshot['X-Fluo'],
+          local: context.response.headers['X-Local'],
+          ownProto: Object.hasOwn(snapshot, '__proto__') && snapshot.__proto__,
+          readsAfterFirst,
+          readsAfterRepeated: snapshotReads,
+          readsBefore,
+          removed: !Object.hasOwn(context.response.headers, 'x-remove'),
+          sameSnapshot,
+          snapshot: snapshot['x-snapshot'],
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [LazyResponseController] });
+    const adapter = createExpressAdapter({ host: '127.0.0.1', nativeMiddleware: [nativeMiddleware], port: 0 });
+    const app = await FluoFactory.create(AppModule, {
+      adapter,
+      middleware: middleware ? [{
+        async handle(context: MiddlewareContext, next: () => Promise<void>) {
+          context.response.setHeader('X-Middleware', 'full-path');
+          await next();
+        },
+      }] : [],
+    });
+
+    try {
+      await app.listen();
+
+      const response = await requestHttp({ path, port: getBoundPort(adapter.getServer()) });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.readsBefore).toBeGreaterThan(0);
+      expect(body.readsAfterFirst).toBe(body.readsBefore);
+      expect(body.readsAfterRepeated).toBe(body.readsAfterFirst);
+      expect(body).toMatchObject({
+        array: ['alpha', 'beta'],
+        cookies: ['native=one; Path=/', 'native=two; Path=/', 'fluo=three; Path=/'],
+        count: '42',
+        fluo: 'written-before-read',
+        local: 'local',
+        ownProto: 'native-header',
+        removed: true,
+        sameSnapshot: true,
+        snapshot: 'initial',
+      });
+      expect(response.headers.get('x-snapshot')).toBe('later');
+      expect(response.headers.get('x-native-count')).toBe('99');
+      expect(response.headers.get('x-fluo')).toBe('written-before-read');
+      expect(response.headers.get('x-local')).toBeNull();
+      expect(response.setCookieHeaders).toEqual(['native=one; Path=/', 'native=two; Path=/', 'fluo=three; Path=/']);
+      expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+      expect(response.headers.get('x-middleware')).toBe(middleware ? 'full-path' : null);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('response facade: replaced headers and repeated stream reads -> retains mutable identity and drain cleanup', async () => {
+    const observations: Record<string, unknown> = {};
+
+    @Controller('/response-facade')
+    class ResponseFacadeController {
+      @Get('/')
+      async read(_input: undefined, context: RequestContext) {
+        const originalHeaders = context.response.headers;
+        const replacementHeaders: FrameworkResponse['headers'] = { ...originalHeaders, 'X-Replaced': 'record-only' };
+        context.response.headers = replacementHeaders;
+        context.response.setHeader('X-Updated', 'native');
+        observations.headers = context.response.headers === replacementHeaders;
+        observations.updated = replacementHeaders['X-Updated'];
+        observations.original = originalHeaders['X-Updated'];
+        const stream = context.response.stream;
+        const raw = context.response.raw as ExpressResponse;
+        if (!stream?.waitForDrain) {
+          throw new Error('Express response did not expose stream drain support.');
+        }
+        observations.stream = stream === context.response.stream;
+        const listenerCounts = ['drain', 'close', 'error'].map((event) => raw.listenerCount(event));
+        const drainWait = stream.waitForDrain();
+        raw.emit('drain');
+        await waitForSettlement(drainWait);
+        observations.listenerCounts = ['drain', 'close', 'error'].map((event) => raw.listenerCount(event));
+        observations.originalListenerCounts = listenerCounts;
+        context.response.stream = undefined;
+        observations.disabled = context.response.stream === undefined;
+        context.response.stream = stream;
+        observations.restored = context.response.stream === stream;
+        context.response.setHeader('Content-Type', 'text/plain');
+        context.response.committed = true;
+        stream.write('stream-body');
+        stream.close();
+        observations.closed = stream.closed;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ResponseFacadeController] });
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+
+      const response = await requestHttp({ path: '/response-facade', port: getBoundPort(adapter.getServer()) });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toBe('stream-body');
+      expect(response.headers.get('x-updated')).toBe('native');
+      expect(response.headers.get('x-replaced')).toBeNull();
+      expect(observations).toMatchObject({
+        closed: true,
+        disabled: true,
+        headers: true,
+        original: undefined,
+        restored: true,
+        stream: true,
+        updated: 'native',
+      });
+      expect(observations.listenerCounts).toEqual(observations.originalListenerCounts);
     } finally {
       await app.close();
     }
