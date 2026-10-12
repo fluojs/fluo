@@ -1,5 +1,149 @@
 # #3914 local comparison harness extension
 
+## 2026-10-12 owner-approved final reporting scope
+
+The owner decision "미입증 후보 제외" is recorded in
+`.omo/verification/3915-unproven-candidate-exclusion-20261012.json` as
+`OWNER_APPROVED_COMPLETION_SCOPE_AMENDMENT`. The accepted report-only preflight
+is `1a018aa1cf3bb25ffaceac8b972be30fdeaa1c7f25105a40f0b5ef4a8dda2857`.
+It supersedes the earlier requirement to obtain new passing full BEFORE/AFTER
+matrices and candidate comparisons before completing this work unit. Those
+requirements are superseded, not fulfilled or PASS.
+
+The deliverable is the retained verified harness and an honest Workers/Next
+measurement-and-limitations report, with unproven runtime candidates excluded.
+The existing 71-file harness change and meaningful correctness regressions are
+retained. This reporting increment changes only `REPORT.md` and `manifest.json`
+after `c169f9095a76b4b7d139427ff3cabf653413cdd0`; executable files, tests,
+fixtures, dependencies and lockfiles remain byte-identical. The public package
+tree remains `f0a7ae832640b0cb252b832dd8b986be7caaeb92`, identical to approved
+base `1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18`. No public optimization,
+API change, candidate-only Changeset or React implementation is included.
+
+Performance acceptance is **NOT_ESTABLISHED**. Engineering workflow completion
+is separate: this local implementation does not complete exact-head reviews,
+full GitHub CI, remote-head equality, mergeability, merge, cleanup or the lane
+retrospective. No PR or remote CI is currently recorded. Historical reviews
+at `c169f9095` under policy
+`80651d95a14056c8512f960a787a501a141f6c3002b8e6f9f4e05f57abb82365`
+were contract/code PASS and verification NEEDS-HUMAN-CHECK; they are not rebound
+to this new contract. The interrupted release-readiness remains without a
+completed verdict.
+
+### Environment-specific numerical disposition
+
+| Environment | Retained evidence | Final interpretation |
+| --- | --- | --- |
+| Local direct workerd, native/Fluo | NAS 44/44 finite conditions, 180 requests, 220 artifacts | Correctness only; separate ordinary timing and instrumented CPU capture, not deployed isolate cold or capacity |
+| Next production App Router, Node | Included with Pages in NAS 88/88 finite conditions, 360 requests, 440 artifacts | Correctness only; Next host/framework costs are not Fluo-exclusive |
+| Next production Pages Router, Node | Separate builds and serving entries from App Router in the same 88-condition receipt | Correctness only; Node socket ownership and demand-driven bridge preserved |
+| Deployed Workers immutable Version URLs | 44/44 finite conditions, 180 new requests, cumulative 204/250 controlled direct requests | Correctness only; prior production failures preserved; production traffic allocation and performance NOT_ESTABLISHED |
+
+The NAS finite receipts are
+`.omo/verification/nas-workers-next-20261011/workers-summary.json` and
+`next-summary.json`: collection head
+`526ac5b3514ff0c18e48c76bfa379c00b3a379dc`, framework source
+`1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18`, total 132/132 conditions,
+540 requests and 660 verified artifacts. They bind native/Fluo,
+default/equivalent, concurrent first requests and same-host subsequent requests.
+The runtime is Linux x64 kernel `4.4.302+`, workerd `2025-06-04`,
+Node `24.21.0`, Next `16.3.5`. Observed execution on that NAS does not extend
+official runtime support. Each production Next build ID, entry/trace hash,
+Worker bundle/config hash and serving identity remains in its original receipt.
+Deployed collection retains source `f18b264fd26ea2e5818d374b080d0640645d549e`
+and its original receipt hash, not this report's commit identity.
+
+The BEFORE duration calibration at
+`.omo/verification/nas-host-baseline-3914-20261011/summary.json` retains
+263 completed samples of 264 expected, 2,454,837 measured requests and one
+failed condition. Of the completed samples, 241 fall below the minimum 20,000
+requests. The original uninstrumented
+`default/native-nextjs/stage-routing-params/concurrency64` measurement completed
+1,666 requests with 7 errors and 7 timeouts; cold and warmup passed. This is
+partial BEFORE calibration, not a complete baseline, candidate comparison,
+budget PASS or proof of a Fluo source defect.
+
+The separate `.omo/verification/nas-next-timeout-diagnostic-20261011/analysis.json`
+retains two instrumented conditions and 8,167 requests at the same collection
+head `c169f9095a76b4b7d139427ff3cabf653413cdd0`.
+The original analysis retains that identity; the
+diagnostic did not reproduce the timeout and neither replaces the original
+failure nor establishes its cause. Cgroup CPU remains `unsupported` and Linux
+pressure remains `read-error`, not measured zero.
+
+Client-observed latency includes HTTP transport/network and ordinary host
+handling. Local launch-to-ready includes startup attestation; first-request
+latency includes native host work and, for Fluo Next, lazy import/bootstrap.
+Warm requests reuse the host. Process CPU/RSS and instrumented profiles can
+observe host/framework costs but do not isolate Fluo-exclusive request cost.
+Local restart is not an observed deployed isolate cold boundary. Deployed
+framework-exclusive CPU/RSS, isolate cold and capacity remain unestablished.
+Diagnostic/instrumented samples are not ordinary uninstrumented acceptance.
+
+### Preserved source-bound verification and contracts
+
+`diagnostic-guard-20261011/README.md` and its original logs bind the unchanged
+source at `c169f9095`: 440 harness tests, 439 pass, one existing Linux-only skip,
+zero failures, exit 0, plus typecheck, lint and LSP. The strict offline recheck
+`.omo/verification/3914-diagnostic-guard-recheck-20261011.json` retained original
+raw files, hashes and producer heads. It is reevaluation, not new collection.
+The scoped Bun/Node calibration verdicts do not become Workers/Next acceptance;
+Fastify/Express INCONCLUSIVE and all original FAIL, unsupported and incomplete
+records remain. These unchanged suites and real hosts are not rerun or claimed
+as newly executed for this report-only contract update.
+
+Serving executable/artifact authentication, cumulative bounded hashing,
+direct workerd control-fd readiness/listener ownership, Linux procfs CPU
+precision, continuous cold/warmup/measurement generator and diagnostic
+environment/phase/resource-marker rejection remain intact. Bun A/A/A/B and
+Node 60s/180s fixed-order protocols retain source-specific calibration/candidate
+binding, budgets and failure decisions; no thresholds, outliers or collectors
+are changed and no additional measurement is requested here.
+
+`CONTRIBUTING.md`, `docs/contracts/behavioral-contract-policy.md` and both locales
+of the Workers and Next package READMEs remain authoritative. Workers native
+Request identity, header snapshots, original-body readability, raw byte limits,
+multipart ownership, request-local env/executionContext, abort, waitUntil,
+SSE/WebSocket drain, listen binding freeze, shutdown 503, bounded close and
+lazy restart remain unchanged. Next preserves original Request/method/body,
+headers/Set-Cookie, parser/auth ordering, HEAD single dispatch/bodyless cleanup,
+request-scope disposal and Pages `bodyParser: false`, bounded demand-driven
+input, backpressure, disconnect abort, upload drain and host socket ownership.
+Per-closure lazy Promises and opt-in same-global keyed application Promises
+retain shared bootstrap, cached failure, closed graph and key/process/global
+isolation without request-data sharing, eager bootstrap, retry/reset/reopen
+or process signal ownership. Security headers, middleware ordering and Deno
+public support remain; Deno stays excluded from performance scope.
+
+### Local archive provenance and later cleanup boundary
+
+The completed pre-exclusion archive is local-only:
+`.omo/verification/unproven-exclusion-archive-20261012/receipt.json` and
+`plan.json`. Command exit is 0 and git bundle verification exit is 0.
+`candidate-history.bundle` SHA-256 is
+`be6410c2898cb3d3aa331990aa9d0e5c5f235ec273628f1c56ba9de9ca1249d4`;
+`worktree-raw-before-exclusion.tar.gz` SHA-256 is
+`00cfc4ebe237154e8a1330fb7fd9ad6d546b9698ae35b3e52dd224104b3f5b98`,
+with 5,235 members and archive listing exit 0.
+The plan retains original roots for issue-3911 profiling, issue3912, issue3913
+and issue-3914 raw results, with `.omo/verification/`, `.omo/retros/` and the
+two issue3910 archives separately preserved. `originalFilesRemoved` is false.
+Historical commits and untracked paired-ab-check/paired-node-check directories
+remain preserved and unstaged.
+
+These ignored `.omo` paths and raw files are not remotely downloadable
+artifacts. The snapshot does not authorize cleanup or establish that evidence
+created afterward is in a final cleanup archive. Before eventual cleanup, the
+lead must separately confirm preservation of later evidence.
+
+## Historical implementation and measurement chronology
+
+The following original reports and plans retain their historical facts.
+Earlier full-matrix/candidate-comparison requirements and availability claims
+are superseded only as described above and in the dated evidence update.
+The legacy manifest fields retain their original receipt/check meaning; its
+`completionScope` and `currentEvidence` describe the current disposition.
+
 ## Scope and release impact
 
 The existing comparison runner, target launcher, traffic validation, serving
@@ -284,10 +428,12 @@ typecheck and changed-file lint also passed. This is implementation validation,
 not Linux Node candidate acceptance. A Bun calibration cannot satisfy its
 platform-specific Node calibration binding.
 
-Remaining work includes the source-bound shared candidate comparison, all
+At the time of this update, remaining work included the source-bound shared candidate comparison, all
 required affected conditions, local Workers and production Next App/Pages
 comparisons, explicit deployed metric limitations, final exact-head reviews,
 remote CI and lane completion. No additional platform-specific optimization is
-claimed without a confirmed Fluo-exclusive bottleneck. These private benchmark
+claimed without a confirmed Fluo-exclusive bottleneck. The owner-approved
+2026-10-12 scope above supersedes those full-matrix and candidate-comparison
+requirements, not their missing numerical acceptance. These private benchmark
 and evidence changes do not modify public package behavior or require a
 Changeset.
