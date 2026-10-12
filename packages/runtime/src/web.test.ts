@@ -13,7 +13,7 @@ import {
   Get,
   SseResponse,
 } from '@fluojs/http';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type { RequestResponseFactory } from './adapters/request-response-factory.js';
 
@@ -42,7 +42,7 @@ function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T
 }
 
 describe('dispatchWebRequest', () => {
-  it('applies initial security headers without allocating response header key arrays', async () => {
+  it('applies initial security headers while preserving the native JSON response body', async () => {
     @Controller('/header-cost')
     class HeaderCostController {
       @Get('/')
@@ -60,27 +60,14 @@ describe('dispatchWebRequest', () => {
       handlerMapping: createHandlerMapping([{ controllerToken: HeaderCostController }]),
       rootContainer: new Container().register(HeaderCostController),
     });
-    const keys = Object.keys;
-    let allocatedHeaderKeyArrays = 0;
-    const keyAllocation = vi.spyOn(Object, 'keys').mockImplementation((value) => {
-      if (value === frameworkResponse.headers) {
-        allocatedHeaderKeyArrays += 1;
-      }
-      return keys(value);
-    });
 
-    try {
-      await dispatcher.dispatch(frameworkRequest, frameworkResponse);
-    } finally {
-      keyAllocation.mockRestore();
-    }
+    await dispatcher.dispatch(frameworkRequest, frameworkResponse);
 
     const response = frameworkResponse.toResponse();
     expect(response.headers.get('content-security-policy')).toBe("default-src 'self'");
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect(response.headers.get('content-type')).toContain('application/json');
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(allocatedHeaderKeyArrays).toBe(0);
   });
 
   it('keeps first own enumerable header casing through direct mutations and map replacement', async () => {

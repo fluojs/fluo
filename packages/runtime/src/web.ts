@@ -885,12 +885,7 @@ function mergeSetCookieHeader(
 
 function findHeaderName(headers: Record<string, string | string[]>, name: string): string | undefined {
   const lowerName = name.toLowerCase();
-  for (const key in headers) {
-    if (key.toLowerCase() === lowerName && Object.hasOwn(headers, key)) {
-      return key;
-    }
-  }
-  return undefined;
+  return Object.keys(headers).find((key) => key.toLowerCase() === lowerName);
 }
 
 function hasHeader(headers: Record<string, string | string[]>, name: string): boolean {
