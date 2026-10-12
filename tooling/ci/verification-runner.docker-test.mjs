@@ -22,7 +22,7 @@ const fixtureIdentity = {
   root: '/fixture', treeSha: 'd'.repeat(40), worktreeStatusDigest: 'e'.repeat(64),
 };
 
-test('real Docker Vitest: selected apps suite and zero-match -> authenticated pass or failure evidence', { timeout: 240_000 }, (t) => {
+test('real Docker Vitest: apps and separate benchmark Node coverage -> authenticated pass or zero-test failure', { timeout: 480_000 }, (t) => {
   const root = mkdtempSync(join(tmpdir(), 'fluo-vitest-linux-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const put = (file, content) => {
@@ -43,7 +43,12 @@ test('real Docker Vitest: selected apps suite and zero-match -> authenticated pa
   put('pnpm-workspace.yaml', 'packages:\n  - apps/*\n');
   put('apps/docs/package.json', '{"name":"fixture-docs","private":true}');
   put('apps/docs/index.test.ts', 'import {test,expect} from "vitest";test("fixture arithmetic",()=>expect(2+2).toBe(4));');
-  put('vitest.config.mjs', 'import {readFileSync} from "node:fs";const {testProjects}=JSON.parse(readFileSync("tooling/ci/local-verification-manifest.json"));export default {test:{passWithNoTests:false,projects:[{test:{name:"apps",...testProjects.apps}}]}};');
+  put('tooling/ci/fixture.test.ts', 'import {test,expect} from "vitest";test("tooling arithmetic",()=>expect(2+2).toBe(4));');
+  const nodeTest = 'tooling/benchmarks/react-app-comparison/tests/evaluate.test.ts';
+  for (const file of [nodeTest, 'tooling/benchmarks/react-app-comparison/src/evaluate.ts']) {
+    put(file, readFileSync(new URL(`../../${file}`, import.meta.url)));
+  }
+  put('vitest.config.mjs', 'import {readFileSync} from "node:fs";const {testProjects}=JSON.parse(readFileSync("tooling/ci/local-verification-manifest.json"));export default {test:{passWithNoTests:false,projects:["apps","tooling"].map(name=>({test:{name,...testProjects[name]}}))}};');
   put('package.json', JSON.stringify({ name: 'vitest-linux-fixture', private: true, packageManager: 'pnpm@10.4.1',
     devDependencies: { vitest: '4.1.11' } }));
   run('pnpm', ['install', '--lockfile-only', '--ignore-scripts'], root);
@@ -53,32 +58,39 @@ test('real Docker Vitest: selected apps suite and zero-match -> authenticated pa
     run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'fixture'], root);
     return run('git', ['rev-parse', 'HEAD'], root);
   };
-  for (const filter of ['apps/docs/', 'apps/missing/', 'apps/docs/empty.test.ts']) {
+  for (const filter of ['apps/docs/', 'apps/missing/', 'apps/docs/empty.test.ts',
+    'tooling/', 'tooling/ci/empty.test.ts', nodeTest]) {
     if (filter.endsWith('empty.test.ts')) put(filter, 'export const noTests = true;');
     const manifest = readVerificationManifest();
+    const project = filter.startsWith('apps/') ? 'apps' : 'tooling';
+    const benchmark = project === 'tooling'
+      ? manifest.tasks.find(({ id }) => id === 'tooling-2').commands.filter(({ executable }) => executable === 'node') : [];
     const task = manifest.tasks.find(({ id }) => id === 'tooling-1');
     task.dependencies = [];
     task.inputs = [];
     task.commands = [
       { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
-      { executable: 'pnpm', argv: ['vitest', 'run', '--project', 'apps', filter, '--maxWorkers=1'], cwd: '.' },
+      ...benchmark,
+      { executable: 'pnpm', argv: ['vitest', 'run', '--project', project, filter, '--maxWorkers=1'], cwd: '.' },
     ];
     put('tooling/ci/local-verification-manifest.json', JSON.stringify(manifest));
     const head = commit();
     const identity = collectIdentity(root, head);
     const plan = buildVerificationPlan({ changedFiles: [], identity, root, manifest });
-    const outcome = filter === 'apps/docs/' ? 'passed' : filter.endsWith('empty.test.ts') ? 'empty' : 'missing';
+    const passes = filter === 'apps/docs/' || filter === 'tooling/';
+    const outcome = `${project}-${passes ? 'passed' : filter.endsWith('empty.test.ts') ? 'empty' : 'missing'}`;
     const path = join(root, '.git', `${outcome}-plan.json`);
     const output = join(root, '.git', outcome);
     const artifacts = join(root, '.git/artifacts');
     writeFileSync(path, JSON.stringify(plan));
 
-    if (filter === 'apps/docs/') {
+    const vitestIndex = task.commands.length - 1;
+    if (passes) {
       const result = runTask(plan, 'tooling-1', output, artifacts, path, root);
 
       assert.equal(result.status, 'passed');
       validateTaskResult(plan, plan.tasks.find(({ id }) => id === 'tooling-1'), result, output, artifacts);
-      assert.match(readFileSync(join(output, 'tooling-1-1.log'), 'utf8'), /1 passed/u);
+      assert.match(readFileSync(join(output, `tooling-1-${vitestIndex}.log`), 'utf8'), /1 passed/u);
     } else {
       assert.throws(() => runTask(plan, 'tooling-1', output, artifacts, path, root), (error) => {
         assert.ok(error instanceof Error);
@@ -89,10 +101,17 @@ test('real Docker Vitest: selected apps suite and zero-match -> authenticated pa
 
       const result = JSON.parse(readFileSync(join(output, 'tooling-1.json'), 'utf8'));
       assert.equal(result.status, 'failed');
-      assert.equal(result.commands[1].exitCode, 1);
-      assert.match(readFileSync(join(output, 'tooling-1-1.log'), 'utf8'), /No test files found|No test suite found/u);
+      assert.equal(result.commands[vitestIndex].exitCode, 1);
+      assert.match(readFileSync(join(output, `tooling-1-${vitestIndex}.log`), 'utf8'), /No test files found|No test suite found/u);
       assert.throws(() => validateTaskResult(plan, plan.tasks.find(({ id }) => id === 'tooling-1'),
         result, output, artifacts), /invalid task result/u);
+    }
+    if (project === 'tooling') {
+      assert.equal(benchmark.length, 1);
+      const result = JSON.parse(readFileSync(join(output, 'tooling-1.json'), 'utf8'));
+      assert.equal(result.commands[1].exitCode, 0);
+      assert.match(readFileSync(join(output, 'tooling-1-1.log'), 'utf8'), /# tests [1-9][0-9]*/u);
+      assert.match(readFileSync(join(output, 'tooling-1-1.log'), 'utf8'), /# fail 0/u);
     }
     mkdirSync(evidenceParent, { recursive: true });
     const evidence = mkdtempSync(join(evidenceParent, 'vitest-runner-'));

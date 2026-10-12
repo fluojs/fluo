@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { globSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -104,6 +104,32 @@ test('Vitest: zero-match selected command -> nonzero real process exit', () => {
 
   assert.equal(missing.status, 1, missing.stdout + missing.stderr);
   assert.match(missing.stdout + missing.stderr, /No test files found/u);
+});
+
+test('catalog: Node-only tooling TS tests -> excluded from Vitest and executed in full profiles', () => {
+  const root = new URL('../../', import.meta.url).pathname;
+  const nodeTests = globSync('tooling/**/*.test.ts', { cwd: root, exclude: ['**/node_modules/**'] })
+    .filter((file) => /from ['"]node:test['"]/u.test(readFileSync(join(root, file), 'utf8')));
+  const { NODE_TEST_CONTEXT: _context, ...env } = process.env;
+  assert.ok(nodeTests.length > 0);
+
+  for (const options of [{ forceFull: true }, { profile: 'extended' }]) {
+    const plan = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity, root, ...options });
+
+    assert.equal(plan.tasks.length, 16);
+    for (const file of nodeTests) {
+      assert.ok(!plan.testCatalog.tooling.includes(file), `${file} must not enter Vitest`);
+      const commands = plan.tasks.flatMap((task) => task.commands).filter(({ executable, argv }) =>
+        executable === 'node' && argv[0] === '--test' && argv.includes(file));
+      assert.equal(commands.length, 1, `${file} must have one canonical Node execution`);
+      const result = spawnSync(commands[0].executable, commands[0].argv, {
+        cwd: root, encoding: 'utf8', timeout: 120_000, env,
+      });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.match(result.stdout, /# tests [1-9][0-9]*/u);
+      assert.match(result.stdout, /# fail 0/u);
+    }
+  }
 });
 
 test('buildVerificationPlan: email leaf -> executes affected packages without unrelated suites', () => {
