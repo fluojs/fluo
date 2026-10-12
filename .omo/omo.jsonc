@@ -99,7 +99,7 @@
       "description": "Reviews one exact issue head against its canonical contract.",
       "models": [
         {
-          "model": "z-ai/glm-5.3-ultrafast",
+          "model": "z-ai/glm-5.3-flash-ultrafast",
           "reasoning": "xhigh"
         },
         {
@@ -165,7 +165,7 @@
       "description": "Reviews one parent-owned canonical verification receipt.",
       "models": [
         {
-          "model": "z-ai/glm-5.3-ultrafast",
+          "model": "z-ai/glm-5.3-flash-ultrafast",
           "reasoning": "xhigh"
         },
         {
