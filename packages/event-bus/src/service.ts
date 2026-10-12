@@ -290,14 +290,12 @@ export class EventBusLifecycleService implements OnApplicationBootstrap, OnAppli
   }
 
   private trackActiveDispatchWork<T>(dispatchWork: Promise<T>): Promise<T> {
+    // Drain observes settlement only; callers keep the original result and rejection.
     const trackedWork = dispatchWork.then(
       () => undefined,
       () => undefined,
     );
-    this.activeDispatches.add(trackedWork);
-    void trackedWork.finally(() => {
-      this.activeDispatches.delete(trackedWork);
-    });
+    void this.trackActiveDispatch(trackedWork);
 
     return dispatchWork;
   }
