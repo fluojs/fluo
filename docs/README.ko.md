@@ -1,5 +1,7 @@
 # fluo 문서 허브
 
+Deno 지원은 Deprecated입니다. 기존 사용자와 신규 runtime을 선택하는 사용자는 [Deno 이전 가이드](./getting-started/migrate-from-deno.ko.md)부터 확인하세요.
+
 이 디렉터리는 fluo의 거버넌스 적용 저장소 문서를 담고 있습니다. 공식 웹사이트 소스는 이제 `apps/docs`에 있으며, Fumadocs를 사용해 영문 전용 문서 표면을 제공합니다.
 
 Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Book은 같은 계약에서 파생된 사람 중심의 제품 서사입니다. [문서 권위 정책](./contracts/documentation-authority.ko.md)은 원본 책임, 간결한 Markdown 계약 필드, 충돌 처리와 변경 순서를 정의합니다. 패키지 README는 이 계층에서 패키지 API를 위임받은 원본입니다. 설치·공개 import·필수 사용법·기본값·보장 요약을 유지하고 공통 계약으로 연결하며, API 본문을 `docs/`에 복제하지 않습니다.

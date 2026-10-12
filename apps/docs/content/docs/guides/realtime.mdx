@@ -3,6 +3,8 @@ title: Realtime
 description: Add WebSocket and Socket.IO gateways with runtime-aware limits, guards, rooms, and shutdown behavior.
 ---
 
+> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+
 Realtime features sit beside the HTTP request/response model. Use them when clients need persistent connections, event-style messages, rooms, namespaces, or low-latency server push.
 
 fluo exposes two official realtime paths:
@@ -124,7 +126,7 @@ Use runtime subpaths when you want an explicit runtime binding instead of the ro
 | --- | --- | --- | --- |
 | Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
 | Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
-| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Deno (Deprecated) | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
 | Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
 
 On Bun, the runtime-specific module installs a pre-listen binding on `@fluojs/platform-bun`. The adapter exposes only an `upgrade(...)` host to that binding, so adapter-owned shutdown and raw fetch control stay on the managed Bun adapter instead of the realtime seam.

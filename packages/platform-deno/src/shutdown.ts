@@ -13,6 +13,8 @@ type SignalHost = {
  *
  * @param signals Signals to register, or false to leave shutdown to the caller.
  * @returns A registration callback that deduplicates signals and owns rollback and removal.
+ * @deprecated Deno support ends at the next major. See
+ * https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md
  */
 export function createDenoShutdownSignalRegistration(
   signals: false | readonly DenoShutdownSignal[] = ['SIGINT', 'SIGTERM'],

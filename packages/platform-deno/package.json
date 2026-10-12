@@ -1,6 +1,6 @@
 {
   "name": "@fluojs/platform-deno",
-  "description": "Deno-based HTTP adapter for the Fluo runtime.",
+  "description": "Deprecated: Deno-based HTTP adapter for the Fluo runtime. Migrate to a supported Fluo adapter.",
   "keywords": [
     "fluo",
     "deno",

@@ -26,6 +26,8 @@ export interface CreateDenoFetchHandlerOptions {
  *
  * @param options - Bootstrapped dispatcher and shared Web request parsing options.
  * @returns A handler suitable for a host-owned `Deno.serve(handler)` call.
+ * @deprecated Deno support ends at the next major. See
+ * https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md
  */
 export function createDenoFetchHandler({
   dispatcher,

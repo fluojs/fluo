@@ -4,6 +4,8 @@ description: Decorator-based WebSocket gateways on raw websocket connections, wi
 package: "@fluojs/websockets"
 ---
 
+> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+
 `@fluojs/websockets` adds raw WebSocket gateways to a fluo application. A gateway is a class: `@WebSocketGateway()` marks it, `@OnMessage()`, `@OnConnect()`, and `@OnDisconnect()` mark its handler methods, and the runtime does the rest - accepting upgrades, matching messages, tracking connections, and cleaning up on shutdown. The package splits deliberately in two:
 
 - The root `@fluojs/websockets` entrypoint is runtime-neutral: gateway decorators, metadata helpers, and shared contracts (`WebSocketRoomService`, `WebSocketModuleOptions`, upgrade types).
@@ -209,7 +211,7 @@ The root barrel owns only runtime-neutral authoring; runtime modules and tokens 
 | --- | --- | --- | --- |
 | Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
 | Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
-| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Deno (Deprecated) | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
 | Cloudflare Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
 
 Gateway code moves between runtimes unchanged - decorators and handler signatures come from the root, and only the `forRoot` import changes. Guard and handler request types stay runtime-specific: the Node guard receives `IncomingMessage`, fetch-style guards receive the web-standard `Request`. Native socket and host types remain owned by the platform packages (`@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers`), not re-exported here. The removed root-level Node registration and lifecycle alias have no compatibility export; import them from `@fluojs/websockets/node`.

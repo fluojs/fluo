@@ -3,6 +3,8 @@
 
 # Chapter 23. Porting to Deno
 
+> **Deno: Deprecated.** 신규 프로젝트에는 권장하지 않습니다. 새 기능, 성능 개선, 새로운 런타임 호환성을 추가하지 않으며 중대한 보안·회귀 수정은 건별 검토로 patch/LTS를 보장하지 않습니다. 기존 Deno 경로와 아래 예제는 유지하고 각 Deno 관련 패키지의 다음 major에서 제거합니다([#3938](https://github.com/fluojs/fluo/issues/3938)). [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요. 이 장은 역사적 Deno 이식 자료이며 신규 채택 권고가 아닙니다.
+
 <!-- fluo:docs-navigation:start -->
 > **이전 판 안내 — 선택 기능별 심화 자료.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
 >

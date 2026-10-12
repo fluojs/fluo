@@ -1,5 +1,7 @@
 # fluo — AI Context Document
 
+> **Deno: Deprecated.** Not recommended for new projects. No new features, performance work, or new runtime compatibility; critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths and examples below remain usable; removal is planned for the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). Follow the [Deno migration guide](./getting-started/migrate-from-deno.md).
+
 Shared diagnostic data and static/report/live reader ownership is delegated to [`@fluojs/diagnostics`](../packages/diagnostics/README.md). Use the [optional import migration](./getting-started/migrate-diagnostics.md) for runtime/core/Studio/status compatibility, wire versus parsed route fields and CLI ingress boundaries. Runtime owns lifecycle/resources; Studio owns filters/Mermaid/UI.
 
 Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.

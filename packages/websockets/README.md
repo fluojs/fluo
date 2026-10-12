@@ -4,6 +4,8 @@
 
 Decorator-based WebSocket gateway authoring for the fluo runtime.
 
+> **Deno subpath deprecated.** Only `@fluojs/websockets/deno` is deprecated; the package's root, Node.js, Bun, and Workers paths remain supported. Deno's final supported line is `2.x`, with removal at this package's next major tracked in [#3938](https://github.com/fluojs/fluo/issues/3938). No new Deno features, performance work, or runtime compatibility work is planned. Critical security/regression fixes are considered case by case without a patch or LTS guarantee. Existing behavior and tests remain during migration. Follow the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
+
 ## Table of Contents
 
 - [Installation](#installation)
@@ -27,7 +29,7 @@ The `@fluojs/websockets/node` registration path uses the package-owned `ws` depe
 
 ## When to Use
 
-Use this package to add real-time WebSocket capabilities to your fluo application. It provides a clean, decorator-driven API for handling connections, messages, and disconnections, with first-class support for multiple runtimes (Node.js, Bun, Deno, Cloudflare Workers).
+Use this package to add real-time WebSocket capabilities to your fluo application. It provides a decorator-driven API for handling connections, messages, and disconnections on Node.js, Bun, and Cloudflare Workers. The deprecated Deno binding remains for existing applications during migration.
 
 ## Quick Start
 

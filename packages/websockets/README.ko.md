@@ -4,6 +4,8 @@
 
 fluo 런타임을 위한 데코레이터 기반 WebSocket 게이트웨이 작성 패키지입니다.
 
+> **Deno subpath deprecated.** `@fluojs/websockets/deno`만 deprecated이며 패키지 root, Node.js, Bun, Workers 경로는 계속 지원합니다. Deno의 최종 지원 라인은 `2.x`이고 이 패키지의 다음 major에서 제거하는 계획은 [#3938](https://github.com/fluojs/fluo/issues/3938)에서 추적합니다. 신규 Deno 기능, 성능 개선, runtime 호환성 작업은 중단합니다. 심각한 보안 문제와 회귀는 건별로 판단하며 추가 패치나 LTS를 보장하지 않습니다. 이전 기간에는 기존 동작과 테스트를 유지합니다. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
+
 ## 목차
 
 - [설치](#설치)
@@ -27,7 +29,7 @@ npm install @fluojs/websockets
 
 ## 사용 시점
 
-fluo 애플리케이션에 실시간 WebSocket 기능을 추가할 때 이 패키지를 사용합니다. 연결, 메시지 및 연결 해제 처리를 위한 깔끔한 데코레이터 기반 API를 제공하며, 다양한 런타임(Node.js, Bun, Deno, Cloudflare Workers)을 최고 수준으로 지원합니다.
+fluo 애플리케이션에 실시간 WebSocket 기능을 추가할 때 이 패키지를 사용합니다. Node.js, Bun, Cloudflare Workers에서 연결, 메시지와 연결 해제를 처리하는 데코레이터 기반 API를 제공합니다. Deprecated Deno binding은 이전 기간 동안 기존 애플리케이션을 위해 유지합니다.
 
 ## 빠른 시작
 

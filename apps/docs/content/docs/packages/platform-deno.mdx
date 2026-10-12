@@ -1,12 +1,14 @@
 ---
-title: Deno platform
-description: Run fluo applications on the Deno runtime through native Deno.serve, with permission-scoped networking, host-owned or managed server lifecycles, and signal-driven shutdown.
+title: Deno platform (Deprecated)
+description: Deprecated Deno adapter reference for existing 2.x applications and migration to Node.js or Cloudflare Workers.
 package: "@fluojs/platform-deno"
 ---
 
+> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+
 `@fluojs/platform-deno` is the HTTP adapter that runs a fluo application on the [Deno](https://deno.com/) runtime. It implements the framework's `HttpApplicationAdapter` contract on native `Deno.serve`, translating Deno's standard `Request`/`Response` objects into the same shared fluo dispatch pipeline that every other fetch-style adapter uses.
 
-Use this package when your deployment target is Deno. Use [`@fluojs/platform-bun`](/docs/packages/platform-bun) for Bun, the Node.js adapters for Node, and [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) for Workers. Like the other platform adapters it is not a module: there is no `forRoot`/`forRootAsync` registration and nothing to import into a provider list. You construct the adapter, pass it to `FluoFactory.create(...)`, and call `app.listen()`.
+Keep this reference for existing Deno deployments; new projects should choose Node.js + Fastify or evaluate Workers. Use [`@fluojs/platform-bun`](/docs/packages/platform-bun) for Bun, the Node.js adapters for Node, and [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) for Workers. Like the other platform adapters it is not a module: there is no `forRoot`/`forRootAsync` registration and nothing to import into a provider list. You construct the adapter, pass it to `FluoFactory.create(...)`, and call `app.listen()`.
 
 The package depends on `@fluojs/http` and `@fluojs/runtime` and requires `globalThis.Deno.serve` when the managed server starts. It declares no `engines.node` constraint because its runtime contract is Deno; the repository's Node.js requirement applies only to the maintainer toolchain.
 

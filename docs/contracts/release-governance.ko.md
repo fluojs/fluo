@@ -67,6 +67,16 @@ changeset에 없는 패키지는 해당 릴리스에서 version이 올라가거�
 
 Prerelease workflow는 Changesets prerelease mode(`changeset pre enter <tag>`)를 사용합니다. 필요할 때 dedicated branch에서 prerelease mode에 진입하고, stable 릴리스 전에 `changeset pre exit`로 종료합니다.
 
+## Deno deprecation advisory and registry metadata
+
+Deno 지원은 Deprecated입니다. 새 기능, 성능 개선, 새로운 런타임 호환성을 추가하지 않으며 중대한 보안·회귀 수정은 건별로 검토하고 patch/LTS를 보장하지 않습니다. 기존 2.x API와 명시적 CLI 경로는 계속 사용할 수 있고 각 Deno 관련 패키지의 다음 major에서 제거하는 작업을 [#3938](https://github.com/fluojs/fluo/issues/3938)에서 추적합니다. [Canonical 이전 가이드](../getting-started/migrate-from-deno.ko.md)를 따르세요. 이 상태는 아래 publish catalog에서 `@fluojs/platform-deno`를 제거하거나 기존 동작 소유권을 대체하지 않습니다.
+
+Phase 1은 `@fluojs/platform-deno`, `@fluojs/websockets`, `@fluojs/cli`에 하위 호환 patch advisory를 기록합니다. 정확한 advisory version은 canonical release workflow의 Changesets 결과로 결정하며 현재 Version Packages PR의 다른 변경 사항에서 마지막 advisory version을 추정하지 않습니다.
+
+Canonical `.github/workflows/release.yml`은 Changesets action 뒤에 `node tooling/release/deprecate-platform-deno.mjs`를 실행합니다. Helper는 public npm의 `latest` version과 description이 advisory workspace manifest와 일치한 뒤에만 `@fluojs/platform-deno@*`에 npm deprecation metadata를 적용하도록 설계되었습니다. 불일치는 metadata write 없이 `pending-advisory-release`를 반환합니다. Write 전에 canonical migration guide가 raw GitHub URL로 공개 접근 가능한지 확인하며 기존 `secrets.NPM_TOKEN`에서 전달받은 `NODE_AUTH_TOKEN`을 사용합니다. Local publish 경로가 아닙니다.
+
+Helper는 작업 뒤 fresh full npm packument를 다시 읽고 prerelease를 포함한 모든 반환 version에 정확한 deprecation message가 있는지 요구합니다. Registry read, guide 접근, write, 검증 실패는 workflow를 실패시킵니다. 모든 version에 이미 정확한 message가 있으면 재실행은 metadata write를 생략하되 fresh registry 상태는 계속 검증합니다. 이는 정책과 자동화 설명이지 실행 완료 증명이 아닙니다. 실제 npm 확인 관측 뒤에만 registry deprecation 완료로 보고하세요. Deno surface가 Deprecated라는 이유로 공유 WebSockets나 CLI 패키지 전체를 deprecate하지 않습니다.
+
 ## intended publish surface
 
 `@fluojs/diagnostics`는 Preview(`0.x`) portable 계약 패키지입니다. 공유 선언 소유권과 reader API는 기존 public import와 version-1 artifact를 유지하며 filter, transport, lifecycle 및 기능 status 정책은 기존 패키지에 남습니다.
