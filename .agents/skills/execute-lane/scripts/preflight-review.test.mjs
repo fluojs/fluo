@@ -148,19 +148,19 @@ test('expanded actual axes invalidate earlier policy even on unchanged head', ()
   assert.deepEqual(decision.policy.active_axes, all);
 });
 
-test('review precedes canonical local CI, including local-failure fix-back cycle', () => {
+test('reviewed CI changes publish without receipt, including local-failure fix-back cycle', () => {
   const obs = ciObservation({ hasNewCommits: false });
   assert.equal(decideNext(lane, obs).action, 'implement');
   obs.hasNewCommits = true;
   assert.equal(decideNext(lane, obs).action, 'review');
   obs.review = reviewed(obs);
-  assert.equal(decideNext(lane, obs).action, 'verify-local');
+  assert.equal(decideNext(lane, obs).action, 'create-pr');
   obs.localChecks = { ...passedCheck(obs), status: 'failed' };
   assert.equal(decideNext(lane, obs).reason, 'local-checks-failed');
   obs.headSha = 'e'.repeat(40);
   assert.equal(decideNext(lane, obs).action, 'review');
   obs.review = reviewed(obs);
-  assert.equal(decideNext(lane, obs).action, 'verify-local');
+  assert.equal(decideNext(lane, obs).action, 'create-pr');
   obs.localChecks = passedCheck(obs);
   assert.equal(decideNext(lane, obs).action, 'create-pr');
   obs.pr = { number: 42, state: 'OPEN', headSha: head, ciStatus: 'passing', mergeable: 'MERGEABLE' };
@@ -174,23 +174,27 @@ test('review precedes canonical local CI, including local-failure fix-back cycle
   assert.equal(decideNext(lane, obs).action, 'merge');
 });
 
-test('same-head local receipts without review/policy binding cannot advance', () => {
+test('same-head unbound local evidence cannot block reviewed publication', () => {
   const obs = ciObservation();
   obs.review = reviewed(obs);
   obs.localChecks = passedCheck(obs);
   delete obs.localChecks.reviewSha256;
-  assert.equal(decideNext(lane, obs).action, 'verify-local');
+  assert.equal(decideNext(lane, obs).action, 'create-pr');
+  obs.localChecks.status = 'failed';
+  assert.equal(decideNext(lane, obs).action, 'create-pr');
 });
 
-test('earlier receipt and changed review acceptance cannot advance on the same head', () => {
+test('optional receipt never substitutes for accepted preflight or exact-head review', () => {
   const obs = ciObservation();
   obs.review = reviewed(obs);
   obs.localChecks = passedCheck(obs);
   obs.localChecks.receiptStartedAt = '2025-12-31T23:59:59.000Z';
-  assert.equal(decideNext(lane, obs).action, 'verify-local');
+  assert.equal(decideNext(lane, obs).action, 'create-pr');
   obs.localChecks = passedCheck(obs);
   obs.reviewAcceptedAt = '2026-01-01T00:00:00.500Z';
-  assert.equal(decideNext(lane, obs).action, 'verify-local');
+  assert.equal(decideNext(lane, obs).action, 'create-pr');
+  obs.review = null;
+  assert.equal(decideNext(lane, obs).action, 'review');
   obs.preflight = null;
   obs.localChecks.status = 'failed';
   assert.equal(decideNext(lane, obs).action, 'preflight');

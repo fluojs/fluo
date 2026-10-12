@@ -210,8 +210,11 @@ for (const mode of ['js-disabled', 'bootstrap-blocked'] as const) {
       await form.getByRole('textbox').fill(name);
       const created = page.waitForResponse((response) => response.status() === 303
         && new URL(response.url()).pathname === `${products}/create`);
+      const createdNavigation = page.waitForURL((url) =>
+        url.pathname.startsWith(`${products}/`) && url.pathname !== `${products}/create`);
       await form.getByRole('button', { name: 'Create product', exact: true }).click();
       await created;
+      await createdNavigation;
       const sku = new URL(page.url()).pathname.split('/').at(-1);
       if (sku === undefined) throw new Error('Missing native product identity');
       await expect(page.locator(`[data-product="${sku}"]`)).toHaveText(name);

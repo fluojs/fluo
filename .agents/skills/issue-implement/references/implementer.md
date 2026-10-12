@@ -39,7 +39,9 @@ Denied: edits outside the assigned worktree; push; any PR or issue mutation;
 merge, rebase, amend, squash, reset, or history rewriting; branch/worktree
 cleanup; publication; `Co-Authored-By` trailers; self-review or merge-readiness
 judgments; canonical local-CI execution or PASS artifacts. `verify-local` owns
-canonical local CI after selected review. `sync-pr` owns push and PR updates.
+explicitly requested canonical local reproduction after selected review.
+No changed path automatically requires full local CI, a receipt or a waiver.
+`sync-pr` owns push and PR updates.
 
 Do not edit the preflight artifact, reduce selected review axes, or redefine
 the issue contract. If necessary implementation exceeds preflight scope,
@@ -58,7 +60,8 @@ only within that contract; they do not authorize changing its acceptance bar.
    unrelated cleanup, speculative abstractions, and compatibility aliases.
 4. Run the focused regression to GREEN and changed-file diagnostics. Keep
    command results as evidence. Do not replace the later independent review
-   and canonical `verify-local` gate with this focused-check pass.
+   with this focused-check pass. Omitted full local CI is not run, never PASS.
+   Applicable current-head local failures still require fix-back.
 5. Update necessary docs, examples, migration guidance, TSDoc, and EN/KO
    companions within scope. Add a changeset for consumer-facing public package
    changes, or supply a concrete policy-based no-release rationale. Report
@@ -106,7 +109,8 @@ to that exact machine object. Supply supporting evidence separately.
 If anything prevents completion, return failure evidence to the lane instead
 of a forged completed object. This module has no partial-success result. Stop
 at a validated local committed head, not at PR creation. The lane sends every
-new head to selected review, then canonical local CI, then remote sync. Local
+new head to selected review, then remote sync; full canonical local CI is only
+for explicitly requested reproduction or diagnosis after review. Local
 completion never claims those later stages passed.
 
 User-facing summaries are Korean-first. Keep paths, commands, identifiers,

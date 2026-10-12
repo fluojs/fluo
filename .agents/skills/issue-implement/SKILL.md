@@ -13,10 +13,12 @@ The lane order is:
 
 `preflight -> issue-implement + focused checks -> selected review -> sync-pr`
 
-For CI execution/configuration changes, `verify-local` runs full canonical local
-CI between review and `sync-pr`. `sync-pr` owns push and PR creation or
+Only for explicitly requested reproduction or diagnosis, `verify-local` runs
+full canonical local CI after review. No approved changed path, including
+CI/configuration, manifests or lockfiles, automatically requires that run,
+receipt or waiver. `sync-pr` owns push and PR creation or
 updates. A fix-back creates a new head and goes through selected re-review
-before publication and any required full local CI, regardless of whether review
+before publication, regardless of whether review
 or CI found the blocker. Full GitHub CI remains the final verification gate.
 This stage has no DAG, session identity, or model-enforcement prerequisite.
 
