@@ -273,6 +273,7 @@ export const validateLocalCheckFact = (
 	const plan = buildVerificationPlan({
 		changedFiles: identity.changedFiles,
 		identity,
+		root,
 		manifest: readVerificationManifest(manifestPath(root)),
 		forceFull: receipt.forceFull ?? false,
 	});

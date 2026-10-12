@@ -11,7 +11,7 @@ import { buildVerificationPlan, digest, readVerificationManifest } from '../../.
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
-const fixture = (t) => {
+const fixture = (t, isolatedOrchestrator = false) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-lane-v4-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const bin = join(root, 'bin');
@@ -51,11 +51,17 @@ if (args[0] === 'pr' && args[1] === 'view') {
   }
   cpSync(new URL('../../../../tooling/ci/local-verification-manifest.json', import.meta.url),
     join(root, 'tooling/ci/local-verification-manifest.json'));
+  if (isolatedOrchestrator) {
+    cpSync(new URL('../../../', import.meta.url), join(root, '.agents'), { recursive: true });
+    cpSync(new URL('../../../../tooling/ci/', import.meta.url), join(root, 'tooling/ci'), { recursive: true });
+  }
   git(root, 'add', '.');
   git(root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture base');
   git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
   const cli = (command, args = [], ok = true) => {
-    const result = spawnSync(process.execPath, [script, command, '--root', root, ...args], { env, encoding: 'utf8', timeout: 10_000 });
+    const result = spawnSync(process.execPath, [isolatedOrchestrator
+      ? join(root, '.agents/skills/execute-lane/scripts/lane-v4-cli.mjs') : script,
+    command, '--root', root, ...args], { env, encoding: 'utf8', timeout: 10_000 });
     assert.equal(result.error, undefined);
     if (ok) assert.equal(result.status, 0, result.stderr);
     else assert.notEqual(result.status, 0, result.stdout);
@@ -94,7 +100,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
     // This fixture exercises lane receipt admission, not real execution.
     // Docker-backed command execution is covered by verification-runner.docker-test.mjs.
     const identity = collectIdentity(worktree, base);
-    const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity, forceFull,
+    const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity, forceFull, root: worktree,
       manifest: readVerificationManifest(join(worktree, 'tooling/ci/local-verification-manifest.json')) });
     const lock = plan.environment.lock;
     const actual = {
@@ -209,6 +215,40 @@ for (const file of ['docs/guide.md', '.github/workflows/ci.yml']) {
     assert.equal(f.plan().obs.localChecks.status, 'passed');
   });
 }
+
+test('CLI: scoped receipt uses issue worktree graph after orchestrator manifest changes', (t) => {
+  const f = fixture(t, true);
+  mkdirSync(join(f.root, 'packages/sample/src'), { recursive: true });
+  writeFileSync(join(f.root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+  const manifestPath = join(f.root, 'packages/sample/package.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    name: '@fixture/scoped-receipt', version: '1.0.0', private: true,
+    scripts: { build: 'build-sample', typecheck: 'typecheck-sample' },
+  }));
+  writeFileSync(join(f.root, 'packages/sample/src/index.ts'), 'export const value = 1;\n');
+  f.git(f.root, 'add', '.');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture workspace base');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  f.set('preflight', f.preflight({
+    scope: ['docs/', 'packages/sample/src/'], predicted_files: ['packages/sample/src/index.ts'],
+  }));
+  f.implement();
+  f.commit('packages/sample/src/index.ts', 'export const value = 2;\n');
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  const receipt = f.verify();
+  f.set('local-checks', receipt, review.head_sha);
+  assert.equal(f.plan().obs.localChecks.status, 'passed');
+
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.version = '1.0.1';
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  f.git(f.root, 'add', 'packages/sample/package.json');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'unrelated orchestrator version');
+  assert.equal(f.plan().obs.headSha, review.head_sha);
+  assert.equal(f.plan().obs.localChecks.status, 'passed');
+  f.set('local-checks', receipt, review.head_sha);
+});
 
 const waiverFixture = (t) => {
   const f = fixture(t);
