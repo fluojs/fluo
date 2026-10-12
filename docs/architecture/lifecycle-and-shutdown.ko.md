@@ -27,15 +27,17 @@
 | Node/Fastify shutdown options | 명시적인 `createNodeShutdownSignalRegistration()`은 기본 `SIGINT`/`SIGTERM`을 선택합니다. Callback을 생략하면 host가 signal을 소유합니다. `forceExitTimeoutMs = 30_000`은 signal 완료 bound이며 adapter `shutdownTimeoutMs = 10_000`과 별개입니다. Fastify는 setup 시 0 이상의 safe integer 종료 제한을 검증합니다. |
 | `close(signal?)` | 생략한 signal은 `undefined`이며 runtime이 임의로 `SIGTERM`을 붙이지 않습니다. 진행 중 teardown을 공유하고 성공 뒤 반복 close는 no-op입니다. 실패 후 명시적 재시도는 아래 phase별 소유권을 따릅니다. |
 
+Factory는 bootstrap 성공 전까지 부분적으로 확보한 자원을 소유하고, 성공하면 container, compiled module, lifecycle instance, cleanup registration을 하나의 내부 `RuntimeResources` 묶음으로 반환 shell에 인계합니다. HTTP, context, microservice shell은 각각의 admission/startup/close 상태를 소유합니다. 공통 lifecycle과 자원 조율은 이 상태 머신이나 PlatformShell의 exclusive transition 정책을 합치지 않습니다. `internal/provider-policy.ts`는 DI의 effective resolution이 아니라 선언 scope와 strategy 표현을 소유합니다. Alias/value 진단은 singleton을 유지하고 alias resolution은 대상 provider를 따릅니다. 이 내부 모듈은 공개 entrypoint가 아닙니다.
+
 ## 시작 단계
 
 | 순서 | 단계 | 런타임 사실 | 근거 소스 |
 | --- | --- | --- | --- |
 | 1 | 모듈 부트스트랩 | `FluoFactory.create(...)`은 어떤 라이프사이클 훅보다 먼저 모듈 그래프를 컴파일하고 DI 컨테이너를 생성합니다. | `packages/runtime/src/bootstrap.ts:FluoFactory.create()` |
 | 2 | 런타임 토큰 등록 | 모듈 컴파일이 성공한 뒤 `HTTP_APPLICATION_ADAPTER`, `PLATFORM_SHELL`, `RUNTIME_CONTAINER`, `COMPILED_MODULES` 같은 런타임 토큰이 등록됩니다. | `packages/runtime/src/bootstrap.ts:registerRuntimeBootstrapTokens()`, `packages/runtime/src/bootstrap.ts:registerRuntimeApplicationContextTokens()` |
-| 3 | 라이프사이클 인스턴스 해석 | 공개 라이프사이클 계약을 구현한 런타임 공급자와 모듈 공급자를 라이프사이클 실행 전에 해석합니다. 모든 적격 singleton `multi: true` contribution은 contribution 순서에 따른 별도 lifecycle instance로 유지되며, class/factory contribution은 request/transient sibling을 root에서 해석하지 않고 개별 해석됩니다. | `packages/runtime/src/bootstrap.ts:resolveLifecycleInstances()`, `packages/di/src/internal.ts:resolveMultiContribution()` |
-| 4 | 부트스트랩 라이프사이클 | `runBootstrapHooks(...)`는 먼저 모든 해석된 라이프사이클 인스턴스의 `onModuleInit()`를 실행하고, 이어서 같은 인스턴스들의 `onApplicationBootstrap()`를 실행합니다. | `packages/runtime/src/bootstrap.ts:runBootstrapHooks()` |
-| 5 | 플랫폼 시작 | `platformShell.start()`는 부트스트랩 훅이 완료된 뒤 실행됩니다. 이 단계가 성공하기 전까지 readiness 표시는 시작 중 상태에 머뭅니다. | `packages/runtime/src/bootstrap.ts:runBootstrapLifecycle()` |
+| 3 | 라이프사이클 인스턴스 해석 | 공개 라이프사이클 계약을 구현한 런타임 공급자와 모듈 공급자를 라이프사이클 실행 전에 해석합니다. 모든 적격 singleton `multi: true` contribution은 contribution 순서에 따른 별도 lifecycle instance로 유지되며, class/factory contribution은 request/transient sibling을 root에서 해석하지 않고 개별 해석됩니다. | `packages/runtime/src/internal/lifecycle.ts:resolveLifecycleInstances()`, `packages/di/src/internal.ts:resolveMultiContribution()` |
+| 4 | 부트스트랩 라이프사이클 | `runBootstrapHooks(...)`는 먼저 모든 해석된 라이프사이클 인스턴스의 `onModuleInit()`를 실행하고, 이어서 같은 인스턴스들의 `onApplicationBootstrap()`를 실행합니다. | `packages/runtime/src/internal/lifecycle.ts:runBootstrapHooks()` |
+| 5 | 플랫폼 시작 | `platformShell.start()`는 부트스트랩 훅이 완료된 뒤 실행됩니다. 이 단계가 성공하기 전까지 readiness 표시는 시작 중 상태에 머뭅니다. | `packages/runtime/src/internal/lifecycle.ts:runBootstrapLifecycle()` |
 | 6 | 디스패처 생성 | HTTP 디스패처는 부트스트랩 라이프사이클 경로가 끝난 뒤 생성됩니다. 타이밍 진단을 켜면 이 단계는 `create_dispatcher` phase로 노출됩니다. | `packages/runtime/src/bootstrap.ts:FluoFactory.create()`, `packages/runtime/src/health/diagnostics.ts` |
 
 타이밍 진단을 `diagnostics.timing`으로 활성화하면 부트스트랩 phase 이름은 `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, `create_dispatcher`로 고정됩니다.
@@ -48,10 +50,10 @@ Bootstrap 실패 시 런타임은 확보한 lifecycle instance에 `bootstrap-fai
 
 | 신호 또는 상태 | 보장 | 근거 소스 |
 | --- | --- | --- |
-| 모듈 readiness 표시 | 부트스트랩 중 `markStarting()`과 `markReady()`를 노출하는 compiled module은 라이프사이클 훅 전에 starting으로 설정되고, `platformShell.start()`가 성공한 뒤에만 ready로 전환됩니다. shutdown은 cleanup callback과 lifecycle shutdown hook 실행 전에 이 표시를 starting으로 되돌립니다. | `packages/runtime/src/bootstrap.ts:resetReadinessState()`, `packages/runtime/src/bootstrap.ts:markReadinessState()`, `packages/runtime/src/bootstrap.ts:runBootstrapLifecycle()`, `packages/runtime/src/bootstrap.ts:closeRuntimeResources()` |
+| 모듈 readiness 표시 | 부트스트랩 중 `markStarting()`과 `markReady()`를 노출하는 compiled module은 라이프사이클 훅 전에 starting으로 설정되고, `platformShell.start()`가 성공한 뒤에만 ready로 전환됩니다. shutdown은 cleanup callback과 lifecycle shutdown hook 실행 전에 이 표시를 starting으로 되돌립니다. | `packages/runtime/src/internal/lifecycle.ts:resetReadinessState()`, `packages/runtime/src/internal/lifecycle.ts:markReadinessState()`, `packages/runtime/src/internal/lifecycle.ts:runBootstrapLifecycle()`, `packages/runtime/src/internal/runtime-resources.ts:closeRuntimeResources()` |
 | 애플리케이션 상태 모델 | 공개 런타임 상태는 `bootstrapped`, `ready`, `closed`입니다. | `packages/runtime/src/types.ts:ApplicationState` |
-| listen 이전 readiness 게이트 | `Application.listen()`은 `ready()`를 호출하고, `ready()`는 `platformShell.assertCriticalReadiness()`에 위임합니다. 이 검사가 통과하기 전에는 adapter의 listen을 호출하지 않습니다. | `packages/runtime/src/bootstrap.ts:FluoApplication.startListening()` |
-| ready 전이 | `Application.listen()`은 `adapter.listen(this.dispatcher)`가 성공적으로 끝나고 shutdown이 시작되지 않았을 때만 애플리케이션 상태를 `ready`로 설정합니다. | `packages/runtime/src/bootstrap.ts:FluoApplication.startListening()` |
+| listen 이전 readiness 게이트 | `Application.listen()`은 `ready()`를 호출하고, `ready()`는 `platformShell.assertCriticalReadiness()`에 위임합니다. 이 검사가 통과하기 전에는 adapter의 listen을 호출하지 않습니다. | `packages/runtime/src/internal/application.ts:FluoApplication.startListening()` |
+| ready 전이 | `Application.listen()`은 `adapter.listen(this.dispatcher)`가 성공적으로 끝나고 shutdown이 시작되지 않았을 때만 애플리케이션 상태를 `ready`로 설정합니다. | `packages/runtime/src/internal/application.ts:FluoApplication.startListening()` |
 | closed 전이 | `Application.close()`는 teardown이 pending인 동안 기존 공개 상태를 유지하고 teardown이 성공적으로 완료된 뒤에만 `closed`로 설정합니다. Shutdown admission은 공개 상태와 별도로 추적합니다. | `packages/runtime/src/application.test.ts` (`keeps failed shutdown terminal while retrying only incomplete cleanup`) |
 
 이 보장들은 bootstrap 완료, readiness 검사, adapter 활성화와 ingress를 구분합니다. Node/Fastify는 adapter 생성 시 server 객체를 만들고 listen 때 binding을 수행합니다. Next.js/Workers 같은 host-owned 경로의 listen은 dispatcher 연결이며 별도 socket 생성을 뜻하지 않습니다. `Application.dispatch()`는 shutdown 전에는 listen을 요구하지 않고, 공개 `app.dispatcher`와 adapter의 직접 진입점은 `Application.dispatch()` wrapper를 거치지 않습니다. 이들의 ingress/drain 정책은 각 adapter와 host가 소유합니다.
@@ -60,11 +62,11 @@ Bootstrap 실패 시 런타임은 확보한 lifecycle instance에 `bootstrap-fai
 
 | 영역 | 보장 | 경계 |
 | --- | --- | --- |
-| 훅 순서 | `runShutdownHooks(...)`는 라이프사이클 인스턴스의 역순으로 `onModuleDestroy()`를 실행한 뒤, 다시 역순으로 `onApplicationShutdown(signal?)`를 실행합니다. | `packages/runtime/src/bootstrap.ts:runShutdownHooks()` |
+| 훅 순서 | `runShutdownHooks(...)`는 라이프사이클 인스턴스의 역순으로 `onModuleDestroy()`를 실행한 뒤, 다시 역순으로 `onApplicationShutdown(signal?)`를 실행합니다. | `packages/runtime/src/internal/lifecycle.ts:runShutdownHooks()` |
 | 종료 경로 순서 | Application과 context teardown은 readiness reset, 런타임 정리 콜백, 종료 훅, `adapter.close(signal)`, 컨테이너 해제 순서로 실행됩니다. 재시도는 완료된 runtime phase를 건너뛰고 incomplete adapter 또는 lifecycle-hook stage를 해당 stage의 retry contract에 따라 다시 실행합니다. Container disposal은 terminal best-effort입니다. Materialize된 container-managed `onDestroy()` hook을 모두 시도하고, 실패한 hook만 이후 명시적 close 재시도를 위해 유지하며, 성공한 hook은 다시 실행하지 않습니다. | `packages/runtime/src/bootstrap.ts`, `packages/runtime/src/retryable-shutdown.ts`, `packages/runtime/src/bootstrap.test.ts` (`retries only failed container-managed onDestroy hooks on a second application context close`) |
 | 멱등 close 진입 | `Application.close()`와 `ApplicationContext.close()`는 진행 중인 closing promise를 재사용하며, 첫 번째 close가 성공한 뒤에는 즉시 반환합니다. Teardown이 실패하면 이후 close는 완료된 runtime phase를 건너뛰고 incomplete stage가 소유한 작업을 재개하되 adapter 또는 lifecycle-stage retry ownership은 변경하지 않습니다. 별도의 terminal operation gate는 shutdown 시작부터 provider resolution, application listen, child microservice connect/start를 거부하며, 이 거부는 teardown이 pending이거나 실패한 뒤에도 유지됩니다. | `packages/runtime/src/application.test.ts` (`rejects Application.get() as soon as shutdown starts while teardown is pending`), `packages/runtime/src/bootstrap.test.ts` (`rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending`, `rejects connect and start operations while application close is pending`) |
 | Direct dispatch admission | `Application.dispatch()`는 같은 동기 terminal operation gate를 사용합니다. Close 시작 뒤 dispatch는 HTTP dispatcher handoff 전에 reject되며 teardown이 pending인 동안, close가 실패한 뒤, 성공한 close 뒤에도 계속 거부됩니다. Shutdown 전에 admission된 dispatch는 dispatcher가 소유하며 admission gate가 취소하지 않습니다. | `packages/runtime/src/application.test.ts` (`rejects new dispatches during pending shutdown without interrupting an admitted dispatch`) |
-| 부트스트랩 실패 정리 | 시작 도중 라이프사이클 인스턴스가 이미 생성된 뒤 실패하면, 런타임은 `bootstrap-failed` 신호로 같은 종료 훅을 실행하고 컨테이너 해제를 시도합니다. | `packages/runtime/src/bootstrap.ts:155-189` |
+| 부트스트랩 실패 정리 | 시작 도중 라이프사이클 인스턴스가 이미 생성된 뒤 실패하면, 런타임은 `bootstrap-failed` 신호로 같은 종료 훅을 실행하고 컨테이너 해제를 시도합니다. | `packages/runtime/src/internal/runtime-resources.ts:runBootstrapFailureCleanup()` |
 | Microservice ownership | `Application.connectMicroservice()`로 연결한 microservice는 해당 애플리케이션이 소유하는 child입니다. `startAllMicroservices()`는 뒤쪽 child 시작 실패 시 이미 시작된 child를 `bootstrap-failed`로 rollback하며, `Application.close(signal)`은 부모 runtime cleanup, lifecycle hook, adapter close, container dispose보다 먼저 연결된 microservice를 닫습니다. | `packages/runtime/src/bootstrap.ts` |
 | Microservice ingress | Microservice close 시작은 terminal ingress gate를 동기적으로 설정합니다. 겹친 `listen()`이 settle되는 동안 새 facade `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()` 호출은 transport handoff 전에 reject됩니다. Runtime shell은 같은 gate를 `send()`와 `emit()`에 적용하며, close 시도가 실패해도 ingress는 다시 열리지 않습니다. | `packages/runtime/src/bootstrap.ts`, `packages/microservices/src/service.ts` |
 | NATS request callback | NATS request subscription callback은 async boundary에서 malformed frame과 response encoding 또는 `respond()` 실패를 격리하고, raw console fallback 없이 설정된 transport logger로 보고하며, caller-owned NATS client를 열린 상태로 유지합니다. Encoding 가능한 request-handler 실패는 계속 상관관계가 유지된 error response를 생성합니다. | `packages/microservices/src/transports/nats-transport.ts` |
@@ -201,7 +203,7 @@ HTTP 앱은 `FluoFactory.create(AppModule, { adapter })` 뒤 `app.listen()`과 `
 
 | 근거 | 검증하는 경계 |
 | --- | --- |
-| `packages/runtime/src/index.ts`, `types.ts`, `bootstrap.ts`, `retryable-shutdown.ts`, `platform-shell.ts` | 공개 export, 상태, lifecycle 순서, gate, 완료 phase와 실패 경로 |
+| `packages/runtime/src/index.ts`, `types.ts`, `bootstrap.ts`, `internal/application.ts`, `internal/application-context.ts`, `internal/microservice-application.ts`, `internal/lifecycle.ts`, `internal/runtime-resources.ts`, `retryable-shutdown.ts`, `platform-shell.ts` | 공개 export, 상태, lifecycle 순서, gate, 완료 phase와 실패 경로 |
 | `packages/runtime/src/application.test.ts`, `bootstrap.test.ts` | Pending/실패/성공 종료, provider·child resolution 경쟁, dispatch admission, hook 재실행, DI 실패 hook 재시도, bootstrap 정리, 실제 Node HTTP 및 signal timeout |
 | `packages/runtime/src/http-adapter-shared.ts`, `http-adapter-shared.test.ts` | Helper 시작/등록 실패 정리, 원래 오류 유지, signal 등록 해제 |
 | `packages/di/src/container.ts`, `container-disposal-retry.test.ts` | Terminal disposal, 모든 materialized hook 시도, 실패 hook만 명시적 재시도 |

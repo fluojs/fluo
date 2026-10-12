@@ -11,6 +11,42 @@ import {
 } from './diagnostics.js';
 
 describe('runtime diagnostics graph export', () => {
+  it('projects inherited and explicit declaration scopes without following alias lifetimes', () => {
+    @Scope('request')
+    class RequestBase {}
+    class InheritedRequest extends RequestBase {}
+    @Scope('transient')
+    class TransientResolver {}
+    class RootModule {}
+    defineRuntimeModuleMetadata(RootModule, {
+      providers: [
+        InheritedRequest,
+        { provide: 'inherited-class', useClass: InheritedRequest },
+        { provide: 'explicit-class', useClass: InheritedRequest, scope: 'singleton' },
+        { provide: 'inherited-factory', useFactory: () => ({}), resolverClass: InheritedRequest },
+        { provide: 'transient-factory', useFactory: () => ({}), resolverClass: TransientResolver },
+        { provide: 'explicit-factory', useFactory: () => ({}), resolverClass: InheritedRequest, scope: 'transient' },
+        { provide: 'default-factory', useFactory: () => ({}) },
+        { provide: 'value', useValue: {}, scope: 'transient' },
+        { provide: 'alias', useExisting: InheritedRequest },
+      ],
+    });
+
+    const graph = createRuntimeDiagnosticsGraph(compileModuleGraph(RootModule), RootModule);
+
+    expect(graph.modules[0].providers.map(({ token, type, scope }) => ({ token, type, scope }))).toEqual([
+      { token: 'InheritedRequest', type: 'class', scope: 'request' },
+      { token: 'inherited-class', type: 'class', scope: 'request' },
+      { token: 'explicit-class', type: 'class', scope: 'singleton' },
+      { token: 'inherited-factory', type: 'factory', scope: 'request' },
+      { token: 'transient-factory', type: 'factory', scope: 'transient' },
+      { token: 'explicit-factory', type: 'factory', scope: 'transient' },
+      { token: 'default-factory', type: 'factory', scope: 'singleton' },
+      { token: 'value', type: 'value', scope: 'singleton' },
+      { token: 'alias', type: 'existing', scope: 'singleton' },
+    ]);
+  });
+
   it('exports a versioned graph with module relationships and provider metadata', () => {
     const FACTORY_TOKEN = Symbol('FACTORY_TOKEN');
     const VALUE_TOKEN = Symbol('VALUE_TOKEN');

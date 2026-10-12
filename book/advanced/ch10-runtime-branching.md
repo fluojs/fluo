@@ -27,11 +27,11 @@ This chapter explains how Fluo branches only at package surfaces and adapter sea
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
 The first fact to notice in Chapter 10 is that Fluo's runtime portability is not implemented as one giant `if (isNode) ... else if (isEdge) ...` block. The branch points are much narrower and sit in more architectural locations.
 
-Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:1648-1672` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
+Most of the core bootstrap logic in `path:packages/runtime/src/bootstrap.ts:532-556` is transport-neutral. It compiles the Module Graph, creates the DI container, registers runtime Tokens, resolves lifecycle instances, runs hooks, and assembles the application/context shell. Nowhere in this code is there a giant conditional asking whether the host is Node, the Web platform, or an Edge runtime.
 
 Instead of detecting the host name, that center assembles already prepared adapters and a platform shell. In the excerpt below, the runtime deals with the Module Graph, Providers, Tokens, and lifecycle order. It does not use Node or Web as conditions.
 
-`path:packages/runtime/src/bootstrap.ts:1648-1672`
+`path:packages/runtime/src/bootstrap.ts:532-556`
 ```typescript
   static async create(rootModule: ModuleType, options: CreateApplicationOptions = {}): Promise<Application> {
     const studioDevtools = options.studioDevtools ?? createStudioDevtoolsRuntimeFromConfig();

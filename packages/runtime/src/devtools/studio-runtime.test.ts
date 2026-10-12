@@ -44,6 +44,58 @@ afterEach(() => {
 });
 
 describe('Studio devtools runtime bridge', () => {
+  it('publishes declaration scopes while resolverClass does not author factory dependencies', async () => {
+    class RequestBase {}
+    class InheritedRequest extends RequestBase {}
+    class ResolverBase {}
+    class InheritedResolver extends ResolverBase {}
+    class RootModule {}
+    defineRuntimeClassDiMetadata(RequestBase, { scope: 'request' });
+    defineRuntimeClassDiMetadata(ResolverBase, { inject: ['not-a-factory-dependency'], scope: 'transient' });
+    defineRuntimeModuleMetadata(RootModule, {
+      providers: [
+        InheritedRequest,
+        { provide: 'inherited-class', useClass: InheritedRequest },
+        { provide: 'explicit-class', useClass: InheritedRequest, scope: 'singleton' },
+        { provide: 'inherited-factory', useFactory: () => ({}), resolverClass: InheritedResolver },
+        { provide: 'explicit-factory', useFactory: () => ({}), resolverClass: InheritedResolver, scope: 'singleton', inject: [] },
+        { provide: 'value', useValue: {}, scope: 'transient' },
+        { provide: 'alias', useExisting: InheritedRequest },
+      ],
+    });
+    const bootstrapped = bootstrapModule(RootModule, { logger });
+
+    try {
+      const snapshot = createStudioLiveSnapshot({
+        appId: 'provider-policy',
+        modules: bootstrapped.modules,
+        rootModule: RootModule,
+      });
+
+      expect(snapshot.graph.nodes.filter((node) => node.kind === 'provider').map((node) => ({
+        token: node.label,
+        type: node.metadata?.providerType,
+        scope: node.metadata?.scope,
+      }))).toEqual([
+        { token: 'InheritedRequest', type: 'class', scope: 'request' },
+        { token: 'inherited-class', type: 'class', scope: 'request' },
+        { token: 'explicit-class', type: 'class', scope: 'singleton' },
+        { token: 'inherited-factory', type: 'factory', scope: 'transient' },
+        { token: 'explicit-factory', type: 'factory', scope: 'singleton' },
+        { token: 'value', type: 'value', scope: 'singleton' },
+        { token: 'alias', type: 'existing', scope: 'singleton' },
+      ]);
+      expect(snapshot.graph.edges.filter((edge) => edge.kind === 'depends_on')).toEqual([
+        expect.objectContaining({
+          from: 'provider:RootModule:alias',
+          to: 'provider:RootModule:InheritedRequest',
+        }),
+      ]);
+    } finally {
+      await bootstrapped.container.dispose();
+    }
+  });
+
   it('uses the runtime-neutral diagnostics seam rather than a Studio production dependency', () => {
     const packageDirectory = dirname(fileURLToPath(import.meta.url));
     const packageManifest = JSON.parse(readFileSync(join(packageDirectory, '../../package.json'), 'utf8')) as {

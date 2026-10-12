@@ -272,7 +272,7 @@ function sourceExample(content: string, sourceMarker: string): string {
 }
 
 function sourceRange(sourceMarker: string): [number, number] {
-  const match = /bootstrap\.ts:(\d+)-(\d+)/u.exec(sourceMarker);
+  const match = /^path:packages\/runtime\/src\/(?:[a-z0-9-]+\/)*[a-z0-9-]+\.ts:(\d+)-(\d+)$/u.exec(sourceMarker);
 
   if (!match) {
     throw new Error(`Missing source range in ${sourceMarker}.`);
@@ -296,20 +296,36 @@ describe('legacy Book runtime source consumers', () => {
   it.each([
     'book/advanced/ch09-app-context.md',
     'book/advanced/ch09-app-context.ko.md',
-  ])('keeps Chapter 9 runtime source excerpts byte-aligned with bootstrap.ts in %s', (relativePath) => {
+  ])('keeps Chapter 9 runtime source excerpts byte-aligned with their owners in %s', (relativePath) => {
     const content = read(relativePath);
-    const runtimeSource = read('packages/runtime/src/bootstrap.ts');
-    const contextMarker = 'path:packages/runtime/src/bootstrap.ts:921-955';
-    const listenMarker = 'path:packages/runtime/src/bootstrap.ts:755-831';
-    const readyMarker = 'path:packages/runtime/src/bootstrap.ts:668-674';
-    const dispatcherMarker = 'path:packages/runtime/src/bootstrap.ts:1614-1634';
+    const contextMarker = 'path:packages/runtime/src/internal/application-context.ts:14-54';
+    const listenMarker = 'path:packages/runtime/src/internal/application.ts:173-249';
     const contextGet = sourceExample(content, contextMarker);
     const applicationListen = sourceExample(content, listenMarker);
 
-    expectSourceExampleToMatchRuntime(content, runtimeSource, contextMarker);
-    expectSourceExampleToMatchRuntime(content, runtimeSource, listenMarker);
-    expectSourceExampleToMatchRuntime(content, runtimeSource, readyMarker);
-    expectSourceExampleToMatchRuntime(content, runtimeSource, dispatcherMarker);
+    for (const [sourcePath, sourceMarker] of [
+      ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:637-661'],
+      ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:778-792'],
+      ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:827-838'],
+      ['packages/runtime/src/internal/application-context.ts', 'path:packages/runtime/src/internal/application-context.ts:14-54'],
+      ['packages/runtime/src/internal/context-resolution.ts', 'path:packages/runtime/src/internal/context-resolution.ts:30-53'],
+      ['packages/runtime/src/internal/provider-policy.ts', 'path:packages/runtime/src/internal/provider-policy.ts:84-98'],
+      ['packages/runtime/src/internal/context-resolution.ts', 'path:packages/runtime/src/internal/context-resolution.ts:63-87'],
+      ['packages/runtime/src/internal/context-resolution.ts', 'path:packages/runtime/src/internal/context-resolution.ts:99-122'],
+      ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:376-396'],
+      ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:398-428'],
+      ['packages/runtime/src/internal/lifecycle.ts', 'path:packages/runtime/src/internal/lifecycle.ts:280-290'],
+      ['packages/runtime/src/internal/lifecycle.ts', 'path:packages/runtime/src/internal/lifecycle.ts:257-270'],
+      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:23-58'],
+      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:86-92'],
+      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:173-249'],
+      ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:498-518'],
+      ['packages/runtime/src/internal/runtime-resources.ts', 'path:packages/runtime/src/internal/runtime-resources.ts:151-178'],
+      ['packages/runtime/src/internal/runtime-resources.ts', 'path:packages/runtime/src/internal/runtime-resources.ts:180-195'],
+      ['packages/runtime/src/internal/lifecycle.ts', 'path:packages/runtime/src/internal/lifecycle.ts:218-244'],
+    ] as const) {
+      expectSourceExampleToMatchRuntime(content, read(sourcePath), sourceMarker);
+    }
 
     expect(contextGet).toContain('private closeStarted = false;');
     expect(contextGet).toContain(
@@ -329,13 +345,13 @@ describe('legacy Book runtime source consumers', () => {
     'book/advanced/ch09-app-context.ko.md',
   ])('rejects a changed source excerpt without governing narrative in %s', (relativePath) => {
     const content = read(relativePath);
-    const marker = 'path:packages/runtime/src/bootstrap.ts:921-955';
+    const marker = 'path:packages/runtime/src/internal/application-context.ts:14-54';
     const excerpt = sourceExample(content, marker);
     const changed = content.replace(excerpt, `${excerpt}\n// source drift`);
 
     expect(changed).not.toBe(content);
     expect(() => expectSourceExampleToMatchRuntime(
-      changed, read('packages/runtime/src/bootstrap.ts'), marker,
+      changed, read('packages/runtime/src/internal/application-context.ts'), marker,
     )).toThrow();
   });
 });
