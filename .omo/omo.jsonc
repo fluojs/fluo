@@ -99,6 +99,10 @@
       "description": "Reviews one exact issue head against its canonical contract.",
       "models": [
         {
+          "model": "z-ai/glm-5.3-flash-ultrafast",
+          "reasoning": "xhigh"
+        },
+        {
           "model": "bai/glm-5.3-flash",
           "reasoning": "xhigh"
         },
@@ -160,6 +164,10 @@
     "fluo-verification-reviewer": {
       "description": "Reviews one parent-owned canonical verification receipt.",
       "models": [
+        {
+          "model": "z-ai/glm-5.3-flash-ultrafast",
+          "reasoning": "xhigh"
+        },
         {
           "model": "bai/glm-5.3-flash",
           "reasoning": "xhigh"

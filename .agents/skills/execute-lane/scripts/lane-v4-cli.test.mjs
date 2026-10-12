@@ -110,11 +110,19 @@ if (args[0] === 'pr' && args[1] === 'view') {
     const evidenceRoot = join(worktree, '.omo/verification/lane-test');
     const resultRoot = join(evidenceRoot, 'results');
     mkdirSync(resultRoot, { recursive: true });
+    const artifactRoot = join(evidenceRoot, 'artifacts');
+    mkdirSync(artifactRoot, { recursive: true });
     const taskResults = plan.tasks.map((task) => ({
       version: 2, taskId: task.id, status: ok ? 'passed' : 'failed',
       headSha: identity.headSha, treeSha: identity.treeSha, planDigest,
       imageKey: plan.environment.imageKey, imageId: `sha256:${'1'.repeat(64)}`,
-      environment: actual, artifacts: [],
+      environment: actual, artifacts: task.outputs.map((name) => {
+        const path = name === 'docs-site' ? `${name}/server.js` : name;
+        const bytes = `${task.id}:${name}`;
+        mkdirSync(dirname(join(artifactRoot, path)), { recursive: true });
+        writeFileSync(join(artifactRoot, path), bytes);
+        return { path, digest: digest(bytes), size: Buffer.byteLength(bytes) };
+      }),
       logs: task.commands.map((_, index) => ({ commandIndex: index,
         path: `${task.id}-${index}.log`, digest: digest(`${task.id}-${index}`) })),
       commands: task.commands.map((command) => ({ command,
@@ -146,9 +154,6 @@ if (args[0] === 'pr' && args[1] === 'view') {
     const hostResultPath = join(resultRoot, 'host-checks.json');
     writeFileSync(hostResultPath, `${JSON.stringify(hostChecks)}\n`);
     logs.push({ path: relative(worktree, hostResultPath), digest: digest(readFileSync(hostResultPath)) });
-    const archivePath = join(evidenceRoot, 'artifacts/archive.tar');
-    mkdirSync(dirname(archivePath), { recursive: true });
-    writeFileSync(archivePath, 'artifact');
     const receipt = {
       version: 2, status: ok ? 'passed' : 'failed', profile: 'pr', identity,
       source: plan.source, environment: { lock, imageKey: plan.environment.imageKey },
@@ -156,7 +161,9 @@ if (args[0] === 'pr' && args[1] === 'view') {
       environmentLockDigest: plan.environment.lockDigest,
       manifestDigest: plan.manifestDigest, planDigest, hostChecks, taskResults,
       capabilityTasks: plan.capabilityTasks, logs,
-      artifacts: [{ path: relative(worktree, archivePath), digest: digest('artifact') }],
+      artifacts: taskResults.flatMap((result) => result.artifacts.map((file) => ({
+        path: relative(worktree, join(artifactRoot, file.path)), digest: file.digest,
+      }))),
       startedAt: entry.facts.review?.accepted_at
         ? new Date(Date.parse(entry.facts.review.accepted_at) + 1000).toISOString()
         : new Date().toISOString(),
@@ -199,7 +206,7 @@ test('CLI local-ci-waiver: explicit registration -> separate audit fact without 
   const f = waiverFixture(t);
   const head = f.acceptedReview.head_sha;
   const value = f.waiver();
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
 
   f.set('local-ci-waiver', value, head);
 
@@ -267,7 +274,7 @@ test('CLI local-ci-waiver: malformed persisted wrappers -> ignored without excep
     writeFileSync(f.lanePath, JSON.stringify(lane));
 
     const result = f.plan();
-    assert.equal(result.decision.action, 'verify-local');
+    assert.equal(result.decision.action, 'create-pr');
     assert.equal(result.obs.localCiWaiver, null);
   }
 });
@@ -352,7 +359,7 @@ test('CLI local-ci-waiver: review or preflight replacement -> cleared waiver and
   let bytes = readFileSync(f.lanePath, 'utf8');
   f.set('local-ci-waiver', value, head, false);
   assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
   const renewed = f.waiver();
   f.set('local-ci-waiver', renewed, head);
 
@@ -372,7 +379,7 @@ test('CLI local-ci-waiver: review or preflight replacement -> cleared waiver and
   bytes = readFileSync(f.lanePath, 'utf8');
   f.set('local-ci-waiver', renewed, head, false);
   assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
 });
 
 test('CLI local-ci-waiver: new head or invalid preflight/review -> no carried authority', (t) => {
@@ -390,7 +397,7 @@ test('CLI local-ci-waiver: new head or invalid preflight/review -> no carried au
   const review = f.review();
   f.set('review', review, review.head_sha);
   result = f.plan();
-  assert.equal(result.decision.action, 'verify-local');
+  assert.equal(result.decision.action, 'create-pr');
   bytes = readFileSync(f.lanePath, 'utf8');
   f.set('local-ci-waiver', value, review.head_sha, false);
   assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
@@ -407,6 +414,49 @@ test('CLI local-ci-waiver: new head or invalid preflight/review -> no carried au
   assert.equal(f.plan().decision.action, 'preflight');
   assert.equal(f.plan().obs.localCiWaiver, null);
 });
+
+for (const file of ['.github/workflows/ci.yml', 'package.json', 'pnpm-lock.yaml',
+  'tooling/ci/package.json', 'vitest.config.ts', 'tooling/ci/verify-local.mjs']) {
+  test(`CLI: reviewed ${file} -> publication without local receipt or waiver`, (t) => {
+    const f = fixture(t);
+    f.set('preflight', f.preflight({
+      scope: ['docs/', file], predicted_files: [file],
+    }));
+    f.implement();
+    f.commit(file, file.endsWith('package.json') ? '{"private":true}\n' : 'fixture change\n');
+    assert.equal(f.plan().decision.action, 'review');
+    const review = f.review();
+    f.set('review', review, review.head_sha);
+
+    const result = f.plan();
+
+    assert.equal(result.decision.action, 'create-pr');
+    assert.equal(result.obs.localChecks, null);
+    assert.equal(result.obs.localCiWaiver, null);
+    const facts = JSON.parse(readFileSync(f.lanePath)).issues['42'].facts;
+    assert.equal(facts['local-checks'], undefined);
+    assert.equal(facts['local-ci-waiver'], undefined);
+    f.state.pr = {
+      number: 42, state: 'OPEN', headRefOid: 'f'.repeat(40),
+      mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }],
+    };
+    f.update();
+    assert.equal(f.plan().decision.action, 'push');
+    f.state.pr.headRefOid = review.head_sha;
+    for (const [checks, mergeable, action] of [
+      [[], 'MERGEABLE', 'wait-ci'],
+      [[{ conclusion: 'FAILURE' }], 'MERGEABLE', 'fix-back'],
+      [[{ conclusion: 'SUCCESS' }], 'CONFLICTING', 'resolve-conflict'],
+      [[{ conclusion: 'SUCCESS' }], 'UNKNOWN', 'wait-mergeability'],
+      [[{ conclusion: 'SUCCESS' }], 'MERGEABLE', 'request-merge-approval'],
+    ]) {
+      f.state.pr.statusCheckRollup = checks;
+      f.state.pr.mergeable = mergeable;
+      f.update();
+      assert.equal(f.plan().decision.action, action);
+    }
+  });
+}
 
 test('CLI: durable preflight and selected review publish ordinary docs without full local CI', (t) => {
   const f = fixture(t);
@@ -745,14 +795,14 @@ test('CLI: canonical receipts bind to passing review, execution order and curren
   assert.equal(result.obs.localChecks.preflightSha256, result.obs.preflightPolicy.sha256);
   assert.equal(result.obs.localChecks.reviewSha256, localCheckBinding(result.obs.review, result.obs.reviewAcceptedAt).reviewSha256);
   const staleLocalFact = JSON.parse(readFileSync(f.lanePath)).issues['42'].facts['local-checks'];
-  // A same-head review replacement requires local CI again and rejects replay.
+  // A same-head review replacement clears optional local evidence and rejects replay.
   f.set('review', review, review.head_sha);
   assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['42'].facts['local-checks'], undefined);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
   setAcceptedAt('2100-01-01T00:00:00.000Z');
   assert.match(f.set('local-checks', currentReceipt, review.head_sha, false).stderr, /must start after/u);
   // Replacing the accepted contract clears both review and local CI at the
-  // same head. Even a manually restored old local fact cannot advance it.
+  // same head. A manually restored old local fact cannot prove current execution.
   f.set('preflight', f.preflight({ ...ciScope, acceptance: ['Revised acceptance'] }));
   let lane = JSON.parse(readFileSync(f.lanePath));
   assert.equal(lane.issues['42'].facts.review, undefined);
@@ -763,7 +813,7 @@ test('CLI: canonical receipts bind to passing review, execution order and curren
   lane.issues['42'].facts['local-checks'] = staleLocalFact;
   writeFileSync(f.lanePath, JSON.stringify(lane));
   result = f.plan();
-  assert.equal(result.decision.action, 'verify-local');
+  assert.equal(result.decision.action, 'create-pr');
   assert.equal(result.obs.localChecks, null);
 });
 

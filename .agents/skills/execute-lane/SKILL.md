@@ -1,6 +1,6 @@
 ---
 name: execute-lane
-description: Canonical Fluo lane execution with focused local checks, selective exact-head reviews, conditional full local CI, and full GitHub CI. No DAG or session-bound execution identity.
+description: Canonical Fluo lane execution with focused local checks, selective exact-head reviews, explicit local reproduction, and full GitHub CI. No DAG or session-bound execution identity.
 ---
 
 # Execute lane
@@ -35,17 +35,17 @@ not authorize expanding its issue set.
 ```text
 preflight -> implement + focused tests -> selected exact-head reviews
                                       <- fix-back if review blocks
-          -> verify-local only when full local CI is required
+          -> verify-local only for explicitly requested full local reproduction
           -> create-pr / push -> full remote CI
                                     <- fix-back if CI fails
           -> merge authority + mergeability gate -> merge -> cleanup -> done
 ```
 
 Every new implementation or conflict-resolution head repeats the selected
-reviews after focused checks. Ordinary changes proceed to publication without
-duplicating the full CI suite locally. CI execution/configuration changes retain
-the post-review `verify-local` gate; the engine classifies the actual issue diff,
-not unrelated upstream changes. Unknown scope is conservative.
+reviews after focused checks. All approved changes, including CI execution,
+configuration, manifests and lockfiles, proceed to publication without an
+automatic full local CI gate, receipt or waiver requirement. Unknown or expanded
+scope still requires preflight reconciliation.
 Reviewers inspect focused test evidence and test adequacy; they do not wait for
 or run a later full local CI stage. A review PASS
 alone neither publishes a PR nor authorizes merge.
@@ -57,7 +57,7 @@ alone neither publishes a PR nor authorizes merge.
 | preflight | ../issue-preflight/SKILL.md | Fixed implementation contract and review policy |
 | implement, fix-back | ../issue-implement/SKILL.md | New local commit and focused test evidence |
 | review | ../review-head/SKILL.md | Exact-head, contract-bound selected-axis verdict |
-| verify-local | ../verify-local/SKILL.md | Post-review full local CI receipt when required |
+| Explicit reproduction (not an automatic engine action) | ../verify-local/SKILL.md | Authenticated post-review full local CI receipt or failure evidence |
 | create-pr, push | ../sync-pr/SKILL.md | Observed canonical PR and remote head |
 
 Resolve sibling paths relative to this skill. Read the stage before executing
@@ -78,7 +78,7 @@ invalidate the approved base, review, or local receipt. Scope and review axes
 use the current merge-base-to-head issue diff, excluding upstream changes
 incorporated by a merge or rebase; local verification retains the pinned
 base. An integration head still requires focused checks and new reviews; full
-local CI is required when its actual issue diff changes CI execution/configuration.
+local CI runs only for explicitly requested reproduction or diagnosis.
 Re-registering the same
 preflight digest keeps existing head-bound facts and timestamps; changing
 the digest invalidates them.
@@ -159,9 +159,11 @@ package release impact. Use the release governance contract.
 
 Focused checks must exercise the changed behavior and meet preflight criteria;
 retain their commands, results and real-surface evidence for exact-head review.
-Full local CI is mandatory by default for CI execution/configuration changes and remains
-available for requested reproduction or diagnosis. It is not an unconditional
-publication prerequisite for ordinary changes. A current recorded local failure
+Full local CI is not an automatic publication prerequisite for any approved
+change, including CI/configuration, manifests and lockfiles. It remains
+available for explicitly requested reproduction or diagnosis. Report omitted
+full local CI as not run, never as PASS; do not create a receipt or local-check
+fact for omission. A current recorded local failure
 still blocks progress; never manufacture a passing receipt to bypass it.
 
 Full local CI runs only after selected review PASS at the current head. Its checks,
@@ -169,21 +171,21 @@ build ordering, scope, and receipt rules live in `verify-local`. Verification
 must never run concurrently with a child writing the same worktree. A new head
 or accepted contract invalidates earlier evidence.
 
-Before merge, require current-head review and any required full local CI (or the
-explicit exception below), green current-head
+Before merge, require current-head focused checks and selected review, green current-head
 remote CI, an explicit `MERGEABLE` state, and a merge grant. `UNKNOWN`
 mergeability waits; a real conflict resolves on a new head and repeats focused
 checks, reviews and the applicable CI gates. Advancing main alone does not mandate merging it into the issue
 branch. Publishing stays GitHub Actions and Changesets only. The lead owns
 merge and cleanup, never a stage reviewer.
 
-### Explicit full-local-CI exception
+### Optional full-local-CI omission audit
 
 When the operator has explicitly instructed the lane not to run full local CI,
-the lead may assert that existing instruction through `local-ci-waiver` after
+the lead may retain that existing instruction through `local-ci-waiver` after
 every selected review passes at the current head. Do not infer authority from
 preflight prose, automatically create a waiver, or run a prohibited verifier to
-produce a receipt. This exception waives only the missing full-local-CI receipt;
+produce a receipt. This is optional audit evidence, not a publication gate:
+no change requires a waiver to omit full local CI. The fact never proves execution;
 focused checks, preflight, scope, dependencies, Changesets, review, remote
 head equality, full remote CI, mergeability and merge authority still apply.
 An applicable local failure, including failed receipt revalidation, still
@@ -229,9 +231,10 @@ Head, lane/issue, contract, policy, review content or review acceptance changes
 invalidate the waiver. Replacing preflight or review clears it alongside local
 checks; identical accepted preflight re-registration preserves those facts.
 An unrelated main advance preserves the pinned valid ancestor and binding.
-A new head needs all selected reviews and explicit registration again under
-the still-applicable operator instruction; authority is never carried forward
-automatically. Remote rollup handling is unchanged: this exception does not
+A new head needs all selected reviews; retaining the optional audit fact on that
+head requires explicit registration under the still-applicable operator
+instruction. The audit binding is never carried forward automatically.
+Remote rollup handling is unchanged: this audit fact does not
 prove a required check count or replace the lead's complete remote-CI evidence.
 
 For conflicts, preserve both intended behaviors and return the resolved new

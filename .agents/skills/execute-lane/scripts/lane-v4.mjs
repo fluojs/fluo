@@ -31,17 +31,6 @@ const isCurrentLocalCheck = (value, headSha, binding) =>
 	&& value.preflightSha256 === binding.preflightSha256
 	&& value.reviewSha256 === binding.reviewSha256;
 
-export const isValidLocalCheck = (value, headSha, binding = null) =>
-	isCurrentLocalCheck(value, headSha, binding)
-	&& typeof value.receiptStartedAt === 'string'
-	&& Date.parse(value.receiptStartedAt) > Date.parse(binding.reviewAcceptedAt)
-	&& value.status === 'passed'
-	&& value.valid === true
-	&& typeof value.receiptPath === 'string'
-	&& value.receiptPath.length > 0
-	&& typeof value.receiptSha256 === 'string'
-	&& /^[0-9a-f]{64}$/u.test(value.receiptSha256);
-
 // A waiver is an operator assertion, never execution evidence. Keep its
 // wrapper intact so admission and later observations check the same binding.
 export const isValidLocalCiWaiver = (fact, { headSha, laneId, issue, contractSha256, binding }) => {
@@ -71,26 +60,6 @@ export const isValidLocalCiWaiver = (fact, { headSha, laneId, issue, contractSha
 		&& evidence.criteria.every((criterion) => typeof criterion === 'string'
 			&& criterion.trim().length > 0 && criterion === criterion.trim())
 		&& new Set(evidence.criteria).size === evidence.criteria.length;
-};
-
-// Only changes to CI execution, its build/test configuration, or the machine
-// workflow contracts need the canonical local receipt before publication.
-// Input is the observed merge-base-to-head issue diff, not the pinned-base
-// verification diff (which may include unrelated upstream changes).
-export const requiresFullLocalCI = (changedFiles) => {
-	if (!Array.isArray(changedFiles) || changedFiles.length === 0
-		|| changedFiles.some((file) => typeof file !== 'string' || !file
-			|| file.startsWith('/') || file.includes('\\')
-			|| file.split('/').some((segment) => !segment || segment === '.' || segment === '..'))) {
-		return true;
-	}
-	return changedFiles.some((file) =>
-		/^(?:\.github\/(?:workflows|actions)\/|tooling\/(?:ci|tsconfig|vitest|testing|scripts|babel|native-runtime|cli|release)\/|\.agents\/workflow-contracts\/)/u.test(file)
-		|| /^packages\/[^/]+\/scripts\//u.test(file)
-		|| /^\.agents\/skills\/(?:execute-lane|issue-preflight|issue-implement|review-head|create-lane|sync-pr|verify-local)\/scripts\//u.test(file)
-		|| /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|(?:vite|vitest|playwright|babel|biome|jest)\.config\.[^/]+)$/u.test(file)
-		|| /^(?:pnpm-lock\.yaml|pnpm-workspace\.yaml|biome\.json|\.npmrc|bunfig\.toml)$/u.test(file)
-	);
 };
 
 const PHASES = new Set([
@@ -258,9 +227,8 @@ export const decideNext = (lane, obs) => {
 		return { action: 'blocked', reason: 'needs-human-check' };
 	}
 
-	// 6. Failed applicable local evidence always fixes back. CI/tooling changes
-	//    additionally require a canonical receipt after the accepted review;
-	//    ordinary reviewed heads proceed to GitHub CI without one.
+	// 6. Failed applicable local evidence always fixes back, including receipt
+	//    revalidation failures. Missing full local CI evidence is not a gate.
 	let binding;
 	try {
 		binding = localCheckBinding(review, obs.reviewAcceptedAt);
@@ -270,13 +238,6 @@ export const decideNext = (lane, obs) => {
 	if (obs.localChecks?.status === 'failed' && isCurrentLocalCheck(obs.localChecks, obs.headSha, binding)) {
 		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
 	}
-	if (requiresFullLocalCI(obs.changedFiles) && !isValidLocalCheck(obs.localChecks, obs.headSha, binding)
-		&& !isValidLocalCiWaiver(obs.localCiWaiver, {
-			headSha: obs.headSha, laneId: obs.laneId, issue: lane.issue, contractSha256: obs.preflight.sha256, binding,
-		})) {
-		return { action: 'verify-local', head: obs.headSha };
-	}
-
 	// 7. Remote lifecycle. GitHub state is authoritative.
 	if (!obs.pr) {
 		return { action: 'create-pr', head: obs.headSha };
