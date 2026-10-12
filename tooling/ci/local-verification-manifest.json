@@ -87,6 +87,7 @@
     "fullPrefixes": [".github/", ".agents/", "docs/", "book/", "tooling/ci/", "tooling/babel/", "tooling/scripts/", "tooling/testing/", "tooling/native-runtime/", "tooling/governance/", "tooling/release/", "tooling/docs/", "tooling/benchmarks/", "tooling/vitest/"],
     "fullPaths": ["biome.json", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json", "tsconfig.tools.json", "vitest.config.ts", "vite.config.ts"],
     "companionEdges": [
+      { "owners": ["@fluojs/cli"], "toolingPaths": ["packages/cli/scripts/*.test.mjs"] },
       { "owners": ["@fluojs/core", "@fluojs/di", "@fluojs/config", "@fluojs/http", "@fluojs/runtime", "@fluojs/validation", "@fluojs/platform-nodejs"], "tasks": ["runtime-floor"], "buildPackages": ["@fluojs/core", "@fluojs/di", "@fluojs/config", "@fluojs/http", "@fluojs/runtime", "@fluojs/validation", "@fluojs/platform-nodejs"] },
       { "owners": ["@fluojs/core", "@fluojs/http", "@fluojs/platform-bun", "@fluojs/drizzle", "@fluojs/runtime"], "tasks": ["native-bun"], "buildPackages": ["@fluojs/core", "@fluojs/http", "@fluojs/platform-bun", "@fluojs/drizzle", "@fluojs/runtime"] },
       { "owners": ["@fluojs/core", "@fluojs/http", "@fluojs/runtime", "@fluojs/testing", "@fluojs/platform-deno", "@fluojs/platform-bun", "@fluojs/platform-cloudflare-workers"], "tasks": ["native-web"], "buildPackages": ["@fluojs/platform-deno", "@fluojs/platform-bun", "@fluojs/platform-cloudflare-workers", "@fluojs/testing"] },

@@ -29,6 +29,17 @@ test('buildVerificationPlan: email leaf -> executes affected packages without un
     argv.includes('--filter=@fluojs/email')));
 });
 
+test('buildVerificationPlan: CLI script changes -> retain the Node script regression suite', () => {
+  for (const file of ['packages/cli/scripts/local-test-env.mjs', 'packages/cli/scripts/local-test-env.test.mjs']) {
+    const plan = buildVerificationPlan({ changedFiles: [file], identity });
+
+    assert.equal(plan.mode, 'scoped');
+    assert.ok(plan.tasks.some(({ commands }) => commands.some(({ executable, argv }) =>
+      executable === 'node' && argv.includes('--test')
+      && argv.includes('packages/cli/scripts/*.test.mjs'))));
+  }
+});
+
 test('buildVerificationPlan: prose docs -> no build or runtime prerequisites', () => {
   const plan = buildVerificationPlan({ changedFiles: ['docs/reference/node-support.md'], identity });
 
