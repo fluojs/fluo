@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "id": "node-offline",
+  "roles": [
+    "offline-reevaluation"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-node180-candidate-3912-20261011/reevaluation.json",
+    "byteSha256": "f8857191555f30a29e78bca74886033e6e8115126bcbd40913d1a7c0d183ed33",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "head": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+      "sha256": "3b6ec3afd2c8d1ac53ac93ce7f4e6a0451679d531cae12e407b28aefd97cf6a6"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "status": "PASS_OFFLINE_REEVALUATION_EQUALITY",
+    "performanceVerdict": "INCONCLUSIVE",
+    "kind": "offline-reevaluation-not-new-measurement",
+    "validator": "/Users/ayden/Documents/fluo/.worktrees/issue-3914/tooling/benchmarks/http-comparison/results/issue-3914/paired-aa.mts",
+    "validatorSha256": "3b6ec3afd2c8d1ac53ac93ce7f4e6a0451679d531cae12e407b28aefd97cf6a6",
+    "originalFilesModified": false,
+    "decision": {
+      "verdict": "INCONCLUSIVE",
+      "evidenceErrors": [],
+      "inconclusive": [
+        "rssBytes: native block drift"
+      ],
+      "observations": [
+        {
+          "metric": "throughputRps",
+          "nativeBlockCv": [
+            0.02363522313480848,
+            0.022950544846048245,
+            0.022706795375078994
+          ],
+          "globalNativeCv": 0.028820458181788636,
+          "xCv": 0.008419558462232524,
+          "yCv": 0.010284244526810309,
+          "ratios": [
+            1.0034834976678277,
+            1.0026313980775083,
+            0.9712244156473295
+          ],
+          "ratioCv": 0.018523666997488586,
+          "medianRatio": 1.0012666057910395
+        },
+        {
+          "metric": "serverCpuMicrosPerRequest",
+          "nativeBlockCv": [
+            0.022985364283260486,
+            0.023458244161791594,
+            0.022953715526992866
+          ],
+          "globalNativeCv": 0.029017971702448908,
+          "xCv": 0.007022723074554437,
+          "yCv": 0.009730876643354916,
+          "ratios": [
+            0.9933774507222779,
+            0.9932945500854373,
+            1.0224312902263364
+          ],
+          "ratioCv": 0.016747405715331988,
+          "medianRatio": 0.9948752080361788
+        },
+        {
+          "metric": "p95Ms",
+          "nativeBlockCv": [
+            0.014647523692868994,
+            0.002708452701381314,
+            0.0031646877572374475
+          ],
+          "globalNativeCv": 0.019137961221696413,
+          "xCv": 0.008485131626964694,
+          "yCv": 0.003252943989953352,
+          "ratios": [
+            0.975812623353607,
+            0.9810767916005372,
+            0.9936099619055422
+          ],
+          "ratioCv": 0.009296118002300778,
+          "medianRatio": 0.9858991576120132
+        },
+        {
+          "metric": "p99Ms",
+          "nativeBlockCv": [
+            0.02451346360413662,
+            0.022687593717133716,
+            0.0256840309723798
+          ],
+          "globalNativeCv": 0.029136892143877803,
+          "xCv": 0.0075450881465001,
+          "yCv": 0.0037418629844201785,
+          "ratios": [
+            0.9796350501338981,
+            0.9674121801623197,
+            0.9842949221820468
+          ],
+          "ratioCv": 0.008923354876858847,
+          "medianRatio": 0.9748240642710345
+        },
+        {
+          "metric": "rssBytes",
+          "nativeBlockCv": [
+            0.011368787817060291,
+            0.002140515485674686,
+            0.05584327506359987
+          ],
+          "globalNativeCv": 0.03278121036500255,
+          "xCv": 0.0024924199200434985,
+          "yCv": 0.003160478761738137,
+          "ratios": [
+            1.0081470314655034,
+            1.0008487740819627,
+            1.0024578259412356
+          ],
+          "ratioCv": 0.0038199231032524,
+          "medianRatio": 1.0058933747577792
+        }
+      ],
+      "budgetBreaches": [],
+      "schema": "paired-node-180-v1",
+      "mode": "candidate",
+      "condition": {
+        "platform": "nodejs",
+        "os": "linux",
+        "runtimeVersion": "24.21.0",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "warmupSeconds": 30,
+        "measureSeconds": 180,
+        "minimumCompletedRequests": 20000
+      }
+    }
+  }
+}

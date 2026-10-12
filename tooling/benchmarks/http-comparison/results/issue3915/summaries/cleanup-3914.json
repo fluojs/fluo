@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "id": "cleanup-3914",
+  "roles": [
+    "archive"
+  ],
+  "source": {
+    "locator": ".omo/verification/closure-3914-20261012/cleanup.json",
+    "byteSha256": "99f5a4021fd35dfc4dcf77d25ee3734d2dd1cf504aa829d26b4224731d277ef0",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "ok": true,
+    "issue": 3914,
+    "pr": 3936,
+    "head": "ea99d9e4a0dc59ddfbd201e07805d6a4962ed3e8",
+    "mergeCommit": "9a91d1347be38757ecc433fe6496ea94e2b70587",
+    "removedWorktrees": [
+      "/Users/ayden/Documents/fluo/.worktrees/issue-3914",
+      "/Users/ayden/Documents/fluo/.worktrees/review-3914-526ac5b35",
+      "/Users/ayden/Documents/fluo/.worktrees/review-3914-5f4dbb4f0",
+      "/Users/ayden/Documents/fluo/.worktrees/review-3914-9a49899fd",
+      "/Users/ayden/Documents/fluo/.worktrees/review-3914-c169f9095",
+      "/Users/ayden/Documents/fluo/.worktrees/review-3914-c2fca6968",
+      "/Users/ayden/Documents/fluo/.worktrees/review-3914-c554860ca",
+      "/Users/ayden/Documents/fluo/.worktrees/review-3914-ea99d9e4a",
+      "/Users/ayden/Documents/fluo/.worktrees/review-3914-f18b264fd"
+    ],
+    "localBranchRemoved": "issue-3914",
+    "remoteBranchRemoved": "issue-3914",
+    "archive": ".omo/verification/closure-3914-20261012/archive-receipt.json",
+    "measurementWorktrees": "retained pending final lane archival"
+  }
+}

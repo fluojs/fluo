@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "id": "pre-exclusion-archive",
+  "roles": [
+    "archive"
+  ],
+  "source": {
+    "locator": ".omo/verification/unproven-exclusion-archive-20261012/receipt.json",
+    "byteSha256": "10c503ee1680f593264f1b5ad3ea32475013e5eebe745f9ccd9f33075fb66163",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "status": "ARCHIVED_BEFORE_CANDIDATE_EXCLUSION",
+    "commandExitCode": 0,
+    "history": {
+      "path": "candidate-history.bundle",
+      "sha256": "be6410c2898cb3d3aa331990aa9d0e5c5f235ec273628f1c56ba9de9ca1249d4",
+      "gitBundleVerifyExitCode": 0,
+      "requiredBase": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18"
+    },
+    "raw": {
+      "path": "worktree-raw-before-exclusion.tar.gz",
+      "sha256": "00cfc4ebe237154e8a1330fb7fd9ad6d546b9698ae35b3e52dd224104b3f5b98",
+      "archiveListingExitCode": 0,
+      "archiveMembers": 5235,
+      "sourceRoots": "plan.json:rawArchiveMembers"
+    },
+    "originalFilesRemoved": false,
+    "remoteAvailability": "Local durable archives only; no remote artifact publication is claimed.",
+    "scope": "Historical snapshot before exclusion edits, not the later final cleanup archive."
+  }
+}

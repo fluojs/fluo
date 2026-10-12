@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "id": "engineering-3911",
+  "roles": [
+    "engineering"
+  ],
+  "source": {
+    "locator": ".omo/verification/3911-merged-evidence-20261012.json",
+    "byteSha256": "ecc1b2fd986b60a302abf273db7177f78bcb069bc2806a7f31d61159a245c604",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "merge": {
+      "headRefOid": "cc9162b49d6f1af04ed58e71d9aa0fdb90847875",
+      "mergeCommit": {
+        "oid": "d5c4812a3aefdfd005af819247f18d9eb567315b"
+      },
+      "mergedAt": "2026-10-12T03:25:29Z",
+      "number": 3934,
+      "state": "MERGED",
+      "url": "https://github.com/fluojs/fluo/pull/3934"
+    },
+    "head": "cc9162b49d6f1af04ed58e71d9aa0fdb90847875",
+    "checks": [
+      {
+        "name": "Resolve verification plan",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T02:56:43Z",
+        "completedAt": "2026-10-12T02:58:19Z"
+      },
+      {
+        "name": "Primary build / build",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T02:58:23Z",
+        "completedAt": "2026-10-12T03:00:52Z"
+      },
+      {
+        "name": "Node compatibility (compatibility-floor) / compatibility-floor",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T02:58:23Z",
+        "completedAt": "2026-10-12T03:16:41Z"
+      },
+      {
+        "name": "Node compatibility (compatibility-next) / compatibility-next",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T02:58:23Z",
+        "completedAt": "2026-10-12T03:15:02Z"
+      },
+      {
+        "name": "Verify task (static) / static",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:07:13Z",
+        "completedAt": "2026-10-12T03:12:07Z"
+      },
+      {
+        "name": "Verify task (packages-1) / packages-1",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:02:55Z",
+        "completedAt": "2026-10-12T03:06:57Z"
+      },
+      {
+        "name": "Verify task (packages-2) / packages-2",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:07:25Z",
+        "completedAt": "2026-10-12T03:11:14Z"
+      },
+      {
+        "name": "Verify task (packages-3) / packages-3",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:05:42Z",
+        "completedAt": "2026-10-12T03:12:21Z"
+      },
+      {
+        "name": "Verify task (packages-4) / packages-4",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:04:20Z",
+        "completedAt": "2026-10-12T03:10:32Z"
+      },
+      {
+        "name": "Verify task (tooling-1) / tooling-1",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:06:59Z",
+        "completedAt": "2026-10-12T03:22:33Z"
+      },
+      {
+        "name": "Verify task (tooling-2) / tooling-2",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:03:04Z",
+        "completedAt": "2026-10-12T03:07:22Z"
+      },
+      {
+        "name": "Verify task (starters) / starters",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:05:54Z",
+        "completedAt": "2026-10-12T03:13:45Z"
+      },
+      {
+        "name": "Verify task (studio) / studio",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:04:41Z",
+        "completedAt": "2026-10-12T03:06:55Z"
+      },
+      {
+        "name": "Verify task (runtime-floor) / runtime-floor",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:06:45Z",
+        "completedAt": "2026-10-12T03:08:18Z"
+      },
+      {
+        "name": "Verify task (native-bun) / native-bun",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:07:01Z",
+        "completedAt": "2026-10-12T03:08:35Z"
+      },
+      {
+        "name": "Verify task (native-web) / native-web",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:08:22Z",
+        "completedAt": "2026-10-12T03:10:06Z"
+      },
+      {
+        "name": "Verify task (packed) / packed",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:03:32Z",
+        "completedAt": "2026-10-12T03:05:50Z"
+      },
+      {
+        "name": "Verify",
+        "conclusion": "SUCCESS",
+        "status": "COMPLETED",
+        "startedAt": "2026-10-12T03:22:37Z",
+        "completedAt": "2026-10-12T03:22:59Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "cleanup-3912",
+  "roles": [
+    "archive"
+  ],
+  "source": {
+    "locator": ".omo/verification/closure-3912-20261012/cleanup.json",
+    "byteSha256": "dbc25b8b923250c953679de9d236edae83df7c9788be1f67a85cd628d2d7a1c9",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "status": "COMPLETE",
+    "issue": 3912,
+    "pr": 3933,
+    "archiveVerified": true,
+    "removed": [
+      ".worktrees/issue-3912",
+      ".worktrees/review-3912-01380383f",
+      "local issue-3912",
+      "remote issue-3912"
+    ],
+    "measurementWorktreeRetained": ".worktrees/measure-node-3912",
+    "exitCode": 0
+  }
+}

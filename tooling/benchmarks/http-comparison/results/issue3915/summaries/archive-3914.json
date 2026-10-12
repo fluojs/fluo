@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "id": "archive-3914",
+  "roles": [
+    "archive"
+  ],
+  "source": {
+    "locator": ".omo/verification/closure-3914-20261012/archive-receipt.json",
+    "byteSha256": "c8a65f233e98ce529aff55161fe1d203cc4c5fa8e88a91276b05fd87eee9ae43",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "issue": 3914,
+    "head": "ea99d9e4a0dc59ddfbd201e07805d6a4962ed3e8",
+    "commandExitCode": 0,
+    "gitBundleVerifyExitCode": 0,
+    "archiveListingExitCode": 0,
+    "members": 2980,
+    "requiredMembers": [
+      "REPORT.md",
+      "manifest.json",
+      "paired-aa.mts",
+      "paired-ab.mts",
+      "paired-node.mts"
+    ],
+    "artifacts": [
+      {
+        "path": "issue-3914.bundle",
+        "sha256": "7cbb3d08c9a9fcb6b01aff50f32b5fd027f0d3c1220424dadfb515f84acbec10",
+        "bytes": 144856
+      },
+      {
+        "path": "worktree-evidence.tar.gz",
+        "sha256": "2b5765e007590458c5c47f6b3f010279c0c258afe34cc03dbd95d9dc5d0f9ed4",
+        "bytes": 10374267
+      }
+    ],
+    "access": "local-only",
+    "rootEvidenceRetained": true
+  }
+}

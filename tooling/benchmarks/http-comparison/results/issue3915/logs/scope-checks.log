@@ -1,0 +1,23 @@
+command: git merge-base HEAD origin/main
+exitCode: 0
+9a91d1347be38757ecc433fe6496ea94e2b70587
+Local main remains at 1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18; origin/main is the current captured merged base.
+
+command: git diff 1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18 HEAD -- packages/runtime/src/web.ts packages/platform-nodejs/src/node/internal-node-request.ts .changeset/http-common-request-pipeline-costs.md .changeset/http-platform-node-3912.md
+exitCode: 0
+No differences: candidates and candidate-only release entries are excluded.
+Ordinary exclusion commits:
+3911 cc9162b49d6f1af04ed58e71d9aa0fdb90847875
+3912 01380383faa3c932632ec6a9bdfd4cc42148b134
+
+command: git diff --cached --name-only 9a91d1347be38757ecc433fe6496ea94e2b70587
+exitCode: 0
+All staged paths are contained in tooling/benchmarks/http-comparison/results/issue3915/.
+
+command: git diff --cached --check
+exitCode: 0
+
+Release rationale: private benchmark artifacts, checker and adjacent tests only.
+No public package behavior, API, contents, versions, release metadata, dependency, generator or CI changes.
+CONTRIBUTING.md requires no Changeset for this scope.
+No full local CI, benchmark, network request, remote write or cleanup.

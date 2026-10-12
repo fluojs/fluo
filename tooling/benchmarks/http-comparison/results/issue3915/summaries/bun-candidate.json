@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "id": "bun-candidate",
+  "roles": [
+    "summary",
+    "candidate"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-header-3911-20261011/summary.json",
+    "byteSha256": "b0baefa4261eb2865fb295ee86f935424db23bf9af8c466433bc4852654cd0ed",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "baseline": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+      "candidate": "2f4dd790acac4fc5b73e04291b6a2481a5108e54"
+    },
+    "producerHead": {
+      "baseline": "b7b4aaa5f333d93ee68929fb061dee11902c0b61",
+      "candidate": "bdb3fa568c9dc688a00cb83f2d32a7036916a77c"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": "Bun 1.4.2",
+    "host": "BornArchive Linux x64 kernel 4.4.302+",
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "platform": "bun",
+      "os": "linux",
+      "runtimeVersion": "1.4.2",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "warmupSeconds": 30,
+      "measureSeconds": 60,
+      "minimumCompletedRequests": 20000
+    },
+    "measurement": {
+      "subject": "measured server process tree; native controls are separate arms",
+      "units": {
+        "throughputRps": "requests/second",
+        "serverCpuMicrosPerRequest": "microseconds/completed request",
+        "p95Ms": "per-run histogram milliseconds",
+        "p99Ms": "per-run histogram milliseconds",
+        "rssBytes": "maximum sampled simultaneous process-tree bytes"
+      },
+      "boundary": "warmup excluded; run percentiles not pooled; RSS sampled every 250ms",
+      "elapsedSeconds": 1323.373550365,
+      "elapsedBoundary": {
+        "status": "UNKNOWN",
+        "reason": "Summary elapsedSeconds has no separately documented start/end boundary; preparation inclusion is not inferred"
+      }
+    }
+  },
+  "data": {
+    "verdict": "INCONCLUSIVE",
+    "evidenceErrors": [],
+    "inconclusive": [
+      "throughputRps: paired ratio instability",
+      "serverCpuMicrosPerRequest: paired ratio instability",
+      "p95Ms: native block drift",
+      "p99Ms: native block drift"
+    ],
+    "observations": [
+      {
+        "metric": "throughputRps",
+        "nativeBlockCv": [
+          0.005547199038750864,
+          0.01141679738777155,
+          0.0030832641425274604
+        ],
+        "globalNativeCv": 0.0061161421076021205,
+        "xCv": 0.018116806697264214,
+        "yCv": 0.039683993940404484,
+        "ratios": [
+          1.0642839342083403,
+          0.9703599688409659,
+          0.9871890699300839
+        ],
+        "ratioCv": 0.04971901005480079,
+        "medianRatio": 1.0098683940797837
+      },
+      {
+        "metric": "serverCpuMicrosPerRequest",
+        "nativeBlockCv": [
+          0.004001185384333035,
+          0.005186355226922444,
+          0.01389439836254242
+        ],
+        "globalNativeCv": 0.008242850439468739,
+        "xCv": 0.020691696189419517,
+        "yCv": 0.037649626274425904,
+        "ratios": [
+          0.9409749852962636,
+          1.0250338251830882,
+          1.0201317134564514
+        ],
+        "ratioCv": 0.04739896163437637,
+        "medianRatio": 0.9901949838105583
+      },
+      {
+        "metric": "p95Ms",
+        "nativeBlockCv": [
+          0.025892978524870873,
+          0.05520372173620939,
+          0.04089366317982861
+        ],
+        "globalNativeCv": 0.036024148989471615,
+        "xCv": 0.01968430441005391,
+        "yCv": 0.03592068842905583,
+        "ratios": [
+          0.9448599315502598,
+          1.0372916531551981,
+          1.0064588413629474
+        ],
+        "ratioCv": 0.04724085538958109,
+        "medianRatio": 0.9904014527530969
+      },
+      {
+        "metric": "p99Ms",
+        "nativeBlockCv": [
+          0.01925500568738841,
+          0.07889859943812207,
+          0.020208175534036844
+        ],
+        "globalNativeCv": 0.04129984063948311,
+        "xCv": 0.017143437024151022,
+        "yCv": 0.035955461868968135,
+        "ratios": [
+          0.9484907227914705,
+          1.0261312938177183,
+          1.013733905579399
+        ],
+        "ratioCv": 0.04187268637858277,
+        "medianRatio": 0.9879302103250478
+      },
+      {
+        "metric": "rssBytes",
+        "nativeBlockCv": [
+          0.0008438364070009319,
+          0.00005609509985217148,
+          0.02412693057806139
+        ],
+        "globalNativeCv": 0.014191900895550037,
+        "xCv": 0.018797205974217728,
+        "yCv": 0.007228071536940284,
+        "ratios": [
+          1.0178317905616445,
+          0.9847826086956522,
+          1.0287070262761895
+        ],
+        "ratioCv": 0.0226396508768233,
+        "medianRatio": 1.0093702084161509
+      }
+    ],
+    "budgetBreaches": [],
+    "completedRuns": 12,
+    "measuredRequests": 4642263,
+    "elapsedSeconds": 1323.373550365,
+    "invalidAttempts": [],
+    "exitCode": 1,
+    "rawRoot": ".omo/verification/nas-header-3911-20261011/header-results",
+    "baselineSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "candidateSource": "2f4dd790acac4fc5b73e04291b6a2481a5108e54",
+    "baselineHead": "b7b4aaa5f333d93ee68929fb061dee11902c0b61",
+    "candidateHead": "bdb3fa568c9dc688a00cb83f2d32a7036916a77c",
+    "scope": "BornArchive Linux x64 Bun1.4.2 stage-minimal equivalent concurrency64 only",
+    "disposition": "Candidate remains unaccepted. Preserve all ratios and native-control drift; no identical repeat, outlier deletion or budget change. Continue independent Node-family work."
+  }
+}
