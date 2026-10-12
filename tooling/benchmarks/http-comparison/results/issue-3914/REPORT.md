@@ -3,7 +3,7 @@
 ## 2026-10-12 Linux CI fixture correction
 
 The current fixture-fix preflight is
-`23f4b94b097460c5c4c7c8bf9edce8c0e001211907665122b1e5df735b7f2fa3`.
+`8e34d4ece469d7dfc0ddaaf1838168fb210f6e864d26970415f2f6ded739c46b`.
 The initial Linux CI at `5f4dbb4f095ecd64946e7ce6b4d5a5c0b7c17815`
 (run `38198508467`, static job `114647615234`) recorded 364 passing and 76
 failing harness tests. Two test fixtures sampled their own collector PID,
@@ -24,12 +24,24 @@ relocation is recorded under
 Production resource sampling, collectors, validators, dependencies, public
 packages and numerical rules remain unchanged. No procfs error is swallowed,
 no ignore rule or source guard is relaxed, and no assertion is skipped.
-The host harness completed 440 tests: 439 passed, one existing Linux-only
+At checkpoint `6b4cfd1ba869b7b6b99e8e87390d9366c04f304b`, the host harness
+completed 440 tests: 439 passed, one existing Linux-only
 skip, zero failures. Typecheck, changed-file lint, LSP and the absence of newly
 leaked fixture paths were checked. Source-bound details are in
 `.omo/verification/3914-fixture-fix-host-validation-20261012.json`.
 Focused Linux execution and new-head GitHub CI are separate gates, not
 inferred from the macOS result. They do not collect a performance matrix.
+
+The first focused Linux run at that checkpoint completed 280 tests with 279
+passing, zero failing and one cancelled. The original fixture failures were
+resolved, but the A/B sequence's 60-second parent deadline cancelled its
+twelve sequential children prematurely. Its parent deadline now uses the same
+derived bound as the Node sequence: `BLOCKS.flat().length * (20_000 + 5_000) + 10_000`.
+Individual child deadlines, teardown limits, assertions and numerical rules
+are unchanged. The affected host A/B suite then passed all 55 tests, and
+typecheck passed. The cancelled Linux run remains preserved under
+`.omo/verification/3914-fixture-fix-linux-20261012/attempt-1.json`; a new
+immutable-head focused Linux result is required separately.
 
 The owner explicitly instructed this session to skip full local CI.
 It is waived, not executed or passed; focused checks, exact-head reviews

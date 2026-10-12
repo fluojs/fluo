@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "issue": 3914,
-  "preflightSha256": "23f4b94b097460c5c4c7c8bf9edce8c0e001211907665122b1e5df735b7f2fa3",
+  "preflightSha256": "8e34d4ece469d7dfc0ddaaf1838168fb210f6e864d26970415f2f6ded739c46b",
   "reportingPreflightSha256": "1a018aa1cf3bb25ffaceac8b972be30fdeaa1c7f25105a40f0b5ef4a8dda2857",
   "historicalPreflightSha256": "0c187df4dc4be8509c067d34c60c2dc418608a376f73fdb26fe50af63bd27e74",
   "startingHead": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
@@ -232,6 +232,19 @@
     "laterFinalEvidencePreservation": "Lead must confirm separately before final cleanup"
   },
   "ciFixtureCorrection": {
+    "parentDeadlineCorrection": {
+      "preflightSha256": "8e34d4ece469d7dfc0ddaaf1838168fb210f6e864d26970415f2f6ded739c46b",
+      "startingHead": "6b4cfd1ba869b7b6b99e8e87390d9366c04f304b",
+      "firstLinuxAttempt": ".omo/verification/3914-fixture-fix-linux-20261012/attempt-1.json",
+      "firstLinuxCounts": {"total": 280, "passed": 279, "failed": 0, "cancelled": 1},
+      "parentTimeoutMs": 310000,
+      "childTimeoutMs": 20000,
+      "childTeardownMs": 5000,
+      "assertionsAndProductionRulesUnchanged": true,
+      "focusedHostTests": {"total": 55, "passed": 55, "failed": 0, "cancelled": 0},
+      "focusedHostTypecheck": "passed",
+      "newHeadLinuxValidation": "required separately"
+    },
     "startingHead": "5f4dbb4f095ecd64946e7ce6b4d5a5c0b7c17815",
     "preflightSha256": "23f4b94b097460c5c4c7c8bf9edce8c0e001211907665122b1e5df735b7f2fa3",
     "failedCi": {

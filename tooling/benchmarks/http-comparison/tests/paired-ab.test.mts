@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { AAInputFailure, object, sha256 } from '../results/issue-3914/paired-aa.mjs';
+import { AAInputFailure, BLOCKS, object, sha256 } from '../results/issue-3914/paired-aa.mjs';
 import { collectAB, digestFile, evaluateAB, flushJournalPhases, frozenABPlan, launchCollector, sequenceRuns } from '../results/issue-3914/paired-ab.mjs';
 import type { EvidenceFixture } from './fixtures/paired-ab-evidence.mjs';
 import { evidenceFixture, planFixture, scaleCpu } from './fixtures/paired-ab-evidence.mjs';
@@ -190,7 +190,11 @@ test('flushJournalPhases: measurement starts after warmup -> persists completed 
   }
 });
 
-test('sequenceRuns: real finite HTTP children -> fixed order fresh generators and parent timestamps', { timeout: 60_000 }, async () => {
+test('sequenceRuns: real finite HTTP children -> fixed order fresh generators and parent timestamps', {
+  // Keep the same per-child deadline and teardown budget as the Node suites.
+  // The parent must not cancel a valid sequence before all owned children settle.
+  timeout: BLOCKS.flat().length * (20_000 + 5_000) + 10_000,
+}, async () => {
   const output = join(directory, 'finite');
   await mkdir(output);
   const cwd = fileURLToPath(new URL('../', import.meta.url));
