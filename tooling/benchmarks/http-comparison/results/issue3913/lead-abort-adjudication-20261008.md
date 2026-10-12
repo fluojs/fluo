@@ -45,3 +45,13 @@ Package 구현을 변경하지 않았으므로 package build/native conformance�
 Fluo conformance, BEFORE/AFTER 또는 성능 예산 통과로 확대하지 않는다.
 Exact-head 리뷰는 이 진단의 타당성과 남은 수용 결정을 판단하며 issue 완료를
 자동 승인하는 단계가 아니다.
+
+## 2026-10-12 현재 승인 범위 pointer
+
+소유자의 `미입증 후보 제외` 승인에 따른 현재 범위와 판정은
+[Bun 최종 disposition](./bun-final-disposition-20261012.md)에 기록한다.
+위 당시 source, digest, 관측과 미검증 항목은 역사 증거로 유지한다.
+당시 추가 전후 측정 및 Deno residual cost 비교 제안은 현재 승인 범위의
+실행 요구가 아니다. #3911 공통 header 후보는 INCONCLUSIVE·미수용·출하
+제외 대상이며 #3913의 Bun 고유 개선으로 표현하지 않는다. Deno 성능 제외는
+공개 지원이나 correctness 계약 철회가 아니며 성능 수용은 NOT_ESTABLISHED다.

@@ -97,3 +97,12 @@ The initial runtime availability command printed Deno 2.9.7 and Bun 1.4.2, then 
 Package builds/typechecks, Vitest, actual Bun adapter suites, actual Deno Fluo adapter suites, release/governance gates and BEFORE/AFTER acceptance were not run. No package change exists to validate; the requested causal/scope stop condition was reached first. The successful Deno mechanism probe is not represented as either Bun or Fluo native conformance.
 
 The attempted LSP document-symbol query returned `null is not an object (evaluating 'symbols.length')`; exact shared locations above were established by bounded source reads and literal lookup, not by a successful LSP result.
+
+## 2026-10-12 현재 승인 범위 pointer
+
+소유자의 `미입증 후보 제외` 승인에 따른 현재 범위와 판정은
+[Bun 최종 disposition](./bun-final-disposition-20261012.md)에 기록한다.
+위 당시 HEAD, digest, 관측과 미검증 항목은 역사 증거로 유지한다.
+당시 추가 Deno 조사·측정 및 candidate 구현 제안은 현재 승인 범위의 실행
+요구가 아니다. Deno 성능은 제외하되 공개 지원과 correctness 회귀 의무는
+유지하며, 이 진단을 성능 PASS나 Fluo conformance로 승격하지 않는다.
