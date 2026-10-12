@@ -8,8 +8,7 @@ coverage/
 .source/
 *.tsbuildinfo
 .turbo/
-.sisyphus/
 .worktrees/
 .omo/*
 !.omo/omo.jsonc
-.opencode/search-issue/
+.pnpm-store
