@@ -8,8 +8,8 @@ import { isCompatibleSseResponse, isSseMessage, SseResponse, type SseSendOptions
 import { isRequestAbortedError, RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
 import { runInterceptorChain } from '../interceptors.js';
-import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
 import { initializeCorrelationMiddlewareRequestContext } from '../middleware/correlation.js';
+import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
 import { getSecurityHeadersApplier } from '../middleware/security-headers.js';
 import type {
   Binder,
@@ -45,8 +45,8 @@ import { isContentNegotiationNotAcceptableException } from './dispatch-content-n
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import {
   type ResolvedContentNegotiation,
-  resolveResponsePolicy,
   resolveContentNegotiation,
+  resolveResponsePolicy,
   writeErrorResponse,
   writeSuccessResponse,
 } from './dispatch-response-policy.js';
@@ -473,6 +473,25 @@ function ensureRequestScope(context: DispatchPhaseContext): void {
   context.requestContext.container = context.dispatchScope.container;
 }
 
+function finishDispatchScope(context: DispatchPhaseContext): Promise<void> | undefined {
+  if (!context.dispatchScope.requestScoped) {
+    context.requestContext.container = context.dispatchScope.container;
+  }
+
+  context.containerPromotionOpen = false;
+  if (!context.dispatchScope.requestScoped) {
+    return;
+  }
+
+  return (async () => {
+    try {
+      await context.dispatchScope.container.dispose();
+    } catch (error) {
+      logDispatchFailure(context.options.logger, 'Request-scoped container dispose threw an error.', error);
+    }
+  })();
+}
+
 function ensureRequestNotAborted(request: FrameworkRequest): void {
   if (isRequestAborted(request)) {
     throw new RequestAbortedError();
@@ -872,9 +891,8 @@ async function dispatchNativeFastRoute(
   const dispatchRequest = request;
   const dispatchScope = createRootDispatchScope(options.rootContainer);
   let phaseContext: DispatchPhaseContext;
-  let containerPromotionOpen = true;
   const requestContext = createDispatchContext(dispatchRequest, response, dispatchScope.container, () => {
-    if (!containerPromotionOpen) {
+    if (!phaseContext.containerPromotionOpen) {
       return phaseContext.dispatchScope.container;
     }
 
@@ -883,6 +901,7 @@ async function dispatchNativeFastRoute(
   });
 
   phaseContext = {
+    containerPromotionOpen: true,
     contentNegotiation,
     dispatchScope,
     fastPathState,
@@ -920,17 +939,9 @@ async function dispatchNativeFastRoute(
     } catch (error: unknown) {
       await handleDispatchError(phaseContext, error);
     } finally {
-      if (!phaseContext.dispatchScope.requestScoped) {
-        phaseContext.requestContext.container = phaseContext.dispatchScope.container;
-      }
-
-      containerPromotionOpen = false;
-      if (phaseContext.dispatchScope.requestScoped) {
-        try {
-          await phaseContext.dispatchScope.container.dispose();
-        } catch (error) {
-          logDispatchFailure(options.logger, 'Request-scoped container dispose threw an error.', error);
-        }
+      const disposal = finishDispatchScope(phaseContext);
+      if (disposal) {
+        await disposal;
       }
     }
   });
@@ -939,6 +950,7 @@ async function dispatchNativeFastRoute(
 }
 
 interface DispatchPhaseContext {
+  containerPromotionOpen: boolean;
   contentNegotiation: ResolvedContentNegotiation | undefined;
   dispatchScope: DispatchScope;
   fastPathState: DispatcherFastPathState;
@@ -1213,9 +1225,8 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
         ? createRequestDispatchScope(options.rootContainer)
         : createRootDispatchScope(options.rootContainer);
       let phaseContext: DispatchPhaseContext;
-      let containerPromotionOpen = true;
       const requestContext = createDispatchContext(dispatchRequest, response, dispatchScope.container, () => {
-        if (!containerPromotionOpen) {
+        if (!phaseContext.containerPromotionOpen) {
           return phaseContext.dispatchScope.container;
         }
 
@@ -1224,6 +1235,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
       });
 
       phaseContext = {
+        containerPromotionOpen: true,
         contentNegotiation,
         dispatchScope,
         fastPathState,
@@ -1249,17 +1261,9 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
             await notifyRequestFinish(phaseContext);
           }
 
-          if (!phaseContext.dispatchScope.requestScoped) {
-            phaseContext.requestContext.container = phaseContext.dispatchScope.container;
-          }
-
-          containerPromotionOpen = false;
-          if (phaseContext.dispatchScope.requestScoped) {
-            try {
-              await phaseContext.dispatchScope.container.dispose();
-            } catch (error) {
-              logDispatchFailure(options.logger, 'Request-scoped container dispose threw an error.', error);
-            }
+          const disposal = finishDispatchScope(phaseContext);
+          if (disposal) {
+            await disposal;
           }
         }
       });
