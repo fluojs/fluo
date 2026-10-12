@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "id": "archive-3913",
+  "roles": [
+    "archive"
+  ],
+  "source": {
+    "locator": ".omo/verification/closure-3913-20261012/archive-receipt.json",
+    "byteSha256": "79c3e7fe8cdfec877fc3319ae96905e3bc5348a047c6b1a3cb91337192e858aa",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "issue": 3913,
+    "head": "f169f00cf906f2fa1a24ff31f70e88b6ae20ac95",
+    "commandExitCode": 0,
+    "gitBundleVerifyExitCode": 0,
+    "archiveListingExitCode": 0,
+    "members": 6,
+    "requiredMembers": [
+      "bun-final-disposition-20261012.md",
+      "deno-close-diagnosis-20261008T2315.mjs",
+      "deno-close-diagnosis-20261008T2315-run1.log",
+      "deno-close-scope-blocker-20261008T2315.md",
+      "lead-abort-adjudication-20261008.md"
+    ],
+    "artifacts": [
+      {
+        "path": "issue-3913.bundle",
+        "sha256": "c00d8aa0cb014613ab90effe7a1c371689e2f0d3147ab09d96027f21a924abce",
+        "bytes": 19324
+      },
+      {
+        "path": "worktree-evidence.tar.gz",
+        "sha256": "7365ac0346cdf2c2619d1a86e155b4cada38892e7bc474ebbff58d4a8a3e60a7",
+        "bytes": 14137
+      }
+    ],
+    "access": "local-only",
+    "rootEvidenceRetained": true
+  }
+}

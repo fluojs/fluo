@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "id": "workers-correctness",
+  "roles": [
+    "correctness"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-workers-next-20261011/workers-summary.json",
+    "byteSha256": "c416a79cbd5f7dad3a9dad3991af46d5266f304bfe00c9e9144bc2f9206c70cf",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "producerHead": "526ac5b3514ff0c18e48c76bfa379c00b3a379dc",
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "workerd": "2025-06-04",
+      "node": "24.21.0",
+      "platform": "linux",
+      "arch": "x64",
+      "kernel": "4.4.302+",
+      "cpu": "Intel Celeron J1900"
+    },
+    "host": {
+      "workerd": "2025-06-04",
+      "node": "24.21.0",
+      "platform": "linux",
+      "arch": "x64",
+      "kernel": "4.4.302+",
+      "cpu": "Intel Celeron J1900"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Original correctness receipt contains available per-build entry digests; not transcribed here"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "subject": "finite correctness requests only",
+      "units": {
+        "requests": "HTTP requests",
+        "conditions": "fixture conditions"
+      },
+      "boundary": "concurrent first and same-host subsequent requests; not isolate cold or performance timing"
+    }
+  },
+  "data": {
+    "status": "PASS_FINITE_HTTP_CORRECTNESS_ONLY",
+    "head": "526ac5b3514ff0c18e48c76bfa379c00b3a379dc",
+    "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "targets": [
+      "native-workers",
+      "fluo-workers"
+    ],
+    "configurations": [
+      "default",
+      "equivalent"
+    ],
+    "scenariosPerTargetConfiguration": 11,
+    "expectedConditions": 44,
+    "completedConditions": 44,
+    "completedRequests": 180,
+    "collectionExitCode": 0,
+    "recoveryExitCode": 0,
+    "receipt": "nas-workers-correctness-20261011.json",
+    "receiptSha256": "ae3c99663c3e13e48f5c13b4f95b9c3ab87c3ea23881fe11454eb031879b100e",
+    "rawArtifactCount": 220,
+    "rawArtifactValidation": "All receipt paths and realpaths contained in recovered evidence root; all byte counts and SHA-256 digests match.",
+    "rawArtifactProblems": [],
+    "runtime": {
+      "workerd": "2025-06-04",
+      "node": "24.21.0",
+      "platform": "linux",
+      "arch": "x64",
+      "kernel": "4.4.302+",
+      "cpu": "Intel Celeron J1900"
+    },
+    "scope": "Existing finite HTTP fixture validates concurrent first requests and same-host subsequent requests, status, exact bytes, JSON type and configuration-specific security headers with actual workerd subject identity.",
+    "limitations": [
+      "Not a performance baseline, candidate comparison, generator-headroom proof or whole-issue acceptance.",
+      "Not an actual deployed Workers isolate cold or capacity measurement.",
+      "Successful NAS HTTP execution does not change official runtime support requirements.",
+      "Previously retained INCONCLUSIVE measurements remain unchanged.",
+      "Next production App/Pages verification is separate; its subsequent completed result is in next-summary.json."
+    ]
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "host-failure",
+  "roles": [
+    "summary",
+    "calibration"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-host-baseline-3914-20261011/failure-summary.json",
+    "byteSha256": "c017c6efcf82000e2d3e2e3059b953a1c8f31db414c7299da63ceba8aedbd1b0",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "status": "FAILED_PARTIAL_BEFORE_ONLY_CALIBRATION",
+    "exitCode": 1,
+    "head": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+    "rawFile": "host-baseline-3914-20261011-results/default.json",
+    "rawSha256": "101968cf2a8d1dd720658d5d8d6f55bb7fa4ca40eb3a61199ee5c9d8989cec79",
+    "remoteSha256": "101968cf2a8d1dd720658d5d8d6f55bb7fa4ca40eb3a61199ee5c9d8989cec79",
+    "expectedRuns": 264,
+    "completedRuns": 94,
+    "completedMeasuredRequests": 831095,
+    "failedRuns": 1,
+    "unattemptedRuns": 169,
+    "equivalentStarted": false,
+    "failure": {
+      "configuration": "default",
+      "target": "native-nextjs",
+      "scenario": "stage-routing-params",
+      "connections": 64,
+      "phase": "measurement",
+      "errors": 7,
+      "timeouts": 7,
+      "completedRequests": 1666,
+      "elapsedSeconds": 10.51,
+      "clientCoreEquivalentPercent": 13.659247057377188,
+      "serverCpuSecondsDelta": 10.77,
+      "serverSampleWallSeconds": 10.598385634999723,
+      "rssKiB": {
+        "first": 220100,
+        "last": 290116
+      },
+      "generatorWarning": "(node:12654) TimeoutNegativeWarning: -5 is a negative number.\nTimeout duration was set to 1.\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+    },
+    "performanceAcceptance": false,
+    "disposition": "Preserve all 94 completed runs and one failed run. Failed or missing conditions cannot determine frozen acceptance durations. Native Next failure is not evidence of a Fluo regression. CPU saturation is a hypothesis, not proven cause."
+  }
+}

@@ -1,0 +1,62 @@
+command: node verify-artifacts.mjs
+exitCode: 0
+{"status":"ARTIFACT_CONSISTENCY_ONLY","performanceVerdict":"NOT_ESTABLISHED"}
+
+command: node --test verify-artifacts.test.mjs
+status: completed exit_code: 0
+✔ verifyArtifacts: engineering completion promoted to performance -> rejects (3.929083ms)
+✔ verifyArtifacts: committed artifact set -> consistency only (1.782625ms)
+✔ standalone CLI: committed artifacts without external evidence access -> exits successfully (36.274333ms)
+✔ verifyArtifacts: malformed metric -> rejects (0.711584ms)
+✔ verifyArtifacts: non-finite metric -> rejects (0.463166ms)
+✔ verifyArtifacts: negative metric -> rejects (0.50475ms)
+✔ verifyArtifacts: missing evidence identity -> rejects (1.640209ms)
+✔ verifyArtifacts: duplicate evidence identity -> rejects (0.868333ms)
+✔ verifyArtifacts: missing serving identity -> rejects (0.373084ms)
+✔ verifyArtifacts: unknown identity without reason -> rejects (0.45075ms)
+✔ verifyArtifacts: invalid SHA256 -> rejects (0.155042ms)
+✔ verifyArtifacts: well-formed but wrong summary hash -> rejects (0.770542ms)
+✔ verifyArtifacts: unsupported metric replaced by zero -> rejects (0.3655ms)
+✔ verifyArtifacts: unsupported metric silently supported -> rejects (1.064584ms)
+✔ verifyArtifacts: missing platform -> rejects (1.379375ms)
+✔ verifyArtifacts: missing Next Pages environment -> rejects (1.044125ms)
+✔ verifyArtifacts: duplicate platform environment -> rejects (1.025375ms)
+✔ verifyArtifacts: incomplete acceptance promotion -> rejects (0.829833ms)
+✔ verifyArtifacts: inconclusive disposition promoted -> rejects (0.842584ms)
+✔ verifyArtifacts: candidate verdict promoted -> rejects (0.920791ms)
+✔ verifyArtifacts: offline equality promoted to performance -> rejects (0.803084ms)
+✔ verifyArtifacts: local archive advertised remotely -> rejects (0.824541ms)
+✔ verifyArtifacts: local source advertised remotely -> rejects (0.342417ms)
+✔ verifyArtifacts: engineering lane prematurely complete -> rejects (0.654833ms)
+✔ verifyArtifacts: missing dependency -> rejects (0.784541ms)
+✔ verifyArtifacts: candidate exclusion binding changed -> rejects (0.941958ms)
+✔ verifyArtifacts: policy limit relaxed -> rejects (0.472375ms)
+✔ verifyArtifacts: protocols conflated -> rejects (0.418333ms)
+✔ verifyArtifacts: reference escapes subtree -> rejects (0.271875ms)
+✔ verifyArtifacts: absolute reference -> rejects (0.255959ms)
+✔ verifyArtifacts: missing compact summary -> rejects (0.259459ms)
+✔ verifyArtifacts: evidence role misclassified -> rejects (0.3035ms)
+✔ verifyArtifacts: original timeout erased -> rejects (0.974417ms)
+✔ verifyArtifacts: original traffic errors erased -> rejects (0.790292ms)
+✔ verifyArtifacts: calibration promoted to PASS -> rejects (0.755625ms)
+✔ verifyArtifacts: historical production failure erased -> rejects (0.893458ms)
+✔ verifyArtifacts: historical rejected candidate promoted -> rejects (0.74725ms)
+✔ verifyArtifacts: undersampled results hidden -> rejects (0.666125ms)
+✔ verifyArtifacts: failed condition accepted -> rejects (0.947417ms)
+✔ verifyArtifacts: locale machine data diverges -> rejects (0.947041ms)
+✔ verifyArtifacts: rewritten EN/KO prose with identical machine data -> accepts (0.707417ms)
+ℹ tests 41
+ℹ suites 0
+ℹ pass 41
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 118.507083
+command: /Users/ayden/Documents/fluo/node_modules/.bin/biome check --error-on-warnings tooling/benchmarks/http-comparison/results/issue3915/verify-artifacts.mjs tooling/benchmarks/http-comparison/results/issue3915/verify-artifacts.test.mjs
+status: completed exit_code: 0
+Checked 2 files in 6ms. No fixes applied.
+JSON parse: 30 files, schemaVersion 1, passed
+LSP: checker/test/JSON no diagnostics
+EN/KO prose: manually read; same policy/numbers/identities/dispositions/limitations
+No full local CI, benchmarks, deployed requests, remote writes or cleanup.

@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "archive-3912",
+  "roles": [
+    "archive"
+  ],
+  "source": {
+    "locator": ".omo/verification/closure-3912-20261012/archive-receipt.json",
+    "byteSha256": "fa66f50c48efe329e3b7157a293f0ad35de45f5219928da527c086317e72fc1d",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "status": "ARCHIVED_BEFORE_WORKTREE_CLEANUP",
+    "issue": 3912,
+    "pr": 3933,
+    "head": "01380383faa3c932632ec6a9bdfd4cc42148b134",
+    "mergeCommit": "51b677d1168f6c2527970bb59d5f725fc759fa2b",
+    "commandExitCode": 0,
+    "history": {
+      "path": "issue-3912.bundle",
+      "sha256": "b0e4f8f024d41b7a4ceda828f246552665948fa4ed2225512296540aeb9179d6",
+      "gitBundleVerifyExitCode": 0
+    },
+    "rawAndReports": {
+      "path": "worktree-evidence.tar.gz",
+      "sha256": "adee9fff3f08f8da0c9a12a8d06a7feb3614b9137f254a801ad263f009aae788"
+    },
+    "availability": "local durable archive",
+    "cleanupComplete": false
+  }
+}

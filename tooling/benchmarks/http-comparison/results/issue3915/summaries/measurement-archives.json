@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "id": "measurement-archives",
+  "roles": [
+    "archive"
+  ],
+  "source": {
+    "locator": ".omo/verification/lane-measurement-closure-20261012/receipt.json",
+    "byteSha256": "57716b770413b3ef5615bc0f1145282ac158212536eecd711dd752d2d9c4198b",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not retain producer Git head"
+    },
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "status": "UNKNOWN",
+      "reason": "No measured interval or metric applies to this evidence"
+    }
+  },
+  "data": {
+    "status": "ARCHIVES_VERIFIED",
+    "performanceVerdictUnchanged": true,
+    "access": "local-only",
+    "originalWorktreesRemoved": false,
+    "rootEvidenceSeparate": true,
+    "archives": [
+      {
+        "name": "measure-3911-253-d67",
+        "head": "1baff4fe9697604ae0658c8e412a2f17b40b7b54",
+        "commandExitCode": 0,
+        "bundleVerifyExitCode": 0,
+        "archiveListingExitCode": 0,
+        "members": 66,
+        "includesUntrackedProcfs": false,
+        "artifacts": [
+          {
+            "path": "measure-3911-253-d67.bundle",
+            "bytes": 44282,
+            "sha256": "d502cdaa298a7de02eacc9f81f028e0c4321361de7610c10f9d34b193bda0437"
+          },
+          {
+            "path": "measure-3911-253-d67.tar.gz",
+            "bytes": 12856578,
+            "sha256": "16e690687967837494e80328ec28c1d6c253309de772759b08a55f0f9f08cea5"
+          }
+        ]
+      },
+      {
+        "name": "measure-drift-b7b4aaa5f",
+        "head": "b7b4aaa5f333d93ee68929fb061dee11902c0b61",
+        "commandExitCode": 0,
+        "bundleVerifyExitCode": 0,
+        "archiveListingExitCode": 0,
+        "members": 74,
+        "includesUntrackedProcfs": false,
+        "artifacts": [
+          {
+            "path": "measure-drift-b7b4aaa5f.bundle",
+            "bytes": 114794,
+            "sha256": "bb4367a0f6834d2526a85ae9d508c4f704f01430fd0a24b45c1680d0d50a58d3"
+          },
+          {
+            "path": "measure-drift-b7b4aaa5f.tar.gz",
+            "bytes": 12875545,
+            "sha256": "8ce29ebce73c94c47a2d58a303140147ef4461364f1bb84a1c02545e57d574cd"
+          }
+        ]
+      },
+      {
+        "name": "measure-header-3911",
+        "head": "bdb3fa568c9dc688a00cb83f2d32a7036916a77c",
+        "commandExitCode": 0,
+        "bundleVerifyExitCode": 0,
+        "archiveListingExitCode": 0,
+        "members": 77,
+        "includesUntrackedProcfs": false,
+        "artifacts": [
+          {
+            "path": "measure-header-3911.bundle",
+            "bytes": 127962,
+            "sha256": "2e77cad897a25be01d9a08961313a89297f8d7aed3fcecc373fdfc977f3e1ad3"
+          },
+          {
+            "path": "measure-header-3911.tar.gz",
+            "bytes": 12881221,
+            "sha256": "0374224c322ff9b024c72a1a08185e20f6c74f8daf9d80865268b10774af7bc8"
+          }
+        ]
+      },
+      {
+        "name": "measure-header-baseline-7a6bf1edf",
+        "head": "7a6bf1edf599693acabe0a3445c37e5209f14210",
+        "commandExitCode": 0,
+        "bundleVerifyExitCode": 0,
+        "archiveListingExitCode": 0,
+        "members": 74,
+        "includesUntrackedProcfs": false,
+        "artifacts": [
+          {
+            "path": "measure-header-baseline-7a6bf1edf.bundle",
+            "bytes": 108087,
+            "sha256": "a250c09acb7ea00790a2122b65dbc2635449dbcdaa35a087251ebf9553f22a4e"
+          },
+          {
+            "path": "measure-header-baseline-7a6bf1edf.tar.gz",
+            "bytes": 12875515,
+            "sha256": "4cfa737b9d0001911fba60c830049600a1018d1c57d2a5849fc7cd176650ea58"
+          }
+        ]
+      },
+      {
+        "name": "measure-linux-aa-aaaa62305",
+        "head": "aaaa62305a4a62a920dd642ffd5044ac1bd9d241",
+        "commandExitCode": 0,
+        "bundleVerifyExitCode": 0,
+        "archiveListingExitCode": 0,
+        "members": 73,
+        "includesUntrackedProcfs": false,
+        "artifacts": [
+          {
+            "path": "measure-linux-aa-aaaa62305.bundle",
+            "bytes": 78947,
+            "sha256": "45b831d690c4bf8babad3a0150a7fae500d313e3203c09456e76c1abeae4ff32"
+          },
+          {
+            "path": "measure-linux-aa-aaaa62305.tar.gz",
+            "bytes": 12869690,
+            "sha256": "edb7484232c32c7393281d191d5a808207201f780e6f768bdd309e68014b298d"
+          }
+        ]
+      },
+      {
+        "name": "measure-linux-aa-warm-9d1d0addc",
+        "head": "9d1d0addc41d795c3335f3e85d70503250f7b7d7",
+        "commandExitCode": 0,
+        "bundleVerifyExitCode": 0,
+        "archiveListingExitCode": 0,
+        "members": 73,
+        "includesUntrackedProcfs": false,
+        "artifacts": [
+          {
+            "path": "measure-linux-aa-warm-9d1d0addc.bundle",
+            "bytes": 92316,
+            "sha256": "32fa40499abc04b37a2091ccbb3b103d95ad1047caf4e84ad6a2336f324233a7"
+          },
+          {
+            "path": "measure-linux-aa-warm-9d1d0addc.tar.gz",
+            "bytes": 12870015,
+            "sha256": "b76edc33248bb0f572c78c1cb9c606f1543a237457a01604cfdd44d11bfd4384"
+          }
+        ]
+      },
+      {
+        "name": "measure-linux-before-d67",
+        "head": "9a49899fdb12b1848254e5dd675d42f5f473c831",
+        "commandExitCode": 0,
+        "bundleVerifyExitCode": 0,
+        "archiveListingExitCode": 0,
+        "members": 120,
+        "includesUntrackedProcfs": true,
+        "artifacts": [
+          {
+            "path": "measure-linux-before-d67.bundle",
+            "bytes": 56637,
+            "sha256": "43b330de7b999c4fab75fe5e0b7accc80c6adb370a136c5e0463e19fdd46d695"
+          },
+          {
+            "path": "measure-linux-before-d67.tar.gz",
+            "bytes": 13275407,
+            "sha256": "7f199412e8a1a6738e2532e9db93f7e647d391d2af43064144b0c36e62c05804"
+          }
+        ]
+      },
+      {
+        "name": "measure-node-3912",
+        "head": "72ba42390d00cb693d900e0d34d7cb870e3cc2bb",
+        "commandExitCode": 0,
+        "bundleVerifyExitCode": 0,
+        "archiveListingExitCode": 0,
+        "members": 79,
+        "includesUntrackedProcfs": false,
+        "artifacts": [
+          {
+            "path": "measure-node-3912.bundle",
+            "bytes": 143790,
+            "sha256": "e70ae5f59fd7a20d8484a72e9974e6acfba616bb9dc8f5c3008aef895b3fc63c"
+          },
+          {
+            "path": "measure-node-3912.tar.gz",
+            "bytes": 12885218,
+            "sha256": "2578728b8ec7a145f08ce5c8e91fa01ea5cf51c5fbf98f0760cd7f8642af7b0d"
+          }
+        ]
+      }
+    ]
+  }
+}

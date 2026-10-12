@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "id": "host-before",
+  "roles": [
+    "summary",
+    "calibration"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-host-baseline-3914-20261011/summary.json",
+    "byteSha256": "220aac59afee6b7a65246ff0a15061029b2d64b90d02dc28a36e49374dce3d7b",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "producerHead": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "platforms": [
+        "workers",
+        "nextjs"
+      ],
+      "expectedSamples": 264,
+      "configurations": [
+        "default",
+        "equivalent"
+      ],
+      "connections": [
+        1,
+        64
+      ],
+      "scenarios": "all 11; production App/Pages and local workerd"
+    },
+    "measurement": {
+      "subject": "measured server process tree; native controls are separate arms",
+      "units": {
+        "throughputRps": "requests/second",
+        "serverCpuMicrosPerRequest": "microseconds/completed request",
+        "p95Ms": "per-run histogram milliseconds",
+        "p99Ms": "per-run histogram milliseconds",
+        "rssBytes": "maximum sampled simultaneous process-tree bytes"
+      },
+      "boundary": "warmup excluded; run percentiles not pooled; RSS sampled every 250ms",
+      "elapsedBoundary": {
+        "status": "UNKNOWN",
+        "reason": "No measured total elapsed in source summary; 168984 seconds is planning arithmetic only"
+      }
+    }
+  },
+  "data": {
+    "status": "PARTIAL_BEFORE_CALIBRATION_ONE_FAILED_CONDITION",
+    "head": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+    "expectedRuns": 264,
+    "completedRuns": 263,
+    "completedMeasuredRequests": 2454837,
+    "failedRuns": 1,
+    "unattemptedRuns": 0,
+    "originalFailure": "failure-summary.json",
+    "additionalSegmentsExitCode": 0,
+    "hashes": [
+      {
+        "name": "default-remaining.json",
+        "sha256": "6db04ea1f2239f60e996b12021a5d0edd1540188318b745024d54bd22de3fd0d"
+      },
+      {
+        "name": "default-routing-fluo.json",
+        "sha256": "c5df2e516fca47a75c13331532a80340c0693aba84641f3efa570355e5cdcb90"
+      },
+      {
+        "name": "equivalent.json",
+        "sha256": "0a03f3fb54c3b3f5cdce4eb50e4a3e8e249dd3e244a7b2e064a56b9aad1d34b9"
+      }
+    ],
+    "completedRowValidationErrors": [],
+    "uniqueCompletedConditions": 263,
+    "belowAcceptanceMinimumRequests": 241,
+    "minimumCompletedRequests": 3244,
+    "policyMinimumRequests": 20000,
+    "completeDurationGroups": 43,
+    "incompleteDurationGroups": 1,
+    "estimatedPhaseTime": {
+      "kind": "Planning arithmetic, not measured elapsed time or a speed claim",
+      "oneRepeatAcross43CompleteGroupsSeconds": 28164,
+      "threeRepeatsSeconds": 84492,
+      "threeRepeatsBothBeforeAndAfterSeconds": 168984,
+      "excludes": [
+        "failed condition group",
+        "process startup and teardown",
+        "builds",
+        "artifact authentication",
+        "additional native controls if required"
+      ],
+      "fullRunAuthorizedByThisFile": false
+    },
+    "disposition": "263 valid one-repeat BEFORE calibration samples preserved. One original native Next timeout remains failed; diagnostic success does not substitute. No candidate matrix or regression acceptance. No new full matrix started."
+  }
+}

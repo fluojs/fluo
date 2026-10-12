@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "issue": 3915,
+  "depends_on": [
+    3911,
+    3912,
+    3913,
+    3914
+  ],
+  "engineeringWorkflow": {
+    "status": "DEPENDENCIES_MERGED_REPORT_LOCAL_ONLY",
+    "dependencies": [
+      {
+        "issue": 3911,
+        "pr": 3934,
+        "head": "cc9162b49d6f1af04ed58e71d9aa0fdb90847875",
+        "mergeCommit": "d5c4812a3aefdfd005af819247f18d9eb567315b",
+        "state": "MERGED",
+        "review": {
+          "contract": "PASS",
+          "code": "PASS",
+          "verification": "PASS",
+          "authentication": "lead-reported final exact-head 3-axis PASS"
+        },
+        "githubCi": {
+          "successfulChecks": 18,
+          "head": "cc9162b49d6f1af04ed58e71d9aa0fdb90847875",
+          "elapsedSeconds": {
+            "status": "UNKNOWN",
+            "reason": "Receipt retains check timestamps, not canonical run start/end and queue/preparation aggregation; no 15-minute claim"
+          }
+        },
+        "cleanup": "COMPLETE",
+        "mergeEvidence": "engineering-3911",
+        "cleanupEvidence": "cleanup-3911"
+      },
+      {
+        "issue": 3912,
+        "pr": 3933,
+        "head": "01380383faa3c932632ec6a9bdfd4cc42148b134",
+        "mergeCommit": "51b677d1168f6c2527970bb59d5f725fc759fa2b",
+        "state": "MERGED",
+        "review": {
+          "contract": "PASS",
+          "code": "PASS",
+          "verification": "PASS",
+          "authentication": "lead-reported final exact-head 3-axis PASS"
+        },
+        "githubCi": {
+          "successfulChecks": 18,
+          "head": "01380383faa3c932632ec6a9bdfd4cc42148b134",
+          "elapsedSeconds": {
+            "status": "UNKNOWN",
+            "reason": "Receipt retains check timestamps, not canonical run start/end and queue/preparation aggregation; no 15-minute claim"
+          }
+        },
+        "cleanup": "COMPLETE",
+        "mergeEvidence": "engineering-3912",
+        "cleanupEvidence": "cleanup-3912"
+      },
+      {
+        "issue": 3913,
+        "pr": 3935,
+        "head": "f169f00cf906f2fa1a24ff31f70e88b6ae20ac95",
+        "mergeCommit": "bbfc76dbc472202cc88ea5c464878b6cac18f414",
+        "state": "MERGED",
+        "review": {
+          "contract": "PASS",
+          "code": "PASS",
+          "verification": "PASS",
+          "authentication": "lead-reported final exact-head 3-axis PASS"
+        },
+        "githubCi": {
+          "successfulChecks": 18,
+          "head": "f169f00cf906f2fa1a24ff31f70e88b6ae20ac95",
+          "elapsedSeconds": {
+            "status": "UNKNOWN",
+            "reason": "Receipt retains check timestamps, not canonical run start/end and queue/preparation aggregation; no 15-minute claim"
+          }
+        },
+        "cleanup": "COMPLETE",
+        "mergeEvidence": "engineering-3913",
+        "cleanupEvidence": "cleanup-3913"
+      },
+      {
+        "issue": 3914,
+        "pr": 3936,
+        "head": "ea99d9e4a0dc59ddfbd201e07805d6a4962ed3e8",
+        "mergeCommit": "9a91d1347be38757ecc433fe6496ea94e2b70587",
+        "state": "MERGED",
+        "review": {
+          "contract": "PASS",
+          "code": "PASS",
+          "verification": "PASS",
+          "authentication": "lead-reported final exact-head 3-axis PASS"
+        },
+        "githubCi": {
+          "successfulChecks": 18,
+          "head": "ea99d9e4a0dc59ddfbd201e07805d6a4962ed3e8",
+          "elapsedSeconds": {
+            "status": "UNKNOWN",
+            "reason": "Receipt retains check timestamps, not canonical run start/end and queue/preparation aggregation; no 15-minute claim"
+          }
+        },
+        "cleanup": "COMPLETE",
+        "mergeEvidence": "engineering-3914",
+        "cleanupEvidence": "cleanup-3914"
+      }
+    ],
+    "issue3915": {
+      "status": "LOCAL_ARTIFACT_IMPLEMENTATION",
+      "remainingGates": [
+        "contract/code/verification exact-head review",
+        "full final-head GitHub CI",
+        "remote head equality and mergeability",
+        "merge",
+        "archive before cleanup",
+        "cleanup and lane retrospective"
+      ]
+    },
+    "allLaneComplete": false
+  },
+  "performanceVerdict": "NOT_ESTABLISHED",
+  "canonicalAcceptance": false,
+  "platforms": [
+    {
+      "platform": "fastify",
+      "environment": "node",
+      "disposition": "INCONCLUSIVE",
+      "accepted": false,
+      "evidence": [
+        "node-calibration"
+      ],
+      "limitations": [
+        "native throughput, CPU/request and p95 drift; candidate comparisons blocked; Nest business coverage incomplete"
+      ]
+    },
+    {
+      "platform": "express",
+      "environment": "node",
+      "disposition": "INCONCLUSIVE",
+      "accepted": false,
+      "evidence": [
+        "node-calibration"
+      ],
+      "limitations": [
+        "native p99 drift; calibration did not enable candidate comparison; historical rejected header/stream candidates remain rejected; Nest parity not established"
+      ]
+    },
+    {
+      "platform": "nodejs",
+      "environment": "node",
+      "disposition": "INCONCLUSIVE",
+      "accepted": false,
+      "evidence": [
+        "node-candidate",
+        "node-raw",
+        "node-offline",
+        "node-calibration"
+      ],
+      "limitations": [
+        "native RSS block CV 5.584327506359987% exceeds 5%; candidate excluded; same-code calibration and offline equality are not improvement"
+      ]
+    },
+    {
+      "platform": "bun",
+      "environment": "bun",
+      "disposition": "INCONCLUSIVE",
+      "accepted": false,
+      "evidence": [
+        "bun-candidate",
+        "bun-calibration"
+      ],
+      "limitations": [
+        "shared-header candidate excluded; throughput/CPU paired instability and native latency drift; no accepted independent Bun adapter optimization or complete matrix"
+      ]
+    },
+    {
+      "platform": "workers",
+      "environment": "local-workerd",
+      "disposition": "INCOMPLETE",
+      "accepted": false,
+      "evidence": [
+        "host-before",
+        "host-failure",
+        "workers-correctness"
+      ],
+      "limitations": [
+        "correctness-only 44/44; partial undersampled BEFORE matrix is not performance acceptance"
+      ]
+    },
+    {
+      "platform": "workers",
+      "environment": "deployed-version-url",
+      "disposition": "CORRECTNESS_ONLY",
+      "accepted": false,
+      "evidence": [
+        "deployed-correctness"
+      ],
+      "unsupportedMetrics": [
+        {
+          "metric": "exclusiveCpu",
+          "status": "UNSUPPORTED",
+          "value": null
+        },
+        {
+          "metric": "rssBytes",
+          "status": "UNSUPPORTED",
+          "value": null
+        },
+        {
+          "metric": "throughputRps",
+          "status": "UNSUPPORTED",
+          "value": null
+        },
+        {
+          "metric": "isolateColdMs",
+          "status": "UNSUPPORTED",
+          "value": null
+        }
+      ],
+      "limitations": [
+        "44/44 immutable Version URL correctness only; production traffic allocation and provider isolate resources unavailable"
+      ]
+    },
+    {
+      "platform": "nextjs",
+      "environment": "production-node-app",
+      "disposition": "INCOMPLETE",
+      "accepted": false,
+      "evidence": [
+        "host-before",
+        "host-failure",
+        "next-diagnostic",
+        "next-correctness"
+      ],
+      "limitations": [
+        "original native-nextjs timeout retained; instrumented success does not replace failure; production correctness only"
+      ]
+    },
+    {
+      "platform": "nextjs",
+      "environment": "production-node-pages",
+      "disposition": "INCOMPLETE",
+      "accepted": false,
+      "evidence": [
+        "host-before",
+        "next-correctness"
+      ],
+      "limitations": [
+        "production Node Pages correctness only; no complete matched candidate matrix"
+      ]
+    },
+    {
+      "platform": "deno",
+      "environment": "deno",
+      "disposition": "EXCLUDED_BY_OWNER_NOT_PASS",
+      "accepted": false,
+      "evidence": [],
+      "publicSupportRetained": true,
+      "functionalRegressionRequired": true,
+      "limitations": [
+        "owner-excluded from performance only; historical diagnostics retained, not Bun completion"
+      ]
+    }
+  ],
+  "candidateExclusions": [
+    {
+      "issue": 3911,
+      "candidateSource": "2f4dd790acac4fc5b73e04291b6a2481a5108e54",
+      "exclusionCommit": "cc9162b49d6f1af04ed58e71d9aa0fdb90847875",
+      "mergeCommit": "d5c4812a3aefdfd005af819247f18d9eb567315b",
+      "path": "packages/runtime/src/web.ts",
+      "candidateOnlyChangeset": ".changeset/http-common-request-pipeline-costs.md",
+      "finalSourceEqualsBase": true,
+      "changesetRemoved": true
+    },
+    {
+      "issue": 3912,
+      "candidateSource": "99614b72c801542b220e620b91dad7a944c64c40",
+      "exclusionCommit": "01380383faa3c932632ec6a9bdfd4cc42148b134",
+      "mergeCommit": "51b677d1168f6c2527970bb59d5f725fc759fa2b",
+      "path": "packages/platform-nodejs/src/node/internal-node-request.ts",
+      "candidateOnlyChangeset": ".changeset/http-platform-node-3912.md",
+      "finalSourceEqualsBase": true,
+      "changesetRemoved": true
+    }
+  ],
+  "historicalResults": {
+    "expressCombined": "CANDIDATE_REJECTED",
+    "expressStreamOnly": "REJECT_CANDIDATE",
+    "headerIndex": "INCONCLUSIVE",
+    "originalNativeNext": "FAILED_PARTIAL_BEFORE_ONLY_CALIBRATION",
+    "diagnostic": "DIAGNOSTIC_COMPLETE_TIMEOUT_NOT_REPRODUCED",
+    "deployedProduction": "FAILED_CORRECTNESS_RETAINED"
+  },
+  "nestComparison": {
+    "scope": "historical same-Node-host Fastify/Express diagnostic comparisons; no complete business BEFORE/candidate/Nest matrix",
+    "competitivenessVerdict": "NOT_ESTABLISHED"
+  }
+}

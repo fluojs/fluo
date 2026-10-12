@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "deployed-correctness",
+  "roles": [
+    "correctness"
+  ],
+  "source": {
+    "locator": ".omo/verification/3914-version-url-correctness-summary-20261011.json",
+    "byteSha256": "36e73deb8ffd14448104d88583efc54a332e7385e81335e5139ea5e1d065f0e9",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Uploaded sourceHead is not a separately stated framework-source arm"
+    },
+    "producerHead": "f18b264fd26ea2e5818d374b080d0640645d549e",
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Provider serving runtime version not in Version URL correctness summary"
+    },
+    "host": "Cloudflare immutable Version URLs; location may vary",
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Original correctness receipt contains available per-build entry digests; not transcribed here"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "subject": "finite correctness requests only",
+      "units": {
+        "requests": "HTTP requests",
+        "conditions": "fixture conditions"
+      },
+      "boundary": "concurrent first and same-host subsequent requests; not isolate cold or performance timing"
+    }
+  },
+  "data": {
+    "issue": 3914,
+    "sourceHead": "f18b264fd26ea2e5818d374b080d0640645d549e",
+    "preflightSha256": "28cc420426aad2c0661ecaa85a8c15ee9dbafc8b0e7ac9c4c68e242044bdb24a",
+    "verdict": "PASS_FINITE_REMOTE_VERSION_CORRECTNESS_ONLY",
+    "conditionsPassed": 44,
+    "conditionsExpected": 44,
+    "remoteRequests": 180,
+    "cumulativeDirectRequests": 204,
+    "cap": 250,
+    "invalidAttempts": [],
+    "receipt": "/Users/ayden/Documents/fluo/.worktrees/issue-3914/tooling/benchmarks/http-comparison/results/issue-3914/deployed-version-url-correctness-20261011.json",
+    "receiptSha256": "63a8dfb1251dcc7f8ccd1ec1e1f4513f4a80c74e5c3ade3673e37c235a373261",
+    "log": ".omo/verification/3914-version-url-correctness-20261011.log",
+    "exitCode": 0,
+    "distinctVersionCount": 44,
+    "baseBundleHashes": [
+      "3a8f888adf34a8942aced547de3ed921dc7ad43c4d14e450191cfe5aba03f94d",
+      "7f8831b44c68b523f98303491dca2b8cde657197a860b33dad4a2593c8d13814"
+    ],
+    "historicalProductionCheck": {
+      "successfulRequests": 20,
+      "failedRequests": 2,
+      "diagnosticRequests": 2,
+      "failedReceipt": "tooling/benchmarks/http-comparison/results/issue-3914/deployed-free-correctness-20261011.json"
+    },
+    "limitations": [
+      "Deployment IDs are not opaque isolate identities or proof of isolate cold start.",
+      "Version URLs execute uploaded versions with their resources, not the production traffic allocation.",
+      "Cloudflare does not expose Version URL logs through Wrangler tail; production tail evidence is retained separately.",
+      "This collector does not measure framework-exclusive CPU, RSS, throughput or a performance budget.",
+      "Different Cloudflare locations and unobserved provider-originated requests remain outside the controlled request count."
+    ],
+    "performanceVerdict": "NOT_ESTABLISHED",
+    "paidPlanOrAddonEnabled": false
+  }
+}

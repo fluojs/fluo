@@ -1,0 +1,355 @@
+{
+  "schemaVersion": 1,
+  "original": {
+    "source": {
+      "locator": ".omo/verification/3915-frozen-performance-policy.json",
+      "semanticSha256": "b012894325786ad74b286a537d6b7483c4a79accb6a6d834b9aee4e63d88fa5b",
+      "byteSha256": "e411f07a12486673a9aaebea5e44aa2da9b05b050fccb9a0f7952439bbb8fbb6",
+      "access": "local-only"
+    },
+    "policy": {
+      "status": "FROZEN_PROSPECTIVE_POLICY",
+      "issue": 3915,
+      "ownerChoice": "regression-only",
+      "canonicalAcceptance": false,
+      "scope": {
+        "platforms": [
+          "fastify",
+          "express",
+          "nodejs",
+          "bun",
+          "deno",
+          "workers",
+          "nextjs"
+        ],
+        "conditionKey": [
+          "platform",
+          "target",
+          "scenario",
+          "configuration",
+          "connections",
+          "runtimeIdentity",
+          "hostIdentity",
+          "resourceSubject",
+          "measurementMethod"
+        ],
+        "pr": {
+          "platforms": "All transitively affected platforms; shared runtime changes include every consuming platform",
+          "scenarios": "All 3 business and 8 stage scenarios",
+          "configurations": [
+            "default",
+            "equivalent"
+          ],
+          "connections": [
+            1,
+            64
+          ],
+          "subjects": [
+            "fluo-before",
+            "fluo-candidate"
+          ],
+          "nestBusinessControls": "Required comparisons for affected Fastify/Express work; report gaps without making parity a completion condition.",
+          "nativeControls": "Same-runtime native controls required; preserve drift and metric semantics."
+        },
+        "periodic": {
+          "schedule": [
+            "weekly",
+            "before-release"
+          ],
+          "targets": "All native/fluo/Nest variants in the frozen harness inventory, including Next App and Pages",
+          "scenarios": "All 11 scenarios",
+          "configurations": [
+            "default",
+            "equivalent"
+          ],
+          "connections": [
+            1,
+            64
+          ],
+          "singleRevisionUse": "Trend report only",
+          "regressionDecision": "Requires a matched BEFORE/candidate comparison"
+        },
+        "deployedWorkers": {
+          "separateFromLocal": true,
+          "status": "BLOCKED_UNCONFIRMED_ENVIRONMENT",
+          "required": [
+            "explicit deployment authorization",
+            "credentials and endpoints",
+            "deployment identity and configuration",
+            "load region and direct traffic path",
+            "actual deployed correctness and timing evidence",
+            "provider resource evidence with explicit metric semantics"
+          ],
+          "localEvidenceSubstitutionAllowed": false,
+          "deferralApproved": false,
+          "completionWithoutRequiredDeploymentEvidence": false
+        },
+        "environments": {
+          "workers": "local workerd; deployed acceptance is separate",
+          "nextjs": "production Node App and Pages; Edge excluded"
+        }
+      },
+      "baseline": {
+        "historicalSource": "b02cde867",
+        "historicalRole": "Calibration only; 3 repeats per condition",
+        "currentBeforeCheckout": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+        "currentBeforeAccepted": false,
+        "freezeOrder": [
+          "owner selects policy and Nest goal",
+          "validate current BEFORE identity and complete samples",
+          "freeze condition-level B values and policy",
+          "evaluate candidate without changing limits"
+        ],
+        "priorDiagnostics": "Preserved as exploration only; no retrospective budget PASS. Final acceptance requires complete post-freeze matched evidence with explicit harness/serving-source identities.",
+        "calibrationSha256": "7ffa49d36fa627c6748211ea52862f2beaff61eee29354535eeb2d65d35d5e81"
+      },
+      "sampling": {
+        "repeatsPerSubjectPerCondition": 3,
+        "warmupSeconds": 5,
+        "measureSeconds": 15,
+        "freshServerPerRepeat": true,
+        "order": "Three adjacent BEFORE/candidate blocks with alternating arm order; same-runtime native controls and required Nest comparisons retained.",
+        "minimumCompletedRequestsPerMeasuredRun": 20000,
+        "expectedP99TailObservationsAtMinimum": 200,
+        "automaticAdditionalRepeats": 0,
+        "outlierDeletionAllowed": false,
+        "insufficientRequestCount": "INCONCLUSIVE",
+        "noisyResult": "Stop and report INCONCLUSIVE; change environment or protocol only as a separately declared comparison",
+        "durationCalibration": "Before candidate collection, freeze max(15, ceil(24000 / historical BEFORE minimum requests/second)) per scenario/configuration/concurrency across selected targets. Both arms use the same duration. Unknown new targets require BEFORE-only calibration, not candidate-driven extension.",
+        "rationale": "Retain the established 3-repeat 5s/15s protocol rather than silently expanding to a 5-repeat 10s/40s matrix. Require all three paired ratios and reject unstable or underpowered conditions; do not claim statistical significance."
+      },
+      "metrics": {
+        "throughputRps": "Per-run result.requests.average; never result.throughput.average bytes/sec",
+        "p95Ms": "Per-run response histogram p95",
+        "p99Ms": "Per-run response histogram p99",
+        "serverCpuMicrosPerRequest": "1e6 * measured server-process-tree CPU seconds / completed measured requests",
+        "rssBytes": "Maximum sampled simultaneous server-process-tree RSS during measurement; 250ms sampling",
+        "aggregation": "Median of 3 per-run values for each condition and subject",
+        "latencyMeaning": "Median of run percentiles, not a pooled request percentile",
+        "resourceBoundary": "Identical BEFORE/candidate process tree and interval definition; warmup excluded"
+      },
+      "stability": {
+        "cvFormula": "sampleStandardDeviation(values) / mean(values)",
+        "maxCv": {
+          "throughputRps": 0.03,
+          "serverCpuMicrosPerRequest": 0.03,
+          "p95Ms": 0.05,
+          "p99Ms": 0.075,
+          "rssBytes": 0.05
+        },
+        "applyTo": [
+          "BEFORE values",
+          "candidate values",
+          "paired candidate/BEFORE ratios",
+          "same-runtime control values"
+        ],
+        "exceeded": "INCONCLUSIVE",
+        "unresolvableMetricPrecision": "INCONCLUSIVE",
+        "noiseDependentBudgetExpansionAllowed": false,
+        "statisticalClaim": "Bounded operational screen, not proof of significance or maximum capacity"
+      },
+      "regressionBudget": {
+        "B": "Median of 3 validated current BEFORE runs for this exact condition",
+        "A": "Median of 3 validated candidate runs for this exact condition",
+        "limits": {
+          "throughputRps": "A >= 0.95 * B",
+          "serverCpuMicrosPerRequest": "A <= 1.05 * B",
+          "p95Ms": "A <= 1.10 * B",
+          "p99Ms": "A <= 1.15 * B",
+          "rssBytes": "A <= 1.10 * B"
+        },
+        "pairedRequirement": "All 3 paired ratios meet each corresponding budget limit; no cross-condition offset or automatic repeat-until-pass.",
+        "crossConditionAveragingAllowed": false
+      },
+      "productGoals": {
+        "regression-only": {
+          "nestRatios": "Report only; no competitiveness acceptance claim"
+        }
+      },
+      "validity": {
+        "failClosedOn": [
+          "missing raw traffic histogram or resource trace",
+          "missing or inconsistent serving runtime/source/build identity",
+          "missing artifact-to-subject linkage",
+          "partial matrix or missing/duplicate repeats",
+          "recorded invalid attempts or interrupted collection",
+          "connection errors or timeouts",
+          "unexpected status, non-2xx, body or request-identity mismatch",
+          "zero completed requests",
+          "malformed, non-finite or impossible metric values",
+          "missing required profiling trace or its runtime/source identity"
+        ],
+        "checksApplyTo": [
+          "cold correctness probe",
+          "warmup",
+          "measurement"
+        ],
+        "requiredIdentity": [
+          "Clean executed Git head plus serving-source identity; generated raw outputs must not hide source changes",
+          "fresh linked package build identity",
+          "benchmark source and lockfile identity",
+          "actual serving runtime and host engine versions",
+          "collector/load runtime and dependency identity",
+          "host and load-generator identity"
+        ],
+        "profiling": "Separate captures and controls; instrumented timing cannot substitute for uninstrumented gate timing",
+        "unsupportedMetric": "Explicit UNSUPPORTED; never zero or evidence of improvement",
+        "metricSubstitutionAllowed": false,
+        "distinctMetrics": [
+          "sampled RSS",
+          "retained heap",
+          "allocation rate",
+          "sampled allocation bytes",
+          "GC events",
+          "event-loop delay",
+          "CPU profile share",
+          "server-process-tree CPU/request",
+          "Workers isolate CPU"
+        ]
+      },
+      "decision": {
+        "invalidEvidence": "FAIL_EVIDENCE",
+        "validStableBudgetViolation": "FAIL_BUDGET",
+        "validButUnstableOrInsufficient": "INCONCLUSIVE",
+        "allRequiredValidStableWithinLimits": "WITHIN_BUDGET_FOR_DECLARED_SCOPE",
+        "missingConditionsCannotBecomeWithinBudget": true,
+        "violationsCannotBeOffsetByOtherImprovements": true,
+        "wholeMatrixClaimFromAffectedPlatformsOnly": false
+      },
+      "capacity": {
+        "sharedHostVerdict": "INCONCLUSIVE",
+        "relativeCostImprovementEstablishesCapacity": false,
+        "independentCapacityRequires": [
+          "separate directly connected load host",
+          "synchronized load intervals",
+          "independently established generator headroom"
+        ],
+        "localWorkersCpuMeaning": "Wrangler/workerd process-tree cost, not deployed isolate CPU"
+      },
+      "ownerDecision": {
+        "choice": "회귀 방지·개선 보고 (Recommended)",
+        "scope": "Product completion goal selected by user; numerical and sampling details are prospective lead-defined parameters, not a claim that the user approved every technical field."
+      },
+      "frozenAt": "2026-10-09T00:55:52.363Z",
+      "sha256": "b012894325786ad74b286a537d6b7483c4a79accb6a6d834b9aee4e63d88fa5b"
+    }
+  },
+  "denoAmendment": {
+    "source": {
+      "locator": ".omo/verification/3915-deno-performance-scope-amendment-20261011.json",
+      "semanticSha256": "7af9f766d65b962827ae1734377d23de78d74149ea0f6fe9130866f045d90e4b",
+      "byteSha256": "59cbc13fe47504ec9fbd6277cb2c1b7bc3cc88e9d19e2873052a920aacf7f1b1",
+      "access": "local-only"
+    },
+    "amendment": {
+      "kind": "OWNER_APPROVED_PROSPECTIVE_PERFORMANCE_SCOPE_AMENDMENT",
+      "lane": "http-platform-performance-3909-3915",
+      "date": "2026-10-11",
+      "authority": "Explicit user instruction to exclude platform-deno from performance improvements",
+      "basePolicy": {
+        "path": ".omo/verification/3915-frozen-performance-policy.json",
+        "sha256": "b012894325786ad74b286a537d6b7483c4a79accb6a6d834b9aee4e63d88fa5b"
+      },
+      "activePlatforms": [
+        "fastify",
+        "express",
+        "nodejs",
+        "bun",
+        "workers",
+        "nextjs"
+      ],
+      "excludedPlatforms": [
+        "deno"
+      ],
+      "excludedTargets": [
+        "native-deno",
+        "fluo-deno"
+      ],
+      "affectedIssues": [
+        3911,
+        3912,
+        3913,
+        3914,
+        3915
+      ],
+      "issue3913": "Bun optimization only; retain existing Deno diagnostics as historical evidence, not Bun completion",
+      "performanceVerdictForDeno": "EXCLUDED_BY_OWNER_NOT_PASS",
+      "preserve": [
+        "Existing Deno implementation, public API and support contracts",
+        "Existing functional, portability and native regression coverage",
+        "Historical Deno data and completed issues3909/3910",
+        "All regression budgets and non-Deno validity requirements"
+      ],
+      "forbidden": [
+        "No new Deno performance optimization, profiling or required benchmark comparisons",
+        "Do not remove Deno from generic supported-runtime inventory or delete tests",
+        "Do not rewrite original frozen policy or classify excluded measurements as passing"
+      ],
+      "newMethodStatus": "Separate user-approved same-code A/A validation remains pending; original numerical acceptance is not promoted",
+      "officialSource": {
+        "url": "https://deno.com/blog/cloudflare",
+        "runtime": "Monthly bug/security releases for another year, then the team ends runtime development; source remains open.",
+        "deploy": "Deno Deploy runs six months before shutdown."
+      },
+      "sha256": "7af9f766d65b962827ae1734377d23de78d74149ea0f6fe9130866f045d90e4b"
+    }
+  },
+  "completionAmendment": {
+    "source": {
+      "locator": ".omo/verification/3915-unproven-candidate-exclusion-20261012.json",
+      "byteSha256": "6f922d7a54246f5b3bb47472af60dac095f97dbd0ec40d4a3c3756a55ae38e79",
+      "access": "local-only"
+    },
+    "amendment": {
+      "status": "OWNER_APPROVED_COMPLETION_SCOPE_AMENDMENT",
+      "lane": "http-platform-performance-3909-3915",
+      "issues": [
+        3911,
+        3912,
+        3913,
+        3914,
+        3915
+      ],
+      "ownerStatement": "미입증 후보 제외",
+      "approvedOption": "Do not ship unproven performance candidates. Complete measurement/limitations reports and verified harness fixes through review, GitHub CI, merge, cleanup and retrospective.",
+      "supersedes": "The requirement to obtain passing new candidate performance matrices before completing these issue work units. It does not supersede numerical verdicts, correctness contracts or merge verification gates.",
+      "requiredOutcomes": [
+        "Exclude unproven shared-header and Node request-wrapper runtime candidates from the final diffs through new ordinary commits; preserve historical candidate commits and original evidence.",
+        "Keep only independently justified regression tests and verified benchmark tooling. Restore public runtime behavior and remove candidate-only release entries when the final published package surface is unchanged.",
+        "Report original FAIL, INCONCLUSIVE, unsupported and incomplete conditions without relabeling them as PASS, absent evidence or performance improvement.",
+        "Complete per-issue reports and a final consolidated disposition that distinguishes engineering workflow completion from unestablished performance acceptance.",
+        "Retain exact-head reviews, focused checks appropriate to the final change, full GitHub CI, mergeability checks and existing merge/cleanup authority.",
+        "Archive local evidence outside disposable worktrees before cleanup and produce one lane retrospective."
+      ],
+      "nonGoals": [
+        "No new large acceptance matrix or repeat-until-pass measurement.",
+        "No numerical threshold relaxation, outlier deletion or diagnostic-to-acceptance promotion.",
+        "No new speculative optimization, public API change, security reduction or React implementation.",
+        "No new deployed requests, paid services, local package publishing or global NAS configuration changes."
+      ],
+      "currentEvidenceInventory": ".omo/verification/3915-current-acceptance-status-20261011.md",
+      "performanceVerdict": "NOT_ESTABLISHED",
+      "priorRawEvidenceMustRemainUnchanged": true
+    }
+  },
+  "protocols": [
+    {
+      "id": "original",
+      "warmupSeconds": 5,
+      "measureSeconds": 15
+    },
+    {
+      "id": "bun-nas",
+      "warmupSeconds": 30,
+      "measureSeconds": 60
+    },
+    {
+      "id": "node-nas",
+      "warmupSeconds": 30,
+      "measureSeconds": 180
+    }
+  ],
+  "numericalEngine": "tooling/benchmarks/http-comparison/results/issue-3914/paired-aa.mts",
+  "numericalEngineHead": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+  "scheduledGatesOperational": false
+}

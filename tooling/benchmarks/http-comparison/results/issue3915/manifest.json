@@ -1,0 +1,520 @@
+{
+  "schemaVersion": 1,
+  "issue": 3915,
+  "preflightSha256": "2f2b8b66aaf4cb4cc57c622dc7c65eaf606177dacfd716801fb971068823a4f7",
+  "startingHead": "9a91d1347be38757ecc433fe6496ea94e2b70587",
+  "performanceVerdict": "NOT_ESTABLISHED",
+  "checkerMeaning": "ARTIFACT_CONSISTENCY_ONLY",
+  "policy": {
+    "path": "policy.json",
+    "sha256": "2cbe630f271435c5ae7041cc9d86bd14523e44aafdb8a297a11578f99cfebbe6"
+  },
+  "dispositions": {
+    "path": "dispositions.json",
+    "sha256": "f02edbd414d27e9dc3e6f51bf7d83771868168ede4e46084e33915fa30f9409e"
+  },
+  "evidence": [
+    {
+      "id": "bun-candidate",
+      "roles": [
+        "summary",
+        "candidate"
+      ],
+      "summary": "summaries/bun-candidate.json",
+      "sha256": "e0f55c4f6e6600ffb9a00fcd137840392a5fa3960e90294c8d7592a882391f3b",
+      "source": {
+        "locator": ".omo/verification/nas-header-3911-20261011/summary.json",
+        "byteSha256": "b0baefa4261eb2865fb295ee86f935424db23bf9af8c466433bc4852654cd0ed",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "node-candidate",
+      "roles": [
+        "summary",
+        "candidate"
+      ],
+      "summary": "summaries/node-candidate.json",
+      "sha256": "e716cab855c35cb16f05e465a84c15c4a0f54bb2706ec5407984fc69c19549c7",
+      "source": {
+        "locator": ".omo/verification/nas-node180-candidate-3912-20261011/nodejs-summary.json",
+        "byteSha256": "2d4a203c9d43d30b68c35c31657a58f99fb7c397235dc59f716ba206b3a42363",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "node-raw",
+      "roles": [
+        "raw"
+      ],
+      "summary": "summaries/node-raw.json",
+      "sha256": "e5290375d36d55e267fd7000bb9cbd25e598b8acdf809bb35c0a1fe606a9f3b5",
+      "source": {
+        "locator": ".omo/verification/nas-node180-candidate-3912-20261011/nodejs-integrity.json",
+        "byteSha256": "31f25f74cf4890117bbce9337a96871749e6d2195ff6c6f3c2bd2e85df2f7d6e",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "node-offline",
+      "roles": [
+        "offline-reevaluation"
+      ],
+      "summary": "summaries/node-offline.json",
+      "sha256": "0c64cd1b2bf6637f5eec0af1c0544324e6abbf25b00f145473fc73690b3325cd",
+      "source": {
+        "locator": ".omo/verification/nas-node180-candidate-3912-20261011/reevaluation.json",
+        "byteSha256": "f8857191555f30a29e78bca74886033e6e8115126bcbd40913d1a7c0d183ed33",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "node-calibration",
+      "roles": [
+        "summary",
+        "calibration"
+      ],
+      "summary": "summaries/node-calibration.json",
+      "sha256": "b80fff925f4313b7e1420620d4bcea2fc7f8e57cf2018030287e2c31a4de6fff",
+      "source": {
+        "locator": ".omo/verification/nas-node180-3912-20261011/rollup.json",
+        "byteSha256": "f52a6e9cccf67a4afa7ae459621b7a3a494555f33135f7bcbb8d63b931b5d3bd",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "bun-calibration",
+      "roles": [
+        "summary",
+        "calibration"
+      ],
+      "summary": "summaries/bun-calibration.json",
+      "sha256": "44889efe7d9f7c93f991972374b58c5e324498facb4a6cae02b563ed227dedde",
+      "source": {
+        "locator": ".omo/verification/nas-benchmark-20261011/summary.json",
+        "byteSha256": "0f682292e38ad03c0a98867ab5dca74617bd72c6b74b516e691101440b5dc9ed",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "host-before",
+      "roles": [
+        "summary",
+        "calibration"
+      ],
+      "summary": "summaries/host-before.json",
+      "sha256": "b3b56ebe31224efaa9dd88dcbdfa7c160f9a1fe22b49df5db3533565ea619f0f",
+      "source": {
+        "locator": ".omo/verification/nas-host-baseline-3914-20261011/summary.json",
+        "byteSha256": "220aac59afee6b7a65246ff0a15061029b2d64b90d02dc28a36e49374dce3d7b",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "host-failure",
+      "roles": [
+        "summary",
+        "calibration"
+      ],
+      "summary": "summaries/host-failure.json",
+      "sha256": "e8ab8d51af6957cdb7090a5c57fdcf2b258f260e4b83d29404bf4ac51fd9acfb",
+      "source": {
+        "locator": ".omo/verification/nas-host-baseline-3914-20261011/failure-summary.json",
+        "byteSha256": "c017c6efcf82000e2d3e2e3059b953a1c8f31db414c7299da63ceba8aedbd1b0",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "next-diagnostic",
+      "roles": [
+        "diagnostic"
+      ],
+      "summary": "summaries/next-diagnostic.json",
+      "sha256": "ecffd75d83bf7872ec90638c8933a2380b8c32de94030aa42f75699c0eafaf14",
+      "source": {
+        "locator": ".omo/verification/nas-next-timeout-diagnostic-20261011/analysis.json",
+        "byteSha256": "aaf1d53d7c835f9738bc127a450aa11554c63ff1b1c08f038cf43113979efbbf",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "workers-correctness",
+      "roles": [
+        "correctness"
+      ],
+      "summary": "summaries/workers-correctness.json",
+      "sha256": "9de56811fcb0534c0fcef5a2ae1e773dd59393c25ad4ee3b06611523f09bbfb1",
+      "source": {
+        "locator": ".omo/verification/nas-workers-next-20261011/workers-summary.json",
+        "byteSha256": "c416a79cbd5f7dad3a9dad3991af46d5266f304bfe00c9e9144bc2f9206c70cf",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "next-correctness",
+      "roles": [
+        "correctness"
+      ],
+      "summary": "summaries/next-correctness.json",
+      "sha256": "a0bace7c22146455471a75445f221d4484f88dd496e82731d10e6f413ea9ff37",
+      "source": {
+        "locator": ".omo/verification/nas-workers-next-20261011/next-summary.json",
+        "byteSha256": "e49ffc46faa1a6f9aa344f6b79f72e7cbbcd0947f7ead22ef912a141fb29a6c8",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "deployed-correctness",
+      "roles": [
+        "correctness"
+      ],
+      "summary": "summaries/deployed-correctness.json",
+      "sha256": "33a38376fe6e1ece7677609ec011ea6fb6376771741757b935c33f4ca911fcb0",
+      "source": {
+        "locator": ".omo/verification/3914-version-url-correctness-summary-20261011.json",
+        "byteSha256": "36e73deb8ffd14448104d88583efc54a332e7385e81335e5139ea5e1d065f0e9",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "engineering-3911",
+      "roles": [
+        "engineering"
+      ],
+      "summary": "summaries/engineering-3911.json",
+      "sha256": "86bd05cd908edbcb233a2185a019f296f64f53692c6e236b032e2f991a504239",
+      "source": {
+        "locator": ".omo/verification/3911-merged-evidence-20261012.json",
+        "byteSha256": "ecc1b2fd986b60a302abf273db7177f78bcb069bc2806a7f31d61159a245c604",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "cleanup-3911",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/cleanup-3911.json",
+      "sha256": "e434842bf7fd26d80a8fd589265f6e9c1fbcf16c65feedd336c87109cfbbd6b9",
+      "source": {
+        "locator": ".omo/verification/closure-3911-20261012/cleanup.json",
+        "byteSha256": "2950dd8395bb3a0231bad6ab9b7c3735b07f38ccadcec112025ad02640c9f9fe",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "archive-3911",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/archive-3911.json",
+      "sha256": "540cf06e2e1d69bf3bd6df357c9f49065064218eeb72da42c6c7de0939c77261",
+      "source": {
+        "locator": ".omo/verification/closure-3911-20261012/archive-receipt.json",
+        "byteSha256": "ddb48ddc4ffef37d1c927f49fedc5b367b2ab1d947bf4fecd2a8d2b2aa80ecf9",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "engineering-3912",
+      "roles": [
+        "engineering"
+      ],
+      "summary": "summaries/engineering-3912.json",
+      "sha256": "bd111c72fd9fcf56461528f35073d6050ca6c125ecaeac037dd870c9b17b50ca",
+      "source": {
+        "locator": ".omo/verification/3912-merged-evidence-20261012.json",
+        "byteSha256": "c2d860668a369dd55e94ce4c0577182b1f0235a316ddb380100226e26db80d4f",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "cleanup-3912",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/cleanup-3912.json",
+      "sha256": "7bcb2f7a156fe70ac6ec5b907249613cffed4da526407ae36c65eb6031e0cdc9",
+      "source": {
+        "locator": ".omo/verification/closure-3912-20261012/cleanup.json",
+        "byteSha256": "dbc25b8b923250c953679de9d236edae83df7c9788be1f67a85cd628d2d7a1c9",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "archive-3912",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/archive-3912.json",
+      "sha256": "84eced5499d0cfb1d0f402200caa095e58a840b9f75afa252667c86cfb3e4a9c",
+      "source": {
+        "locator": ".omo/verification/closure-3912-20261012/archive-receipt.json",
+        "byteSha256": "fa66f50c48efe329e3b7157a293f0ad35de45f5219928da527c086317e72fc1d",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "engineering-3913",
+      "roles": [
+        "engineering"
+      ],
+      "summary": "summaries/engineering-3913.json",
+      "sha256": "5c3c86400be30c409e92e05b23aea1e0794735bdd8fba713a1f209884e3724e8",
+      "source": {
+        "locator": ".omo/verification/3913-merged-evidence-20261012.json",
+        "byteSha256": "45a0acdebb3d66dc451fd26f1e180588669cffceb68c1453674842c134f7a392",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "cleanup-3913",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/cleanup-3913.json",
+      "sha256": "eccea542abdc553dccd39645156d07ea6cdf76093ab2b68710f0c57030df6cca",
+      "source": {
+        "locator": ".omo/verification/closure-3913-20261012/cleanup.json",
+        "byteSha256": "c7407f0948a18211d50a2b8f29ad34c1081146f58cbea7a6179aa9e4490a80a8",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "archive-3913",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/archive-3913.json",
+      "sha256": "62d470123dfc9b3479b05a7919220e2cfe94705f2d75d20c136db30426d2cf29",
+      "source": {
+        "locator": ".omo/verification/closure-3913-20261012/archive-receipt.json",
+        "byteSha256": "79c3e7fe8cdfec877fc3319ae96905e3bc5348a047c6b1a3cb91337192e858aa",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "engineering-3914",
+      "roles": [
+        "engineering"
+      ],
+      "summary": "summaries/engineering-3914.json",
+      "sha256": "98de55e7dca17a1ae3f0d4ff8e2793a52fc472ce869a404115c9c9a8c9611081",
+      "source": {
+        "locator": ".omo/verification/3914-merged-evidence-20261012.json",
+        "byteSha256": "c1eb7eb0cc472a0482337e35135a4b43fbd8514437e47351bf9db76cb6a4662c",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "cleanup-3914",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/cleanup-3914.json",
+      "sha256": "cb5df2457189a675ceff0471f3bd8843ee85e64e09d967721147d4059aaefc93",
+      "source": {
+        "locator": ".omo/verification/closure-3914-20261012/cleanup.json",
+        "byteSha256": "99f5a4021fd35dfc4dcf77d25ee3734d2dd1cf504aa829d26b4224731d277ef0",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "archive-3914",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/archive-3914.json",
+      "sha256": "36a29ac85d916060cc32978e8a178eb5e5194b2e2fd8853c174a407ade1c919e",
+      "source": {
+        "locator": ".omo/verification/closure-3914-20261012/archive-receipt.json",
+        "byteSha256": "c8a65f233e98ce529aff55161fe1d203cc4c5fa8e88a91276b05fd87eee9ae43",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "pre-exclusion-archive",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/pre-exclusion-archive.json",
+      "sha256": "337594f788a5493c0d836077982829383edf6e86a34af9b6fb8d13c12bc49237",
+      "source": {
+        "locator": ".omo/verification/unproven-exclusion-archive-20261012/receipt.json",
+        "byteSha256": "10c503ee1680f593264f1b5ad3ea32475013e5eebe745f9ccd9f33075fb66163",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "archive-plan",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/archive-plan.json",
+      "sha256": "9ae267d02f3b05004cf5ae1feb22b37f2fd720b22af7baca9058321b5e920998",
+      "source": {
+        "locator": ".omo/verification/unproven-exclusion-archive-20261012/plan.json",
+        "byteSha256": "b9e6e076f7070ef23e5a17edb46255716131a94479aeed65842ae1222bb3c57d",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    },
+    {
+      "id": "measurement-archives",
+      "roles": [
+        "archive"
+      ],
+      "summary": "summaries/measurement-archives.json",
+      "sha256": "be3afbc3c42fcb4c0034926e15d740bdc3d1a8b5962b278a3aca5a07429e4d96",
+      "source": {
+        "locator": ".omo/verification/lane-measurement-closure-20261012/receipt.json",
+        "byteSha256": "57716b770413b3ef5615bc0f1145282ac158212536eecd711dd752d2d9c4198b",
+        "access": "local-only",
+        "authentication": "direct-source-bytes-reverified"
+      }
+    }
+  ],
+  "archives": [
+    {
+      "path": ".omo/verification/closure-3911-20261012/issue-3911.bundle",
+      "sha256": "f6d341f0fd25038f3baa6868c0854bd792f989c4a5a792193998acda4c0c98d7",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "final issue head and worktree result subtree; root NAS and relocated historical test artifacts separate"
+    },
+    {
+      "path": ".omo/verification/closure-3911-20261012/worktree-evidence.tar.gz",
+      "sha256": "f27c09049ab7eb09ad374426fb596e5c207eaee88bb3ab3cb6b67431707e03e4",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "final issue head and worktree result subtree; root NAS and relocated historical test artifacts separate"
+    },
+    {
+      "path": ".omo/verification/closure-3912-20261012/issue-3912.bundle",
+      "sha256": "b0e4f8f024d41b7a4ceda828f246552665948fa4ed2225512296540aeb9179d6",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "final issue head and worktree result subtree; root NAS and relocated historical test artifacts separate"
+    },
+    {
+      "path": ".omo/verification/closure-3912-20261012/worktree-evidence.tar.gz",
+      "sha256": "adee9fff3f08f8da0c9a12a8d06a7feb3614b9137f254a801ad263f009aae788",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "final issue head and worktree result subtree; root NAS and relocated historical test artifacts separate"
+    },
+    {
+      "path": ".omo/verification/closure-3913-20261012/issue-3913.bundle",
+      "sha256": "c00d8aa0cb014613ab90effe7a1c371689e2f0d3147ab09d96027f21a924abce",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "final issue head and worktree result subtree; root NAS and relocated historical test artifacts separate"
+    },
+    {
+      "path": ".omo/verification/closure-3913-20261012/worktree-evidence.tar.gz",
+      "sha256": "7365ac0346cdf2c2619d1a86e155b4cada38892e7bc474ebbff58d4a8a3e60a7",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "final issue head and worktree result subtree; root NAS and relocated historical test artifacts separate"
+    },
+    {
+      "path": ".omo/verification/closure-3914-20261012/issue-3914.bundle",
+      "sha256": "7cbb3d08c9a9fcb6b01aff50f32b5fd027f0d3c1220424dadfb515f84acbec10",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "final issue head and worktree result subtree; root NAS and relocated historical test artifacts separate"
+    },
+    {
+      "path": ".omo/verification/closure-3914-20261012/worktree-evidence.tar.gz",
+      "sha256": "2b5765e007590458c5c47f6b3f010279c0c258afe34cc03dbd95d9dc5d0f9ed4",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "final issue head and worktree result subtree; root NAS and relocated historical test artifacts separate"
+    },
+    {
+      "path": ".omo/verification/unproven-exclusion-archive-20261012/candidate-history.bundle",
+      "sha256": "be6410c2898cb3d3aa331990aa9d0e5c5f235ec273628f1c56ba9de9ca1249d4",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "pre-exclusion history/worktree snapshot; root .omo and separatelyPreserved excluded"
+    },
+    {
+      "path": ".omo/verification/unproven-exclusion-archive-20261012/worktree-raw-before-exclusion.tar.gz",
+      "sha256": "00cfc4ebe237154e8a1330fb7fd9ad6d546b9698ae35b3e52dd224104b3f5b98",
+      "access": "local-only",
+      "remoteAvailable": false,
+      "byteAuthentication": "direct-shasum-reverified",
+      "log": "logs/source-hashes.log",
+      "scope": "pre-exclusion history/worktree snapshot; root .omo and separatelyPreserved excluded"
+    }
+  ],
+  "measurementArchiveReceipt": {
+    "evidence": "measurement-archives",
+    "authentication": "lead-receipt only; 8 worktrees archived, originals retained; root NAS separate"
+  },
+  "reports": [
+    {
+      "path": "REPORT.md",
+      "locale": "en"
+    },
+    {
+      "path": "REPORT.ko.md",
+      "locale": "ko"
+    }
+  ],
+  "rawAuthentication": {
+    "nodeCandidate": {
+      "matchedFiles": 64,
+      "log": "logs/source-hashes.log",
+      "authentication": "direct-shasum-reverified"
+    },
+    "otherRaw": {
+      "authentication": "lead source integrity/archival receipts; not rehashed individually by issue3915",
+      "rootEvidenceRetained": true
+    }
+  },
+  "noReleaseRationale": "Private benchmark artifacts/checker/tests only; no published package behavior, API, contents or release metadata changes. CONTRIBUTING.md does not require a Changeset."
+}

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "id": "node-calibration",
+  "roles": [
+    "summary",
+    "calibration"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-node180-3912-20261011/rollup.json",
+    "byteSha256": "f52a6e9cccf67a4afa7ae459621b7a3a494555f33135f7bcbb8d63b931b5d3bd",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "producerHead": "c554860cae0f05ebf8e95d079a02d3f58ed3f50d",
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": "Node 24.21.0",
+    "host": "BornArchive Linux x64 kernel 4.4.302+",
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "platform": "node-family",
+      "os": "linux",
+      "runtimeVersion": "24.21.0",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "warmupSeconds": 30,
+      "measureSeconds": 180,
+      "minimumCompletedRequests": 20000,
+      "platforms": [
+        "nodejs",
+        "fastify",
+        "express"
+      ]
+    },
+    "measurement": {
+      "subject": "measured server process tree; native controls are separate arms",
+      "units": {
+        "throughputRps": "requests/second",
+        "serverCpuMicrosPerRequest": "microseconds/completed request",
+        "p95Ms": "per-run histogram milliseconds",
+        "p99Ms": "per-run histogram milliseconds",
+        "rssBytes": "maximum sampled simultaneous process-tree bytes"
+      },
+      "boundary": "warmup excluded; run percentiles not pooled; RSS sampled every 250ms"
+    }
+  },
+  "data": {
+    "status": "COMPLETED_WITH_TWO_INCONCLUSIVE_CONDITIONS",
+    "schema": "paired-node-180-v1",
+    "mode": "calibration",
+    "head": "c554860cae0f05ebf8e95d079a02d3f58ed3f50d",
+    "completedConditions": 3,
+    "completedRuns": 36,
+    "measuredRequests": 21188080,
+    "matchedRawFiles": 192,
+    "conditions": [
+      {
+        "platform": "nodejs",
+        "verdict": "OBSERVED_WITHIN_BUDGET_FOR_DECLARED_SCOPE",
+        "completedRuns": 12,
+        "measuredRequests": 7824418,
+        "elapsedSeconds": 2819.652719021,
+        "inconclusive": [],
+        "budgetBreaches": [],
+        "evidenceErrors": [],
+        "summary": "nodejs-summary.json",
+        "integrity": "nodejs-integrity.json"
+      },
+      {
+        "platform": "fastify",
+        "verdict": "INCONCLUSIVE",
+        "completedRuns": 12,
+        "measuredRequests": 9199248,
+        "elapsedSeconds": 2822.562464627,
+        "inconclusive": [
+          "throughputRps: native block drift",
+          "serverCpuMicrosPerRequest: native block drift",
+          "p95Ms: native block drift"
+        ],
+        "budgetBreaches": [],
+        "evidenceErrors": [],
+        "summary": "fastify-summary.json",
+        "integrity": "fastify-integrity.json"
+      },
+      {
+        "platform": "express",
+        "verdict": "INCONCLUSIVE",
+        "completedRuns": 12,
+        "measuredRequests": 4164414,
+        "elapsedSeconds": 2815.567175816,
+        "inconclusive": [
+          "p99Ms: native block drift"
+        ],
+        "budgetBreaches": [],
+        "evidenceErrors": [],
+        "summary": "express-summary.json",
+        "integrity": "express-integrity.json"
+      }
+    ],
+    "eligibleCandidatePlatforms": [
+      "nodejs"
+    ],
+    "blockedCandidatePlatforms": [
+      "fastify",
+      "express"
+    ],
+    "aggregateProcessExitCode": 1,
+    "exitInterpretation": "The serialized wrapper reports two nonpassing calibration verdicts; all36 runs themselves completed valid traffic with no invalid attempts.",
+    "disposition": "Proceed only with the independently eligible Node.js candidate comparison. Retain Fastify/Express blockers, all previous60s verdicts and the rest of the required matrix; no identical repeats or reduced thresholds."
+  }
+}

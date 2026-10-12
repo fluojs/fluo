@@ -1,0 +1,29 @@
+command: node --test verify-artifacts.test.mjs
+exitCode: 1
+✖ verifyArtifacts: engineering completion promoted to performance -> rejects (0.813875ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 48.509
+
+✖ failing tests:
+
+test at .worktrees/issue-3915/tooling/benchmarks/http-comparison/results/issue3915/verify-artifacts.test.mjs:26:1
+✖ verifyArtifacts: engineering completion promoted to performance -> rejects (0.813875ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///Users/ayden/Documents/fluo/.worktrees/issue-3915/tooling/benchmarks/http-comparison/results/issue3915/verify-artifacts.test.mjs:34:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.start (node:internal/test_runner/test:1257:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /performance/u,
+    operator: 'throws',
+    diff: 'simple'
+  }

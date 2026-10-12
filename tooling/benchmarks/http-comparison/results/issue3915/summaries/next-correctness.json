@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "id": "next-correctness",
+  "roles": [
+    "correctness"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-workers-next-20261011/next-summary.json",
+    "byteSha256": "e49ffc46faa1a6f9aa344f6b79f72e7cbbcd0947f7ead22ef912a141fb29a6c8",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "producerHead": "526ac5b3514ff0c18e48c76bfa379c00b3a379dc",
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "next": "16.3.5",
+      "node": "24.21.0",
+      "platform": "linux",
+      "arch": "x64",
+      "kernel": "4.4.302+"
+    },
+    "host": {
+      "next": "16.3.5",
+      "node": "24.21.0",
+      "platform": "linux",
+      "arch": "x64",
+      "kernel": "4.4.302+"
+    },
+    "build": {
+      "native-nextjs": "HzYITlPvbs1zcxecTpJHP",
+      "fluo-nextjs": "6VbLz8QnXpMY96LkOccBF",
+      "native-nextjs-pages": "9WLguPkZHBJOQ_hTuKd9o",
+      "fluo-nextjs-pages": "mDoRdFFBJBU6XBuENllk8"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "subject": "finite correctness requests only",
+      "units": {
+        "requests": "HTTP requests",
+        "conditions": "fixture conditions"
+      },
+      "boundary": "concurrent first and same-host subsequent requests; not isolate cold or performance timing"
+    }
+  },
+  "data": {
+    "status": "PASS_FINITE_HTTP_CORRECTNESS_ONLY",
+    "head": "526ac5b3514ff0c18e48c76bfa379c00b3a379dc",
+    "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "targets": [
+      "native-nextjs",
+      "fluo-nextjs",
+      "native-nextjs-pages",
+      "fluo-nextjs-pages"
+    ],
+    "configurations": [
+      "default",
+      "equivalent"
+    ],
+    "scenariosPerTargetConfiguration": 11,
+    "expectedConditions": 88,
+    "completedConditions": 88,
+    "completedRequests": 360,
+    "collectionExitCode": 0,
+    "recoveryExitCode": 0,
+    "receipt": "nas-next-correctness-20261011.json",
+    "receiptSha256": "ddb1511be30174956fbbc06ca6531e10a901633fc553d4c2ae31caf3b169c609",
+    "rawArtifactCount": 440,
+    "rawArtifactValidation": "All receipt paths and realpaths contained in recovered evidence root; all byte counts and SHA-256 digests match.",
+    "rawArtifactProblems": [],
+    "productionBuilds": {
+      "native-nextjs": "HzYITlPvbs1zcxecTpJHP",
+      "fluo-nextjs": "6VbLz8QnXpMY96LkOccBF",
+      "native-nextjs-pages": "9WLguPkZHBJOQ_hTuKd9o",
+      "fluo-nextjs-pages": "mDoRdFFBJBU6XBuENllk8"
+    },
+    "runtime": {
+      "next": "16.3.5",
+      "node": "24.21.0",
+      "platform": "linux",
+      "arch": "x64",
+      "kernel": "4.4.302+"
+    },
+    "scope": "Four sequential production builds and existing finite HTTP fixture; concurrent first requests and same-host subsequent requests, status, exact bytes, JSON type and security headers. Receipt retains per-build entry/trace hashes and serving identity.",
+    "limitations": [
+      "Not a performance baseline, candidate comparison, generator-headroom proof or whole-issue acceptance.",
+      "Successful NAS HTTP execution does not change official runtime support requirements.",
+      "Previously retained INCONCLUSIVE measurements remain unchanged."
+    ]
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "id": "next-diagnostic",
+  "roles": [
+    "diagnostic"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-next-timeout-diagnostic-20261011/analysis.json",
+    "byteSha256": "aaf1d53d7c835f9738bc127a450aa11554c63ff1b1c08f038cf43113979efbbf",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": {
+      "status": "UNKNOWN",
+      "reason": "Source summary does not identify exact executed framework arm"
+    },
+    "producerHead": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": {
+      "status": "UNKNOWN",
+      "reason": "Serving runtime not specified by this source"
+    },
+    "host": {
+      "status": "UNKNOWN",
+      "reason": "Exact host identity not specified by this source"
+    },
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "status": "UNKNOWN",
+      "reason": "No performance condition applies to this evidence"
+    },
+    "measurement": {
+      "subject": "instrumented two-run diagnostic",
+      "units": {
+        "rps": "requests/second",
+        "p99Ms": "per-run milliseconds"
+      },
+      "boundary": "instrumented timing is not ordinary acceptance timing"
+    }
+  },
+  "data": {
+    "status": "DIAGNOSTIC_COMPLETE_TIMEOUT_NOT_REPRODUCED",
+    "head": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+    "exitCode": 0,
+    "rawSha256": "cc9a52b38ef26d89baa116c8f1c1c7cabd49a2f9fca557cb200a7800f4c8c340",
+    "remoteSha256": "cc9a52b38ef26d89baa116c8f1c1c7cabd49a2f9fca557cb200a7800f4c8c340",
+    "measuredRequests": 8167,
+    "invalidAttempts": [],
+    "rows": [
+      {
+        "connections": 1,
+        "requests": 4000,
+        "rps": 266.67,
+        "p95Ms": 4.214,
+        "p99Ms": 5.355,
+        "errors": 0,
+        "timeouts": 0,
+        "serverCpuPercent": 108.35329121438792,
+        "clientCpuPercent": 12.46497605047447,
+        "peakRssBytes": 294658048,
+        "schedulingWaitFraction": 0.0032798361971193876,
+        "hostIdleFraction": 0.6458715596330276,
+        "pressureStatus": "read-error",
+        "cgroupStatus": "unsupported",
+        "windows": [
+          {
+            "startedAtEpochMs": 1791746240000,
+            "endedAtEpochMs": 1791746250000,
+            "observedStartedAtEpochMs": 1791746240690,
+            "observedEndedAtEpochMs": 1791746250000,
+            "responseCount": 2418
+          },
+          {
+            "startedAtEpochMs": 1791746250000,
+            "endedAtEpochMs": 1791746260000,
+            "observedStartedAtEpochMs": 1791746250000,
+            "observedEndedAtEpochMs": 1791746255724,
+            "responseCount": 1582
+          }
+        ]
+      },
+      {
+        "connections": 64,
+        "requests": 4167,
+        "rps": 277.8,
+        "p95Ms": 241.993,
+        "p99Ms": 1270.489,
+        "errors": 0,
+        "timeouts": 0,
+        "serverCpuPercent": 113.16112139281988,
+        "clientCpuPercent": 11.53940806776202,
+        "peakRssBytes": 319774720,
+        "schedulingWaitFraction": 0.000610371795081717,
+        "hostIdleFraction": 0.6361825726141079,
+        "pressureStatus": "read-error",
+        "cgroupStatus": "unsupported",
+        "windows": [
+          {
+            "startedAtEpochMs": 1791746260000,
+            "endedAtEpochMs": 1791746270000,
+            "observedStartedAtEpochMs": 1791746267947,
+            "observedEndedAtEpochMs": 1791746270000,
+            "responseCount": 476
+          },
+          {
+            "startedAtEpochMs": 1791746270000,
+            "endedAtEpochMs": 1791746280000,
+            "observedStartedAtEpochMs": 1791746270000,
+            "observedEndedAtEpochMs": 1791746280000,
+            "responseCount": 2829
+          },
+          {
+            "startedAtEpochMs": 1791746280000,
+            "endedAtEpochMs": 1791746290000,
+            "observedStartedAtEpochMs": 1791746280000,
+            "observedEndedAtEpochMs": 1791746283017,
+            "responseCount": 862
+          }
+        ]
+      }
+    ],
+    "observations": [
+      "Concurrency64 offered only about4.17% more throughput than concurrency1 while p99 rose from5.355ms to1270.489ms.",
+      "Server CPU was108.35%/113.16% of one core, generator12.46%/11.54%, host idle64.59%/63.62%; global CPU saturation was not observed in these diagnostic samples.",
+      "Scheduling wait fractions0.328%/0.061%; Linux PSI and cgroup-v2 CPU unavailable.",
+      "Original7 timeouts were not reproduced; no warning stack was emitted in captured diagnostic terminal. Warning causation remains unproven."
+    ],
+    "disposition": "No authenticated source defect, no speculative fix, no acceptance rerun. Preserve original failed calibration. Instrumented two-run diagnostic is not performance acceptance."
+  }
+}

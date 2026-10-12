@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 1,
+  "id": "bun-calibration",
+  "roles": [
+    "summary",
+    "calibration"
+  ],
+  "source": {
+    "locator": ".omo/verification/nas-benchmark-20261011/summary.json",
+    "byteSha256": "0f682292e38ad03c0a98867ab5dca74617bd72c6b74b516e691101440b5dc9ed",
+    "access": "local-only",
+    "authentication": "direct-source-bytes-reverified"
+  },
+  "identity": {
+    "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "producerHead": "b7b4aaa5f333d93ee68929fb061dee11902c0b61",
+    "harness": {
+      "status": "UNKNOWN",
+      "reason": "No distinct harness digest in this compact source; consult raw provenance, not another arm"
+    },
+    "collector": {
+      "status": "UNKNOWN",
+      "reason": "Collector identity not separately retained by this source"
+    },
+    "validator": {
+      "status": "UNKNOWN",
+      "reason": "No independent validator digest supplied by this source"
+    },
+    "runtime": "Bun 1.4.2",
+    "host": "BornArchive Linux x64 kernel 4.4.302+",
+    "build": {
+      "status": "UNKNOWN",
+      "reason": "Build identity not transcribed; original raw provenance retains available build records"
+    },
+    "lockfile": {
+      "status": "UNKNOWN",
+      "reason": "Lockfile identity not separately supplied by this summary"
+    },
+    "condition": {
+      "platform": "bun",
+      "os": "linux",
+      "runtimeVersion": "1.4.2",
+      "scenario": "stage-minimal",
+      "configuration": "equivalent",
+      "connections": 64,
+      "warmupSeconds": 30,
+      "measureSeconds": 60,
+      "minimumCompletedRequests": 20000
+    },
+    "measurement": {
+      "subject": "measured server process tree; native controls are separate arms",
+      "units": {
+        "throughputRps": "requests/second",
+        "serverCpuMicrosPerRequest": "microseconds/completed request",
+        "p95Ms": "per-run histogram milliseconds",
+        "p99Ms": "per-run histogram milliseconds",
+        "rssBytes": "maximum sampled simultaneous process-tree bytes"
+      },
+      "boundary": "warmup excluded; run percentiles not pooled; RSS sampled every 250ms",
+      "elapsedSeconds": 1144.8981166319998,
+      "initialProvisioningSeconds": 355,
+      "buildAndVerificationSeconds": 635.827,
+      "elapsedBoundary": {
+        "status": "UNKNOWN",
+        "reason": "Source labels measurementElapsedSeconds separately; exact first/last timestamp boundary not copied"
+      }
+    }
+  },
+  "data": {
+    "verdict": "OBSERVED_WITHIN_BUDGET_FOR_DECLARED_SCOPE",
+    "scope": "BornArchive x64 Linux4.4.302+; Bun1.4.2 stage-minimal equivalent concurrency64; same-code A/A only",
+    "head": "b7b4aaa5f333d93ee68929fb061dee11902c0b61",
+    "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "planSha256": "e0e43df2e59b22cae6e6e7d2b015d121123875adcdf887b99ca9c52ffa3c6578",
+    "completedRuns": 12,
+    "measuredRequests": 4607948,
+    "measurementElapsedSeconds": 1144.8981166319998,
+    "initialProvisioningSeconds": 355,
+    "buildAndVerificationSeconds": 635.827,
+    "tests": {
+      "passed": 68,
+      "failed": 0,
+      "skipped": 0
+    },
+    "invalidAttempts": [],
+    "evidenceErrors": [],
+    "budgetBreaches": [],
+    "inconclusive": [],
+    "exitCode": 0,
+    "observations": [
+      {
+        "metric": "throughputRps",
+        "nativeBlockCv": [
+          0.016577439846802596,
+          0.01025012004164286,
+          0.004496739652320344
+        ],
+        "globalNativeCv": 0.011625752708124677,
+        "xCv": 0.02181634660861918,
+        "yCv": 0.005323275432970764,
+        "ratios": [
+          0.9945357971427408,
+          1.001681464797821,
+          1.0288123562888631
+        ],
+        "ratioCv": 0.01793364782920113,
+        "medianRatio": 1.001681464797821
+      },
+      {
+        "metric": "serverCpuMicrosPerRequest",
+        "nativeBlockCv": [
+          0.004649825373603615,
+          0.002707764208290383,
+          0.00029995046373145504
+        ],
+        "globalNativeCv": 0.003268381327623073,
+        "xCv": 0.02158401789676223,
+        "yCv": 0.005101358326941127,
+        "ratios": [
+          1.0071489450154483,
+          0.9935172787745318,
+          0.9717216269042358
+        ],
+        "ratioCv": 0.01803575122031586,
+        "medianRatio": 0.9910656807181911
+      },
+      {
+        "metric": "p95Ms",
+        "nativeBlockCv": [
+          0.03512808500066079,
+          0.011272179416922492,
+          0.017012630343508275
+        ],
+        "globalNativeCv": 0.027537572973658424,
+        "xCv": 0.0406487190038587,
+        "yCv": 0.01677555759512604,
+        "ratios": [
+          1.0145131385461288,
+          1.0120519351431942,
+          0.9322944336225726
+        ],
+        "ratioCv": 0.0474250574408892,
+        "medianRatio": 0.9857737466608685
+      },
+      {
+        "metric": "p99Ms",
+        "nativeBlockCv": [
+          0.03687905780464877,
+          0.029779161422453532,
+          0.007330063384794847
+        ],
+        "globalNativeCv": 0.025799700282329963,
+        "xCv": 0.021672569685940165,
+        "yCv": 0.007626672635465674,
+        "ratios": [
+          1.0222527361576674,
+          0.9839359014840543,
+          0.9719235826436693
+        ],
+        "ratioCv": 0.02647847658851979,
+        "medianRatio": 0.9919482159772657
+      },
+      {
+        "metric": "rssBytes",
+        "nativeBlockCv": [
+          0.033687582115767195,
+          0.002126472951094988,
+          0.003713853488892039
+        ],
+        "globalNativeCv": 0.01697430806090256,
+        "xCv": 0.03625465389761825,
+        "yCv": 0.006562868582248061,
+        "ratios": [
+          1.010990888382688,
+          0.9447349975737316,
+          1.0169051465497345
+        ],
+        "ratioCv": 0.040438341473011535,
+        "medianRatio": 1.0037015945330297
+      }
+    ],
+    "verifiedRawFiles": [
+      {
+        "path": "results/decision.json",
+        "sha256": "44d7b5aca83ea8bb29c16bc72299f3f0fc8674b68bd9cbc9c6d69843eac8dfdf"
+      },
+      {
+        "path": "results/journal.json",
+        "sha256": "43635bcefad54492a8f5d19c06e3a52092301169f0c07a1da65f6489faaecb52"
+      },
+      {
+        "path": "results/plan.json",
+        "sha256": "e0e43df2e59b22cae6e6e7d2b015d121123875adcdf887b99ca9c52ffa3c6578"
+      },
+      {
+        "path": "results/run-0-N.json",
+        "sha256": "c32ce82d2837f5339c259bfe757d7f751a0a1661a7cbcaa2c78e4fb6ae83b18a"
+      },
+      {
+        "path": "results/run-1-X.json",
+        "sha256": "b00d2ba2c2101701dbdd3e2d1df545845d6b7f085de3138c63a55786b4270928"
+      },
+      {
+        "path": "results/run-10-Y.json",
+        "sha256": "ed00726bd4f36b0a69622ef7c2f2b01d73f6b1eeba015bb3a397c488f32ca447"
+      },
+      {
+        "path": "results/run-11-N.json",
+        "sha256": "d1a4bf150a24c7e466a0a5c7c7ae299353dcc315a0910b4be027b333671cade8"
+      },
+      {
+        "path": "results/run-2-Y.json",
+        "sha256": "cba1dcc37e69bd30fc9baed8eb5d12610d80078578e527368d8a7d7d7ff93240"
+      },
+      {
+        "path": "results/run-3-N.json",
+        "sha256": "18eded15451e1b0e8d3a90deedb6e634a42be07cf2f12dbd1c13cfb3cccf7888"
+      },
+      {
+        "path": "results/run-4-N.json",
+        "sha256": "a3186ba8598172b40c898ee21738075311f9054c50e16cf5f1551a8e875eaaf0"
+      },
+      {
+        "path": "results/run-5-Y.json",
+        "sha256": "0c4f61bffb2c50b8743c1dead33aff808e09384f22d1be1fcf0b3013769a840b"
+      },
+      {
+        "path": "results/run-6-X.json",
+        "sha256": "4aa03c2873d9d20d7b2c50caa524d4462d1046f764454efb72290a8536dd3cbf"
+      },
+      {
+        "path": "results/run-7-N.json",
+        "sha256": "b5b62b686bb7595b5a60b17da3b94f301c95ee8d7cf4f24d4133899caf0535b1"
+      },
+      {
+        "path": "results/run-8-N.json",
+        "sha256": "e5c699989f5097796216db1052c4ae9bf842be1467a7dd150f0cd47879c4c44c"
+      },
+      {
+        "path": "results/run-9-X.json",
+        "sha256": "cb74ce61e820f5e1d0ada56c02291af6cb0e5e2c1423723f128ff9ff1394500b"
+      }
+    ],
+    "remoteRoot": "/var/services/homes/ayden/.cache/fluo-bench/nas-aa-20261011",
+    "localRoot": ".omo/verification/nas-benchmark-20261011",
+    "preparationFailures": [
+      "collection.log: file-byte/body digest confusion corrected before any performance run",
+      "collection-prepared-v2.log: relative root build filter matched no projects; restored canonical root build before any performance run"
+    ],
+    "nextDecision": "Proceed with a separately frozen candidate comparison on this same NAS condition if continuing the lane; never combine old-host BEFORE with new-host AFTER.",
+    "limits": [
+      "This is not candidate improvement, significance, full platform/matrix acceptance, production capacity or complete lane acceptance.",
+      "NAS kernel remains outside documented Node24/Bun support despite observed compatibility and this bounded pass.",
+      "Existing macOS/OrbStack raw results and INCONCLUSIVE verdicts remain unchanged.",
+      "No existing NAS service was stopped; owned measurement containers were removed on exit. Runtime cache, image, source and raw evidence remain for reproducibility."
+    ]
+  }
+}
