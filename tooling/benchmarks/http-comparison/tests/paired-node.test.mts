@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { watch } from 'node:fs';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { before, test } from 'node:test';
+import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { AAInputFailure, BLOCKS, CONDITION, object, sha256 } from '../results/issue-3914/paired-aa.mjs';
@@ -366,6 +366,9 @@ before(async () => {
     entryPoints: [fileURLToPath(new URL('../src/load-client.ts', import.meta.url))],
     bundle: true, platform: 'node', format: 'esm', packages: 'external', outfile: generatorEntry,
   });
+});
+after(async () => {
+  if (directory) await rm(directory, { recursive: true, force: true });
 });
 
 test('digestFile: changed Node build artifact -> rejects immutable bytes', async () => {

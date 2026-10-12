@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { before, test } from 'node:test';
@@ -15,25 +13,15 @@ import { RawCapture, RuntimeCapture } from '../src/profiling';
 import { monitorServer } from '../src/resources';
 import { SCENARIOS, STAGE_SCENARIOS } from '../src/scenarios';
 import { TARGETS, targetLaunch } from '../src/targets';
+import { withResourceHttpServer } from './fixtures/resource-http-fixture.mjs';
 
 let measured: Awaited<ReturnType<typeof monitorServer<Awaited<ReturnType<typeof load>>>>>;
 before(async () => {
-  const server = createServer((_request, response) => { response.end('{"ok":true}'); });
-  const listening = once(server, 'listening');
-  server.listen(0, '127.0.0.1');
-  await listening;
-  try {
-    const address = server.address();
-    assert.ok(address && typeof address !== 'string');
-    measured = await monitorServer(process.pid, () => load({
-      url: `http://127.0.0.1:${address.port}`, duration: 1, amount: 3, connections: 1,
+  measured = await withResourceHttpServer('success', ({ pid, url }) =>
+    monitorServer(pid, () => load({
+      url, duration: 1, amount: 3, connections: 1,
       requests: [{ method: 'GET', path: '/', expectedStatus: 200, expectedBody: '{"ok":true}' }],
-    }, 'profile-model-fixture'));
-  } finally {
-    const closed = once(server, 'close');
-    server.close();
-    await closed;
-  }
+    }, 'profile-model-fixture')));
 });
 
 function fixture() {

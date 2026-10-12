@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
   "issue": 3914,
-  "preflightSha256": "1a018aa1cf3bb25ffaceac8b972be30fdeaa1c7f25105a40f0b5ef4a8dda2857",
+  "preflightSha256": "23f4b94b097460c5c4c7c8bf9edce8c0e001211907665122b1e5df735b7f2fa3",
+  "reportingPreflightSha256": "1a018aa1cf3bb25ffaceac8b972be30fdeaa1c7f25105a40f0b5ef4a8dda2857",
   "historicalPreflightSha256": "0c187df4dc4be8509c067d34c60c2dc418608a376f73fdb26fe50af63bd27e74",
   "startingHead": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
   "kind": "local-implementation-correctness",
@@ -36,7 +37,8 @@
     "preservedHarnessChangeFiles": 71,
     "publicPackagesTree": "f0a7ae832640b0cb252b832dd8b986be7caaeb92",
     "publicPackagesEqualApprovedBase": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
-    "executableTestsFixturesDependenciesUnchangedSinceStartingHead": true,
+    "executableTestsFixturesDependenciesUnchangedSinceStartingHead": false,
+    "productionSourceAndDependenciesUnchangedSinceFixtureFixStart": true,
     "newMeasurementPerformed": false,
     "denoPerformanceScope": "owner-excluded; public support and regressions preserved",
     "legacyFields": "Original correctness/check receipts and dated handoff/unverified observations are historical, not current availability or rerun claims"
@@ -228,6 +230,42 @@
     "cleanupAuthorizedByArchive": false,
     "laterFinalEvidenceArchived": false,
     "laterFinalEvidencePreservation": "Lead must confirm separately before final cleanup"
+  },
+  "ciFixtureCorrection": {
+    "startingHead": "5f4dbb4f095ecd64946e7ce6b4d5a5c0b7c17815",
+    "preflightSha256": "23f4b94b097460c5c4c7c8bf9edce8c0e001211907665122b1e5df735b7f2fa3",
+    "failedCi": {
+      "run": 38198508467,
+      "job": 114647615234,
+      "tests": 440,
+      "passed": 364,
+      "failed": 76,
+      "sourceGuardViolation": "paired test temporary outputs left untracked"
+    },
+    "changedTestFiles": [
+      "tooling/benchmarks/http-comparison/tests/methodology.test.mts",
+      "tooling/benchmarks/http-comparison/tests/profiling.test.mts",
+      "tooling/benchmarks/http-comparison/tests/paired-ab.test.mts",
+      "tooling/benchmarks/http-comparison/tests/paired-node.test.mts",
+      "tooling/benchmarks/http-comparison/tests/fixtures/resource-http-fixture.mts",
+      "tooling/benchmarks/http-comparison/tests/fixtures/resource-http-server.mjs"
+    ],
+    "productionSourceChanged": false,
+    "corrections": [
+      "Separate actual HTTP serving child from sampler with event-subscribed readiness and teardown.",
+      "Remove only each paired suite-owned temporary directory after assertions."
+    ],
+    "historicalRawRelocation": ".omo/verification/3914-preserved-check-artifacts-20261012/relocation-receipt.json",
+    "hostValidation": ".omo/verification/3914-fixture-fix-host-validation-20261012.json",
+    "hostTests": {
+      "total": 440,
+      "passed": 439,
+      "failed": 0,
+      "existingLinuxOnlySkip": 1
+    },
+    "linuxValidation": "Required focused check recorded separately by lead; not inferred from macOS.",
+    "fullLocalCi": "waived-not-executed-by-explicit-session-owner-instruction",
+    "performanceAcceptance": false
   },
   "finalCorrectness": {
     "status": "passed",

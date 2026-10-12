@@ -155,7 +155,9 @@ before(async () => {
     bundle: true, platform: 'node', format: 'esm', packages: 'external', outfile: generatorEntry,
   });
 });
-after(async () => { await rm(generatorEntry, { force: true }); });
+after(async () => {
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 test('digestFile: changed frozen content -> rejects before collection', async () => {
   const path = join(directory, 'changed-artifact');

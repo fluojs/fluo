@@ -10,6 +10,7 @@ import * as report from '../src/report';
 import { monitorServer, ResourceMeasurementFailure } from '../src/resources';
 import * as workloads from '../src/shared/workloads';
 import { DriftLatencyWindows, measureTargets, shoot, TrafficFailure } from '../src/traffic';
+import { withResourceHttpServer } from './fixtures/resource-http-fixture.mjs';
 
 async function withServer(handler: (req: IncomingMessage, res: ServerResponse) => void, check: (url: string) => Promise<void>) {
   const server = createServer(handler);
@@ -100,14 +101,14 @@ test('shoot: opt-in finite HTTP phases -> independent window counts reconcile an
 
 test('retains available server samples alongside failed traffic diagnostics', { timeout: 10_000 }, async () => {
   // Given
-  await withServer((_request, response) => { response.statusCode = 503; response.end('first'); }, async (url) => {
+  await withResourceHttpServer('failure', async ({ pid, url }) => {
     // When / Then
-    await assert.rejects(monitorServer(process.pid, () => shoot({
+    await assert.rejects(monitorServer(pid, () => shoot({
       url, duration: 1, amount: 1, connections: 1, requests: [sequence[0]],
     }, 'resource-failure')), (error: unknown) => {
       assert.ok(error instanceof ResourceMeasurementFailure);
       assert.ok(error.samples.length > 0);
-      assert.ok(error.samples[0].processes.some((sample) => sample.pid === process.pid));
+      assert.ok(error.samples[0].processes.some((sample) => sample.pid === pid));
       const retained = JSON.parse(JSON.stringify(failureEvidence(error)));
       assert.ok(retained.serverSamples.length > 0);
       assert.ok(retained.cause.traffic.result.non2xx > 0);

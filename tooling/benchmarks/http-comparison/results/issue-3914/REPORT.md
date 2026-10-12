@@ -1,6 +1,43 @@
 # #3914 local comparison harness extension
 
-## 2026-10-12 owner-approved final reporting scope
+## 2026-10-12 Linux CI fixture correction
+
+The current fixture-fix preflight is
+`23f4b94b097460c5c4c7c8bf9edce8c0e001211907665122b1e5df735b7f2fa3`.
+The initial Linux CI at `5f4dbb4f095ecd64946e7ce6b4d5a5c0b7c17815`
+(run `38198508467`, static job `114647615234`) recorded 364 passing and 76
+failing harness tests. Two test fixtures sampled their own collector PID,
+which included a transient `ps` child that had exited before its procfs read.
+One methodology assertion and the profiling hook's dependent cases therefore
+failed. The CI source guard also correctly detected outputs left by the paired
+test suites.
+
+The corrected fixtures start a real HTTP serving child only after the parent
+has subscribed to readiness and exit events. They assert that its PID differs
+from the sampler, retain the real HTTP failure and profiling assertions, and
+await owned-child teardown. Each paired suite removes only its own newly
+allocated temporary directory after its assertions and child teardown.
+Existing historical raw artifacts are not removed; their content-preserving
+relocation is recorded under
+`.omo/verification/3914-preserved-check-artifacts-20261012/`.
+
+Production resource sampling, collectors, validators, dependencies, public
+packages and numerical rules remain unchanged. No procfs error is swallowed,
+no ignore rule or source guard is relaxed, and no assertion is skipped.
+The host harness completed 440 tests: 439 passed, one existing Linux-only
+skip, zero failures. Typecheck, changed-file lint, LSP and the absence of newly
+leaked fixture paths were checked. Source-bound details are in
+`.omo/verification/3914-fixture-fix-host-validation-20261012.json`.
+Focused Linux execution and new-head GitHub CI are separate gates, not
+inferred from the macOS result. They do not collect a performance matrix.
+
+The owner explicitly instructed this session to skip full local CI.
+It is waived, not executed or passed; focused checks, exact-head reviews
+and full GitHub CI remain required. The earlier reporting increment below
+records its historical state and does not claim that these fixture files
+remain byte-identical after this correction.
+
+## 2026-10-12 owner-approved reporting increment at 5f4dbb4f0
 
 The owner decision "미입증 후보 제외" is recorded in
 `.omo/verification/3915-unproven-candidate-exclusion-20261012.json` as
