@@ -31,7 +31,17 @@ fluo는 `pnpm`으로 관리되는 모노레포 구조를 사용합니다.
 CI 실행 코드·설정, manifest, lockfile을 포함한 모든 승인된 변경은
 변경 동작에 맞는 집중 검사(필요한 typecheck와 실제 사용 경로 검사 포함)를
 실행하고 결과를 보존한 뒤, 선택된 exact-head 리뷰를 마치고 PR을 생성하거나 업데이트합니다.
-병합 전에는 최종 PR head의 전체 GitHub CI가 통과해야 합니다.
+병합 전에는 최종 PR head의 canonical GitHub CI 계획이 통과해야 합니다.
+
+PR 검증은 네 가지 dependency section에서 변경 workspace owner와 전이 reverse
+dependents를 선택합니다. Clean build에는 선행 타입 선언과 명시적인 native, starter,
+browser, packed consumer companion이 포함됩니다. 일반 문서만 바뀌면 runtime suite
+없이 문서·governance 검증을 실행합니다. Changeset은 release metadata이며 그 자체로
+docs-site build를 요구하지 않습니다. Owner가 불명확하거나 dependency graph 또는
+공통 검증 설정이 바뀌면 full profile을 실행합니다. `--full`, `CI_FORCE_FULL_VERIFY=1`,
+`ci:full-verify` PR label로 전체 검증을 요청할 수 있으며 선택은 plan에 고정됩니다.
+Extended 검증은 항상 전체 suite를 실행합니다. `Verify` 집계는 선택된 모든 결과와
+artifact를 요구하며, 선택되지 않은 workflow group에 대해서만 skip을 허용합니다.
 
 전체 canonical 로컬 검증은 자동 게시 조건이 아니며 전체 로컬 receipt나 waiver는
 필수가 아닙니다. Receipt 재검증 실패를 포함한 현 head의 적용 가능한 로컬 실패는
@@ -60,9 +70,10 @@ pnpm test
 
 Receipt는 clean source identity, profile, environment lock, 실측 runtime/browser
 버전, task 결과와 evidence hash를 묶습니다. 이전 host-native receipt는 이 profile에
-사용할 수 없습니다. Primary Node 24는 package 4 shard, tooling 2 shard,
+사용할 수 없습니다. Full primary Node 24는 package 4 shard, tooling 2 shard,
 browser/native/docs/packed 검증을 유지하고, 24.11.0과 Node 26은 독립 build,
-모든 package test와 starter smoke를 유지합니다. Exact 24.0.0은 runtime-only입니다.
+모든 package test와 starter smoke를 유지합니다. Affected PR은 관련 독립 compatibility
+build/test와 runtime companion을 유지합니다. Exact 24.0.0은 runtime-only입니다.
 보조 버전 전체 검증은 publish 전 정확한 release source에도 필수입니다.
 GitHub 권한, artifact 전달, queueing, 외부 장애는 여전히 원격 증거가 필요합니다.
 

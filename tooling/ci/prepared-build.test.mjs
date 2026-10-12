@@ -35,9 +35,9 @@ test('reuses a recorded build only while its source and complete output inventor
   const root = fixture(t);
   const path = recordPreparedBuild(root, 'sha256:fixture-image');
   // When / Then: Exact output is reusable; stale bytes are not.
-  assert.equal(verifyPreparedBuild(root, path), true);
+  assert.equal(verifyPreparedBuild(root, path, null, null), true);
   writeFileSync(join(root, 'packages/sample/dist/index.js'), 'tampered');
-  assert.throws(() => verifyPreparedBuild(root, path), /prepared build/u);
+  assert.throws(() => verifyPreparedBuild(root, path, null, null), /prepared build/u);
 });
 
 test('missing output and changed source fail closed', (t) => {
@@ -46,7 +46,7 @@ test('missing output and changed source fail closed', (t) => {
   const path = recordPreparedBuild(root, 'sha256:fixture-image');
   // When / Then: Source changes invalidate reuse even if dist remains.
   writeFileSync(join(root, 'packages/sample/source.ts'), 'export const value = 2;\n');
-  assert.throws(() => verifyPreparedBuild(root, path), /prepared build/u);
+  assert.throws(() => verifyPreparedBuild(root, path, null, null), /prepared build/u);
 });
 
 test('permission changes after the preparation snapshot still fail closed', (t) => {
@@ -56,7 +56,7 @@ test('permission changes after the preparation snapshot still fail closed', (t) 
   const path = recordPreparedBuild(root, 'sha256:fixture-image');
   // When / Then: Later mode changes cannot silently alter the verified executable.
   chmodSync(join(root, 'packages/sample/dist/index.js'), 0o644);
-  assert.throws(() => verifyPreparedBuild(root, path), /prepared build/u);
+  assert.throws(() => verifyPreparedBuild(root, path, null, null), /prepared build/u);
 });
 
 test('missing package output cannot be recorded as a complete build', (t) => {
@@ -65,6 +65,32 @@ test('missing package output cannot be recorded as a complete build', (t) => {
   rmSync(join(root, 'packages/sample/dist'), { recursive: true });
   // When / Then: Recording cannot certify a partial producer.
   assert.throws(() => recordPreparedBuild(root, 'sha256:fixture-image'), /output/u);
+});
+
+test('prepared build: scoped producer -> binds exact selected inventory and plan', (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, 'packages/unselected'), { recursive: true });
+  writeFileSync(join(root, 'packages/unselected/package.json'),
+    JSON.stringify({ name: '@fixture/unselected', scripts: { build: 'build-unselected' } }));
+  execFileSync('git', ['add', '.'], { cwd: root });
+  execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'unselected'], { cwd: root });
+  const directories = ['packages/sample'];
+  const planDigest = 'a'.repeat(64);
+
+  const path = recordPreparedBuild(root, 'sha256:fixture-image', directories, planDigest);
+
+  assert.equal(verifyPreparedBuild(root, path, directories, planDigest), true);
+  const args = ['--input-type=module', '-e',
+    `import { verifyPreparedBuild } from ${JSON.stringify(new URL('./prepared-build.mjs', import.meta.url).href)}; verifyPreparedBuild(process.cwd(), ${JSON.stringify(path)});`];
+  const env = { ...process.env, FLUO_VERIFIED_BUILD_DIRECTORIES: JSON.stringify(directories),
+    FLUO_VERIFIED_BUILD_PLAN: planDigest };
+  execFileSync(process.execPath, args, { cwd: root, env });
+  assert.throws(() => execFileSync(process.execPath, args, {
+    cwd: root, env: { ...env, FLUO_VERIFIED_BUILD_PLAN: 'b'.repeat(64) }, stdio: 'pipe',
+  }), /inventory/u);
+  assert.throws(() => verifyPreparedBuild(root, path, ['packages/sample', 'packages/unselected'], planDigest), /inventory/u);
+  assert.throws(() => verifyPreparedBuild(root, path, directories, 'b'.repeat(64)), /inventory/u);
+  assert.throws(() => recordPreparedBuild(root, 'sha256:fixture-image'), /output missing/u);
 });
 
 test('real global setup preserves standalone builds and rejects stale reused artifacts', (t) => {
@@ -81,17 +107,20 @@ test('real global setup preserves standalone builds and rejects stale reused art
   execFileSync('git', ['add', '.'], { cwd: root });
   execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'setup'], { cwd: root });
   const args = ['--input-type=module', '-e', 'import setup from "./tooling/vitest/src/setup.mjs"; setup();'];
-  execFileSync(process.execPath, args, { cwd: root, env: { ...process.env, FLUO_VERIFIED_BUILD: '' } });
+  const env = { ...process.env };
+  delete env.FLUO_VERIFIED_BUILD_DIRECTORIES;
+  delete env.FLUO_VERIFIED_BUILD_PLAN;
+  execFileSync(process.execPath, args, { cwd: root, env: { ...env, FLUO_VERIFIED_BUILD: '' } });
   assert.equal(readFileSync(join(root, '.omo/builds'), 'utf8'), '@fluojs/terminus\n@fluojs/prisma\n');
   const path = recordPreparedBuild(root, 'sha256:fixture-image');
 
   // When: The same setup consumes a validated output inventory.
-  execFileSync(process.execPath, args, { cwd: root, env: { ...process.env, FLUO_VERIFIED_BUILD: path } });
+  execFileSync(process.execPath, args, { cwd: root, env: { ...env, FLUO_VERIFIED_BUILD: path } });
 
   // Then: Preparation is not repeated, but missing emitted bytes fail rather than silently skip.
   assert.equal(readFileSync(join(root, '.omo/builds'), 'utf8'), '@fluojs/terminus\n@fluojs/prisma\n');
   rmSync(join(root, 'packages/sample/dist/index.js'));
   assert.throws(() => execFileSync(process.execPath, args, {
-    cwd: root, env: { ...process.env, FLUO_VERIFIED_BUILD: path }, stdio: 'pipe',
+    cwd: root, env: { ...env, FLUO_VERIFIED_BUILD: path }, stdio: 'pipe',
   }), /prepared build output/u);
 });

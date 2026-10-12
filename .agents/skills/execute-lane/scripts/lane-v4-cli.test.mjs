@@ -11,7 +11,7 @@ import { buildVerificationPlan, digest, readVerificationManifest } from '../../.
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
-const fixture = (t) => {
+const fixture = (t, isolatedOrchestrator = false) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-lane-v4-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const bin = join(root, 'bin');
@@ -51,11 +51,17 @@ if (args[0] === 'pr' && args[1] === 'view') {
   }
   cpSync(new URL('../../../../tooling/ci/local-verification-manifest.json', import.meta.url),
     join(root, 'tooling/ci/local-verification-manifest.json'));
+  if (isolatedOrchestrator) {
+    cpSync(new URL('../../../', import.meta.url), join(root, '.agents'), { recursive: true });
+    cpSync(new URL('../../../../tooling/ci/', import.meta.url), join(root, 'tooling/ci'), { recursive: true });
+  }
   git(root, 'add', '.');
   git(root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture base');
   git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
   const cli = (command, args = [], ok = true) => {
-    const result = spawnSync(process.execPath, [script, command, '--root', root, ...args], { env, encoding: 'utf8', timeout: 10_000 });
+    const result = spawnSync(process.execPath, [isolatedOrchestrator
+      ? join(root, '.agents/skills/execute-lane/scripts/lane-v4-cli.mjs') : script,
+    command, '--root', root, ...args], { env, encoding: 'utf8', timeout: 10_000 });
     assert.equal(result.error, undefined);
     if (ok) assert.equal(result.status, 0, result.stderr);
     else assert.notEqual(result.status, 0, result.stdout);
@@ -88,13 +94,13 @@ if (args[0] === 'pr' && args[1] === 'view') {
       reviews: obs.preflightPolicy.active_axes.map((reviewer) => ({ reviewer, reviewed_head_sha: obs.headSha,
         preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [] })) };
   };
-  const verify = (ok = true) => {
+  const verify = (ok = true, forceFull = false) => {
     const entry = JSON.parse(readFileSync(lanePath, 'utf8')).issues['42'];
     const base = entry.facts.preflight.value.base_sha;
     // This fixture exercises lane receipt admission, not real execution.
     // Docker-backed command execution is covered by verification-runner.docker-test.mjs.
     const identity = collectIdentity(worktree, base);
-    const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity,
+    const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity, forceFull, root: worktree,
       manifest: readVerificationManifest(join(worktree, 'tooling/ci/local-verification-manifest.json')) });
     const lock = plan.environment.lock;
     const actual = {
@@ -110,11 +116,19 @@ if (args[0] === 'pr' && args[1] === 'view') {
     const evidenceRoot = join(worktree, '.omo/verification/lane-test');
     const resultRoot = join(evidenceRoot, 'results');
     mkdirSync(resultRoot, { recursive: true });
+    const artifactRoot = join(evidenceRoot, 'artifacts');
+    mkdirSync(artifactRoot, { recursive: true });
     const taskResults = plan.tasks.map((task) => ({
       version: 2, taskId: task.id, status: ok ? 'passed' : 'failed',
       headSha: identity.headSha, treeSha: identity.treeSha, planDigest,
       imageKey: plan.environment.imageKey, imageId: `sha256:${'1'.repeat(64)}`,
-      environment: actual, artifacts: [],
+      environment: actual, artifacts: task.outputs.map((name) => {
+        const path = name === 'docs-site' ? `${name}/server.js` : name;
+        const bytes = `${task.id}:${name}`;
+        mkdirSync(dirname(join(artifactRoot, path)), { recursive: true });
+        writeFileSync(join(artifactRoot, path), bytes);
+        return { path, digest: digest(bytes), size: Buffer.byteLength(bytes) };
+      }),
       logs: task.commands.map((_, index) => ({ commandIndex: index,
         path: `${task.id}-${index}.log`, digest: digest(`${task.id}-${index}`) })),
       commands: task.commands.map((command) => ({ command,
@@ -146,17 +160,16 @@ if (args[0] === 'pr' && args[1] === 'view') {
     const hostResultPath = join(resultRoot, 'host-checks.json');
     writeFileSync(hostResultPath, `${JSON.stringify(hostChecks)}\n`);
     logs.push({ path: relative(worktree, hostResultPath), digest: digest(readFileSync(hostResultPath)) });
-    const archivePath = join(evidenceRoot, 'artifacts/archive.tar');
-    mkdirSync(dirname(archivePath), { recursive: true });
-    writeFileSync(archivePath, 'artifact');
     const receipt = {
-      version: 2, status: ok ? 'passed' : 'failed', profile: 'pr', identity,
+      version: 2, status: ok ? 'passed' : 'failed', profile: 'pr', forceFull, identity,
       source: plan.source, environment: { lock, imageKey: plan.environment.imageKey },
       imageIdentity: { key: plan.environment.imageKey, id: `sha256:${'1'.repeat(64)}` },
       environmentLockDigest: plan.environment.lockDigest,
       manifestDigest: plan.manifestDigest, planDigest, hostChecks, taskResults,
       capabilityTasks: plan.capabilityTasks, logs,
-      artifacts: [{ path: relative(worktree, archivePath), digest: digest('artifact') }],
+      artifacts: taskResults.flatMap((result) => result.artifacts.map((file) => ({
+        path: relative(worktree, join(artifactRoot, file.path)), digest: file.digest,
+      }))),
       startedAt: entry.facts.review?.accepted_at
         ? new Date(Date.parse(entry.facts.review.accepted_at) + 1000).toISOString()
         : new Date().toISOString(),
@@ -172,6 +185,70 @@ if (args[0] === 'pr' && args[1] === 'view') {
   };
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog };
 };
+
+for (const file of ['docs/guide.md', '.github/workflows/ci.yml']) {
+  test(`CLI: forced full receipt admission and revalidation for ${file}`, (t) => {
+    const f = fixture(t);
+    f.set('preflight', f.preflight({
+      scope: ['docs/', '.github/workflows/'], predicted_files: [...new Set([file, 'docs/guide.md'])],
+    }));
+    f.implement();
+    f.commit(file, 'fixture full verification\n');
+    const review = f.review();
+    f.set('review', review, review.head_sha);
+    const receipt = f.verify(true, true);
+    f.set('local-checks', receipt, review.head_sha);
+    assert.equal(f.plan().obs.localChecks.status, 'passed');
+
+    const path = join(f.worktree, receipt.receiptPath);
+    const original = readFileSync(path, 'utf8');
+    for (const intent of [false, undefined]) {
+      const changed = JSON.parse(original);
+      if (intent === undefined) delete changed.forceFull;
+      else changed.forceFull = intent;
+      writeFileSync(path, JSON.stringify(changed));
+      f.set('local-checks', {
+        ...receipt, receiptSha256: createHash('sha256').update(readFileSync(path)).digest('hex'),
+      }, review.head_sha, false);
+    }
+    writeFileSync(path, original);
+    assert.equal(f.plan().obs.localChecks.status, 'passed');
+  });
+}
+
+test('CLI: scoped receipt uses issue worktree graph after orchestrator manifest changes', (t) => {
+  const f = fixture(t, true);
+  mkdirSync(join(f.root, 'packages/sample/src'), { recursive: true });
+  writeFileSync(join(f.root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+  const manifestPath = join(f.root, 'packages/sample/package.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    name: '@fixture/scoped-receipt', version: '1.0.0', private: true,
+    scripts: { build: 'build-sample', typecheck: 'typecheck-sample' },
+  }));
+  writeFileSync(join(f.root, 'packages/sample/src/index.ts'), 'export const value = 1;\n');
+  f.git(f.root, 'add', '.');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture workspace base');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  f.set('preflight', f.preflight({
+    scope: ['docs/', 'packages/sample/src/'], predicted_files: ['packages/sample/src/index.ts'],
+  }));
+  f.implement();
+  f.commit('packages/sample/src/index.ts', 'export const value = 2;\n');
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  const receipt = f.verify();
+  f.set('local-checks', receipt, review.head_sha);
+  assert.equal(f.plan().obs.localChecks.status, 'passed');
+
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.version = '1.0.1';
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  f.git(f.root, 'add', 'packages/sample/package.json');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'unrelated orchestrator version');
+  assert.equal(f.plan().obs.headSha, review.head_sha);
+  assert.equal(f.plan().obs.localChecks.status, 'passed');
+  f.set('local-checks', receipt, review.head_sha);
+});
 
 const waiverFixture = (t) => {
   const f = fixture(t);

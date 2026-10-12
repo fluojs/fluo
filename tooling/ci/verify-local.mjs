@@ -14,6 +14,7 @@ import {
 import { prepareVerificationEnvironment } from './verification-environment.mjs';
 import { aggregateResults, runHostChecks, validateTaskResult } from './verification-runner.mjs';
 import { executeVerificationTasks, verificationConcurrency } from './verification-scheduler.mjs';
+import { fullVerificationRequested } from './detect-pr-verification-scope.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const run = (root, executable, argv) => spawnSync(executable, argv, { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
@@ -34,6 +35,7 @@ export function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === '--plan') options.plan = true;
+    else if (value === '--full') options.forceFull = true;
     else if (value === '--base-ref') {
       const baseRef = argv[index + 1];
       if (!baseRef) throw new TypeError('--base-ref requires a value');
@@ -56,7 +58,7 @@ export function parseArgs(argv) {
 export function collectIdentity(root, baseRef) {
   const headSha = text(root, 'git', ['rev-parse', 'HEAD']);
   const mergeBase = text(root, 'git', ['merge-base', 'HEAD', baseRef]);
-  const changedFiles = rawText(root, 'git', ['diff', '--name-only', '-z', `${mergeBase}...HEAD`])
+  const changedFiles = rawText(root, 'git', ['diff', '--name-only', '--no-renames', '-z', `${mergeBase}...HEAD`])
     .split('\0').filter(Boolean).sort();
   const diff = rawText(root, 'git', ['diff', '--binary', `${mergeBase}...HEAD`]);
   const status = rawText(root, 'git', ['status', '--porcelain=v1', '--untracked-files=all', '-z']);
@@ -127,6 +129,8 @@ export async function main(argv = process.argv.slice(2)) {
     identity,
     manifest: readVerificationManifest(),
     profile: options.profile,
+    root,
+    forceFull: options.forceFull === true || fullVerificationRequested(),
   });
   if (options.plan) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
@@ -192,6 +196,7 @@ export async function main(argv = process.argv.slice(2)) {
     planDigest: plan.semanticDigest,
     profile: plan.profile,
     source: plan.source,
+    forceFull: plan.forceFull,
     startedAt,
     status: reason ? 'failed' : 'passed',
     taskResults,

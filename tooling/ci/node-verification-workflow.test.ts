@@ -32,9 +32,10 @@ function job(source: string, id: string): string {
   return source.slice(start).split(/\n(?= {2}[a-z][a-z-]*:\n)/u)[0] ?? '';
 }
 
-it('expands the real workflow plan into eighteen required jobs', () => {
+for (const mode of ['full', 'scoped', 'docs'] as const) it(`workflow matrix resolver: ${mode} -> exact selected groups`, () => {
   // Given
-  const plan = buildVerificationPlan({ changedFiles: ['package.json'], identity });
+  const plan = buildVerificationPlan({ changedFiles: [mode === 'full' ? 'package.json'
+    : mode === 'scoped' ? 'packages/email/src/index.ts' : 'docs/reference/node-support.md'], identity });
   const script = job(workflow, 'plan').match(/node --input-type=module <<'EOF'\n([\s\S]+?)\n {10}EOF/u)?.[1];
   if (!script) throw new Error('Missing executable workflow matrix resolver');
   const root = mkdtempSync(join(tmpdir(), 'fluo-ci-plan-'));
@@ -58,15 +59,21 @@ it('expands the real workflow plan into eighteen required jobs', () => {
     const tasks: unknown = JSON.parse(fields.tasks ?? 'null');
     expect(tasks).toEqual(plan.tasks.map(({ id }) => id).filter((id) =>
       !['build', 'compatibility-floor', 'compatibility-next'].includes(id)));
-    expect(tasks).toHaveLength(13);
+    expect(tasks).toHaveLength(plan.tasks.length - (mode === 'full' ? 3 : mode === 'scoped' ? 3 : 0));
+    expect(fields.has_build).toBe(String(plan.tasks.some(({ id }) => id === 'build')));
+    expect(fields.has_docs).toBe(String(plan.tasks.some(({ outputs }) => outputs.includes('docs-site'))));
+    expect(JSON.parse(fields.compatibility ?? 'null')).toEqual(plan.tasks.map(({ id }) => id).filter((id) => id.startsWith('compatibility-')));
     const jobs = workflow.slice(workflow.indexOf('\njobs:\n'));
     expect([...jobs.matchAll(/^ {2}([a-zA-Z_][\w-]*):\n/gm)].map((match) => match[1]))
       .toEqual(['plan', 'build', 'verification', 'compatibility', 'verify']);
     expect(job(workflow, 'verification')).toContain(`task: \${{ fromJSON(needs.plan.outputs.tasks) }}`);
-    expect(job(workflow, 'compatibility')).toContain('task: [compatibility-floor, compatibility-next]');
+    expect(job(workflow, 'compatibility')).toContain(`task: \${{ fromJSON(needs.plan.outputs.compatibility) }}`);
     const reusableJobs = taskWorkflow.slice(taskWorkflow.indexOf('\njobs:\n'));
     expect([...reusableJobs.matchAll(/^ {2}([a-zA-Z_][\w-]*):\n/gm)].map((match) => match[1])).toEqual(['task']);
-    expect(plan.tasks.length + 2).toBe(18);
+    if (mode === 'full') expect(plan.tasks.length + 2).toBe(18);
+    expect(job(workflow, 'verification')).toContain('always()');
+    expect(job(workflow, 'verification')).toContain("needs.build.result == 'skipped'");
+    expect(job(workflow, 'verify')).toContain(`if: \${{ always() }}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -200,7 +207,7 @@ it('keeps the separate two-hour soak out of normal PR job expansion', () => {
   expect(soakWorkflow).toMatch(/^ {2}workflow_dispatch:/mu);
   expect(soakWorkflow).toMatch(/^ {2}schedule:/mu);
   expect(soakWorkflow).toContain("FLUO_RELIABILITY_SOAK_MS: '7200000'");
-  expect(buildVerificationPlan({ changedFiles: ['examples/react-vite-ssr/tests/long-session.spec.ts'], identity }).tasks)
+  expect(buildVerificationPlan({ changedFiles: ['examples/react-vite-ssr/tests/long-session.spec.ts'], identity, forceFull: true }).tasks)
     .toHaveLength(16);
 });
 

@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { digest, buildVerificationPlan, readVerificationManifest } from './local-verification.mjs';
 import { aggregateResults, runTask, validateTaskResult } from './verification-runner.mjs';
+import { collectIdentity } from './verify-local.mjs';
 
 const script = new URL('./verification-runner.mjs', import.meta.url).pathname;
 const run = (name, args, cwd) => {
@@ -19,6 +20,68 @@ const fixtureIdentity = {
   root: '/fixture', treeSha: 'd'.repeat(40), worktreeStatusDigest: 'e'.repeat(64),
 };
 
+test('real Docker: scoped build archive -> selected clean outputs and authenticated Linux reuse', { timeout: 240_000 }, (t) => {
+  assert.equal(spawnSync('docker', ['info'], { stdio: 'ignore' }).status, 0, 'scoped Docker fixture requires an available daemon');
+  const root = mkdtempSync(join(tmpdir(), 'fluo-scoped-linux-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const file of [
+    'tooling/ci/verification-runner.mjs', 'tooling/ci/local-verification.mjs',
+    'tooling/ci/detect-pr-verification-scope.mjs', 'tooling/ci/prepared-build.mjs',
+    'tooling/ci/local-verification-manifest.json', 'tooling/ci/local-verification-receipt.schema.json',
+    'tooling/ci/verification-environment.mjs', 'tooling/ci/probe-verification-environment.mjs',
+    'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
+    '.agents/workflow-contracts/schema-validator.mjs',
+  ]) {
+    mkdirSync(dirname(join(root, file)), { recursive: true });
+    copyFileSync(new URL(`../../${file}`, import.meta.url), join(root, file));
+  }
+  const manifest = readVerificationManifest();
+  manifest.scope.companionEdges = [{ owners: ['fixture-leaf'], tasks: ['native-bun'] }];
+  manifest.tasks.find(({ id }) => id === 'native-bun').commands = [
+    { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
+    { executable: 'node', argv: ['-e',
+      'const fs=require("node:fs");const prepared=require("./tooling/ci/prepared-build.mjs");if(!prepared.verifyPreparedBuild(process.cwd(),process.env.FLUO_VERIFIED_BUILD))throw Error("UNVERIFIED_SCOPED_BUILD");if(fs.existsSync("packages/unselected/dist"))throw Error("UNSELECTED_BUILT");if(!fs.readFileSync("packages/leaf/dist/index.d.ts","utf8").includes("declare"))throw Error("MISSING_DECLARATION");console.log("SCOPED_LINUX_RESTORE_OK",process.platform,process.arch);'], cwd: '.' },
+  ];
+  writeFileSync(join(root, 'tooling/ci/local-verification-manifest.json'), JSON.stringify(manifest));
+  copyFileSync(new URL('../../.gitignore', import.meta.url), join(root, '.gitignore'));
+  writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+  writeFileSync(join(root, 'package.json'), '{"name":"scoped-fixture","private":true,"packageManager":"pnpm@10.4.1"}');
+  mkdirSync(join(root, 'packages/leaf/src'), { recursive: true });
+  mkdirSync(join(root, 'packages/unselected'), { recursive: true });
+  writeFileSync(join(root, 'packages/leaf/package.json'), JSON.stringify({ name: 'fixture-leaf', version: '1.0.0', scripts: { build: 'node build.mjs' } }));
+  writeFileSync(join(root, 'packages/leaf/build.mjs'),
+    'import {mkdirSync,writeFileSync} from "node:fs";mkdirSync("dist",{recursive:true});writeFileSync("dist/index.js","export const value=1;");writeFileSync("dist/index.d.ts","export declare const value: number;");');
+  writeFileSync(join(root, 'packages/leaf/src/index.ts'), 'export const value = 1;');
+  writeFileSync(join(root, 'packages/unselected/package.json'), JSON.stringify({ name: 'fixture-unselected', version: '1.0.0', scripts: { build: 'node -e "process.exit(99)"' } }));
+  run('pnpm', ['install', '--lockfile-only', '--ignore-scripts'], root);
+  run('git', ['init', '-q'], root);
+  run('git', ['add', '.'], root);
+  run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'base'], root);
+  const base = run('git', ['rev-parse', 'HEAD'], root);
+  writeFileSync(join(root, 'packages/leaf/src/index.ts'), 'export const value = 2;');
+  run('git', ['add', '.'], root);
+  run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'leaf'], root);
+  const identity = collectIdentity(root, base);
+  const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity, root, manifest });
+  assert.equal(plan.mode, 'scoped');
+  assert.deepEqual(plan.selection.buildDirectories, ['packages/leaf']);
+  const path = join(root, '.git/plan.json');
+  const output = join(root, '.git/results');
+  const artifacts = join(root, '.git/artifacts');
+  writeFileSync(path, JSON.stringify(plan));
+
+  const built = runTask(plan, 'build', output, artifacts, path, root);
+  const restored = runTask(plan, 'native-bun', output, artifacts, path, root);
+
+  assert.equal(built.status, 'passed');
+  assert.equal(restored.status, 'passed');
+  assert.match(readFileSync(join(output, 'native-bun-1.log'), 'utf8'), /SCOPED_LINUX_RESTORE_OK linux arm64/u);
+  const metadata = JSON.parse(readFileSync(join(artifacts, 'build.json'), 'utf8'));
+  assert.equal(metadata.planDigest, plan.semanticDigest);
+  assert.deepEqual(metadata.buildDirectories, ['packages/leaf']);
+  validateTaskResult(plan, plan.tasks.find(({ id }) => id === 'native-bun'), restored, output, artifacts);
+});
+
 test('real Docker Linux checkout runs a command and exports failure evidence without a passed result', { timeout: 240_000 }, (t) => {
   // Given: A clean tiny Git source, not a host bind mount, and the locked image.
   assert.equal(spawnSync('docker', ['info'], { stdio: 'ignore' }).status, 0, 'host Docker fixture requires an available daemon');
@@ -30,6 +93,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
     'tooling/ci/verification-environment.mjs', 'tooling/ci/probe-verification-environment.mjs',
     'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
     'tooling/ci/prepared-build.mjs',
+    'tooling/ci/detect-pr-verification-scope.mjs',
     '.agents/workflow-contracts/schema-validator.mjs',
   ]) {
     mkdirSync(dirname(join(root, file)), { recursive: true });

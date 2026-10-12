@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_call:
     inputs:
       profile:
@@ -30,6 +31,9 @@ jobs:
     outputs:
       source-sha: ${{ steps.plan.outputs.source_sha }}
       tasks: ${{ steps.plan.outputs.tasks }}
+      has-build: ${{ steps.plan.outputs.has_build }}
+      has-docs: ${{ steps.plan.outputs.has_docs }}
+      compatibility: ${{ steps.plan.outputs.compatibility }}
       image-cache-key: ${{ steps.environment.outputs.cache_key }}
     steps:
       - uses: actions/checkout@v5
@@ -49,6 +53,7 @@ jobs:
         env:
           BASE_SHA: ${{ inputs.base-sha || github.event.pull_request.base.sha }}
           PROFILE: ${{ inputs.profile || 'pr' }}
+          CI_FORCE_FULL_VERIFY: ${{ vars.CI_FORCE_FULL_VERIFY }}
         run: |
           mkdir -p .omo/ci-plan
           node tooling/ci/verify-local.mjs --plan --base-ref "$BASE_SHA" --profile "$PROFILE" > .omo/ci-plan/plan.json
@@ -56,8 +61,11 @@ jobs:
           import { readFileSync, appendFileSync } from 'node:fs';
           const plan = JSON.parse(readFileSync('.omo/ci-plan/plan.json', 'utf8'));
           const tasks = plan.tasks.map(({ id }) => id).filter(id => !['build', 'compatibility-floor', 'compatibility-next'].includes(id));
-          if (tasks.length !== 13 || plan.tasks.length + 2 !== 18) throw new Error('Unexpected expanded CI job count');
-          appendFileSync(process.env.GITHUB_OUTPUT, `source_sha=${plan.identity.headSha}\ntasks=${JSON.stringify(tasks)}\n`);
+          const compatibility = plan.tasks.map(({ id }) => id).filter(id => id.startsWith('compatibility-'));
+          if (plan.mode === 'full' && (tasks.length !== 13 || plan.tasks.length !== 16)) throw new Error('Unexpected full CI job count');
+          const hasBuild = plan.tasks.some(({ id }) => id === 'build');
+          const hasDocs = plan.tasks.some(({ outputs }) => outputs.includes('docs-site'));
+          appendFileSync(process.env.GITHUB_OUTPUT, `source_sha=${plan.identity.headSha}\ntasks=${JSON.stringify(tasks)}\ncompatibility=${JSON.stringify(compatibility)}\nhas_build=${hasBuild}\nhas_docs=${hasDocs}\n`);
           EOF
       - name: Report available runtime updates without changing the lock
         if: github.event_name == 'schedule'
@@ -144,6 +152,7 @@ jobs:
   build:
     name: Primary build
     needs: plan
+    if: needs.plan.outputs.has-build == 'true'
     uses: ./.github/workflows/node-verification.yml
     with:
       task-id: build
@@ -153,6 +162,7 @@ jobs:
   verification:
     name: Verify task (${{ matrix.task }})
     needs: [plan, build]
+    if: ${{ always() && needs.plan.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') && needs.plan.outputs.tasks != '[]' }}
     strategy:
       fail-fast: false
       matrix:
@@ -168,10 +178,11 @@ jobs:
   compatibility:
     name: Node compatibility (${{ matrix.task }})
     needs: plan
+    if: needs.plan.outputs.compatibility != '[]'
     strategy:
       fail-fast: false
       matrix:
-        task: [compatibility-floor, compatibility-next]
+        task: ${{ fromJSON(needs.plan.outputs.compatibility) }}
     uses: ./.github/workflows/node-verification.yml
     with:
       task-id: ${{ matrix.task }}
@@ -205,6 +216,7 @@ jobs:
           path: .omo/ci/results
           merge-multiple: true
       - name: Acquire build outputs for evidence validation
+        if: needs.plan.outputs.has-build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_ID: ${{ needs.build.outputs.build-artifact-id }}
@@ -212,11 +224,13 @@ jobs:
           SOURCE_SHA: ${{ needs.plan.outputs.source-sha }}
         run: node tooling/ci/acquire-build-artifact.mjs --id "$ARTIFACT_ID" --digest "$ARTIFACT_DIGEST" --sha "$SOURCE_SHA" --name "ci-build-$SOURCE_SHA" --run-id "$GITHUB_RUN_ID" --output .omo/ci/artifacts/build.tar
       - name: Restore documentation outputs for evidence validation
+        if: needs.plan.outputs.has-docs == 'true'
         uses: actions/download-artifact@v5
         with:
           name: docs-site-${{ needs.plan.outputs.source-sha }}
           path: .omo/ci/artifacts/docs-site
       - name: Require every planned capability and job result
+        if: ${{ always() }}
         env:
           VERIFICATION_RESULTS: ${{ toJSON(needs) }}
         run: node tooling/ci/verification-runner.mjs --plan .omo/ci-plan/plan.json --aggregate --output .omo/ci/results --artifacts .omo/ci/artifacts

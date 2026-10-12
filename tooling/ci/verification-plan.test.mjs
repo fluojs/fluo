@@ -16,6 +16,57 @@ const identity = {
   worktreeStatusDigest: '0'.repeat(64),
 };
 
+test('buildVerificationPlan: email leaf -> executes affected packages without unrelated suites', () => {
+  const plan = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity });
+
+  assert.equal(plan.mode, 'scoped');
+  assert.ok(plan.tasks.length < 16);
+  const packages = plan.tasks.filter(({ id }) => id.startsWith('packages-'));
+  assert.equal(packages.length, 1);
+  assert.ok(packages[0].commands.some(({ argv }) => argv.includes('packages/email/')));
+  assert.ok(packages[0].commands.every(({ argv }) => !argv.includes('packages/core/')));
+  assert.ok(plan.tasks.find(({ id }) => id === 'build').commands.some(({ argv }) =>
+    argv.includes('--filter=@fluojs/email')));
+});
+
+test('buildVerificationPlan: CLI script changes -> retain the Node script regression suite', () => {
+  for (const file of ['packages/cli/scripts/local-test-env.mjs', 'packages/cli/scripts/local-test-env.test.mjs']) {
+    const plan = buildVerificationPlan({ changedFiles: [file], identity });
+
+    assert.equal(plan.mode, 'scoped');
+    assert.ok(plan.tasks.some(({ commands }) => commands.some(({ executable, argv }) =>
+      executable === 'node' && argv.includes('--test')
+      && argv.includes('packages/cli/scripts/*.test.mjs'))));
+  }
+});
+
+test('buildVerificationPlan: prose docs -> no build or runtime prerequisites', () => {
+  const plan = buildVerificationPlan({ changedFiles: ['docs/reference/node-support.md'], identity });
+
+  assert.equal(plan.mode, 'docs');
+  assert.deepEqual(plan.tasks.map(({ id }) => id), ['static']);
+  assert.deepEqual(plan.tasks[0].dependencies, []);
+  assert.deepEqual(plan.tasks[0].inputs, []);
+  assert.ok(plan.tasks[0].commands.some(({ argv }) => argv.includes('verify:docs')));
+});
+
+test('buildVerificationPlan: explicit full and extended -> preserves all sixteen tasks', () => {
+  for (const options of [{ forceFull: true }, { profile: 'extended' }]) {
+    const plan = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity, ...options });
+
+    assert.equal(plan.mode, 'full');
+    assert.equal(plan.tasks.length, 16);
+  }
+});
+
+test('buildVerificationPlan: leaf plus release metadata -> release check without docs-site build', () => {
+  const plan = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts', '.changeset/sample.md'], identity });
+
+  assert.equal(plan.mode, 'scoped');
+  assert.ok(plan.tasks.every(({ outputs }) => !outputs.includes('docs-site')));
+  assert.ok(plan.tasks.find(({ id }) => id === 'static').commands.some(({ argv }) => argv.includes('tooling/release/verify-changeset-release-lane.mjs')));
+});
+
 test('the canonical PR plan covers all required groups within eighteen expanded jobs', () => {
   // Given
   const changedFiles = ['tooling/ci/verify-local.mjs'];
@@ -68,7 +119,7 @@ test('the PR catalog executes reliability receipt regressions without adding a j
   const changedFiles = ['examples/react-vite-ssr/tests/reliability-handoff.mjs'];
   // When: the canonical runner resolves its executable PR tasks.
   const plan = buildVerificationPlan({ changedFiles, identity });
-  // Then: the regression is executed within the existing eighteen-job plan.
+  // Then: the regression is executed in the selected tooling task.
   const commands = plan.tasks.find(({ id }) => id === 'tooling-1').commands;
   assert.ok(commands.some(({ executable, argv }) => executable === 'node'
     && argv[0] === '--test' && argv.includes('examples/react-vite-ssr/tests/reliability-handoff.test.mjs')));
@@ -78,7 +129,8 @@ test('the PR catalog executes reliability receipt regressions without adding a j
   assert.ok(packedRunner);
   assert.equal(packedRunner.cwd, '.');
   assert.equal(packedRunner.env.FLUO_BACKGROUND_EVIDENCE, '/evidence/react-product/runner-regressions');
-  assert.equal(plan.tasks.length + 2, 18);
+  assert.equal(plan.mode, 'scoped');
+  assert.ok(plan.tasks.length <= 16);
 });
 
 test('secondary compatibility retains package tests and target-local builds without full browser checks', () => {

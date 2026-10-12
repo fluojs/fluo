@@ -34,6 +34,7 @@
     "status": { "enum": ["passed", "failed"] },
     "reason": { "type": "string" },
     "profile": { "enum": ["pr", "extended"] },
+    "forceFull": { "type": "boolean" },
     "identity": { "$ref": "#/$defs/identity" },
     "source": {
       "type": "object",
@@ -60,7 +61,7 @@
     "hostChecks": { "type": ["object", "null"] },
     "capabilityTasks": { "type": "object" },
     "logs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/file" } },
-    "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/file" } },
+    "artifacts": { "type": "array", "items": { "$ref": "#/$defs/file" } },
     "startedAt": { "type": "string", "format": "date-time" },
     "completedAt": { "type": "string", "format": "date-time" }
   },

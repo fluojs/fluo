@@ -108,6 +108,37 @@ test('aggregate CLI rejects missing, failed, cancelled and skipped required work
   }), /job failed/u);
 });
 
+test('restoreBuildInputs: scoped archive -> authentic selected plan and output paths', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-scoped-archive-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const source = join(root, 'source');
+  const target = join(root, 'target');
+  const artifacts = join(root, 'artifacts');
+  mkdirSync(join(source, 'packages/email/dist'), { recursive: true });
+  mkdirSync(target);
+  mkdirSync(artifacts);
+  writeFileSync(join(source, 'packages/email/dist/index.d.ts'), 'export declare const value: number;\n');
+  run('tar', ['-cf', join(artifacts, 'build.tar'), 'packages/email/dist'], source);
+  const changedFiles = ['packages/email/src/index.ts'];
+  const plan = buildVerificationPlan({ changedFiles, identity: {
+    ...fixtureIdentity, changedFilesDigest: digest(changedFiles.join('\n')),
+  } });
+  const metadata = {
+    headSha: plan.source.headSha, treeSha: plan.source.treeSha, imageKey: plan.environment.imageKey,
+    planDigest: plan.semanticDigest, buildDirectories: plan.selection.buildDirectories,
+    files: { 'build.tar': digest(readFileSync(join(artifacts, 'build.tar'))) },
+  };
+  writeFileSync(join(artifacts, 'build.json'), JSON.stringify(metadata));
+
+  restoreBuildInputs(plan, { inputs: ['build.tar'] }, artifacts, target);
+
+  assert.equal(readFileSync(join(target, 'packages/email/dist/index.d.ts'), 'utf8'), 'export declare const value: number;\n');
+  writeFileSync(join(artifacts, 'build.json'), JSON.stringify({ ...metadata, buildDirectories: [] }));
+  assert.throws(() => restoreBuildInputs(plan, { inputs: ['build.tar'] }, artifacts, target), /inventory mismatch/u);
+  writeFileSync(join(artifacts, 'build.json'), JSON.stringify({ ...metadata, planDigest: 'f'.repeat(64) }));
+  assert.throws(() => restoreBuildInputs(plan, { inputs: ['build.tar'] }, artifacts, target), /inventory mismatch/u);
+});
+
 const processExec = () => globalThis.process.execPath;
 
 test('host integration evidence rejects missing commands and tampered logs', (t) => {

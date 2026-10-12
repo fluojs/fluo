@@ -36,7 +36,9 @@ export type VerificationManifest = {
   readonly tasks: readonly VerificationTask[];
   readonly companions: readonly { readonly commands: readonly VerificationCommand[]; readonly id: string; readonly when: string }[];
   readonly rules: readonly { readonly commands: readonly VerificationCommand[]; readonly prefix: string }[];
-  readonly scope: { readonly fullPrefixes: readonly string[]; readonly fullPaths: readonly string[] };
+  readonly scope: { readonly fullPrefixes: readonly string[]; readonly fullPaths: readonly string[];
+    readonly companionEdges?: readonly { readonly owners: readonly string[]; readonly consumers?: readonly string[];
+      readonly tasks?: readonly string[]; readonly buildPackages?: readonly string[]; readonly toolingPaths?: readonly string[] }[] };
 };
 
 export type VerificationPlan = {
@@ -56,7 +58,9 @@ export type VerificationPlan = {
   readonly source: { readonly headSha: string; readonly treeSha: string; readonly baseSha: string };
   readonly manifestDigest: string;
   readonly semanticDigest: string;
-  readonly mode: 'full' | 'scoped';
+  readonly mode: 'full' | 'scoped' | 'docs';
+  readonly forceFull: boolean;
+  readonly selection: import('./detect-pr-verification-scope.mjs').VerificationSelection;
   readonly notApplicableCapabilities: Readonly<Record<string, string>>;
   readonly tasks: readonly VerificationTask[];
 };
@@ -77,8 +81,10 @@ export function buildVerificationPlan(input: {
   readonly manifest?: VerificationManifest;
   readonly profile?: 'pr' | 'extended';
   readonly lock?: Readonly<Record<string, unknown>>;
+  readonly root?: string;
+  readonly forceFull?: boolean;
 }): VerificationPlan;
-export function verificationModeForChanges(changedFiles: readonly string[], manifest?: VerificationManifest): 'full' | 'scoped';
+export function verificationModeForChanges(changedFiles: readonly string[], manifest?: VerificationManifest): 'full' | 'scoped' | 'docs';
 export function receiptIsCurrent(receipt: unknown, identity: VerificationIdentity): boolean;
 export function receiptMatchesPlan(receipt: unknown, identity: VerificationIdentity, plan: VerificationPlan): boolean;
 export function validateReceiptEvidence(receipt: unknown, evidence: VerificationReceiptEvidence): { readonly valid: boolean; readonly reason?: string };

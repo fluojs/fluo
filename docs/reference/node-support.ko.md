@@ -9,12 +9,12 @@ Node floor는 역할별로 분류됩니다. 순수 runtime인 34개 Node-bound p
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
 | Exact Node `24.0.0` | Runtime-only floor lane: 지원되는 compiler Node에서 빌드한 artifact로 실제 public runtime entry import와 HTTP listener, dispatch, config, shutdown 동작을 수행; Babel 8 로딩과 24.0.0 설치 없음 | 최소 지원 runtime floor이며 release runtime은 아님 |
-| Exact Node `24.11.0` | PR: frozen install, fresh build, 모든 package test와 4종 starter smoke; extended: 전체 검증과 browser journey | Babel 8의 최소 compiler toolchain floor |
-| Locked Node `24.x` | 전체 primary PR 검증, `pnpm verify:docs`, 생성 starter dev/production browser matrix | Canonical 개발 검증 및 Changesets release runtime |
-| Locked Node `26.x` | PR: frozen install, fresh build, 모든 package test와 4종 starter smoke; extended: 전체 검증과 browser journey | Forward verification 전용이며 publish에 사용하지 않음 |
+| Exact Node `24.11.0` | PR: 독립 frozen install/fresh build와 영향받는 package test, 관련 4종 starter smoke; full PR: 모든 package; extended: 전체 검증과 browser journey | Babel 8의 최소 compiler toolchain floor |
+| Locked Node `24.x` | 선택된 primary PR 검증, 관련 docs와 생성 starter dev/production browser matrix; full PR과 extended는 모든 primary 검사 유지 | Canonical 개발 검증 및 Changesets release runtime |
+| Locked Node `26.x` | PR: 독립 frozen install/fresh build와 영향받는 package test, 관련 4종 starter smoke; full PR: 모든 package; extended: 전체 검증과 browser journey | Forward verification 전용이며 publish에 사용하지 않음 |
 | Bun, Deno, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
 
-`.github/workflows/ci.yml`은 plan 확정과 필수 `Verify` 집계를 포함해 18개 job으로 확장됩니다. 16개 실행 task는 `tooling/ci/local-verification-manifest.json`의 공통 catalog와 `tooling/ci/verification-runner.mjs`를 사용하며, `.github/workflows/node-verification.yml`은 호출마다 task 하나를 실행합니다. Primary package test는 4개 shard, tooling은 2개 shard를 유지하고 apps/examples는 첫 tooling shard에서 한 번 실행합니다. Primary build는 package artifact와 runtime-floor bundle을 제공합니다. Exact Node `24.0.0`은 workspace dependency 설치와 Babel 로딩 없이 bundle을 실행합니다.
+`.github/workflows/ci.yml`의 full plan은 plan 확정과 필수 `Verify` 집계를 포함해 18개 job으로 확장됩니다. 16개 실행 task는 `tooling/ci/local-verification-manifest.json`의 공통 catalog와 `tooling/ci/verification-runner.mjs`를 사용하며, `.github/workflows/node-verification.yml`은 호출마다 task 하나를 실행합니다. Full primary package test는 4개 shard, tooling은 2개 shard를 유지하고 apps/examples는 첫 tooling shard에서 한 번 실행합니다. Primary build는 선택 package artifact와 필요한 경우 runtime-floor bundle을 제공합니다. Exact Node `24.0.0`은 workspace dependency 설치와 Babel 로딩 없이 bundle을 실행합니다.
 
 이 정책은 기존의 세 버전 전체 PR matrix를 전체 primary profile과 두 compatibility profile로 대체합니다. Package engine 지원 범위는 바꾸지 않지만 보조 버전의 PR 검증 범위는 좁아집니다. 보조 버전의 전체 typecheck, lint, tooling, apps/examples, browser 검증은 `.github/workflows/extended-verification.yml`과 `.github/workflows/release.yml`의 exact-source 선행 검증으로 이동합니다. 이전 정기 실행의 성공은 publishing commit의 extended 검증을 대신하지 않습니다.
 
@@ -60,6 +60,32 @@ Authentication, 일반 authorization, malformed metadata, expired artifact, dige
 두 native task가 모든 runtime별 검증을 보존합니다. `native-bun`은 각자 고정된 버전으로 Bun routing/lifecycle과 Drizzle을 실행합니다. `native-web`은 Deno adapter, 모든 Bun/Deno/Workers portability 사례와 세 native cookie 명령을 실행합니다. Job을 묶어도 floor runtime을 최신 버전으로 대체하지 않습니다. 필수 명령 실패, 증거 누락, 취소, 예상치 못한 skip은 `Verify`를 차단합니다.
 
 집중 검증 명령인 `test:node-floor`는 로컬 확인용으로 유지하며 전체 CI 검증을 대체하지 않습니다. 이 명령은 manifest 분류, 모든 scaffold profile, config env-file/watch 동작, 배포 portable runtime import, Node HTTP listener, adapter portability, 기존 Vite compatibility seam을 검증합니다. 필수 runtime-only lane은 exact Node `24.0.0`에서 실행되므로 CI는 runtime floor 검증을 더 최신인 24.x patch로 대체하지 않습니다.
+
+## PR verification selection
+
+고정 PR plan은 dependencies, devDependencies, peerDependencies,
+optionalDependencies를 통해 변경 workspace owner와 전이 reverse dependents를
+선택합니다. 선행 build에는 emitted declaration과 package manifest에 없는
+native/starter/browser/packed consumer의 명시적인 edge가 포함됩니다.
+Packed/starter inventory와 tooling declaration 검사는 무관한 package test를
+선택하지 않고도 모든 package build를 요구할 수 있습니다. 선택 example은 공유
+`examples/tsconfig.json` typecheck를 유지합니다. Workspace filter가 공유 compiler
+계약의 범위를 좁히지는 않습니다.
+
+일반 문서만 바뀌면 package runtime suite 없이 문서·governance를 실행합니다.
+Executable docs와 enforcement는 일반 문서가 아닙니다. Changeset은 release
+검사를 요구하며 docs-site build를 요구하지 않습니다. Owner가 불명확하거나
+local graph edge를 해석할 수 없는 경우, manifest 변경, 공통 CI/build/test 입력
+변경은 full 검증을 강제합니다. `--full`, `CI_FORCE_FULL_VERIFY=1`,
+`ci:full-verify` PR label은 full 검증을 명시적으로 요청하며 canonical plan에
+고정됩니다. Extended 검증은 diff와 무관하게 항상 전체 suite를 선택합니다.
+
+Build 복원은 prepared output 재사용 전에 선택 inventory와 plan digest를
+인증합니다. Standalone global setup은 기존 build를 유지합니다. Workflow matrix,
+artifact 생성·획득과 집계는 같은 plan을 따릅니다. 선택되지 않은 group만 skip할
+수 있습니다. 선택 결과의 skip, 누락, 실패, 취소, stale 또는 tampered 증거는
+항상 실행되는 `Verify`를 차단합니다. 선택되지 않은 build job이 skip되어도
+문서 실행은 가능합니다.
 
 ## Portable package boundaries
 

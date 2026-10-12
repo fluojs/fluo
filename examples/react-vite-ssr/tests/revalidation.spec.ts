@@ -64,6 +64,7 @@ test('revalidates external changes without replacing page history or the live sh
     && result.request().headers().accept === MEDIA_TYPE);
   await page.getByRole('button', { name: 'Push sku-126' }).click();
   expect((await nextPage).status()).toBe(200);
+  await expect(page).toHaveURL(/\/products\/sku-126\?preview=true$/u);
   const backApproval = page.waitForResponse((result) =>
     new URL(result.url()).pathname === '/products/sku-42'
     && result.request().headers().accept === MEDIA_TYPE);

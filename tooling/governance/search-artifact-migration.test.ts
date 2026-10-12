@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
-  cpSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -15,8 +16,6 @@ import { describe, expect, it } from 'vitest';
 import { approvalBinding } from './search-artifact-migration-support';
 
 const root = process.cwd();
-const sourceDirectory = resolve(root, '.opencode-backup/search-issue');
-const trackedReceiptPath = resolve(sourceDirectory, 'migration-receipt.json');
 const importerPath = resolve(
   root,
   '.agents/skills/search-issue/scripts/migrate-legacy-artifacts.mjs',
@@ -62,10 +61,47 @@ const runImporter = (
     ),
   );
 
+const createLegacyFixture = (outputRoot: string) => {
+  const source = resolve(outputRoot, 'source');
+  mkdirSync(source);
+  const artifacts = Array.from({ length: 9 }, (_, index) => {
+    const runId = index === 0
+      ? 'search-2026-08-23T235415+0900-runtime'
+      : `search-fixture-${index}`;
+    const issues = [index + 11, index + 1];
+    const filename = `${runId}.json`;
+    const bytes = `${JSON.stringify({
+      version: 1, search_run_id: runId, selected_issues: issues,
+    }, null, 2)}\n`;
+    writeFileSync(resolve(source, filename), bytes);
+    const identity = {
+      version: 2, artifact_id: `search:${runId}`,
+      search_run_id: runId, selected_issues: issues,
+    };
+    const sha256 = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
+    return {
+      filename,
+      source_sha256: createHash('sha256').update(bytes).digest('hex'),
+      target_artifact_id: identity.artifact_id,
+      target_sha256: sha256,
+    };
+  }).sort((left, right) => left.filename.localeCompare(right.filename));
+  return {
+    source,
+    receipt: {
+      version: 1, migrated_at: '2026-08-24T00:00:00.000Z',
+      source_root: '.opencode-backup/search-issue',
+      target_root: '.omo/search-issue/artifacts/legacy',
+      artifacts,
+    },
+  };
+};
+
 describe('legacy search artifact migration', () => {
-  it('reconstructs nine canonical v2 artifacts and the committed checksum receipt', () => {
+  it('reconstructs nine canonical v2 artifacts and the expected checksum receipt', () => {
     // Given
     const outputRoot = mkdtempSync(resolve(tmpdir(), 'fluo-search-migration-'));
+    const fixture = createLegacyFixture(outputRoot);
     const target = resolve(
       outputRoot,
       '.omo/search-issue/artifacts/legacy',
@@ -73,8 +109,8 @@ describe('legacy search artifact migration', () => {
 
     try {
       // When
-      const first = runImporter(sourceDirectory, target);
-      const second = runImporter(sourceDirectory, target);
+      const first = runImporter(fixture.source, target);
+      const second = runImporter(fixture.source, target);
 
       // Then
       expect(first).toEqual(second);
@@ -86,7 +122,18 @@ describe('legacy search artifact migration', () => {
       expect(readdirSync(target).sort()).toHaveLength(10);
       expect(
         parseRecord(readFileSync(resolve(target, 'migration-receipt.json'), 'utf8')),
-      ).toEqual(parseRecord(readFileSync(trackedReceiptPath, 'utf8')));
+      ).toEqual(fixture.receipt);
+      for (const artifact of fixture.receipt.artifacts) {
+        const legacy = parseRecord(readFileSync(resolve(fixture.source, artifact.filename), 'utf8'));
+        const migrated = parseRecord(readFileSync(resolve(target, artifact.filename), 'utf8'));
+        expect(migrated).toEqual({
+          version: 2,
+          artifact_id: artifact.target_artifact_id,
+          sha256: artifact.target_sha256,
+          search_run_id: legacy['search_run_id'],
+          selected_issues: legacy['selected_issues'],
+        });
+      }
     } finally {
       rmSync(outputRoot, { recursive: true, force: true });
     }
@@ -95,9 +142,8 @@ describe('legacy search artifact migration', () => {
   it('fails closed when an existing migrated artifact has different bytes', () => {
     // Given
     const outputRoot = mkdtempSync(resolve(tmpdir(), 'fluo-search-migration-'));
-    const source = resolve(outputRoot, 'source');
+    const { source } = createLegacyFixture(outputRoot);
     const target = resolve(outputRoot, 'target');
-    cpSync(sourceDirectory, source, { recursive: true });
     runImporter(source, target);
     const firstArtifact = readdirSync(target)
       .filter((name) => name !== 'migration-receipt.json')
@@ -120,12 +166,13 @@ describe('legacy search artifact migration', () => {
 
   it('feeds an imported legacy artifact into create-lane', () => {
     const outputRoot = mkdtempSync(resolve(tmpdir(), 'fluo-search-migration-'));
+    const { source } = createLegacyFixture(outputRoot);
     const target = resolve(outputRoot, '.omo/search-issue/artifacts/legacy');
     const createOutput = resolve(outputRoot, 'create-output');
     const scenarioPath = resolve(outputRoot, 'create-scenario.json');
 
     try {
-      runImporter(sourceDirectory, target);
+      runImporter(source, target);
       const artifactName =
         'search-2026-08-23T235415+0900-runtime.json';
       const artifact = parseRecord(
