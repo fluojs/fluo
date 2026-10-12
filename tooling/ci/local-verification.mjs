@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { schemaFailure } from '../../.agents/workflow-contracts/schema-validator.mjs';
 import { isProsePath, resolveVerificationScope } from './detect-pr-verification-scope.mjs';
 import { imageKeyFor, loadEnvironmentLock, validateVerificationEnvironment } from './verification-environment.mjs';
+import { readTestCatalog } from './test-catalog.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -107,6 +108,8 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     throw new TypeError('missing required host Docker integration check');
   }
   const definitions = companionDefinitions(manifest);
+  const testCatalog = readTestCatalog(root, changedFiles, identity);
+  const notApplicableCommands = [];
   const companionIds = companionChecks(changedFiles, manifest);
   const selection = resolveVerificationScope(changedFiles, { root, scope: manifest.scope, forceFull: forceFull || profile === 'extended' });
   const mode = selection.mode;
@@ -251,6 +254,20 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
       }
     }
   }
+  if (!testCatalog.apps.length) {
+    const reason = 'no-suite: apps has no matching test files in target checkout';
+    for (const task of tasks) {
+      task.commands = task.commands.filter((command) => {
+        if (command.executable !== 'pnpm' || !command.argv.includes('vitest')
+          || command.argv[command.argv.indexOf('--project') + 1] !== 'apps') return true;
+        notApplicableCommands.push({ taskId: task.id, command, reason });
+        return false;
+      });
+      task.capabilities = task.capabilities.filter((capability) => capability !== 'apps');
+    }
+    if (mode !== 'full') tasks = tasks.filter((task) => task.id !== 'tooling-1'
+      || task.commands.some(({ argv }) => argv.join(' ') !== 'install --frozen-lockfile'));
+  }
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   for (const task of tasks) {
     if (task.dependencies.some((dependency) => !taskById.has(dependency) || dependency === task.id)) {
@@ -298,12 +315,15 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
         .map((capability) => [capability, 'outside changed workspace and explicit companion closure'])),
       ...(applicableBenchmark ? {} : { 'isolated-benchmark': 'no isolated benchmark changes' }),
       ...(applicableReactBenchmark ? {} : { 'react-app-benchmark': 'no React comparison changes' }),
+      ...(testCatalog.apps.length ? {} : { apps: 'no-suite: apps has no matching test files in target checkout' }),
     },
+    notApplicableCommands,
     profile,
     forceFull,
     selection,
     source: { headSha: identity.headSha, treeSha: identity.treeSha, baseSha: identity.baseSha },
     tasks,
+    testCatalog,
     version: 2,
   };
   return { ...plan, semanticDigest: semanticPlanDigest(plan) };

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { globSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 import { buildVerificationPlan, readVerificationManifest } from './local-verification.mjs';
+import { collectIdentity } from './verify-local.mjs';
 
 const identity = {
   baseRef: 'origin/main',
@@ -15,6 +20,117 @@ const identity = {
   treeSha: 'f'.repeat(40),
   worktreeStatusDigest: '0'.repeat(64),
 };
+
+function catalogFixture(t) {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-test-catalog-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const put = (path, value) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), value);
+  };
+  put('pnpm-workspace.yaml', 'packages:\n  - apps/*\n');
+  put('apps/docs/package.json', JSON.stringify({ name: 'fixture-docs', scripts: { typecheck: 'tsc --noEmit' } }));
+  put('apps/other/package.json', '{"name":"fixture-other"}');
+  put('apps/docs/index.ts', 'export const value = 1;');
+  const manifest = readVerificationManifest();
+  put('tooling/ci/local-verification-manifest.json', JSON.stringify(manifest));
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  git('init', '-q');
+  const commit = () => {
+    git('add', '.');
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'fixture');
+    return git('rev-parse', 'HEAD');
+  };
+  return { root, put, commit, manifest };
+}
+
+test('catalog: absent apps suite -> explicit exclusion without losing full or docs coverage', (t) => {
+  const { root, manifest } = catalogFixture(t);
+
+  for (const options of [{}, { forceFull: true }, { profile: 'extended' }]) {
+    const plan = buildVerificationPlan({ changedFiles: ['apps/docs/index.ts'], identity, root, manifest, ...options });
+
+    assert.equal(plan.capabilityTasks.apps, undefined);
+    assert.equal(plan.notApplicableCapabilities.apps, 'no-suite: apps has no matching test files in target checkout');
+    assert.ok(plan.notApplicableCommands.some(({ command, reason }) => command.argv.includes('apps') && reason.startsWith('no-suite:')));
+    assert.ok(plan.tasks.find(({ id }) => id === 'static').outputs.includes('docs-site'));
+    assert.ok(plan.capabilityTasks.typecheck);
+    if (options.forceFull || options.profile === 'extended') {
+      assert.equal(plan.tasks.length, 16);
+      const tooling = plan.tasks.find(({ id }) => id === 'tooling-1');
+      assert.ok(tooling.commands.some(({ argv }) => argv.includes('examples')));
+      assert.ok(tooling.commands.some(({ argv }) => argv.includes('--shard=1/2')));
+      assert.ok(tooling.commands.some(({ argv }) => argv.includes('tooling/ci/react-product-acceptance.mjs')));
+    } else {
+      assert.deepEqual(plan.tasks.map(({ id }) => id), ['static']);
+    }
+  }
+});
+
+test('catalog: future apps test -> automatically selected from target root', (t) => {
+  const { root, put, manifest } = catalogFixture(t);
+  put('apps/docs/index.test.ts', 'import {test,expect} from "vitest";test("value",()=>expect(1).toBe(1));');
+  put('apps/docs/.next/ignored.test.ts', 'throw Error("excluded");');
+
+  const plan = buildVerificationPlan({ changedFiles: ['apps/docs/index.ts'], identity, root, manifest });
+
+  assert.deepEqual(plan.capabilityTasks.apps, ['tooling-1']);
+  assert.equal(plan.notApplicableCapabilities.apps, undefined);
+  assert.deepEqual(plan.testCatalog.apps, ['apps/docs/index.test.ts']);
+});
+
+for (const operation of ['delete', 'owner-rename', 'pattern-rename']) {
+  test(`catalog: last apps test ${operation} -> rejects coverage loss instead of no-suite`, (t) => {
+    const { root, put, commit, manifest } = catalogFixture(t);
+    put('apps/docs/index.test.ts', 'export const tested = true;');
+    const base = commit();
+    if (operation === 'delete') rmSync(join(root, 'apps/docs/index.test.ts'));
+    else renameSync(join(root, 'apps/docs/index.test.ts'), join(root,
+      operation === 'owner-rename' ? 'apps/other/index.test.ts' : 'apps/docs/index.ts'));
+    commit();
+    const actual = collectIdentity(root, base);
+
+    assert.throws(() => buildVerificationPlan({ changedFiles: actual.changedFiles, identity: actual, root, manifest }), /coverage-loss.*apps\/docs/u);
+  });
+}
+
+test('Vitest: zero-match selected command -> nonzero real process exit', () => {
+  const repository = new URL('../../', import.meta.url).pathname;
+  const run = (filter) => spawnSync('pnpm', ['vitest', 'run', '--project', 'tooling', filter, '--maxWorkers=1'], {
+    cwd: repository, encoding: 'utf8', timeout: 120_000,
+  });
+
+  const missing = run('tooling/ci/nonexistent-3956.test.ts');
+
+  assert.equal(missing.status, 1, missing.stdout + missing.stderr);
+  assert.match(missing.stdout + missing.stderr, /No test files found/u);
+});
+
+test('catalog: Node-only tooling TS tests -> excluded from Vitest and executed in full profiles', () => {
+  const root = new URL('../../', import.meta.url).pathname;
+  const nodeTests = globSync('tooling/**/*.test.ts', { cwd: root, exclude: ['**/node_modules/**'] })
+    .filter((file) => /from ['"]node:test['"]/u.test(readFileSync(join(root, file), 'utf8')));
+  const { NODE_TEST_CONTEXT: _context, ...env } = process.env;
+  assert.ok(nodeTests.length > 0);
+
+  for (const options of [{ forceFull: true }, { profile: 'extended' }]) {
+    const plan = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity, root, ...options });
+
+    assert.equal(plan.tasks.length, 16);
+    for (const file of nodeTests) {
+      assert.ok(!plan.testCatalog.tooling.includes(file), `${file} must not enter Vitest`);
+      const commands = plan.tasks.flatMap((task) => task.commands).filter(({ executable, argv }) =>
+        executable === 'node' && argv[0] === '--test' && argv.includes(file));
+      assert.equal(commands.length, 1, `${file} must have one canonical Node execution`);
+      const result = spawnSync(commands[0].executable, commands[0].argv, {
+        cwd: root, encoding: 'utf8', timeout: 120_000, env,
+      });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.match(result.stdout, /# tests [1-9][0-9]*/u);
+      assert.match(result.stdout, /# fail 0/u);
+    }
+  }
+});
 
 test('buildVerificationPlan: email leaf -> executes affected packages without unrelated suites', () => {
   const plan = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity });
@@ -56,6 +172,38 @@ test('buildVerificationPlan: explicit full and extended -> preserves all sixteen
 
     assert.equal(plan.mode, 'full');
     assert.equal(plan.tasks.length, 16);
+  }
+});
+
+test('buildVerificationPlan: representative affected inputs -> full coverage and explicit apps exclusion', () => {
+  for (const changedFiles of [
+    ['packages/email/src/index.ts'],
+    ['packages/http/src/index.ts'],
+    ['packages/core/package.json'],
+    ['docs/reference/node-support.md'],
+    ['packages/studio/src/index.ts'],
+    [],
+  ]) {
+    const selected = buildVerificationPlan({ changedFiles, identity });
+    const full = buildVerificationPlan({ changedFiles, identity, forceFull: true });
+    const extended = buildVerificationPlan({ changedFiles, identity, profile: 'extended' });
+
+    assert.equal(full.tasks.length, 16);
+    assert.equal(extended.tasks.length, 16);
+    assert.ok(selected.tasks.every(({ id }) => full.tasks.some((task) => task.id === id)));
+    assert.deepEqual(full.notApplicableCommands.map(({ taskId }) => taskId), ['tooling-1']);
+    for (const capability of ['examples', 'studio-browser', 'generated-starters', 'packed-consumers', 'runtime-floor',
+      'bun-routing', 'web-portability', 'tooling-1', 'tooling-2', 'packages-1', 'packages-2', 'packages-3', 'packages-4']) {
+      assert.ok(full.capabilityTasks[capability]?.length, capability);
+      assert.ok(extended.capabilityTasks[capability]?.length, capability);
+    }
+    for (const id of ['compatibility-floor', 'compatibility-next']) {
+      const task = extended.tasks.find((task) => task.id === id);
+      for (const argv of ['build', 'typecheck', 'lint', 'test:verify']) {
+        assert.ok(task.commands.some((command) => command.argv.join(' ') === argv));
+      }
+      assert.ok(task.commands.some(({ env }) => env?.FLUO_CLI_SANDBOX_PROFILE === 'full'));
+    }
   }
 });
 

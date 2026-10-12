@@ -15,7 +15,7 @@ function fixture(t) {
   for (const file of [
     'tooling/ci/verify-local.mjs', 'tooling/ci/verification-scheduler.mjs',
     'tooling/ci/prepared-build.mjs', 'tooling/ci/local-verification.mjs',
-    'tooling/ci/detect-pr-verification-scope.mjs',
+    'tooling/ci/detect-pr-verification-scope.mjs', 'tooling/ci/test-catalog.mjs',
     'tooling/ci/verification-runner.mjs', 'tooling/ci/verification-environment.mjs',
     'tooling/ci/local-verification-manifest.json', 'tooling/ci/local-verification-receipt.schema.json',
     'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',

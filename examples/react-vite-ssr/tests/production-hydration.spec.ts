@@ -6,6 +6,26 @@ declare global {
   }
 }
 
+async function waitForHydration(page: Page): Promise<void> {
+  // The existing form state changes only after the navigation provider connects.
+  await page.locator('form[data-enhanced]').first().evaluate((form) => {
+    if (form.getAttribute('data-enhanced') === 'true') return;
+    return new Promise<void>((resolve, reject) => {
+      const observer = new MutationObserver(() => {
+        if (form.getAttribute('data-enhanced') !== 'true') return;
+        observer.disconnect();
+        window.clearTimeout(deadline);
+        resolve();
+      });
+      const deadline = window.setTimeout(() => {
+        observer.disconnect();
+        reject(new Error('The navigation provider did not connect.'));
+      }, 10_000);
+      observer.observe(form, { attributes: true, attributeFilter: ['data-enhanced'] });
+    });
+  });
+}
+
 async function subscribeToResourceAck(page: Page, sequence: number): Promise<void> {
   await page.evaluate((expectedSequence) => {
     const output = document.querySelector('output[aria-label="Resource acknowledgement"]');
@@ -50,6 +70,7 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
   if (response === null) {
     throw new TypeError('The production page did not return a navigation response.');
   }
+  await waitForHydration(page);
 
   const html = await response.text();
   const bootstrapPaths = await page.locator('script[type="module"][src]').evaluateAll((scripts) =>
@@ -109,6 +130,7 @@ test('traverses admin QR and songs with a preserved shell, reset page state and 
     }
   });
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   await expect(page).toHaveTitle('Admin QR');
   await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', 'QR access');
   await expect(page.locator('meta[property="og:title"]')).toHaveCount(0);
@@ -174,6 +196,7 @@ test('traverses admin QR and songs with a preserved shell, reset page state and 
 test('keeps the approved page and head while a later HTTP destination is pending', async ({ page }) => {
   // Given: the exact negotiated request is held before it can approve a new page.
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   const initialTitle = await page.title();
   let release = () => {};
   const deferred = new Promise<void>((resolve) => { release = resolve; });
@@ -232,6 +255,7 @@ test('removes an approved page stylesheet without removing the global stylesheet
     }) });
   });
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   await page.evaluate(() => { document.documentElement.dataset.stylingIdentity = 'retained'; });
 
   // When: a page-owned stylesheet is approved and the next destination no longer owns it.
@@ -250,6 +274,7 @@ test('removes an approved page stylesheet without removing the global stylesheet
 test('ignores a superseded approval without replacing the newer route or head', async ({ page }) => {
   // Given: an older destination is held pending and a newer admin page can still respond.
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   let release = () => {};
   const deferred = new Promise<void>((resolve) => { release = resolve; });
   await page.route('**/products/sku-84?preview=false', async (route) => {
@@ -299,6 +324,7 @@ test('resets an approved render failure without reloading the document or the sh
     if (message.type() === 'error') diagnostics.push(message.text());
   });
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   const probe = page.getByRole('button', { name: 'Probe shell resource' });
   await subscribeToResourceAck(page, 1);
   await probe.click();
@@ -348,6 +374,7 @@ test('shows a separate usable view if the application error view throws', async 
     if (message.type() === 'error') diagnostics.push(message.text());
   });
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   const approved = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/products/render-error'
     && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2');
@@ -368,7 +395,19 @@ test('shows a separate usable view if the application error view throws', async 
 
 test('applies pathname, query, fragment and traversal focus and scroll defaults', async ({ page }) => {
   // Given: an approved document with enough height for distinct scroll positions.
-  await page.goto('/products/sku-42?preview=true');
+  let releaseBootstrap = () => {};
+  const bootstrapGate = new Promise<void>((resolve) => { releaseBootstrap = resolve; });
+  const bootstrapRequested = page.waitForRequest((request) =>
+    /\/assets\/entry-client-[^/]+\.js$/u.test(new URL(request.url()).pathname));
+  await page.route('**/assets/entry-client-*.js', async (route) => {
+    await bootstrapGate;
+    await route.continue();
+  });
+  await page.goto('/products/sku-42?preview=true', { waitUntil: 'commit' });
+  await bootstrapRequested;
+  expect(await page.locator('[data-resource-id]').getAttribute('data-resource-id')).toBe('');
+  releaseBootstrap();
+  await waitForHydration(page);
   await page.evaluate(() => {
     document.body.style.minHeight = '3000px';
     window.scrollTo(0, 400);
@@ -414,6 +453,7 @@ test('applies pathname, query, fragment and traversal focus and scroll defaults'
 test('preserves page-local state when a fragment focuses a target inside the approved slot', async ({ page }) => {
   // Given: the approved page owns both its counter and the fragment target.
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   await page.getByRole('button', { name: 'Page count: 0' }).click();
   await expect(page.getByRole('button', { name: 'Page count: 1' })).toBeVisible();
   await page.evaluate(() => { window.__softNavigationDocument = 'fragment-document'; });
@@ -433,6 +473,7 @@ test('keeps the shell resource operational after a malformed fragment', async ({
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   const probe = page.getByRole('button', { name: 'Probe shell resource' });
   await subscribeToResourceAck(page, 1);
   await probe.click();
@@ -461,6 +502,7 @@ test('keeps the official page slot and navigation controls reachable at mobile w
   // Given: a narrow real Chrome viewport rendering a production document.
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/admin/qr');
+  await waitForHydration(page);
 
   // When: a destination is approved in the same mobile document.
   await page.getByRole('link', { name: 'Open admin songs' }).click();
@@ -478,6 +520,7 @@ test('keeps the official page slot and navigation controls reachable at mobile w
 test('keeps native new tabs and full-document fallback on server rejection', async ({ page, context }) => {
   // Given: a hydrated page with a native anchor and a request rejected by HTTP validation.
   await page.goto('/admin/qr');
+  await waitForHydration(page);
   await expect(page.getByRole('heading', { name: 'Admin QR' })).toBeVisible();
   const originalUrl = page.url();
   const originalDocument = await page.evaluateHandle(() => document);

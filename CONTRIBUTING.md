@@ -45,6 +45,17 @@ request full verification; that choice is frozen in the plan. Extended verificat
 always runs the full suite. The `Verify` aggregate requires every selected result
 and artifact, and admits skipped workflow groups only when they were not selected.
 
+The test catalog reads the target checkout using the same include/exclude patterns
+as Vitest. Apps currently has no matching Vitest suite, so only its test command
+and capability are explicitly excluded with a `no-suite` reason. Docs-site, app
+typecheck and the remaining coverage of all 16 full tasks are retained; actual
+apps tests are automatically included when added. A selected command with zero
+tests fails. Losing coverage by deleting the last test or renaming it outside
+its owner or test pattern is not a pre-existing absent suite: it is blocked by
+`coverage-loss` rejection or a real runner zero-match failure. Exclusions are not
+PASS results and are recorded in the frozen plan. Required `Verify` still runs
+for documentation-only plans and unselected matrix groups.
+
 Full canonical local verification is not an automatic publication prerequisite;
 no full local receipt or waiver is required. Applicable current-head local
 failures, including receipt revalidation failures, still require fix-back.

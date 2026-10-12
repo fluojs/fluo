@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "testProjects": {
+    "packages": { "include": ["packages/**/*.test.ts"], "exclude": ["**/node_modules/**", "**/.git/**", "packages/**/deno/**", "packages/cli/.sandbox/**"] },
+    "apps": { "include": ["apps/**/*.test.ts"], "exclude": ["**/node_modules/**", "**/.git/**", "**/.next/**"] },
+    "examples": { "include": ["examples/**/*.test.ts"], "exclude": ["**/node_modules/**", "**/.git/**"] },
+    "tooling": { "include": ["tooling/**/*.test.ts"], "exclude": ["**/node_modules/**", "**/.git/**", "tooling/benchmarks/react-app-comparison/tests/evaluate.test.ts"] }
+  },
   "hostChecks": [
     { "id": "runner-integration", "executable": "node", "argv": ["--test", "tooling/ci/verification-runner.docker-test.mjs"], "cwd": "." }
   ],
@@ -45,7 +51,7 @@
         { "executable": "node", "argv": ["tooling/ci/react-product-acceptance.mjs", "capture", "tooling", "/evidence/react-product/tooling"], "cwd": ".", "env": { "FLUO_PRODUCT_CI": "1", "PLAYWRIGHT_BROWSERS_PATH": "/tmp/fluo-react-reliability-browsers" } },
         { "executable": "pnpm", "argv": ["vitest", "run", "--project", "tooling", "--shard=1/2", "--maxWorkers=1"], "cwd": "." }
       ] },
-    { "id": "tooling-2", "runtime": "primary", "dependencies": ["build"], "capabilities": ["tooling-2"], "inputs": ["build.tar"], "outputs": [], "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }, { "executable": "pnpm", "argv": ["vitest", "run", "--project", "tooling", "--shard=2/2", "--maxWorkers=1"], "cwd": "." }] },
+    { "id": "tooling-2", "runtime": "primary", "dependencies": ["build"], "capabilities": ["tooling-2"], "inputs": ["build.tar"], "outputs": [], "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }, { "executable": "node", "argv": ["--test", "--test-reporter=tap", "tooling/benchmarks/react-app-comparison/tests/evaluate.test.ts"], "cwd": "." }, { "executable": "pnpm", "argv": ["vitest", "run", "--project", "tooling", "--shard=2/2", "--maxWorkers=1"], "cwd": "." }] },
     { "id": "starters", "runtime": "primary", "dependencies": ["build"], "capabilities": ["generated-starters"], "inputs": ["build.tar"], "outputs": [], "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }, { "executable": "node", "argv": ["tooling/ci/react-product-acceptance.mjs", "capture", "starters", "/evidence/react-product/starters"], "cwd": ".", "env": { "FLUO_PRODUCT_CI": "1" } }] },
     { "id": "studio", "runtime": "primary", "dependencies": ["build"], "capabilities": ["studio-browser"], "inputs": ["build.tar"], "outputs": [],
       "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }, { "executable": "pnpm", "argv": ["--filter", "@fluojs/studio", "test:browser"], "cwd": "." }] },

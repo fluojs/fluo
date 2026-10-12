@@ -32,6 +32,10 @@ export type VerificationTask = {
 
 export type VerificationManifest = {
   readonly version: 2;
+  readonly testProjects: Readonly<Record<string, {
+    readonly include: readonly string[];
+    readonly exclude: readonly string[];
+  }>>;
   readonly hostChecks: readonly (VerificationCommand & { readonly id: string })[];
   readonly tasks: readonly VerificationTask[];
   readonly companions: readonly { readonly commands: readonly VerificationCommand[]; readonly id: string; readonly when: string }[];
@@ -62,6 +66,12 @@ export type VerificationPlan = {
   readonly forceFull: boolean;
   readonly selection: import('./detect-pr-verification-scope.mjs').VerificationSelection;
   readonly notApplicableCapabilities: Readonly<Record<string, string>>;
+  readonly notApplicableCommands: readonly {
+    readonly taskId: string;
+    readonly command: VerificationCommand;
+    readonly reason: string;
+  }[];
+  readonly testCatalog: Readonly<Record<string, readonly string[]>>;
   readonly tasks: readonly VerificationTask[];
 };
 
