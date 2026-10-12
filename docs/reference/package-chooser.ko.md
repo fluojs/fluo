@@ -4,6 +4,8 @@
 
 <p><a href="./package-chooser.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+> **Deno: Deprecated.** 신규 프로젝트에는 권장하지 않습니다. 새 기능, 성능 개선, 새로운 런타임 호환성을 추가하지 않으며 중대한 보안·회귀 수정은 건별 검토로 patch/LTS를 보장하지 않습니다. 기존 Deno 경로와 아래 예제는 유지하고 각 Deno 관련 패키지의 다음 major에서 제거합니다([#3938](https://github.com/fluojs/fluo/issues/3938)). [Deno 이전 가이드](../getting-started/migrate-from-deno.ko.md)를 따르세요.
+
 > 현재 `fluo new`가 실제로 무엇을 스캐폴딩하는지 찾고 있다면 [fluo new 지원 매트릭스](./fluo-new-support-matrix.ko.md)를 확인하세요. 이 chooser는 현재 스타터 프리셋만이 아니라 더 넓은 패키지 생태계를 다룹니다.
 
 ## 새 웹 API 만들기 (Node.js)
@@ -40,7 +42,7 @@
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | Bun 런타임 어댑터가 필요함 | `@fluojs/platform-bun` | 일치하는 `fluo new` runtime/platform 스타터 경로와 연결됩니다. |
-| Deno 런타임 어댑터가 필요함 | `@fluojs/platform-deno` | 일치하는 `fluo new` runtime/platform 스타터 경로와 연결됩니다. |
+| 기존 Deno 배포 (Deprecated) | `@fluojs/platform-deno` | 일치하는 `fluo new` runtime/platform 스타터 경로와 연결됩니다. |
 | Cloudflare Workers 어댑터가 필요함 | `@fluojs/platform-cloudflare-workers` | 일치하는 `fluo new` runtime/platform 스타터 경로와 연결됩니다. |
 
 ## 빌드 도구 설정
@@ -89,7 +91,7 @@
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | 전송 중립 WebSocket이 필요함 | `@fluojs/websockets` | Raw WebSocket 게이트웨이 작성에 사용합니다. |
-| 런타임별 WebSocket lifecycle service가 필요하거나 루트 Node.js 기본값 없이 fetch-style gateway authoring이 필요함 | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` | 런타임 경계와 일치하는 서브패스를 선택합니다. 각 서브패스도 공유 gateway decorator와 metadata helper를 노출합니다. |
+| 런타임별 WebSocket lifecycle service가 필요하거나 루트 Node.js 기본값 없이 fetch-style gateway authoring이 필요함 | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` | 런타임 경계와 일치하는 서브패스를 선택합니다. 각 서브패스도 공유 gateway decorator와 metadata helper를 노출합니다. Deno subpath는 Deprecated이며 신규 선택지가 아닙니다. |
 | Socket.IO 시맨틱이 필요함 | `@fluojs/socket.io` + `@fluojs/websockets` | Node.js `>=24.0.0 <27` server-backed adapter 또는 공식 Bun engine path의 Socket.IO 호환 통합에 사용합니다. Socket.IO gateway authoring은 `@fluojs/websockets`의 `@WebSocketGateway`, `@OnMessage`, lifecycle decorator를 재사용하므로 companion 패키지를 함께 설치하세요. Native Socket.IO emit 또는 ACK 중심 migration seam에는 `SOCKETIO_SERVER`를 주입합니다. Deno와 Workers는 지원하지 않고 Bun은 static CORS shape를 요구하며 Socket.IO는 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부합니다. |
 | optional cross-process fan-out이 있는 in-process domain event가 필요함 | `@fluojs/event-bus` + optional `@fluojs/event-bus/redis`, `@fluojs/redis`, `ioredis` peer | 반응이 process boundary를 넘어야 할 때만 Redis Pub/Sub을 사용합니다. `ioredis`를 설치하고 transport 전용 `publishClient`와 `subscribeClient`를 서로 다른 instance로 생성하며, event-bus teardown 후 client lifecycle owner가 두 client를 닫습니다. |
 | 메시지 패턴 마이크로서비스가 필요함 | `@fluojs/microservices` | 전송 기반 마이크로서비스 핸들러에 사용합니다. |

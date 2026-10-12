@@ -4,6 +4,10 @@
 
 Deno-backed HTTP adapter for the fluo runtime, built on native `Deno.serve`.
 
+> **Deprecated.** Do not adopt this adapter for new applications. The final supported line is `2.x`; removal is planned for its next major release in [#3938](https://github.com/fluojs/fluo/issues/3938). New features, performance work, and compatibility with new Deno releases have stopped. Critical security fixes and regressions are considered case by case, without a promise of additional patches or long-term support. Existing APIs, CLI starters, and regression checks remain during this transition. See the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md) for Node.js + Fastify or Cloudflare Workers alternatives. The exact final advisory version is determined by the Changesets release, not by this notice.
+
+The [Deno announcement](https://deno.com/blog/cloudflare) says the team will end runtime development after one year of monthly bug/security fixes; the runtime remains open source. Deno Deploy shuts down after six months. Fluo's support decision is separate from those upstream timelines.
+
 ## Table of Contents
 
 - [Installation](#installation)
@@ -26,7 +30,7 @@ This package is intended to run on Deno. The published manifest intentionally do
 
 ## When to Use
 
-Use this package when running fluo applications on the [Deno](https://deno.com/) runtime. This adapter leverages Deno's native `fetch`-standard `Request` and `Response` objects, providing a secure and high-performance environment for TypeScript backend development.
+Keep this package only for existing applications on the [Deno](https://deno.com/) runtime while migrating. It uses Deno's native `fetch`-standard `Request` and `Response` objects; it is no longer recommended for new applications.
 
 During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before the Deno server lifecycle completes.
 

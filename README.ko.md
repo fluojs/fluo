@@ -23,6 +23,8 @@
 
 <br/>
 
+> **Deno: Deprecated.** 신규 프로젝트에는 권장하지 않습니다. 새 기능, 성능 개선, 새로운 런타임 호환성을 추가하지 않으며 중대한 보안·회귀 수정은 건별 검토로 patch/LTS를 보장하지 않습니다. 기존 Deno 경로와 아래 예제는 유지하고 각 Deno 관련 패키지의 다음 major에서 제거합니다([#3938](https://github.com/fluojs/fluo/issues/3938)). [Deno 이전 가이드](./docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
+
 **fluo**는 TC39 표준 데코레이터와 명시적인 의존성 주입을 사용하는 TypeScript 백엔드 프레임워크입니다. 컨트롤러, 서비스, 모듈로 애플리케이션을 구성하고, 필요한 데이터베이스·인증·메시징 패키지를 선택해 연결합니다.
 
 [빠른 시작](#빠른-시작) · [Book](./book/README.ko.md) · [문서 지도](./docs/README.ko.md) · [예제](./examples/README.ko.md)
@@ -126,7 +128,7 @@ pnpm build
 | :--- | :--- |
 | **기반** | [Core](./packages/core/README.ko.md), [DI](./packages/di/README.ko.md), [Runtime](./packages/runtime/README.ko.md), [Config](./packages/config/README.ko.md), [I18n](./packages/i18n/README.ko.md) |
 | **HTTP/API** | [HTTP](./packages/http/README.ko.md), [Validation](./packages/validation/README.ko.md), [Serialization](./packages/serialization/README.ko.md), [OpenAPI](./packages/openapi/README.ko.md), [GraphQL](./packages/graphql/README.ko.md) |
-| **호스트 어댑터** | [Fastify](./packages/platform-fastify/README.ko.md), [Express](./packages/platform-express/README.ko.md), [Node.js](./packages/platform-nodejs/README.ko.md), [Next.js](./packages/platform-nextjs/README.ko.md), [Bun](./packages/platform-bun/README.ko.md), [Deno](./packages/platform-deno/README.ko.md), [Workers](./packages/platform-cloudflare-workers/README.ko.md) |
+| **호스트 어댑터** | [Fastify](./packages/platform-fastify/README.ko.md), [Express](./packages/platform-express/README.ko.md), [Node.js](./packages/platform-nodejs/README.ko.md), [Next.js](./packages/platform-nextjs/README.ko.md), [Bun](./packages/platform-bun/README.ko.md), [Deno (Deprecated)](./packages/platform-deno/README.ko.md), [Workers](./packages/platform-cloudflare-workers/README.ko.md) |
 | **인증** | [JWT](./packages/jwt/README.ko.md), [Passport](./packages/passport/README.ko.md) |
 | **데이터·캐시** | [Prisma](./packages/prisma/README.ko.md), [Drizzle](./packages/drizzle/README.ko.md), [Mongoose](./packages/mongoose/README.ko.md), [Redis](./packages/redis/README.ko.md), [Cache Manager](./packages/cache-manager/README.ko.md) |
 | **메시징·작업 처리** | [Microservices](./packages/microservices/README.ko.md), [CQRS](./packages/cqrs/README.ko.md), [Event Bus](./packages/event-bus/README.ko.md), [Queue](./packages/queue/README.ko.md), [Cron](./packages/cron/README.ko.md) |

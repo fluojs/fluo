@@ -1,5 +1,7 @@
 # fluo Docs Hub
 
+Deno support is Deprecated. Existing users and new runtime selection should start with the [Deno migration guide](./getting-started/migrate-from-deno.md).
+
 This directory contains governed repository documentation for fluo. The official website source now lives in `apps/docs` and uses Fumadocs to publish an English-only documentation surface.
 
 Docs is the normative framework contract layer for AI; the Book is the human product narrative derived from those same contracts. The [documentation authority policy](./contracts/documentation-authority.md) defines ownership, concise Markdown contract fields, conflict resolution, and change order. Package READMEs are delegated package API owners within this layer. They retain installation, public imports, essential usage, defaults, and guarantee summaries and link shared contracts without duplicating API bodies into `docs/`.

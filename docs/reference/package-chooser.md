@@ -4,6 +4,8 @@ Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/s
 
 <p><strong><kbd>English</kbd></strong> <a href="./package-chooser.ko.md"><kbd>한국어</kbd></a></p>
 
+> **Deno: Deprecated.** Not recommended for new projects. No new features, performance work, or new runtime compatibility; critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths and examples below remain usable; removal is planned for the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). Follow the [Deno migration guide](../getting-started/migrate-from-deno.md).
+
 > Looking for what `fluo new` actually scaffolds today? See the [fluo new support matrix](./fluo-new-support-matrix.md). This chooser covers the broader package ecosystem, not just current starter presets.
 
 ## build a new web API (Node.js)
@@ -40,7 +42,7 @@ Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/s
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need a Bun runtime adapter | `@fluojs/platform-bun` | Maps to the matching `fluo new` runtime/platform starter path. |
-| Need a Deno runtime adapter | `@fluojs/platform-deno` | Maps to the matching `fluo new` runtime/platform starter path. |
+| Existing Deno deployment (Deprecated) | `@fluojs/platform-deno` | Maps to the matching `fluo new` runtime/platform starter path. |
 | Need a Cloudflare Workers adapter | `@fluojs/platform-cloudflare-workers` | Maps to the matching `fluo new` runtime/platform starter path. |
 
 ## configure build tooling
@@ -89,7 +91,7 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need transport-neutral WebSockets | `@fluojs/websockets` | Use for raw WebSocket gateway authoring. |
-| Need runtime-specific WebSocket lifecycle services or fetch-style gateway authoring without the root Node.js default | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, or `@fluojs/websockets/cloudflare-workers` | Choose the subpath that matches the runtime boundary; each subpath also exposes the shared gateway decorators and metadata helpers. |
+| Need runtime-specific WebSocket lifecycle services or fetch-style gateway authoring without the root Node.js default | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, or `@fluojs/websockets/cloudflare-workers` | Choose the subpath that matches the runtime boundary; each subpath also exposes the shared gateway decorators and metadata helpers. The Deno subpath is Deprecated, not a new-project choice. |
 | Need Socket.IO semantics | `@fluojs/socket.io` + `@fluojs/websockets` | Use for Socket.IO-compatible integrations on Node.js `>=24.0.0 <27` server-backed adapters or the official Bun engine path. Install the websockets companion because Socket.IO gateway authoring reuses `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators from `@fluojs/websockets`; inject `SOCKETIO_SERVER` for native Socket.IO emits/ACK-oriented migration seams. Deno and Workers are unsupported, Bun requires static CORS shapes, and Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime. |
 | Need in-process domain events with optional cross-process fan-out | `@fluojs/event-bus` + optional `@fluojs/event-bus/redis`, `@fluojs/redis`, and `ioredis` peer | Use Redis Pub/Sub only when reactions must cross process boundaries. Install `ioredis`, then create dedicated, separate `publishClient` and `subscribeClient` instances; the client lifecycle owner closes both after event-bus teardown. |
 | Need message-pattern microservices | `@fluojs/microservices` | Use for transport-driven microservice handlers. |

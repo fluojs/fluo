@@ -5,6 +5,8 @@
 
 fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 React page type 생성, 런타임 검사 데이터 내보내기, 코드 변환을 지원합니다.
 
+> **Deno target deprecated.** 기존 Deno `fluo new` recipe와 dev/build/start 명령은 이전 기간 동안 사용할 수 있지만 새 프로젝트에는 권장하지 않습니다. CLI의 다음 major에서 Deno 전용 지원을 제거하는 계획은 [#3938](https://github.com/fluojs/fluo/issues/3938)에서 추적합니다. 신규 Deno 기능, 성능 개선, runtime 호환성 작업은 중단하며 심각한 보안 문제와 회귀는 추가 패치나 LTS 보장 없이 건별로 판단합니다. 기본 경로는 Node.js + Fastify이며 배포 방식에 따라 Bun/Workers를 선택하세요. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
+
 ## Canonical command vocabulary
 
 같은 `react-vite-ssr` starter에 `/catalog/session` sign-in과

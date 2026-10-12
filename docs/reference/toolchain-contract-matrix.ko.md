@@ -2,6 +2,8 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./toolchain-contract-matrix.md"><kbd>English</kbd></a></p>
 
+> **Deno: Deprecated.** 신규 프로젝트에는 권장하지 않습니다. 새 기능, 성능 개선, 새로운 런타임 호환성을 추가하지 않으며 중대한 보안·회귀 수정은 건별 검토로 patch/LTS를 보장하지 않습니다. 기존 Deno 경로와 아래 예제는 유지하고 각 Deno 관련 패키지의 다음 major에서 제거합니다([#3938](https://github.com/fluojs/fluo/issues/3938)). [Deno 이전 가이드](../getting-started/migrate-from-deno.ko.md)를 따르세요.
+
 기존 프로젝트의 다음 릴리스 준비는 [coordinated Node 24 migration](../getting-started/migrate-node24.ko.md)을 따르세요. Vite 8.2.2/Vitest 4.1.11 peer, Rolldown config, test-file Babel ignore 제거를 함께 다루며 CLI 업그레이드가 기존 config를 재작성한다고 가정하지 않습니다.
 
 ## 생성 앱 기준선

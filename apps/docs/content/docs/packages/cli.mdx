@@ -4,9 +4,11 @@ description: Scaffold, generate, migrate, inspect, and run fluo applications wit
 package: "@fluojs/cli"
 ---
 
+> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+
 `@fluojs/cli` is the canonical entry point for fluo application work: it scaffolds new projects (`fluo new`), generates feature files with automatic module wiring (`fluo generate`), aligns existing codebases with fluo's decorator model (`fluo migrate`), exports runtime inspection data (`fluo inspect`), generates React page types (`fluo typegen`), and runs the application lifecycle (`fluo dev`, `fluo build`, `fluo start`). Everything the CLI writes is ordinary project code - there is no daemon, no hidden state, and no config file it owns.
 
-The CLI runs on Node.js `>=24.0.0 <27` (its published `engines.node` contract). Generated Bun, Deno, and Cloudflare Workers starters may target those native runtimes, but the CLI process itself is always Node.js.
+The CLI runs on Node.js `>=24.11.0 <27` (its published `engines.node` contract and Babel 8 toolchain floor). Generated Bun, Deno, and Cloudflare Workers starters may target those native runtimes, but the CLI process itself is always Node.js.
 
 ## Installation
 

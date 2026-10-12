@@ -285,7 +285,7 @@ Runtime choices and operational review: select your target host. The final FluoS
   - [22.9 Summary of the Porting Process](ch22-bun.md#229-summary-of-the-porting-process)
   - [22.10 Key Takeaways](ch22-bun.md#2210-key-takeaways)
   - [22.11 Troubleshooting Common Bun Issues](ch22-bun.md#2211-troubleshooting-common-bun-issues)
-- [23. Porting to Deno](ch23-deno.md)
+- [23. Porting to Deno](ch23-deno.md) — Deprecated; [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
   - [23.1 Why Use Deno for fluo?](ch23-deno.md#231-why-deno-for-fluo)
   - [23.2 The Deno Adapter](ch23-deno.md#232-the-deno-adapter)
   - [23.3 Web Standards and Request Dispatching](ch23-deno.md#233-web-standards-and-request-dispatching)

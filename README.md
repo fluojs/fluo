@@ -23,6 +23,8 @@
 
 <br/>
 
+> **Deno: Deprecated.** Not recommended for new projects. No new features, performance work, or new runtime compatibility; critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths and examples below remain usable; removal is planned for the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). Follow the [Deno migration guide](./docs/getting-started/migrate-from-deno.md).
+
 **fluo** is a TypeScript backend framework built on TC39 standard decorators and explicit dependency injection. Organize applications into controllers, services, and modules, then connect the database, authentication, and messaging packages you need.
 
 [Quick Start](#quick-start) · [Book](./book/README.md) · [Documentation](./docs/README.md) · [Examples](./examples/README.md)
@@ -126,7 +128,7 @@ Connect the capabilities you need. These are representative packages; the [packa
 | :--- | :--- |
 | **Foundations** | [Core](./packages/core/README.md), [DI](./packages/di/README.md), [Runtime](./packages/runtime/README.md), [Config](./packages/config/README.md), [I18n](./packages/i18n/README.md) |
 | **HTTP/API** | [HTTP](./packages/http/README.md), [Validation](./packages/validation/README.md), [Serialization](./packages/serialization/README.md), [OpenAPI](./packages/openapi/README.md), [GraphQL](./packages/graphql/README.md) |
-| **Host adapters** | [Fastify](./packages/platform-fastify/README.md), [Express](./packages/platform-express/README.md), [Node.js](./packages/platform-nodejs/README.md), [Next.js](./packages/platform-nextjs/README.md), [Bun](./packages/platform-bun/README.md), [Deno](./packages/platform-deno/README.md), [Workers](./packages/platform-cloudflare-workers/README.md) |
+| **Host adapters** | [Fastify](./packages/platform-fastify/README.md), [Express](./packages/platform-express/README.md), [Node.js](./packages/platform-nodejs/README.md), [Next.js](./packages/platform-nextjs/README.md), [Bun](./packages/platform-bun/README.md), [Deno (Deprecated)](./packages/platform-deno/README.md), [Workers](./packages/platform-cloudflare-workers/README.md) |
 | **Authentication** | [JWT](./packages/jwt/README.md), [Passport](./packages/passport/README.md) |
 | **Data and caching** | [Prisma](./packages/prisma/README.md), [Drizzle](./packages/drizzle/README.md), [Mongoose](./packages/mongoose/README.md), [Redis](./packages/redis/README.md), [Cache Manager](./packages/cache-manager/README.md) |
 | **Messaging and jobs** | [Microservices](./packages/microservices/README.md), [CQRS](./packages/cqrs/README.md), [Event Bus](./packages/event-bus/README.md), [Queue](./packages/queue/README.md), [Cron](./packages/cron/README.md) |

@@ -114,6 +114,9 @@ function createCompletionSignal(): { promise: Promise<void>; resolve: () => void
 
 /**
  * Boots Deno-backed websocket gateways and manages their room lifecycle state.
+ *
+ * @deprecated Deno support ends at the next major. See
+ * https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS_INTERNAL)
 export class DenoWebSocketGatewayLifecycleService

@@ -285,7 +285,7 @@
   - [22.9 이식 과정 요약](ch22-bun.ko.md#229-summary-of-the-porting-process)
   - [22.10 핵심 정리](ch22-bun.ko.md#2210-key-takeaways)
   - [22.11 흔한 Bun 문제 해결하기](ch22-bun.ko.md#2211-troubleshooting-common-bun-issues)
-- [23. Deno로 이식하기](ch23-deno.ko.md)
+- [23. Deno로 이식하기](ch23-deno.ko.md) — Deprecated; [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md).
   - [23.1 왜 fluo에 Deno를 사용할까?](ch23-deno.ko.md#231-why-deno-for-fluo)
   - [23.2 Deno 어댑터](ch23-deno.ko.md#232-the-deno-adapter)
   - [23.3 웹 표준과 요청 디스패칭](ch23-deno.ko.md#233-web-standards-and-request-dispatching)

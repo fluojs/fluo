@@ -1,0 +1,90 @@
+---
+title: Migrate from Deno
+description: Move existing Deprecated Deno applications to the default Node.js Fastify path or a host-owned Cloudflare Workers handler.
+---
+
+**Deno support is Deprecated, not recommended for new projects.** There will be no new features, performance work, or new runtime compatibility for Fluo's Deno adapter, WebSocket binding, or CLI target. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno adapter/WebSocket `2.x` and CLI `3.x` remain usable; removal is planned for the next major of the respective Deno-related packages, tracked in [#3938](https://github.com/fluojs/fluo/issues/3938).
+
+The [canonical migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) owns the complete checklist and source evidence. The exact last advisory version is determined by Changesets release; this page does not claim npm deprecation has completed.
+
+The [2026-10-09 official announcement](https://deno.com/blog/cloudflare) promises monthly runtime bug/security fixes for one year, then ends the team's runtime development; Deno remains open source. Deploy shuts down after six months, while JSR continues. That is not a Fluo patch/LTS commitment.
+
+## Node.js + Fastify: the default path
+
+Use Node.js `>=24.11.0 <27` for the CLI and generated Babel/Vite toolchain (the adapter's runtime-only range is `>=24.0.0 <27`) and compare a separate starter with your application:
+
+```bash
+pnpm dlx @fluojs/cli new migrated-api --shape application --transport http --runtime node --platform fastify
+```
+
+Keep controllers and feature modules; replace the Deno adapter dependency with `@fluojs/platform-fastify` and `@fluojs/platform-nodejs`. These entrypoint fragments assume an existing `AppModule` and working standard decorator tooling.
+
+Before:
+
+```ts
+import '@fluojs/core/metadata-preload';
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.ts';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({ port: 3000 }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
+});
+await app.listen();
+```
+
+After:
+
+```ts
+import '@fluojs/core/metadata-preload';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app';
+
+const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
+const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: FastifyHttpApplicationAdapter.create({ port }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
+```
+
+Factory initializes; `app.listen()` opens the listener. Node signals require explicit registration. The adapter never reads `PORT`. Keep generated decorator transforms and metadata preload; do not enable legacy decorator flags or replace the Vite build with direct Node TypeScript execution.
+
+## Workers: a host-owned fetch handler
+
+A host-owned Deno deployment creates `createDenoFetchHandler({ dispatcher: app.dispatcher })` after Factory bootstrap, calls `Deno.serve(...)` itself, and owns server stop, signals, and upgrades separately. It does not call managed `app.listen()`.
+
+Replace that orchestration with the generated lazy Worker host:
+
+```ts
+import '@fluojs/core/metadata-preload';
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
+import { AppModule } from './app';
+
+const worker = CloudflareWorkerApplicationHost.create(AppModule);
+
+export default {
+  fetch: worker.fetch,
+};
+```
+
+No socket listener or process-signal registration is needed. The host owns lazy bootstrap, generation replacement, retry, and close/drain recovery. Workers does not invoke a shutdown callback through exported `fetch`; exporting it alone arranges no close. An application-owned trigger outside `worker.fetch` may await `worker.close()`. A route inside that same request must return its response and observe close with `executionContext.waitUntil(worker.close())` or an equivalent mechanism, avoiding a self-awaiting drain. Successful close is restartable, not terminal isolate shutdown.
+
+Use `CloudflareWorkerApplicationHost.create({ fromEnv })` when the first environment must configure singleton bootstrap. That configuration is cached; later request environments do not reconfigure it. Read the [Workers host contract](/docs/packages/platform-cloudflare-workers).
+
+## Operational checklist
+
+- **Permissions and environment:** Deno `--allow-*` flags do not transfer. On Node, configure OS/container access and replace entrypoint `Deno.env` reads with an application-owned `process.env` snapshot. On Workers, use bindings/secrets and choose bootstrap versus request configuration explicitly.
+- **Files, storage, TLS:** Replace Deno filesystem calls with Node APIs, or choose Worker storage bindings and application-owned asset sources. Migrate Deno KV data separately. Fastify accepts Node `https` options loaded at the application boundary; Workers owns TLS endpoints, not Deno `cert/key` options.
+- **Shutdown and WebSockets:** Preserve lifecycle ownership and verify failure policy. Replace `DenoWebSocketModule` with `NodeWebSocketModule` or `CloudflareWorkersWebSocketModule` from the matching subpath. Recheck injection tokens, payload/socket types, guards, rooms, backpressure, and disconnect drain. Workers still rejects `serverBacked` and does not support Socket.IO.
+- **CLI and scripts:** The CLI itself runs on Node. Existing explicit Deno runtime/platform values remain available but Deprecated. Runtime detection uses platform dependencies in `package.json`; replace the Deno dependency and align overrides. Node uses generated `fluo dev/build/start`. Workers uses `fluo dev`, `wrangler deploy --dry-run`, remote preview, and `deploy: wrangler deploy`; it has no generated `start` script. Deployment is a separate external action.
+- **Configuration and lockfiles:** Translate `deno.json` import maps, `npm:`/URL/JSR imports, and tasks to package dependencies and bundler rules. Generate a target package-manager lockfile; `deno.lock` is not its replacement. Preserve old artifacts for rollback and remaining consumers.
+- **Validation:** Keep standard decorator build/test configuration. Validate raw-body/multipart/SSE, realtime, TLS, production restart, driver compatibility, and shutdown failures in the target application before switching traffic. Adapter selection does not broaden package-specific support.
+
+See the canonical [starter matrix](https://github.com/fluojs/fluo/blob/main/docs/reference/fluo-new-support-matrix.md), [toolchain matrix](https://github.com/fluojs/fluo/blob/main/docs/reference/toolchain-contract-matrix.md), and [migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) for the full before/after host-owned example and evidence paths.

@@ -107,6 +107,9 @@ declare global {
  *
  * Direct construction accepts the same public options as `DenoHttpApplicationAdapter.create(...)` and applies the
  * same default port, `host` alias, `hostname` precedence, and numeric option validation.
+ *
+ * @deprecated Deno support ends at the next major. Migrate to a supported adapter:
+ * https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md
  */
 // allow: SIZE_OK — Deno serve, websocket, signal, and shutdown state form one adapter lifecycle state machine.
 export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
@@ -117,6 +120,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
    *
    * @param options Transport, parsing, and websocket-host configuration for the Deno runtime.
    * @returns A concrete Deno-backed HTTP application adapter.
+   * @deprecated Migrate to a supported adapter before the next major; see the Deno migration guide.
    */
   static create(options: DenoAdapterOptions = {}): DenoHttpApplicationAdapter {
     return new DenoHttpApplicationAdapter(options);

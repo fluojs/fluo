@@ -5,6 +5,8 @@
 
 The canonical CLI for fluo — bootstrap new applications, generate components and React page types, export runtime inspection data, and run code transforms.
 
+> **Deno target deprecated.** Existing Deno `fluo new` recipes and dev/build/start commands remain available during migration, but are not recommended for new projects. Deno-specific CLI support is planned for removal at the CLI's next major in [#3938](https://github.com/fluojs/fluo/issues/3938). No new Deno features, performance or runtime compatibility work is planned; critical security/regression fixes are considered without a patch or LTS guarantee. Use Node.js + Fastify by default, or choose Bun/Workers for those deployment models. See the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
+
 ## Canonical command vocabulary
 
 The same `react-vite-ssr` starter includes `/catalog/session` sign-in and an

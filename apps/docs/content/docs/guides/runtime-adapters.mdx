@@ -1,7 +1,9 @@
 ---
 title: Runtime Adapters
-description: Run the same fluo application model on Fastify, Express, raw Node.js, Bun, Deno, and Cloudflare Workers.
+description: Choose Fastify, Express, raw Node.js, Bun, or Cloudflare Workers; retain Deprecated Deno reference for existing applications.
 ---
+
+> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
 
 Runtime adapters are the seam between fluo application semantics and a concrete host runtime.
 
@@ -35,7 +37,7 @@ On raw Node.js, Express, and Fastify, use `createNodeFileSystemAssetSource(...)`
 | Raw Node.js HTTP/HTTPS | `@fluojs/platform-nodejs` | Minimal dependencies and direct Node server control. |
 | Express | `@fluojs/platform-express` | Existing Express infrastructure and middleware familiarity. |
 | Bun | `@fluojs/platform-bun` | Bun-native `Bun.serve()` applications. |
-| Deno | `@fluojs/platform-deno` | Deno-native `Deno.serve` deployments. |
+| Deno (Deprecated) | `@fluojs/platform-deno` | Deno-native `Deno.serve` deployments. |
 | Cloudflare Workers | `@fluojs/platform-cloudflare-workers` | Edge `fetch` handlers and Worker isolate constraints. |
 
 ## The portable application contract
@@ -277,7 +279,7 @@ Bun fetch dispatch preserves the shared single-byte-range and `If-Range` policy:
 
 ## Deno
 
-Use the Deno adapter for native `Deno.serve` deployments.
+The following native `Deno.serve` examples preserve existing Deprecated Deno deployments; they are not a recommendation for new applications.
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';

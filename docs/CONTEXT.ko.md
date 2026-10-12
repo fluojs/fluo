@@ -1,5 +1,7 @@
 # fluo — AI Context Document
 
+> **Deno: Deprecated.** 신규 프로젝트에는 권장하지 않습니다. 새 기능, 성능 개선, 새로운 런타임 호환성을 추가하지 않으며 중대한 보안·회귀 수정은 건별 검토로 patch/LTS를 보장하지 않습니다. 기존 Deno 경로와 아래 예제는 유지하고 각 Deno 관련 패키지의 다음 major에서 제거합니다([#3938](https://github.com/fluojs/fluo/issues/3938)). [Deno 이전 가이드](./getting-started/migrate-from-deno.ko.md)를 따르세요.
+
 공유 진단 데이터와 static/report/live reader 소유권은 [`@fluojs/diagnostics`](../packages/diagnostics/README.ko.md)에 위임합니다. Runtime/core/Studio/status 호환성, wire와 parsed route field 및 CLI ingress 경계는 [선택적 import migration](./getting-started/migrate-diagnostics.ko.md)을 참조하세요. Runtime은 lifecycle/resource를, Studio는 filter/Mermaid/UI를 소유합니다.
 
 일반 identity·인증 결과·account-linking 정책은 `@fluojs/auth`, HTTP guard·strategy·credential·refresh integration은 `@fluojs/auth-http`, crypto와 rotation/replay는 `@fluojs/jwt`, Passport.js bridge는 `@fluojs/passport`가 소유합니다. 기존 Passport 예제와 import는 compatibility 경로이며 canonical HTTP 등록은 auth-http의 `AuthModule.forRoot(...)`입니다.

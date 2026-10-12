@@ -67,6 +67,16 @@ PRs carrying `major` changesets require explicit maintainer approval and consume
 
 Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`). Enter prerelease mode on a dedicated branch when needed; exit with `changeset pre exit` before stable releases.
 
+## Deno deprecation advisory and registry metadata
+
+Deno support is Deprecated: no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case with no patch/LTS guarantee. Existing 2.x APIs and explicit CLI paths remain usable; removal is planned for the next major of the respective Deno-related packages under [#3938](https://github.com/fluojs/fluo/issues/3938). Follow the [canonical migration guide](../getting-started/migrate-from-deno.md). This status does not remove `@fluojs/platform-deno` from the publish catalog below or replace existing behavioral ownership.
+
+Phase 1 records a backward-compatible patch advisory for `@fluojs/platform-deno`, `@fluojs/websockets`, and `@fluojs/cli`. Changesets determines the exact advisory versions through the canonical release workflow; do not infer a final advisory version from the unrelated contents of the current Version Packages PR.
+
+The canonical `.github/workflows/release.yml` runs `node tooling/release/deprecate-platform-deno.mjs` after the Changesets action. The helper is intended to apply npm deprecation metadata to `@fluojs/platform-deno@*` only once the public npm `latest` version and description match the advisory workspace manifest. A mismatch returns `pending-advisory-release` without writing metadata. Before a write, the helper verifies that the canonical migration guide is publicly reachable through its raw GitHub URL. It uses `NODE_AUTH_TOKEN` from the existing `secrets.NPM_TOKEN`, not a local publish path.
+
+The helper reads a fresh full npm packument after the operation and requires the exact deprecation message on every returned version, including prereleases. Read, guide-access, write, or verification failures fail the workflow. If all versions already have the exact message, reruns skip the metadata write but still verify fresh registry state. This is policy and automation, not proof of execution: report registry deprecation as complete only after an actual confirming npm observation. Do not deprecate the entire shared WebSockets or CLI package merely because its Deno surface is Deprecated.
+
 ## intended publish surface
 
 `@fluojs/diagnostics` is a Preview (`0.x`) portable contract package. Its shared declaration ownership and reader APIs preserve existing public imports and version-1 artifacts; filters, transport, lifecycle and feature status policy remain with their existing packages.

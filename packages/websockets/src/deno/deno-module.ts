@@ -6,6 +6,9 @@ import type { WebSocketModuleOptions } from './deno-types.js';
 
 /**
  * Explicit Deno websocket module entrypoint.
+ *
+ * @deprecated Deno support ends at the next major. See
+ * https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md
  */
 export class DenoWebSocketModule {
   /**
@@ -13,6 +16,7 @@ export class DenoWebSocketModule {
    *
    * @param options Websocket gateway runtime options for guards, limits, heartbeat, and shutdown behavior.
    * @returns A runtime module definition scoped to the Deno websocket adapter.
+   * @deprecated Migrate to the Node, Bun, or Workers module before the next major.
    */
   static forRoot(options: WebSocketModuleOptions = {}): ModuleType {
     class DenoWebSocketRuntimeModule extends DenoWebSocketModule {}

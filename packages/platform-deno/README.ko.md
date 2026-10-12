@@ -4,6 +4,10 @@
 
 네이티브 `Deno.serve`를 기반으로 구축된 fluo 런타임용 Deno 기반 HTTP 어댑터 패키지입니다.
 
+> **Deprecated.** 새 애플리케이션에서는 이 어댑터를 채택하지 마세요. 최종 지원 라인은 `2.x`이며, 다음 major에서 제거할 계획은 [#3938](https://github.com/fluojs/fluo/issues/3938)에서 추적합니다. 신규 기능, 성능 개선, 새 Deno 릴리스 호환성 작업은 중단합니다. 심각한 보안 문제와 회귀는 건별로 판단하며 추가 패치나 장기 지원을 보장하지 않습니다. 이전 기간에는 기존 API, CLI starter와 회귀 검증을 유지합니다. Node.js + Fastify 또는 Cloudflare Workers로 이전하려면 [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요. 정확한 최종 안내 버전은 이 공지가 아니라 Changesets 릴리스에서 결정합니다.
+
+[Deno 공식 발표](https://deno.com/blog/cloudflare)는 1년간 월별 버그·보안 수정 후 팀의 runtime 개발을 종료한다는 내용이며 오픈소스는 남습니다. Deno Deploy는 6개월 후 종료합니다. Fluo의 지원 중단은 upstream의 일정과 별개인 결정입니다.
+
 ## 목차
 
 - [설치](#설치)
@@ -26,7 +30,7 @@ deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
 
 ## 사용 시점
 
-fluo 애플리케이션을 [Deno](https://deno.com/) 런타임에서 실행할 때 이 패키지를 사용합니다. 이 어댑터는 Deno의 네이티브 `fetch` 표준 `Request` 및 `Response` 객체를 활용하여 TypeScript 백엔드 개발을 위한 안전하고 고성능인 환경을 제공합니다.
+이전 중인 기존 [Deno](https://deno.com/) 애플리케이션에서만 이 패키지를 유지하세요. Deno의 네이티브 `fetch` 표준 `Request` 및 `Response` 객체를 사용하며, 새 애플리케이션에는 더 이상 권장하지 않습니다.
 
 애플리케이션 종료 중에는 새 유입을 중단하고, Deno 서버 수명주기가 종료되기 전에 활성 HTTP 핸들러가 bounded drain window 안에서 마무리될 수 있도록 동작합니다.
 
