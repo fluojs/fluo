@@ -42,6 +42,7 @@ export type ProfileRun = Awaited<ReturnType<typeof monitorServer<Measurement>>> 
   readonly endedMs: number;
   readonly launch: { readonly command: string; readonly args: readonly string[]; readonly cwd: string; readonly env: Readonly<Record<string, string>> };
   readonly exit: { readonly code: number | null; readonly signal: string | null };
+  readonly shutdownPath?: string;
 };
 export interface ProfileCapture {
   readonly condition: ProfileCondition;
@@ -168,6 +169,51 @@ export function conditionKey(condition: ProfileCondition): string {
   return JSON.stringify([condition.target, condition.platform, condition.scenario, condition.configuration, condition.connections, condition.repeat, condition.mode]);
 }
 
+function collectedWorkerInterrupt(capture: ProfileCapture, run: ProfileRun, raw: ReadonlyMap<string, Uint8Array>): boolean {
+  if (capture.condition.platform !== 'workers' || capture.subject?.kind !== 'application-isolate'
+    || run.launch.command !== capture.subject.runtime.executable
+    || run.launch.args[0] !== 'serve' || !run.launch.args.includes('--control-fd=3')
+    || run.server.rootPid !== run.launcherPid || !run.shutdownPath) return false;
+  try {
+    const shutdownArtifact = capture.artifacts.find((artifact) => artifact.path === run.shutdownPath && artifact.kind === 'identity');
+    const bytes = raw.get(run.shutdownPath);
+    if (!shutdownArtifact || !bytes) return false;
+    const receipt = object(JSON.parse(new TextDecoder().decode(bytes)));
+    const intent = object(receipt.intent);
+    const intentPath = run.shutdownPath.replace(/\.shutdown\.json$/, '.shutdown-intent.json');
+    const intentBytes = raw.get(intentPath);
+    if (!capture.artifacts.some((artifact) => artifact.path === intentPath && artifact.kind === 'identity')
+      || !intentBytes || JSON.stringify(JSON.parse(new TextDecoder().decode(intentBytes))) !== JSON.stringify(intent)) return false;
+    const traffic = object(intent.traffic);
+    const requestMs = receipt.requestedMs;
+    const exitMs = receipt.exitObservedMs;
+    const drainedMs = receipt.drainedMs;
+    if (intent.owner !== 'profile-collector' || intent.target !== capture.condition.target
+      || intent.phase !== run.phase || intent.pid !== run.launcherPid || receipt.pid !== run.launcherPid
+      || receipt.requestedSignal !== 'SIGINT' || receipt.signalSent !== true || receipt.forced !== false
+      || receipt.stdoutDrained !== true || receipt.stderrDrained !== true
+      || typeof requestMs !== 'number' || !Number.isFinite(requestMs) || requestMs < run.endedMs
+      || typeof exitMs !== 'number' || !Number.isFinite(exitMs) || exitMs < requestMs
+      || typeof drainedMs !== 'number' || !Number.isFinite(drainedMs) || drainedMs < exitMs
+      || typeof traffic.materializedMs !== 'number' || !Number.isFinite(traffic.materializedMs)
+      || traffic.materializedMs < run.endedMs || traffic.materializedMs > requestMs
+      || !capture.artifacts.some((artifact) => artifact.path === traffic.path && artifact.kind === 'diagnostics'
+        && artifact.bytes === traffic.bytes && artifact.sha256 === traffic.sha256)
+      || traffic.sha256 !== sha256(JSON.stringify({ value: run.value, server: run.server }))) return false;
+    if (run.phase === 'capture') {
+      const profile = object(intent.profile);
+      if (profile.path !== capture.profilePath || typeof profile.materializedMs !== 'number' || !Number.isFinite(profile.materializedMs)
+        || profile.materializedMs < run.endedMs || profile.materializedMs > requestMs
+        || !capture.artifacts.some((artifact) => artifact.path === profile.path && artifact.kind === 'profile'
+          && artifact.bytes === profile.bytes && artifact.sha256 === profile.sha256)) return false;
+    } else if (intent.profile !== null) return false;
+    return true;
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    return false;
+  }
+}
+
 export function validateCapture(capture: ProfileCapture, raw: ReadonlyMap<string, Uint8Array>): readonly string[] {
   const errors: string[] = [];
   for (const artifact of capture.artifacts) {
@@ -212,7 +258,8 @@ export function validateCapture(capture: ProfileCapture, raw: ReadonlyMap<string
     || run.instrumentation !== (index === 1 ? capture.condition.mode : 'none')
     || run.value.result.requests.total <= 0 || run.value.result.errors !== 0 || run.value.result.timeouts !== 0
     || run.value.result.non2xx !== 0 || run.value.result.mismatches !== 0 || run.value.statusMismatches !== 0
-    || !(run.endedMs > run.startedMs) || (run.exit.signal !== null && run.exit.signal !== 'SIGTERM')
+    || !(run.endedMs > run.startedMs) || (run.exit.signal !== null && run.exit.signal !== 'SIGTERM'
+      && !(run.exit.signal === 'SIGINT' && collectedWorkerInterrupt(capture, run, raw)))
     || (run.exit.code !== null && run.exit.code !== 0 && !(capture.condition.platform === 'nextjs' && run.exit.code === 143)))) errors.push('partial-or-invalid-traffic');
   if (capture.status === 'supported' && (capture.anchors.length !== 2 || capture.anchors.some((a) => !Number.isFinite(a.servingMs)
     || a.collectorAfterMs < a.collectorBeforeMs) || capture.anchors[1]?.servingMs < capture.anchors[0]?.servingMs)) errors.push('time-anchors');

@@ -5,5 +5,5 @@ const host = CloudflareWorkerApplicationHost.create<{ BENCH_APP_SHAPE: string }>
   fromEnv: (env) => ({ rootModule: resolveAppModule(readAppShape(env.BENCH_APP_SHAPE)) }),
 });
 
-// Wrangler supplies the real workerd executionContext; never fabricate it.
+// workerd supplies the real executionContext; never fabricate it.
 export default { fetch: host.fetch };

@@ -1,0 +1,10 @@
+# Local raw verification remains available at manifest-bound paths.
+*.log
+correctness-*.json
+correctness-*-subjects/
+direct-workerd-correctness-*-subjects/
+direct-workerd-intent-final-correctness-subjects/
+direct-workerd-profiles-*/
+direct-workerd-shutdown-probe*/
+result-*.json
+!manifest.json

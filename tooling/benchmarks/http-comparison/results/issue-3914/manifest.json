@@ -1,0 +1,391 @@
+{
+  "schemaVersion": 1,
+  "issue": 3914,
+  "preflightSha256": "8e34d4ece469d7dfc0ddaaf1838168fb210f6e864d26970415f2f6ded739c46b",
+  "reportingPreflightSha256": "1a018aa1cf3bb25ffaceac8b972be30fdeaa1c7f25105a40f0b5ef4a8dda2857",
+  "historicalPreflightSha256": "0c187df4dc4be8509c067d34c60c2dc418608a376f73fdb26fe50af63bd27e74",
+  "startingHead": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+  "kind": "local-implementation-correctness",
+  "notPerformanceAcceptance": true,
+  "completionScope": {
+    "status": "OWNER_APPROVED_COMPLETION_SCOPE_AMENDMENT",
+    "amendment": ".omo/verification/3915-unproven-candidate-exclusion-20261012.json",
+    "ownerStatement": "미입증 후보 제외",
+    "implementationStartingHead": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+    "deliverable": "Verified harness and Workers/Next measurement/limitations report; unproven runtime candidates excluded",
+    "supersededRequirements": [
+      "New passing full BEFORE/AFTER performance matrices",
+      "New candidate comparisons before work-unit completion"
+    ],
+    "supersededRequirementsFulfilled": false,
+    "performanceVerdict": "NOT_ESTABLISHED",
+    "engineeringWorkflow": {
+      "status": "LOCAL_REPORT_IMPLEMENTATION_ONLY",
+      "pr": null,
+      "remoteCi": "not-recorded",
+      "remainingGates": [
+        "contract/code/verification reviews on final exact head and new effective policy",
+        "full final-head GitHub CI",
+        "remote head equality",
+        "MERGEABLE",
+        "merge",
+        "later-evidence preservation before cleanup",
+        "cleanup",
+        "lane retrospective"
+      ]
+    },
+    "preservedHarnessChangeFiles": 71,
+    "publicPackagesTree": "f0a7ae832640b0cb252b832dd8b986be7caaeb92",
+    "publicPackagesEqualApprovedBase": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+    "executableTestsFixturesDependenciesUnchangedSinceStartingHead": false,
+    "productionSourceAndDependenciesUnchangedSinceFixtureFixStart": true,
+    "newMeasurementPerformed": false,
+    "denoPerformanceScope": "owner-excluded; public support and regressions preserved",
+    "legacyFields": "Original correctness/check receipts and dated handoff/unverified observations are historical, not current availability or rerun claims"
+  },
+  "currentEvidence": {
+    "inventory": ".omo/verification/3915-current-acceptance-status-20261011.md",
+    "environments": [
+      {
+        "environment": "local-direct-workerd",
+        "targets": ["native-workers", "fluo-workers"],
+        "summary": ".omo/verification/nas-workers-next-20261011/workers-summary.json",
+        "collectedHead": "526ac5b3514ff0c18e48c76bfa379c00b3a379dc",
+        "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+        "conditionsPassed": 44,
+        "conditionsExpected": 44,
+        "requests": 180,
+        "artifactsVerified": 220,
+        "receiptSha256": "ae3c99663c3e13e48f5c13b4f95b9c3ab87c3ea23881fe11454eb031879b100e",
+        "runtime": {"workerd": "2025-06-04", "node": "24.21.0", "platform": "linux", "arch": "x64", "kernel": "4.4.302+"},
+        "instrumentation": "none for ordinary timing; separate opt-in CPU capture",
+        "disposition": "PASS_FINITE_HTTP_CORRECTNESS_ONLY",
+        "performanceVerdict": "NOT_ESTABLISHED"
+      },
+      {
+        "environment": "next-production-app-router-node",
+        "targets": ["native-nextjs", "fluo-nextjs"],
+        "summary": ".omo/verification/nas-workers-next-20261011/next-summary.json",
+        "collectedHead": "526ac5b3514ff0c18e48c76bfa379c00b3a379dc",
+        "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+        "conditionsPassed": 44,
+        "conditionsExpected": 44,
+        "productionBuilds": {"native-nextjs": "HzYITlPvbs1zcxecTpJHP", "fluo-nextjs": "6VbLz8QnXpMY96LkOccBF"},
+        "runtime": {"next": "16.3.5", "node": "24.21.0", "platform": "linux", "arch": "x64", "kernel": "4.4.302+"},
+        "disposition": "PASS_FINITE_HTTP_CORRECTNESS_ONLY",
+        "performanceVerdict": "NOT_ESTABLISHED"
+      },
+      {
+        "environment": "next-production-pages-router-node",
+        "targets": ["native-nextjs-pages", "fluo-nextjs-pages"],
+        "summary": ".omo/verification/nas-workers-next-20261011/next-summary.json",
+        "collectedHead": "526ac5b3514ff0c18e48c76bfa379c00b3a379dc",
+        "frameworkSource": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+        "conditionsPassed": 44,
+        "conditionsExpected": 44,
+        "productionBuilds": {"native-nextjs-pages": "9WLguPkZHBJOQ_hTuKd9o", "fluo-nextjs-pages": "mDoRdFFBJBU6XBuENllk8"},
+        "runtime": {"next": "16.3.5", "node": "24.21.0", "platform": "linux", "arch": "x64", "kernel": "4.4.302+"},
+        "disposition": "PASS_FINITE_HTTP_CORRECTNESS_ONLY",
+        "performanceVerdict": "NOT_ESTABLISHED"
+      },
+      {
+        "environment": "deployed-workers-immutable-version-url",
+        "summary": ".omo/verification/3914-version-url-correctness-summary-20261011.json",
+        "collectedHead": "f18b264fd26ea2e5818d374b080d0640645d549e",
+        "collectionPreflightSha256": "28cc420426aad2c0661ecaa85a8c15ee9dbafc8b0e7ac9c4c68e242044bdb24a",
+        "receipt": "deployed-version-url-correctness-20261011.json",
+        "receiptSha256": "63a8dfb1251dcc7f8ccd1ec1e1f4513f4a80c74e5c3ade3673e37c235a373261",
+        "conditionsPassed": 44,
+        "conditionsExpected": 44,
+        "newRequests": 180,
+        "cumulativeDirectRequests": 204,
+        "directRequestCap": 250,
+        "historicalProductionCheck": {"successfulRequests": 20, "failedRequests": 2, "diagnosticRequests": 2, "failedReceipt": "deployed-free-correctness-20261011.json"},
+        "disposition": "PASS_FINITE_REMOTE_VERSION_CORRECTNESS_ONLY",
+        "performanceVerdict": "NOT_ESTABLISHED",
+        "unsupportedAcceptanceMetrics": ["production traffic allocation", "isolate cold", "framework-exclusive CPU/RSS", "throughput/capacity"],
+        "paidPlanOrAddonEnabled": false
+      }
+    ],
+    "nasFiniteCorrectnessTotals": {
+      "conditionsPassed": 132,
+      "conditionsExpected": 132,
+      "requests": 540,
+      "artifactsVerified": 660,
+      "nextCombinedRequests": 360,
+      "nextCombinedArtifactsVerified": 440,
+      "nextReceiptSha256": "ddb1511be30174956fbbc06ca6531e10a901633fc553d4c2ae31caf3b169c609",
+      "configurations": ["default", "equivalent"],
+      "coldWarmBoundary": "Concurrent first requests and same-host subsequent requests; not deployed isolate cold",
+      "nasRuntimeSupportExtended": false
+    },
+    "partialBeforeCalibration": {
+      "summary": ".omo/verification/nas-host-baseline-3914-20261011/summary.json",
+      "failureSummary": ".omo/verification/nas-host-baseline-3914-20261011/failure-summary.json",
+      "collectedHead": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+      "status": "PARTIAL_BEFORE_CALIBRATION_ONE_FAILED_CONDITION",
+      "expectedSamples": 264,
+      "completedSamples": 263,
+      "measuredRequests": 2454837,
+      "failedSamples": 1,
+      "samplesBelowMinimumRequests": 241,
+      "minimumRequests": 20000,
+      "instrumentation": "none",
+      "failure": {
+        "configuration": "default",
+        "target": "native-nextjs",
+        "scenario": "stage-routing-params",
+        "connections": 64,
+        "phase": "measurement",
+        "completedRequests": 1666,
+        "errors": 7,
+        "timeouts": 7,
+        "coldAndWarmup": "passed",
+        "rawSha256": "101968cf2a8d1dd720658d5d8d6f55bb7fa4ca40eb3a61199ee5c9d8989cec79"
+      },
+      "continuationHashes": [
+        {"name": "default-remaining.json", "sha256": "6db04ea1f2239f60e996b12021a5d0edd1540188318b745024d54bd22de3fd0d"},
+        {"name": "default-routing-fluo.json", "sha256": "c5df2e516fca47a75c13331532a80340c0693aba84641f3efa570355e5cdcb90"},
+        {"name": "equivalent.json", "sha256": "0a03f3fb54c3b3f5cdce4eb50e4a3e8e249dd3e244a7b2e064a56b9aad1d34b9"}
+      ],
+      "disposition": "Not a complete baseline, candidate comparison, budget PASS or proof of a Fluo source defect"
+    },
+    "timeoutDiagnostic": {
+      "analysis": ".omo/verification/nas-next-timeout-diagnostic-20261011/analysis.json",
+      "collectedHead": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+      "status": "DIAGNOSTIC_COMPLETE_TIMEOUT_NOT_REPRODUCED",
+      "conditions": 2,
+      "measuredRequests": 8167,
+      "instrumented": true,
+      "rawSha256": "cc9a52b38ef26d89baa116c8f1c1c7cabd49a2f9fca557cb200a7800f4c8c340",
+      "cgroupCpu": "unsupported",
+      "linuxPressure": "read-error",
+      "replacesOriginalFailure": false,
+      "sourceDefectEstablished": false,
+      "performanceAcceptance": false
+    },
+    "measurementBoundaries": {
+      "clientLatency": "Includes network/HTTP transport and ordinary host handling",
+      "launchToReady": "Includes startup attestation; not request-exclusive CPU",
+      "firstRequest": "Host work plus Fluo Next lazy import/bootstrap",
+      "warmRequests": "Reuse the same host",
+      "cpuRss": "Process/host boundary; not framework-exclusive request cost",
+      "buildIdentity": "Original receipts retain per-entry/build/trace/bundle/config hashes; collection heads are not this report commit",
+      "diagnostics": "Instrumented samples are separate from ordinary uninstrumented acceptance"
+    }
+  },
+  "retainedSourceVerification": {
+    "head": "c169f9095a76b4b7d139427ff3cabf653413cdd0",
+    "receipt": "diagnostic-guard-20261011/README.md",
+    "fullHarnessLog": "diagnostic-guard-20261011/full-harness.log",
+    "tests": 440,
+    "passed": 439,
+    "existingLinuxOnlySkip": 1,
+    "failures": 0,
+    "exitCode": 0,
+    "typecheckLintLsp": "passed at source head; not rerun for report-only update",
+    "offlineRecheck": ".omo/verification/3914-diagnostic-guard-recheck-20261011.json",
+    "offlineRecheckKind": "offline-reevaluation-not-a-new-performance-run",
+    "offlineValidatorSourceSha256": "3b6ec3afd2c8d1ac53ac93ce7f4e6a0451679d531cae12e407b28aefd97cf6a6",
+    "originalFilesModified": false,
+    "historicalReview": {
+      "receipt": ".omo/verification/review-3914-c169f9095-aggregate.json",
+      "preflightSha256": "80651d95a14056c8512f960a787a501a141f6c3002b8e6f9f4e05f57abb82365",
+      "contract": "PASS",
+      "code": "PASS",
+      "verification": "NEEDS-HUMAN-CHECK",
+      "reboundToCurrentPolicy": false
+    }
+  },
+  "preExclusionArchive": {
+    "receipt": ".omo/verification/unproven-exclusion-archive-20261012/receipt.json",
+    "plan": ".omo/verification/unproven-exclusion-archive-20261012/plan.json",
+    "status": "ARCHIVED_BEFORE_CANDIDATE_EXCLUSION",
+    "commandExitCode": 0,
+    "history": {
+      "path": ".omo/verification/unproven-exclusion-archive-20261012/candidate-history.bundle",
+      "sha256": "be6410c2898cb3d3aa331990aa9d0e5c5f235ec273628f1c56ba9de9ca1249d4",
+      "gitBundleVerifyExitCode": 0
+    },
+    "raw": {
+      "path": ".omo/verification/unproven-exclusion-archive-20261012/worktree-raw-before-exclusion.tar.gz",
+      "sha256": "00cfc4ebe237154e8a1330fb7fd9ad6d546b9698ae35b3e52dd224104b3f5b98",
+      "archiveListingExitCode": 0,
+      "archiveMembers": 5235
+    },
+    "originalRoots": [
+      ".worktrees/issue-3911/tooling/benchmarks/http-comparison/results/profiling/issue-3911",
+      ".worktrees/issue-3912/tooling/benchmarks/http-comparison/results/issue3912",
+      ".worktrees/issue-3913/tooling/benchmarks/http-comparison/results/issue3913",
+      ".worktrees/issue-3914/tooling/benchmarks/http-comparison/results/issue-3914"
+    ],
+    "separatelyPreserved": [
+      ".omo/verification/",
+      ".omo/retros/",
+      ".omo/3910-raw-evidence-20261008.tar.gz",
+      ".omo/3910-allocation-recovery-20261009.tar.gz"
+    ],
+    "originalFilesRemoved": false,
+    "remoteAvailability": "local durable archive only; no remotely downloadable artifact claimed",
+    "cleanupAuthorizedByArchive": false,
+    "laterFinalEvidenceArchived": false,
+    "laterFinalEvidencePreservation": "Lead must confirm separately before final cleanup"
+  },
+  "ciFixtureCorrection": {
+    "parentDeadlineCorrection": {
+      "preflightSha256": "8e34d4ece469d7dfc0ddaaf1838168fb210f6e864d26970415f2f6ded739c46b",
+      "startingHead": "6b4cfd1ba869b7b6b99e8e87390d9366c04f304b",
+      "firstLinuxAttempt": ".omo/verification/3914-fixture-fix-linux-20261012/attempt-1.json",
+      "firstLinuxCounts": {"total": 280, "passed": 279, "failed": 0, "cancelled": 1},
+      "parentTimeoutMs": 310000,
+      "childTimeoutMs": 20000,
+      "childTeardownMs": 5000,
+      "assertionsAndProductionRulesUnchanged": true,
+      "focusedHostTests": {"total": 55, "passed": 55, "failed": 0, "cancelled": 0},
+      "focusedHostTypecheck": "passed",
+      "newHeadLinuxValidation": "required separately"
+    },
+    "startingHead": "5f4dbb4f095ecd64946e7ce6b4d5a5c0b7c17815",
+    "preflightSha256": "23f4b94b097460c5c4c7c8bf9edce8c0e001211907665122b1e5df735b7f2fa3",
+    "failedCi": {
+      "run": 38198508467,
+      "job": 114647615234,
+      "tests": 440,
+      "passed": 364,
+      "failed": 76,
+      "sourceGuardViolation": "paired test temporary outputs left untracked"
+    },
+    "changedTestFiles": [
+      "tooling/benchmarks/http-comparison/tests/methodology.test.mts",
+      "tooling/benchmarks/http-comparison/tests/profiling.test.mts",
+      "tooling/benchmarks/http-comparison/tests/paired-ab.test.mts",
+      "tooling/benchmarks/http-comparison/tests/paired-node.test.mts",
+      "tooling/benchmarks/http-comparison/tests/fixtures/resource-http-fixture.mts",
+      "tooling/benchmarks/http-comparison/tests/fixtures/resource-http-server.mjs"
+    ],
+    "productionSourceChanged": false,
+    "corrections": [
+      "Separate actual HTTP serving child from sampler with event-subscribed readiness and teardown.",
+      "Remove only each paired suite-owned temporary directory after assertions."
+    ],
+    "historicalRawRelocation": ".omo/verification/3914-preserved-check-artifacts-20261012/relocation-receipt.json",
+    "hostValidation": ".omo/verification/3914-fixture-fix-host-validation-20261012.json",
+    "hostTests": {
+      "total": 440,
+      "passed": 439,
+      "failed": 0,
+      "existingLinuxOnlySkip": 1
+    },
+    "linuxValidation": "Required focused check recorded separately by lead; not inferred from macOS.",
+    "fullLocalCi": "waived-not-executed-by-explicit-session-owner-instruction",
+    "performanceAcceptance": false
+  },
+  "finalCorrectness": {
+    "status": "passed",
+    "conditions": 132,
+    "requests": 540,
+    "rawArtifactsVerified": 660,
+    "benchmarkSourceSha256": "9ba55f03a2ba9edb94b530eabd2cfec0effc0242e96717e5ce45253b2944293d",
+    "runtimes": {
+      "node": "24.20.0",
+      "next": "16.3.5",
+      "workerd": "2025-06-04"
+    }
+  },
+  "checks": {
+    "stockNextE2e": {
+      "status": "passed",
+      "tests": 54,
+      "head": "481f601e46e44f2f5cf6118f59a8db817f4a1234",
+      "nextDependencyRoot": "tooling/benchmarks/http-comparison",
+      "log": "lead-next-e2e-benchmark-deps-20261008.log",
+      "evidence": ".omo/platform-nextjs-e2e-QFNc8U",
+      "exitCode": 0
+    },
+    "harnessTests": 142,
+    "workersTests": 54,
+    "nextTests": 105,
+    "portabilityTests": 47,
+    "governanceTests": 475,
+    "pagesRegressionTests": 3,
+    "packageAndHarnessTypechecks": "passed",
+    "sourceAndFixtureBiome": "passed",
+    "testBiomeStdin": "passed-unchanged-output",
+    "publicExportTsdoc": "passed"
+  },
+  "unverified": {
+    "releaseReadiness": "watcher-timeout; no completed verdict; full sequence not repeated in focused-only stage",
+    "deployedWorkers": "account/project/endpoint, authority, credential availability, budget/quota, telemetry, isolate generation unknown",
+    "representativePerformance": "lead-owned; not run"
+  },
+  "preservedOutOfScopeFixture": "packages/cli/src/fixtures/typegen-check-process-WawAA2/",
+  "preservedFixtureDisposition": {
+    "status": "archived-and-removed-from-worktree",
+    "archive": ".omo/3914-local-evidence-481f601e-20261008.tar.gz",
+    "archiveSha256": "75528788303eedac10ee0930e54262673578f046f7536539dc844486b69a7b18",
+    "archiveBytes": 809165,
+    "archiveReadExit": 0
+  },
+  "preservedOutOfScopeFiles": [
+    "packages/cli/src/fixtures/typegen-check-process-WawAA2/app.ts",
+    "packages/cli/src/fixtures/typegen-check-process-WawAA2/tsconfig.json",
+    "packages/cli/src/fixtures/typegen-check-process-WawAA2/generated/react-pages.ts"
+  ],
+  "leadHandoff": {
+    "fullLocalReleaseReadinessDuplicationRequired": false,
+    "finalExactHeadRemoteCiRequired": true,
+    "heavyWorkPaused": true
+  },
+  "evidence": [
+    {
+      "path": "red-20261008-2309.log",
+      "bytes": 1099,
+      "sha256": "2696f289d5b1d34d5e28bd2159b313ebff514aeeba7ca43bda9b5cb222eebc06"
+    },
+    {
+      "path": "build-green-20261008-2320.log",
+      "bytes": 8994,
+      "sha256": "23d8cadb65b1c6b05a23514b5344198313d58f8adf08705900aec5452c0284fd"
+    },
+    {
+      "path": "regression-governance-20261008-2331.log",
+      "bytes": 89024,
+      "sha256": "975f75e88b0be67fc7d33ccaba6b79707f66222724e1b42ab309c4386b6b9782"
+    },
+    {
+      "path": "focused-20261008-2350.log",
+      "bytes": 13808,
+      "sha256": "6bd723f86604960220cd06c31dc0e4a3840fe3cd8f3bc14304c296d3f995c53a"
+    },
+    {
+      "path": "final-focused-20261008.log",
+      "bytes": 1251,
+      "sha256": "55c3f44da6176f81cc4d6d2ee20a3475479c8e75a33ba28c2da514c61854203f"
+    },
+    {
+      "path": "biome-tests-20261008.log",
+      "bytes": 390,
+      "sha256": "59e24f40778bebd9ad69765ae1171afb6bcdb20bdaee80501948d2adeb13f988"
+    },
+    {
+      "path": "correctness-20261008-2330.json",
+      "bytes": 493585,
+      "sha256": "4046bb13d974c5505d22b7867f426eb02e67a1fd07bb3ed809c41e7829f67444"
+    },
+    {
+      "path": "correctness-20261008-2340.json",
+      "bytes": 503089,
+      "sha256": "8e36b8a9f26b8240c21ccf798e7b88545c78e700ce3ec1c1e609e0381e5d990e"
+    },
+    {
+      "path": "correctness-20261008-final.json",
+      "bytes": 877263,
+      "sha256": "fa615aa9865c873507121e54b8dde635376f6be47e5342871a10c556e47bcbde"
+    },
+    {
+      "path": "exclusive-host-20261008.log",
+      "bytes": 10011,
+      "sha256": "305cda89369f43d6f61a50853c46d81c9290f2816393d83146556b32fcf8b758"
+    }
+  ]
+}

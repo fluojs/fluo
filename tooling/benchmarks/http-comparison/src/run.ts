@@ -1,13 +1,15 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EvidenceJournal } from './evidence';
-import { load } from './load';
+import { LoadProcessFailure, LocalLoadSession, load } from './load';
 import { environmentSummary, WORKSPACE_ROOT } from './provenance';
 import { printReport, type ScenarioResult, summarizeRuns, type TargetResult } from './report';
 import { monitorServer, type ProcessSample } from './resources';
 import type { ScenarioConfig } from './scenarios';
 import { selectSuite } from './suites';
-import { buildCommands, buildTarget, runCommand, startTargets, stopTargets, TARGETS, type TargetConfig, WDIR, waitForTarget } from './targets';
+import { AVAILABLE_TARGETS, buildCommands, buildTarget, hostBoundaries, runCommand, startTargets, stopTargets, TARGETS, type TargetConfig, targetRequests, WDIR, waitForTarget } from './targets';
+import { authenticateTimingIdentity, prepareTimingIdentity } from './timing-identity';
+import type { Measurement } from './traffic';
 import { measureTargets } from './traffic';
 
 const WARMUP_SEC = readPositiveIntegerEnv('BENCH_WARMUP_SEC', 10);
@@ -69,8 +71,8 @@ function selectedTargets(): readonly TargetConfig[] {
     return TARGETS;
   }
 
-  const selected = TARGETS.filter((target) => filter.has(target.name));
-  const knownNames = new Set<string>(TARGETS.map((target) => target.name));
+  const selected = AVAILABLE_TARGETS.filter((target) => filter.has(target.name));
+  const knownNames = new Set<string>(AVAILABLE_TARGETS.map((target) => target.name));
   const unknown = [...filter].filter((name) => !knownNames.has(name));
   if (unknown.length > 0) {
     throw new Error(`Unknown BENCH_TARGETS entries: ${unknown.join(', ')}`);
@@ -96,9 +98,11 @@ function readPositiveIntegerEnv(name: string, fallback: number): number {
   return value;
 }
 
-async function runScenario(scenario: ScenarioConfig, run: {
+export async function runScenario(scenario: ScenarioConfig, run: {
   index: number; repeat: number; targets: readonly TargetConfig[]; connections: number;
   samples: TargetResult[]; journal: EvidenceJournal;
+  amount?: number;
+  loadClientEntry?: string;
 }): Promise<void> {
   const { index, targets, connections, samples, journal } = run;
   const offset = index % targets.length;
@@ -106,43 +110,76 @@ async function runScenario(scenario: ScenarioConfig, run: {
   for (const target of rotated) {
   const condition = { configuration: CONFIGURATION, scenario: scenario.name, target: target.name, connections, repeat: run.repeat };
   await journal.record({ ...condition, phase: 'startup' }, samples, async (complete) => {
+  const identityPreparation = await prepareTimingIdentity(target, scenario.appShape);
+  let stdout = '';
   const start = performance.now();
-  const processes = startTargets(scenario.appShape, [target]);
+  const processes = startTargets(scenario.appShape, [target], {
+    timingIdentity: true,
+    env: { ...identityPreparation.env, BENCH_TIMING_NONCE: identityPreparation.nonce },
+    onOutput: (_target, stream, bytes) => { if (stream === 'stdout') stdout += String(bytes); },
+  });
+  let session: LocalLoadSession | undefined;
+  let runFailure: unknown;
+  let cleanupFailures: unknown[] = [];
   try {
     await Promise.all(processes.map(waitForTarget));
     const processToReadyMs = performance.now() - start;
+    const pid = processes[0].pid;
+    if (pid === undefined) throw new Error(`Missing server PID for ${target.name}`);
+    journal.current = { ...condition, phase: 'serving-identity', stdout };
+    const servingIdentity = await authenticateTimingIdentity(identityPreparation, stdout, pid, target.port);
+    let warmup: Measurement | undefined;
     const traffic = (target: TargetConfig, duration: number) => ({
       url: `http://${process.env.BENCH_SERVER_HOST ?? '127.0.0.1'}:${target.port}`,
-      duration, connections, requests: scenario.requests,
+      duration, connections, requests: targetRequests(target, scenario.requests),
+      ...(run.amount === undefined ? {} : { amount: run.amount }),
     });
-    journal.current = { ...condition, phase: 'cold-request', processToReadyMs };
-    const firstRequest = await load({ ...traffic(target, 1), connections: 1, amount: 1 }, `${target.name} cold request`);
+    if (process.env.BENCH_LOAD_PROCESS === '1' && process.env.BENCH_SSH_HOST === undefined) {
+      session = await LocalLoadSession.open(run.loadClientEntry);
+    }
+    const phaseLoad: typeof load = session ? session.load.bind(session) : load;
+    journal.current = { ...condition, phase: 'cold-request', processToReadyMs, servingIdentity };
+    const firstRequest = await phaseLoad({ ...traffic(target, 1), connections: 1, amount: 1 }, `${target.name} cold request`);
     const measured = await measureTargets([target], {
       warmup: async (target) => {
-        journal.current = { ...condition, phase: 'warmup', processToReadyMs, firstRequest };
+        journal.current = { ...condition, phase: 'warmup', processToReadyMs, firstRequest, servingIdentity };
         process.stdout.write(`  warming ${target.label} (${WARMUP_SEC}s)...`);
-        await load(traffic(target, WARMUP_SEC), `${scenario.name}/${target.label} warm-up`);
+        warmup = await phaseLoad(traffic(target, WARMUP_SEC), `${scenario.name}/${target.label} warm-up`);
+        journal.current = { ...condition, phase: 'warmup-completed', processToReadyMs, firstRequest, warmup, servingIdentity };
         process.stdout.write(' done\n');
       },
       measure: async (target) => {
         const serverSamples: ProcessSample[] = [];
-        journal.current = { ...condition, phase: 'measurement', processToReadyMs, firstRequest, serverSamples };
+        journal.current = { ...condition, phase: 'measurement', processToReadyMs, firstRequest, warmup, servingIdentity, serverSamples };
         process.stdout.write(`  measuring ${target.label} (${MEASURE_SEC}s)...`);
-        const pid = processes[0].pid;
-        if (pid === undefined) throw new Error(`Missing server PID for ${target.name}`);
-        const measured = await monitorServer(pid, () => load(traffic(target, MEASURE_SEC), `${scenario.name}/${target.label}`), serverSamples);
+        const measured = await monitorServer(pid, () => phaseLoad(traffic(target, MEASURE_SEC), `${scenario.name}/${target.label}`), serverSamples);
+        journal.current = { ...condition, phase: 'serving-identity-after-measurement', processToReadyMs, firstRequest, warmup, servingIdentity, measurement: measured.value, serverSamples };
+        await authenticateTimingIdentity(identityPreparation, stdout, pid, target.port);
         process.stdout.write(' done\n');
         return {
-          label: target.label, ...measured.value, server: measured.server,
-          coldStart: { processToReadyMs, firstRequest, boundary: 'process-spawn-to-ready-and-first-http-request; not deployed isolate cold start' },
+          label: target.label, ...measured.value, server: measured.server, warmup, servingIdentity,
+          coldStart: { processToReadyMs, firstRequest, boundary: 'process-spawn-to-ready-and-first-http-request; not deployed isolate cold start', host: hostBoundaries(target) },
         };
       },
     });
     complete(measured[0]);
     journal.current = { ...condition, phase: 'teardown', measurementCompleted: true };
+  } catch (error) {
+    journal.current = {
+      ...condition, ...(typeof journal.current === 'object' && journal.current !== null ? journal.current : {}),
+      startupStdout: stdout,
+    };
+    runFailure = error;
   } finally {
-    await stopTargets(processes);
+    const cleanup = await Promise.allSettled([session?.close(), stopTargets(processes)]);
+    cleanupFailures = cleanup.flatMap((result) => result.status === 'rejected' ? [result.reason] : []);
   }
+  if (cleanupFailures.length > 0) {
+    const diagnostics = cleanupFailures.map((error) => error instanceof Error ? error.stack : String(error)).join('\n');
+    if (runFailure instanceof Error) throw new LoadProcessFailure(runFailure, '', `Generator/server teardown failed:\n${diagnostics}`);
+    throw new AggregateError(cleanupFailures, 'Generator/server teardown failed');
+  }
+  if (runFailure !== undefined) throw runFailure;
   });
   }
 }

@@ -20,7 +20,7 @@ export function assertInstalledLockfile(expected: string, installed: string): vo
   }
 }
 
-async function sourceSnapshot(directory: string, prefix = ''): Promise<Readonly<Record<string, string>>> {
+export async function sourceSnapshot(directory: string, prefix = ''): Promise<Readonly<Record<string, string>>> {
   const files: Record<string, string> = {};
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {

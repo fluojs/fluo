@@ -1,0 +1,11 @@
+{
+  "name": "fluo-3914-fluo-20261011",
+  "main": "../../../src/fluo-workers/server.ts",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "vars": {
+    "BENCH_APP_SHAPE": "stage-minimal",
+    "BENCH_CONFIGURATION": "equivalent"
+  }
+}

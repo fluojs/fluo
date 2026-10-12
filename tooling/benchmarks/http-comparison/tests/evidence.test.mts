@@ -4,12 +4,33 @@ import { once } from 'node:events';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { test } from 'node:test';
+import { EvidenceJournal } from '../src/evidence';
+import { WorkerdFailure } from '../src/workerd';
 
 const execute = promisify(execFile);
 const fixture = fileURLToPath(new URL('./fixtures/evidence-owner.mts', import.meta.url));
+
+test('EvidenceJournal: direct workerd control failure -> retains raw diagnostics in invalid attempts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-workerd-evidence-'));
+  const path = join(directory, 'receipt.json');
+  const journal = new EvidenceJournal(path, () => ({ completed: [] }));
+  const raw = ['{"event":"listen","socket":"http","port":0}'];
+  try {
+    await assert.rejects(journal.record({ target: 'native-workers', phase: 'startup' }, [], async () => {
+      throw new WorkerdFailure('Control failed', { raw });
+    }), WorkerdFailure);
+    journal.finish();
+
+    const evidence = JSON.parse(await readFile(path, 'utf8'));
+
+    assert.equal(evidence.completed.length, 0);
+    assert.equal(evidence.invalidAttempts.length, 1);
+    assert.deepEqual(evidence.invalidAttempts[0].error.workerd.raw, raw);
+  } finally { journal.finish(); await rm(directory, { recursive: true, force: true }); }
+});
 for (const mode of ['failure', 'signal', 'signal-after-complete']) {
   test(`preserves completed HTTP samples and rejects ${mode} evidence`, { timeout: 15_000 }, async () => {
     // Given

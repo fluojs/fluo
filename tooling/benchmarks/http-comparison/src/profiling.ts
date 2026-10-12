@@ -1,14 +1,12 @@
-import { execFile } from 'node:child_process';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { promisify } from 'node:util';
 import { array, object, type ProfileCapture, ProfileFailure, type ProfileMode, type RawArtifact, type ServingSubject, sha256, type TimeAnchor } from './profile-report';
 import { processTreeSample } from './resources';
 import type { TargetConfig } from './targets';
+import { workerdProcessProof, workerdSubject } from './workerd';
 
 const MAX_RAW_BYTES = 64 * 1024 * 1024;
-const execute = promisify(execFile);
 export class RawCapture {
   private readonly files = new Map<string, { kind: RawArtifact['kind']; bytes: number }>();
   failure: ProfileFailure | null = null;
@@ -114,7 +112,12 @@ class Inspector {
     callbacks.add(callback);
     this.listeners.set(method, callbacks);
   }
-  close(): void { this.socket.close(); }
+  async close(): Promise<void> {
+    if (this.socket.readyState === WebSocket.CLOSED) return;
+    const closed = new Promise<void>((resolve) => this.socket.addEventListener('close', () => resolve(), { once: true }));
+    this.socket.close();
+    await this.bounded(closed, 'Websocket close');
+  }
 }
 
 const wallStart = `(()=>{const d={start:performance.now(),last:performance.now(),delays:[]};d.timer=setInterval(()=>{const now=performance.now();d.delays.push(Math.max(0,now-d.last-10));d.last=now},10);globalThis.__fluoProfileDiagnostic=d;return JSON.stringify({started:true})})()`;
@@ -129,23 +132,31 @@ export class RuntimeCapture {
   identityPath: string | null = null;
   format: ProfileCapture['format'] = null;
   private contextId: number | undefined;
+  private closed = false;
   private constructor(private readonly target: TargetConfig, private readonly inspector: Inspector, private readonly raw: RawCapture) {}
   static async connect(target: TargetConfig, launcherPid: number, port: number, raw: RawCapture): Promise<RuntimeCapture> {
     let url = `ws://127.0.0.1:${port}/3910`;
     let isolateId: string | null = null;
     let discovery: unknown = null;
+    const nativeProof = target.platform === 'workers' ? await workerdProcessProof(launcherPid, port) : null;
     if (target.platform !== 'bun') {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(10_000) });
       const bytes = await response.text();
       raw.save('identity', 'discovery.json', { status: response.status, raw: bytes });
       if (!response.ok) throw new ProfileFailure('discovery', `Inspector discovery returned ${response.status}`);
       const candidates = array(JSON.parse(bytes)).map(object).filter((entry) => target.platform !== 'workers'
-        || String(entry.title).startsWith('workerd:') || (entry.title === 'Cloudflare Worker' && entry.description === 'workers'));
+        || (entry.id === 'benchmark' && entry.title === 'workerd: worker benchmark'));
       if (candidates.length !== 1) throw new ProfileFailure('discovery', 'Expected exactly one serving inspector target', candidates);
       discovery = candidates[0];
       const entry = object(discovery);
       if (typeof entry.webSocketDebuggerUrl !== 'string') throw new ProfileFailure('discovery', 'Missing serving websocket URL');
       url = entry.webSocketDebuggerUrl;
+      if (target.platform === 'workers') {
+        const endpoint = new URL(url);
+        if (endpoint.hostname !== '127.0.0.1' || endpoint.port !== String(port) || endpoint.pathname !== '/benchmark') {
+          throw new ProfileFailure('discovery', 'Configured application inspector endpoint mismatch', entry);
+        }
+      }
       if (target.platform === 'workers') isolateId = String(entry.id);
     }
     const inspector = new Inspector(url, raw, target.platform === 'workers');
@@ -169,19 +180,21 @@ export class RuntimeCapture {
       if (target.platform === 'workers' && runtime.workerRuntime !== true) throw new ProfileFailure('subject', 'Workers inspector points to a launcher, not an application isolate');
       const tree = await processTreeSample(launcherPid);
       const process = target.platform === 'workers'
-        ? tree.processes.find((p) => /(?:^|\/)workerd(?:\s|$)/.test(p.command))
+        ? tree.processes.find((p) => p.pid === launcherPid && p.command === nativeProof?.command)
         : tree.processes.find((p) => p.pid === runtime.pid);
       if (!process) throw new ProfileFailure('subject', 'Inspector does not identify the serving process', { runtime, tree });
       if (target.platform === 'workers') {
-        const executable = process.command.split(' ')[0];
-        const version = await execute(executable, ['--version']);
-        runtime.runtime = { host: 'workerd', version: version.stdout.trim(), executable };
-        raw.save('identity', 'workerd-version.json', { executable, argv: ['--version'], stdout: version.stdout, stderr: version.stderr });
+        runtime.runtime = nativeProof?.runtime;
+        raw.save('identity', 'workerd-version.json', nativeProof);
       }
       capture.subject = { kind: target.platform === 'workers' ? 'application-isolate' : 'process', pid: process.pid, launcherPid, isolateId, inspectorUrl: url, runtime: object(runtime.runtime) };
-      capture.identityPath = raw.save('identity', 'subject.json', { pid: process.pid, runtimePid: runtime.pid, workerRuntime: runtime.workerRuntime, contextId: capture.contextId, contexts, isolateId, inspectorUrl: url, command: process.command, runtime: runtime.runtime, discovery, tree });
+      capture.identityPath = raw.save('identity', 'subject.json', {
+        pid: process.pid, runtimePid: runtime.pid, workerRuntime: runtime.workerRuntime, contextId: capture.contextId,
+        contexts, isolateId, inspectorUrl: url, command: process.command, runtime: runtime.runtime, discovery, tree,
+        ...(nativeProof ? { nativeProof, configuredApplicationService: 'benchmark', control: workerdSubject(launcherPid).raw } : {}),
+      });
       return capture;
-    } catch (error) { inspector.close(); throw error; }
+    } catch (error) { await inspector.close(); throw error; }
   }
   private async evaluate(expression: string, awaitPromise = false): Promise<Record<string, unknown>> {
     const reply = await this.inspector.call('Runtime.evaluate', { expression, returnByValue: true, ...(this.contextId === undefined ? {} : { contextId: this.contextId }), ...(awaitPromise ? { awaitPromise: true } : {}) });
@@ -242,7 +255,11 @@ export class RuntimeCapture {
           const event = this.inspector.event('ScriptProfiler.trackingComplete');
           try { await this.inspector.call('ScriptProfiler.stopTracking'); profile = (await event.wait()).samples; } finally { event.cancel(); }
           this.format = 'jsc-cpu';
-        } else { profile = object((await this.inspector.call('Profiler.stop')).result).profile; this.format = 'v8-cpu'; }
+        } else {
+          profile = object((await this.inspector.call('Profiler.stop')).result).profile;
+          await this.inspector.call('Profiler.disable');
+          this.format = 'v8-cpu';
+        }
         break;
       case 'allocation':
         if (this.target.platform === 'bun') {
@@ -268,5 +285,11 @@ export class RuntimeCapture {
     }
     return this.raw.save('profile', 'profile.json', profile);
   }
-  close(): void { this.inspector.close(); }
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    try {
+      if (this.target.platform === 'workers') await this.inspector.call('Runtime.disable');
+    } finally { await this.inspector.close(); }
+  }
 }

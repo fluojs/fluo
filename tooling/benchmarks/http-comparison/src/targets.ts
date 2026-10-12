@@ -1,8 +1,11 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppShape } from './scenarios';
+import type { ScenarioRequest } from './traffic';
+import { observeWorkerd, workerdArtifacts, workerdConfig, workerdExecutable, workerdReadiness, writeWorkerdConfig } from './workerd';
 
 export const WDIR = fileURLToPath(new URL('../', import.meta.url));
 const FLUO_FASTIFY_BUILD_DIR = join(WDIR, 'dist/fluo-fastify');
@@ -27,7 +30,7 @@ process.once('exit', () => {
 
 export type Platform = 'fastify' | 'express' | 'nodejs' | 'bun' | 'deno' | 'workers' | 'nextjs';
 export type Product = 'native' | 'fluo' | 'nestjs';
-type TargetName = `${Product}-${Platform}`;
+type TargetName = `${Product}-${Platform}` | 'native-nextjs-pages' | 'fluo-nextjs-pages';
 export interface TargetConfig {
   name: TargetName;
   platform: Platform;
@@ -36,6 +39,7 @@ export interface TargetConfig {
   port: number;
   command: string;
   args: string[];
+  readonly nextRouter?: 'pages';
 }
 
 export const PLATFORMS: readonly Platform[] = ['fastify', 'express', 'nodejs', 'bun', 'deno', 'workers', 'nextjs'];
@@ -47,14 +51,57 @@ export const TARGETS: TargetConfig[] = PLATFORMS.flatMap((platform) => {
     const source = product === 'nestjs' ? 'nestjs' : name === 'fluo-fastify' ? 'fluo' : name;
     const args = platform === 'bun' ? ['run', `dist/${name}/${source}/server.js`]
       : platform === 'deno' ? ['run', `--allow-net=${process.env.BENCH_BIND_HOST ?? '127.0.0.1'}`, '--allow-read', '--allow-env', `dist/${name}/server.mjs`, String(port)]
-      : platform === 'workers' ? ['node_modules/wrangler/bin/wrangler.js', 'dev', `src/${source}/server.ts`, '--local', '--ip', process.env.BENCH_BIND_HOST ?? '127.0.0.1', '--port', String(port), '--inspector-port', '0', '--compatibility-date', '2025-06-01', '--compatibility-flags', 'nodejs_compat']
+      : platform === 'workers' ? ['serve']
       : platform === 'nextjs' ? ['node_modules/next/dist/bin/next', 'start', `nextjs/${product}`, '--hostname', process.env.BENCH_BIND_HOST ?? '127.0.0.1', '--port', String(port)]
       : [`dist/${product === 'nestjs' ? 'nestjs' : name}/${source}/server.js`];
     return { name, platform, product, label: name, port, command: platform === 'bun' ? 'bun' : platform === 'deno' ? 'deno' : 'node', args };
   });
 });
 
+// Opt-in inventory: old target names, ports, and default matrices stay intact.
+export const NEXT_PAGES_TARGETS: TargetConfig[] = (['native', 'fluo'] as const).map((product, index) => {
+  const port = Number(process.env.BENCH_PORT_BASE ?? 33909) + PLATFORMS.length * 3 + index;
+  return {
+    name: `${product}-nextjs-pages`, platform: 'nextjs', product,
+    label: `${product}-nextjs-pages`, port, command: 'node', nextRouter: 'pages',
+    args: ['node_modules/next/dist/bin/next', 'start', `nextjs-pages/${product}`, '--hostname', process.env.BENCH_BIND_HOST ?? '127.0.0.1', '--port', String(port)],
+  };
+});
+export const AVAILABLE_TARGETS = [...TARGETS, ...NEXT_PAGES_TARGETS];
+
+export function nextFixtureDirectory(target: TargetConfig): string {
+  return `${target.nextRouter === 'pages' ? 'nextjs-pages' : 'nextjs'}/${target.product}`;
+}
+
+export function nextBuildEntry(target: TargetConfig): string {
+  return `${nextFixtureDirectory(target)}/.next/server/${target.nextRouter === 'pages' ? 'pages/api/[[...path]].js' : 'app/[[...path]]/route.js'}`;
+}
+
+export function targetRequests(target: TargetConfig, requests: readonly ScenarioRequest[]): readonly ScenarioRequest[] {
+  return target.nextRouter === 'pages' ? requests.map((request) => ({ ...request, path: `/api${request.path}` })) : requests;
+}
+
+export function hostBoundaries(target: TargetConfig) {
+  return {
+    environment: target.platform === 'workers' ? 'local-workerd' : target.platform === 'nextjs' ? `next-production-${target.nextRouter ?? 'app'}-node` : target.platform,
+    ...(target.platform === 'workers' ? {
+      resourceBoundary: 'direct-workerd-single-application-v1; native serving PID and its descendants; no Wrangler proxy/control tree',
+      historicalComparability: 'do-not-mix-with-Wrangler-dev-process-tree-measurements',
+      teardown: 'owned-direct-workerd-SIGINT; no-application-close-or-drain-claim',
+    } : {}),
+    processReadiness: target.platform === 'workers' ? 'local-launch-to-direct-workerd-control-ready; includes-parent-config-and-artifact-hashing' : 'process-spawn-to-host-ready',
+    firstRequest: target.platform === 'nextjs' && target.product === 'fluo'
+      ? 'first-http-request-including-lazy-backend-import-bootstrap; not-exclusive-bootstrap-time'
+      : 'first-http-request-after-host-ready',
+    warm: 'subsequent-requests-in-the-same-host',
+    applicationGeneration: 'not-observed',
+    deployedIsolateCold: 'not-observed; local-restart-is-not-deployed-isolate-cold',
+  };
+}
+
 export function waitForTarget(child: ChildProcess): Promise<void> {
+  const nativeReady = workerdReadiness(child);
+  if (nativeReady) return nativeReady;
   return new Promise((resolve, reject) => {
     let output = '';
     const timer = setTimeout(() => finish(new Error(`Target readiness timed out: ${output}`)), 60_000);
@@ -85,6 +132,7 @@ export function runCommand(command: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: WDIR,
+      env: { ...process.env, WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: join(WDIR, 'results/issue-3914', `workerd-bundle-${randomUUID()}.log`) },
       stdio: ['ignore', 'inherit', 'inherit'],
     });
 
@@ -102,6 +150,7 @@ export function runCommand(command: string, args: string[]): Promise<void> {
 }
 
 export interface TargetLaunchOptions {
+  readonly timingIdentity?: boolean;
   readonly inspectorPort?: number;
   readonly gcTrace?: boolean;
   readonly env?: Readonly<Record<string, string>>;
@@ -111,13 +160,22 @@ export interface TargetLaunchOptions {
 
 export function targetLaunch(target: TargetConfig, appShape: AppShape, options: TargetLaunchOptions = {}) {
   const configuration = options.env?.BENCH_CONFIGURATION ?? process.env.BENCH_CONFIGURATION ?? 'default';
-  const args = target.platform === 'workers' ? [...target.args, '--var', `BENCH_APP_SHAPE:${appShape}`, '--var', `BENCH_CONFIGURATION:${configuration}`]
+  const config = target.platform === 'workers' ? workerdConfig(target, appShape, configuration) : undefined;
+  const args = config ? ['serve', config.path, 'config', '--control-fd=3', `--socket-addr=http=${process.env.BENCH_BIND_HOST ?? '127.0.0.1'}:${target.port}`]
     : target.platform === 'deno' ? [...target.args, appShape] : [...target.args];
+  if (options.timingIdentity && target.platform !== 'workers') {
+    const bootstrap = join(WDIR, 'src/timing-bootstrap.mjs');
+    if (target.platform === 'deno') {
+      const index = args.findIndex((arg) => arg.endsWith('.mjs'));
+      args[index] = bootstrap;
+    } else if (target.platform === 'bun') args.splice(1, 0, '--preload', bootstrap);
+    else args.unshift('--import', bootstrap);
+  }
   if (options.inspectorPort !== undefined) {
     const address = `127.0.0.1:${options.inspectorPort}`;
     switch (target.platform) {
       case 'workers':
-        args[args.indexOf('--inspector-port') + 1] = String(options.inspectorPort);
+        args.push(`--inspector-addr=${address}`);
         break;
       case 'bun': args.unshift(`--inspect=${address}/3910`); break;
       case 'deno': args.splice(1, 0, `--inspect=${address}`); break;
@@ -131,21 +189,29 @@ export function targetLaunch(target: TargetConfig, appShape: AppShape, options: 
     else if (target.command === 'node' && target.platform !== 'workers') args.unshift('--trace-gc');
   }
   return {
-    command: target.command, args, cwd: WDIR,
-    env: { ...process.env, ...options.env, BENCH_APP_SHAPE: appShape, BENCH_TARGET: target.name, PORT: String(target.port), WRANGLER_SEND_METRICS: 'false', NEXT_TELEMETRY_DISABLED: '1' },
+    command: target.platform === 'workers' ? workerdExecutable() : target.command, args, cwd: WDIR,
+    env: { ...process.env, ...options.env, BENCH_CONFIGURATION: configuration, BENCH_APP_SHAPE: appShape, BENCH_TARGET: target.name, PORT: String(target.port), WRANGLER_SEND_METRICS: 'false', NEXT_TELEMETRY_DISABLED: '1' },
   };
 }
 
 export function startTargets(appShape: AppShape, targets: readonly TargetConfig[], options: TargetLaunchOptions = {}): ChildProcess[] {
   return targets.map((target) => {
     const launch = targetLaunch(target, appShape, options);
+    const config = target.platform === 'workers' ? workerdConfig(target, appShape, launch.env.BENCH_CONFIGURATION) : undefined;
+    if (config) writeWorkerdConfig(config);
+    const artifacts = config ? workerdArtifacts(config) : undefined;
     const child = spawn(launch.command, launch.args, {
       cwd: launch.cwd,
       detached: true,
       env: launch.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: target.platform === 'workers' ? ['ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
     });
 
+    if (target.platform === 'workers') observeWorkerd(child, launch, {
+      port: target.port, inspectorPort: options.inspectorPort,
+      config, artifacts,
+      onRaw: (bytes) => options.onOutput?.(target, 'stdout', bytes),
+    });
     child.stdout?.on('data', (data: Buffer) => options.onOutput?.(target, 'stdout', data));
     child.stderr?.on('data', (data: Buffer) => {
       options.onOutput?.(target, 'stderr', data);
@@ -189,22 +255,69 @@ function waitForChildStop(child: ChildProcess, timeoutMs: number): Promise<boole
   });
 }
 
-function signalTarget(child: ChildProcess, signal: NodeJS.Signals): void {
+function signalTarget(child: ChildProcess, signal: NodeJS.Signals): boolean {
   if (child.pid === undefined) {
-    return;
+    return false;
   }
 
   try {
     process.kill(-child.pid, signal);
+    return true;
   } catch {
-    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+    if (child.exitCode === null && child.signalCode === null) return child.kill(signal);
+    return false;
   }
 }
 
-export async function stopTargets(processes: readonly ChildProcess[]): Promise<void> {
+export interface CollectionMaterialization {
+  readonly path: string;
+  readonly sha256: string;
+  readonly bytes: number;
+  readonly materializedMs: number;
+}
+export interface TargetShutdownIntent {
+  readonly owner: 'profile-collector';
+  readonly target: string;
+  readonly phase: 'control-before' | 'capture' | 'control-after';
+  readonly pid: number;
+  readonly traffic: CollectionMaterialization;
+  readonly profile: CollectionMaterialization | null;
+}
+export interface TargetShutdownReceipt {
+  readonly pid: number | null;
+  readonly intent: TargetShutdownIntent | null;
+  readonly requestedSignal: NodeJS.Signals;
+  readonly requestedMs: number | null;
+  readonly signalSent: boolean;
+  readonly exitObservedMs: number | null;
+  readonly drainedMs: number;
+  readonly stdoutDrained: boolean;
+  readonly stderrDrained: boolean;
+  readonly forced: boolean;
+}
+
+export async function stopTargets(processes: readonly ChildProcess[], intent?: TargetShutdownIntent): Promise<readonly TargetShutdownReceipt[]> {
+  const receipts: TargetShutdownReceipt[] = processes.map((child) => ({
+    pid: child.pid ?? null, intent: null,
+    requestedSignal: workerdReadiness(child) ? 'SIGINT' : 'SIGTERM',
+    requestedMs: null, signalSent: false, exitObservedMs: null, drainedMs: 0,
+    stdoutDrained: false, stderrDrained: false, forced: false,
+  }));
+  const observers = processes.map((child, index) => {
+    const observe = () => { receipts[index] = { ...receipts[index], exitObservedMs: performance.now() }; };
+    child.once('exit', observe);
+    return observe;
+  });
+  try {
   const graceful = processes.map((child) => waitForChildStop(child, 1_500));
-  for (const child of processes) {
-    signalTarget(child, 'SIGTERM');
+  for (const [index, child] of processes.entries()) {
+    const alive = child.exitCode === null && child.signalCode === null;
+    receipts[index] = {
+      ...receipts[index], requestedMs: performance.now(),
+      intent: intent && alive && child.pid === intent.pid ? intent : null,
+    };
+    const sent = signalTarget(child, receipts[index].requestedSignal);
+    receipts[index] = { ...receipts[index], signalSent: sent };
   }
   const completed = await Promise.all(graceful);
   const remaining = processes.filter((_child, index) => !completed[index]);
@@ -217,12 +330,23 @@ export async function stopTargets(processes: readonly ChildProcess[]): Promise<v
   for (const child of processes) {
     if (child.exitCode !== null || child.signalCode !== null) activeTargets.delete(child);
   }
+  for (const [index, child] of processes.entries()) {
+    receipts[index] = {
+      ...receipts[index], drainedMs: performance.now(), forced: !completed[index],
+      stdoutDrained: child.stdout?.readableEnded === true && child.stdout?.closed === true,
+      stderrDrained: child.stderr?.readableEnded === true && child.stderr?.closed === true,
+    };
+  }
   for (const child of failed) {
     child.stdout?.destroy();
     child.stderr?.destroy();
   }
   if (failed.length > 0) {
     throw new Error(`Target teardown timed out or output closed without draining: ${failed.map((child) => child.pid).join(', ')}`);
+  }
+  return receipts;
+  } finally {
+    for (const [index, child] of processes.entries()) child.removeListener('exit', observers[index]);
   }
 }
 
@@ -278,10 +402,16 @@ export async function buildTarget(target: TargetConfig): Promise<void> {
     if (target.product === 'fluo') {
       await runCommand('pnpm', ['exec', 'tsc', 'src/shared/fluo-app.ts', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--strict', '--skipLibCheck', '--declaration', '--outDir', 'dist/next-backend']);
     }
-    await runCommand('node', ['node_modules/next/dist/bin/next', 'build', `nextjs/${target.product}`, '--turbopack']);
+    await runCommand('node', ['node_modules/next/dist/bin/next', 'build', nextFixtureDirectory(target), '--turbopack']);
     return;
   }
-  if (target.platform === 'workers') return; // Wrangler compiles the entrypoint for real workerd.
+  if (target.platform === 'workers') {
+    await rm(join(WDIR, 'dist', target.name), { force: true, recursive: true });
+    await runCommand('node', ['node_modules/wrangler/bin/wrangler.js', 'deploy', `src/${target.name}/server.ts`, '--name', target.name,
+      '--dry-run', '--outdir', `dist/${target.name}`, '--metafile', `dist/${target.name}/meta.json`,
+      '--compatibility-date', '2025-06-01', '--compatibility-flags', 'nodejs_compat']);
+    return;
+  }
   if (target.product === 'nestjs') { await buildNestTarget(); return; }
   if (target.name === 'fluo-fastify') { await buildFluoFastifyTarget(); return; }
   if (target.name === 'fluo-bun') { await buildBunTarget(); return; }

@@ -13,7 +13,8 @@ import { type EnvironmentSummary, environmentSummary } from './provenance';
 import { monitorServer } from './resources';
 import type { ScenarioConfig } from './scenarios';
 import { selectSuite } from './suites';
-import { buildTarget, startTargets, stopTargets, TARGETS, type TargetConfig, type TargetLaunchOptions, targetLaunch, WDIR, waitForTarget } from './targets';
+import { AVAILABLE_TARGETS, buildTarget, nextBuildEntry, nextFixtureDirectory, startTargets, stopTargets, TARGETS, type TargetConfig, type TargetLaunchOptions, type TargetShutdownIntent, targetLaunch, targetRequests, WDIR, waitForTarget } from './targets';
+import { workerdProcessProof } from './workerd';
 
 export interface CapturePlan {
   readonly targets: readonly TargetConfig[];
@@ -32,10 +33,10 @@ export interface CapturePlan {
 
 export function selectProfileTargets(names?: readonly string[]): readonly TargetConfig[] {
   if (!names) return TARGETS;
-  if (names.length === 0 || new Set(names).size !== names.length || names.some((name) => !TARGETS.some((target) => target.name === name))) {
+  if (names.length === 0 || new Set(names).size !== names.length || names.some((name) => !AVAILABLE_TARGETS.some((target) => target.name === name))) {
     throw new ProfileFailure('selection', 'Profile targets must be unique known TARGETS', names);
   }
-  return TARGETS.filter((target) => names.includes(target.name));
+  return AVAILABLE_TARGETS.filter((target) => names.includes(target.name));
 }
 
 function withPort(target: TargetConfig, port: number): TargetConfig {
@@ -56,7 +57,7 @@ export async function captureCondition(input: {
   readonly journal: EvidenceJournal;
 }): Promise<ProfileCapture> {
   const { plan, scenario, condition, journal } = input;
-  const index = TARGETS.findIndex((target) => target.name === input.target.name);
+  const index = AVAILABLE_TARGETS.findIndex((target) => target.name === input.target.name);
   const target = withPort(input.target, plan.portBase + index);
   const directory = join(plan.outputDirectory, `${condition.target}-${condition.scenario}-${condition.mode}-${condition.repeat}-${randomUUID()}`);
   await mkdir(directory, { recursive: true });
@@ -75,10 +76,11 @@ export async function captureCondition(input: {
     'V8 sampling includes collected objects; sampled bytes are not exact allocation counts/rates.',
     'Reused target builds are hashed; this invocation does not claim a fresh root build.',
     'workerd Tracing.start rejection proves only that protocol unsupported; passive isolate GC capture remains blocked/unproven.',
+    'Direct workerd teardown uses SIGINT after profiler/socket flush. Expected native signal termination is not a graceful application lifecycle drain.',
   ];
   try {
     if (target.platform === 'nextjs') {
-      const traceBytes = await readFile(join(WDIR, 'nextjs', target.product, '.next/trace'), 'utf8');
+      const traceBytes = await readFile(join(WDIR, nextFixtureDirectory(target), '.next/trace'), 'utf8');
       const trace = traceBytes.split('\n').filter(Boolean).flatMap((line) => {
         const parsed: unknown = JSON.parse(line);
         if (!Array.isArray(parsed)) throw new ProfileFailure('build', 'Malformed canonical Next build trace');
@@ -87,12 +89,13 @@ export async function captureCondition(input: {
       if (!trace.some((event) => event.name === 'next-build' && object(event.tags).bundler === 'turbopack')) {
         throw new ProfileFailure('build', 'Canonical production Next requires Turbopack build evidence');
       }
-      raw.save('build', 'next-build.json', { buildId: await readFile(join(WDIR, 'nextjs', target.product, '.next/BUILD_ID'), 'utf8'), trace });
+      raw.save('build', 'next-build.json', { buildId: await readFile(join(WDIR, nextFixtureDirectory(target), '.next/BUILD_ID'), 'utf8'), trace });
     }
-    const entry = target.platform === 'workers' ? target.args[2]
-      : target.platform === 'nextjs' ? `nextjs/${target.product}/.next/server/app/[[...path]]/route.js`
+    const entry = target.platform === 'workers' ? `dist/${target.name}/server.js`
+      : target.platform === 'nextjs' ? nextBuildEntry(target)
       : target.platform === 'deno' ? target.args[target.args.length - 2] : target.args[target.args.length - 1];
-    raw.save('build', 'entry.json', { path: entry, sha256: sha256(await readFile(join(WDIR, entry))) });
+    const entrySha256 = sha256(await readFile(join(WDIR, entry)));
+    raw.save('build', 'entry.json', { path: entry, sha256: entrySha256 });
     for (const phase of ['control-before', 'capture', 'control-after'] as const) {
       const instrumented = phase === 'capture';
       const options: TargetLaunchOptions = {
@@ -107,12 +110,20 @@ export async function captureCondition(input: {
       let measured: Awaited<ReturnType<typeof monitorServer<Awaited<ReturnType<typeof load>>>>> | undefined;
       let startedMs = 0;
       let endedMs = 0;
+      let collected = false;
+      let socketFlushed = false;
+      let shutdownPath: string | undefined;
       try {
         journal.current = { ...condition, phase, step: 'startup', directory };
         await waitForTarget(child);
         const pid = child.pid;
         if (pid === undefined) throw new ProfileFailure('subject', 'Missing launcher PID');
-        const traffic = { url: `http://${process.env.BENCH_SERVER_HOST ?? '127.0.0.1'}:${target.port}`, connections: plan.connections, requests: scenario.requests };
+        if (target.platform === 'workers') {
+          const proof = await workerdProcessProof(pid, options.inspectorPort);
+          if (proof.artifacts[join(WDIR, entry)] !== entrySha256) throw new ProfileFailure('build', 'Workers serving bundle differs from captured build');
+          raw.save('identity', `${phase}.workerd.json`, proof);
+        }
+        const traffic = { url: `http://${process.env.BENCH_SERVER_HOST ?? '127.0.0.1'}:${target.port}`, connections: plan.connections, requests: targetRequests(target, scenario.requests) };
         await load({ ...traffic, duration: 1, connections: 1, amount: 1 }, `${target.name}/profile-cold`);
         await load({ ...traffic, duration: plan.warmupSeconds }, `${target.name}/profile-warmup`);
         if (instrumented) {
@@ -123,7 +134,7 @@ export async function captureCondition(input: {
               && error.phase === 'protocol' && object(error.detail).code === -32601) {
               status = 'unsupported';
               reason = `Application inspector Tracing.start unsupported: ${error.message}`;
-              session.close();
+              await session.close();
             } else throw error;
           }
         }
@@ -131,18 +142,43 @@ export async function captureCondition(input: {
         startedMs = performance.now();
         measured = await monitorServer(pid, () => load({ ...traffic, duration: instrumented ? plan.durationSeconds : plan.controlSeconds }, `${target.name}/${condition.mode}/${phase}`));
         endedMs = performance.now();
+        if (target.platform === 'workers') await workerdProcessProof(pid, options.inspectorPort);
         if (instrumented && status === 'supported') profilePath = await session?.stop(condition.mode) ?? null;
         if (raw.failure) throw raw.failure;
+        collected = !instrumented || (status === 'supported' && profilePath !== null);
       } finally {
-        if (instrumented) session?.close();
         try {
-          await stopTargets(processes);
+          try {
+            if (instrumented) await session?.close();
+            socketFlushed = true;
+          }
+          finally {
+            let intent: TargetShutdownIntent | undefined;
+            let shutdown: Awaited<ReturnType<typeof stopTargets>> = [];
+            try {
+            if (collected && socketFlushed && measured && target.platform === 'workers' && child.pid !== undefined) {
+              const trafficPath = raw.save('diagnostics', `${phase}.traffic.json`, measured);
+              const trafficBytes = await readFile(join(plan.outputDirectory, trafficPath));
+              const profileBytes = instrumented && profilePath ? await readFile(join(plan.outputDirectory, profilePath)) : null;
+              intent = {
+                owner: 'profile-collector', target: target.name, phase, pid: child.pid,
+                traffic: { path: trafficPath, sha256: sha256(trafficBytes), bytes: trafficBytes.length, materializedMs: performance.now() },
+                profile: profileBytes && profilePath ? {
+                  path: profilePath, sha256: sha256(profileBytes), bytes: profileBytes.length, materializedMs: performance.now(),
+                } : null,
+              };
+              raw.save('identity', `${phase}.shutdown-intent.json`, intent);
+            }
+            } finally { shutdown = await stopTargets(processes, intent); }
+            if (target.platform === 'workers') shutdownPath = raw.save('identity', `${phase}.shutdown.json`, shutdown[0]);
+          }
         } finally {
           if (measured) runs.push({
             ...measured, phase, instrumentation: instrumented ? condition.mode : 'none',
             launcherPid: child.pid ?? 0, startedMs, endedMs,
             launch: { command: launch.command, args: launch.args, cwd: launch.cwd, env: { BENCH_CONFIGURATION: plan.configuration, BENCH_APP_SHAPE: scenario.appShape, PORT: String(target.port), NEXT_TELEMETRY_DISABLED: '1', WRANGLER_SEND_METRICS: 'false' } },
             exit: { code: child.exitCode, signal: child.signalCode },
+            ...(shutdownPath ? { shutdownPath } : {}),
           });
         }
       }
