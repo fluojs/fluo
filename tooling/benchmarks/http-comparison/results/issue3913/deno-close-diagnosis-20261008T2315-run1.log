@@ -1,0 +1,55 @@
+Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort
+{
+  "runtime": {
+    "deno": "2.9.7",
+    "v8": "15.0.245.2-rusty",
+    "typescript": "6.0.3"
+  },
+  "servingRequests": 5,
+  "records": [
+    {
+      "mode": "untouched",
+      "before": "unmaterialized",
+      "beforeResponse": "unmaterialized",
+      "after": "closed-unmaterialized"
+    },
+    {
+      "mode": "metadata",
+      "before": "unmaterialized",
+      "beforeResponse": "unmaterialized",
+      "after": "closed-unmaterialized"
+    },
+    {
+      "mode": "signal",
+      "before": "unmaterialized",
+      "beforeResponse": "materialized",
+      "after": "materialized",
+      "aborted": true,
+      "reasonName": "AbortError",
+      "reasonMessage": "The request has been cancelled.",
+      "identityPreserved": true
+    },
+    {
+      "mode": "clone-body",
+      "before": "unmaterialized",
+      "beforeResponse": "materialized",
+      "after": "materialized",
+      "aborted": true,
+      "reasonName": "AbortError",
+      "reasonMessage": "The request has been cancelled.",
+      "identityPreserved": true
+    },
+    {
+      "mode": "peer-disconnect",
+      "aborted": true,
+      "reasonName": "AbortError",
+      "identityPreserved": true
+    },
+    {
+      "mode": "constructed-pre-abort",
+      "aborted": true,
+      "reasonIdentityPreserved": true
+    }
+  ],
+  "limitation": "Native mechanism/correctness diagnosis only. No Fluo acceptance, CPU, allocation, throughput or capacity measurement."
+}

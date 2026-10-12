@@ -1,0 +1,173 @@
+# #3913 Bun 최종 disposition 및 Deno 성능 범위 제외
+
+## 현재 판정과 승인 범위
+
+2026-10-12 소유자 지시 `미입증 후보 제외`에 따라 #3913은 기존 측정과 한계를
+보고하고 역사 증거를 보존한다. 성능 수용 판정은 `NOT_ESTABLISHED`다.
+Bun 고유 runtime 최적화나 독립적으로 수용된 adapter 개선은 없으며,
+완전한 Bun acceptance matrix도 없다. 개선을 입증했거나 개선이 불필요함을
+입증했다는 결론으로 종료하지 않는다.
+
+계약 출처는 fresh [#3913](https://github.com/fluojs/fluo/issues/3913) title/body,
+`CONTRIBUTING.md`, `docs/contracts/behavioral-contract-policy.md`,
+`packages/platform-bun/README.md` 및 `README.ko.md`다. 아래 `.omo/verification/`
+경로는 repository root의 **local-only 증거 위치**이며 원격 다운로드 링크가 아니다.
+
+- 승인 변경: `.omo/verification/3915-unproven-candidate-exclusion-20261012.json`
+  (`OWNER_APPROVED_COMPLETION_SCOPE_AMENDMENT`).
+- 승인 preflight: `.omo/verification/3913-exclusion-preflight-browser-generated-fix-20261012.json`,
+  digest `b954deaf93d58e03c0a1337c7a48ffc6148370140a4e5eb035cdedd022dd36f7`.
+- 원본 inventory: `.omo/verification/3915-current-acceptance-status-20261011.md`.
+  이 inventory의 당시 소유자 결정 대기 문구는 이후 승인 변경으로 대체되었으나
+  당시 수치와 판정은 유지한다.
+- 수정 시작 HEAD: `15443d0c4c55f66c504b02b81438846c4980eb4a`.
+
+승인 변경은 새 candidate 성능 행렬을 통과해야 작업 단위를 완료할 수 있다는
+요구를 대체한다. 기존 수치 판정, 정확성 계약, exact-head review와 GitHub CI
+요구는 대체하지 않는다. 이 보고서는 보고·검증을 위한 로컬 산출물이다.
+Engineering workflow 완료는 이후 review, final PR head의 full GitHub CI,
+mergeability 확인, merge, cleanup 및 lane retrospective로 확인해야 하며,
+현재 그 완료를 주장하지 않는다. 이후 workflow 완료도 성능 PASS를 뜻하지 않는다.
+
+## Bun same-code calibration의 제한된 통과
+
+`.omo/verification/nas-benchmark-20261011/summary.json`의 판정은
+`OBSERVED_WITHIN_BUDGET_FOR_DECLARED_SCOPE`, exit 0이다. 완료된 12 runs와
+4,607,948 measured requests는 **same-code A/A calibration**에 한정된다.
+
+| 식별 항목 | 원본 기록 |
+| --- | --- |
+| Framework source (X/Y 동일) | `1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18` |
+| Harness head | `b7b4aaa5f333d93ee68929fb061dee11902c0b61` |
+| Host/runtime | BornArchive Linux x64, kernel `4.4.302+`, Bun `1.4.2` |
+| 조건 | `stage-minimal` / `equivalent` / concurrency `64` |
+| Protocol | warmup 30초, measure 60초, minimum completed requests 20,000 |
+| 순서 | `N X Y N`, `N Y X N`, `N X Y N`; N은 native-bun, X/Y는 같은 BEFORE의 fluo-bun |
+| Frozen plan | `.omo/verification/nas-benchmark-20261011/aa-frozen.json` |
+| Plan SHA256 | `e0e43df2e59b22cae6e6e7d2b015d121123875adcdf887b99ca9c52ffa3c6578` |
+| Raw records | `.omo/verification/nas-benchmark-20261011/results/`의 `plan.json`, `journal.json`, `decision.json`, `run-*.json` |
+
+다른 scenario, configuration, concurrency, 플랫폼, candidate acceptance 또는 전체
+성능 예산으로 일반화하지 않는다. NAS kernel의 공식 지원 경계도 이 관측으로
+바뀌지 않는다. `.omo/verification/3915-paired-aa-warm-generator-summary-20261011.json`
+의 이전 same-code 통과 및 그보다 앞선 INCONCLUSIVE도 원래 source/head와 raw
+위치에 보존되며 현재 보고서 HEAD의 성능 증거로 재표시하지 않는다.
+
+## #3911 공통 header 후보: 미수용·출하 제외
+
+공통 header 후보는 #3911 소유이며 #3913의 Bun 고유 구현이 아니다.
+`.omo/verification/nas-header-3911-20261011/summary.json`은 완료된 **12 runs,
+4,642,263 measured requests**, `invalidAttempts: []`, `budgetBreaches: []`,
+`evidenceErrors: []`를 기록하지만 판정은 **INCONCLUSIVE**, exit 1이다.
+Throughput와 CPU의 paired-ratio instability, native p95/p99 drift를 그대로 유지한다.
+Budget breach가 없다는 사실은 후보의 개선이나 수용을 증명하지 않는다.
+
+| 식별 항목 | 원본 기록 |
+| --- | --- |
+| baselineSource | `1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18` |
+| candidateSource | `2f4dd790acac4fc5b73e04291b6a2481a5108e54` |
+| baselineHead | `b7b4aaa5f333d93ee68929fb061dee11902c0b61` |
+| candidateHead | `bdb3fa568c9dc688a00cb83f2d32a7036916a77c` |
+| 조건 | BornArchive Linux x64 Bun `1.4.2`, `stage-minimal` / `equivalent` / concurrency `64` only |
+| Raw root | `.omo/verification/nas-header-3911-20261011/header-results` |
+
+이 후보는 미수용·출하 제외 대상이며 source 복원은 #3911의 범위다.
+위 BEFORE/AFTER 기록은 존재하는 원본 증거다. 누락된 증거로 표현하거나
+최종 head에서 얻은 성능 결과로 재표시하지 않는다.
+
+## Deno 성능 제외와 역사 진단 보존
+
+Deno는 소유자가 제외한 성능 범위로 유지한다. 추가 Deno 조사, profile,
+비교, 최적화 또는 측정을 재개하지 않는다. 공개 Deno 지원과 기존 기능,
+portability 및 native correctness 회귀 의무는 철회하지 않는다.
+
+같은 디렉터리의 [최초 보고](./deno-close-scope-blocker-20261008T2315.md),
+[lead 판정](./lead-abort-adjudication-20261008.md),
+[diagnostic script](./deno-close-diagnosis-20261008T2315.mjs)와
+[raw log](./deno-close-diagnosis-20261008T2315-run1.log)를 보존한다.
+Raw log의 bytes는 수정 시작 HEAD와 동일하게 유지한다. Script 원본은 당시
+commit과 아래 pre-exclusion archive에 보존하며, 현재 script에는 아래에 명시한
+CI lint 정정만 적용한다.
+당시 source `1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18`, digest, 관측, 실패,
+미검증 항목과 추가 작업 제안은 역사 기록이며 재작성하지 않는다.
+당시 제안은 현재 승인 범위의 실행 요구가 아니다.
+
+기록된 Deno `2.9.7` (V8 `15.0.245.2-rusty`, TypeScript `6.0.3`)의 5개 실제
+요청과 constructed pre-abort 사례는 native mechanism/correctness 진단뿐이다.
+Fluo conformance, CPU, 할당, throughput, capacity 또는 최적화 acceptance
+증거가 아니다. Private cache observer는 diagnostic-only·version-dependent이며,
+native signal 교체나 legacy-abort 비활성화의 근거가 되지 않는다.
+
+## 유지되는 계약과 후속 검증
+
+이 변경은 report, 날짜가 명시된 역사 보고 pointer 및 아래 CI 정정에 한정된다. Public runtime,
+API, package contents, security defaults, lifecycle 또는 지원 범위 변경은 없다.
+Bun README 쌍의 body 소비, 요청 격리, status/header, native-route fallback,
+abort, streaming 및 retained shutdown drain 계약과 의미 있는 correctness
+회귀를 유지한다. 공개 산출물 변경이 없으므로 `CONTRIBUTING.md`의 release
+정책에 따라 Changeset을 추가하지 않으며 Book의 공개 계약 설명도 바꾸지 않는다.
+
+초기 보고-only focused checks는 `git diff --check`, 보존된 script의 `node --check`,
+원본 bytes 및 pointer-only 변경 확인이었다. `node --check`는 구문 검사일 뿐
+script를 import하거나 실행하지 않는다. 아래 CI 정정에는 변경 파일 lint와
+실제 production 브라우저 테스트를 별도로 적용하며, 이를 native conformance,
+새 성능 행렬 또는 full local CI로 표현하지 않는다.
+계약·code·verification 세 축의 exact-head review와 final PR full GitHub CI는
+lead의 후속 단계이며 아직 완료된 근거가 아니다.
+
+### 2026-10-12 CI lint 정정
+
+PR #3935의 head `e75522fd1beb03d9bc2a6f5bf72b4bde11958661`에서
+GitHub run `38197782167`, static job `114645060998`의 `pnpm lint`가 실패했다.
+집중 검사에서도 진단 script의 `preAborted.signal === preAborted.signal`이
+`lint/suspicious/noSelfCompare` 오류 1건으로 재현됐다.
+
+첫 native `Request.signal` 읽기를 지역 변수에 보관하고 이후 property 읽기와
+비교하도록 정리했다. Aborted 상태, 원래 reason 및 반복 읽기 identity assertion은
+유지한다. 진단을 새로 실행하거나 당시 log·측정 결과를 바꾸지 않으며, 오류를
+무시하는 lint 설정이나 suppression은 추가하지 않는다. 원본 script는 commit
+`15443d0c4c55f66c504b02b81438846c4980eb4a` 및 pre-exclusion archive에 남아 있다.
+
+이번 정정의 검증은 변경 script의 Biome lint, `node --check`, raw log byte equality와
+`git diff --check`다. Full local CI는 이 세션의 명시적 사용자 지시로 실행하지 않는다.
+새 head의 세 축 리뷰와 전체 GitHub CI는 계속 필요하다.
+
+### 2026-10-12 브라우저 테스트 준비 상태 정정
+
+후속 run `38200144243`, tooling-1 job `114652382993`에서는
+`production-hydration.spec.ts`의 malformed-fragment 테스트가 실패했다.
+예상값은 `:1:ack`였지만 실제 응답에는 생성된 UUID가 있었다. 테스트가
+hydration 전에 SSR의 빈 resource ID를 먼저 읽은 것이며, 이 시점의
+React/example 구현과 의존성은 승인 base와 동일했다.
+
+같은 파일의 기존 render-failure 테스트처럼 먼저 MutationObserver를 구독하고
+실제 첫 resource ACK를 받은 뒤 nonempty identity를 캡처한다. Malformed
+navigation 뒤에는 같은 identity의 두 번째 ACK와 기존 URL, page state,
+document 및 error assertions를 모두 요구한다. React 구현이나 resource
+수명을 변경하지 않고, sleep·timeout 증가·skip·assertion 완화를 추가하지 않는다.
+검증은 기존 production build와 해당 실제 Chrome 테스트를 사용하며,
+workspace 준비 비용과 테스트 결과를 구분한다. 이는 Bun/Deno 성능 결과가
+아니라 이 PR의 CI를 통과시키기 위한 단일 테스트 동기화 수정이다.
+
+Example tsconfig가 테스트 파일도 포함하므로 이 수정은 생성된
+`src/generated/react-pages.ts`의 source fingerprint도 변경한다. 정상 typegen
+검사를 우회하지 않고 생성기가 계산한 fingerprint 16곳만 갱신한다.
+생성 결과와 기존 파일의 차이가 fingerprint뿐임을 확인했으며, type shape,
+generator, tsconfig 및 React runtime은 변경하지 않는다.
+
+## Local durable archive
+
+`.omo/verification/unproven-exclusion-archive-20261012/receipt.json`과 `plan.json`은
+제외 수정 전 local durable snapshot의 근거다. Receipt는 `commandExitCode: 0`,
+`gitBundleVerifyExitCode: 0`, `archiveListingExitCode: 0`, **5235 members**,
+`originalFilesRemoved: false`를 기록한다.
+
+- `candidate-history.bundle` SHA256:
+  `be6410c2898cb3d3aa331990aa9d0e5c5f235ec273628f1c56ba9de9ca1249d4`.
+- `worktree-raw-before-exclusion.tar.gz` SHA256:
+  `00cfc4ebe237154e8a1330fb7fd9ad6d546b9698ae35b3e52dd224104b3f5b98`.
+
+원본은 제자리에 유지한다. 이 archive는 원격 게시 artifact도, 최종 cleanup
+archive도 아니다. 원래 FAIL, INCONCLUSIVE, unsupported 및 incomplete 상태를
+유지하며 threshold 완화, outlier 삭제, diagnostic-to-acceptance 승격이나
+repeat-until-pass로 수용 판정을 바꾸지 않는다.
