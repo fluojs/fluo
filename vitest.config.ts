@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 
-import { configDefaults, defineConfig, mergeConfig } from 'vitest/config';
+import { defineConfig, mergeConfig } from 'vitest/config';
 
+import verificationManifest from './tooling/ci/local-verification-manifest.json' with { type: 'json' };
 import { createFluoVitestWorkspaceConfig } from './tooling/vitest/src/index.ts';
 
 export default mergeConfig(
@@ -22,39 +23,35 @@ export default mergeConfig(
       ],
     },
     test: {
-      passWithNoTests: true,
+      passWithNoTests: false,
       projects: [
         {
           extends: true,
           test: {
             name: 'packages',
             globalSetup: fileURLToPath(new URL('./tooling/vitest/src/packages-global-setup.ts', import.meta.url)),
-            exclude: [...configDefaults.exclude, 'packages/**/deno/**', 'packages/cli/.sandbox/**'],
-            include: ['packages/**/*.test.ts'],
+            ...verificationManifest.testProjects.packages,
           },
         },
         {
           extends: true,
           test: {
             name: 'apps',
-            exclude: [...configDefaults.exclude, '**/.next/**'],
-            include: ['apps/**/*.test.ts'],
+            ...verificationManifest.testProjects.apps,
           },
         },
         {
           extends: true,
           test: {
             name: 'examples',
-            exclude: configDefaults.exclude,
-            include: ['examples/**/*.test.ts'],
+            ...verificationManifest.testProjects.examples,
           },
         },
         {
           extends: true,
           test: {
             name: 'tooling',
-            exclude: configDefaults.exclude,
-            include: ['tooling/**/*.test.ts'],
+            ...verificationManifest.testProjects.tooling,
           },
         },
       ],

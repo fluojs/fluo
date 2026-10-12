@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "testProjects": {
+    "packages": { "include": ["packages/**/*.test.ts"], "exclude": ["**/node_modules/**", "**/.git/**", "packages/**/deno/**", "packages/cli/.sandbox/**"] },
+    "apps": { "include": ["apps/**/*.test.ts"], "exclude": ["**/node_modules/**", "**/.git/**", "**/.next/**"] },
+    "examples": { "include": ["examples/**/*.test.ts"], "exclude": ["**/node_modules/**", "**/.git/**"] },
+    "tooling": { "include": ["tooling/**/*.test.ts"], "exclude": ["**/node_modules/**", "**/.git/**"] }
+  },
   "hostChecks": [
     { "id": "runner-integration", "executable": "node", "argv": ["--test", "tooling/ci/verification-runner.docker-test.mjs"], "cwd": "." }
   ],

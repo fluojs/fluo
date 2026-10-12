@@ -92,7 +92,7 @@ it('uses the same task runner and frozen plan on every remote execution', () => 
   expect(job(workflow, 'plan')).toContain('--base-ref "$BASE_SHA" --profile "$PROFILE"');
 });
 
-it('retains all primary shards and apps/examples while removing duplicate full suites', () => {
+it('retains all primary shards and examples while explicitly excluding absent apps tests', () => {
   // Given
   const plan = buildVerificationPlan({ changedFiles: ['package.json'], identity });
 
@@ -106,9 +106,9 @@ it('retains all primary shards and apps/examples while removing duplicate full s
   for (let shard = 1; shard <= 2; shard += 1) {
     expect(commands.some(({ argv }) => argv.includes('tooling') && argv.includes(`--shard=${shard}/2`))).toBe(true);
   }
-  for (const project of ['apps', 'examples']) {
-    expect(commands.filter(({ argv }) => argv.includes('--project') && argv.includes(project))).toHaveLength(1);
-  }
+  expect(commands.filter(({ argv }) => argv.includes('--project') && argv.includes('examples'))).toHaveLength(1);
+  expect(commands.filter(({ argv }) => argv.includes('--project') && argv.includes('apps'))).toHaveLength(0);
+  expect(plan.notApplicableCapabilities.apps).toMatch(/^no-suite:/u);
   expect(commands.filter(({ argv }) => argv.join(' ') === 'verify:docs')).toHaveLength(1);
   expect(workflow).not.toContain('deterministic-preflight:');
   expect(workflow).not.toContain('verify-platform-consistency-governance:');

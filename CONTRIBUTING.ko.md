@@ -43,6 +43,16 @@ docs-site build를 요구하지 않습니다. Owner가 불명확하거나 depend
 Extended 검증은 항상 전체 suite를 실행합니다. `Verify` 집계는 선택된 모든 결과와
 artifact를 요구하며, 선택되지 않은 workflow group에 대해서만 skip을 허용합니다.
 
+Test catalog는 검증 대상 checkout에서 Vitest와 공유하는 include/exclude로 읽습니다.
+현재 apps에는 일치하는 Vitest suite가 없으므로 apps test command와 capability만
+`no-suite` 사유로 명시적으로 제외합니다. Docs-site, app typecheck와 나머지 full
+16 task의 검증은 유지하며, 실제 apps 테스트가 생기면 자동으로 포함합니다.
+선택된 command의 테스트가 0개이면 실패합니다. 마지막 테스트 삭제나 owner 밖 또는
+test pattern 밖으로의 rename으로 coverage가 사라진 경우는 원래 없는 suite가 아니며
+`coverage-loss` 거부 또는 실제 runner의 zero-match 실패로 차단합니다.
+제외는 PASS가 아니고 frozen plan에 기록되며 required `Verify`는 문서 전용 계획과
+비선택 matrix group이 있어도 실행됩니다.
+
 전체 canonical 로컬 검증은 자동 게시 조건이 아니며 전체 로컬 receipt나 waiver는
 필수가 아닙니다. Receipt 재검증 실패를 포함한 현 head의 적용 가능한 로컬 실패는
 계속 fix-back이 필요합니다. 생략한 전체 로컬 CI는 미실행으로 보고하고 통과로

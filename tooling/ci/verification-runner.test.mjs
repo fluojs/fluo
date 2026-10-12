@@ -29,6 +29,7 @@ test('rejects missing task, cycles and unprovided capabilities in the frozen DAG
   // When / Then: No silent reduction of required work is accepted.
   assert.equal(validatePlan(plan), plan);
   assert.throws(() => validatePlan({ ...plan, tasks: plan.tasks.slice(1) }), /stale|malformed/u);
+  assert.throws(() => validatePlan({ ...plan, tasks: [] }), /stale|malformed/u);
   const cycle = structuredClone(plan);
   cycle.tasks[0].dependencies.push('static');
   cycle.semanticDigest = semanticPlanDigest(cycle);

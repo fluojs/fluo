@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { digest, buildVerificationPlan, readVerificationManifest } from './local-verification.mjs';
-import { aggregateResults, runTask, validateTaskResult } from './verification-runner.mjs';
+import { aggregateResults, runHostChecks, runTask, validateTaskResult } from './verification-runner.mjs';
 import { collectIdentity } from './verify-local.mjs';
 
 const script = new URL('./verification-runner.mjs', import.meta.url).pathname;
+const evidenceParent = process.env.FLUO_RUNNER_TEST_EVIDENCE_ROOT
+  ?? new URL('../../.omo/verification/ci-parity/runner/', import.meta.url).pathname;
 const run = (name, args, cwd) => {
   const result = spawnSync(name, args, { cwd, encoding: 'utf8', timeout: 180_000, env: { ...process.env, COPYFILE_DISABLE: '1' } });
   assert.equal(result.status, 0, result.stderr);
@@ -20,13 +22,165 @@ const fixtureIdentity = {
   root: '/fixture', treeSha: 'd'.repeat(40), worktreeStatusDigest: 'e'.repeat(64),
 };
 
+test('real Docker Vitest: selected apps suite and zero-match -> authenticated pass or failure evidence', { timeout: 240_000 }, (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-vitest-linux-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const put = (file, content) => {
+    mkdirSync(dirname(join(root, file)), { recursive: true });
+    writeFileSync(join(root, file), content);
+  };
+  for (const file of [
+    'verification-runner.mjs', 'local-verification.mjs', 'test-catalog.mjs', 'detect-pr-verification-scope.mjs',
+    'prepared-build.mjs', 'local-verification-manifest.json', 'local-verification-receipt.schema.json',
+    'verification-environment.mjs', 'probe-verification-environment.mjs', 'environment.lock.json', 'Dockerfile',
+  ]) {
+    mkdirSync(join(root, 'tooling/ci'), { recursive: true });
+    copyFileSync(new URL(file, import.meta.url), join(root, 'tooling/ci', file));
+  }
+  put('.agents/workflow-contracts/schema-validator.mjs',
+    readFileSync(new URL('../../.agents/workflow-contracts/schema-validator.mjs', import.meta.url)));
+  put('.gitignore', '.omo/\nnode_modules/\n.artifacts/\n');
+  put('pnpm-workspace.yaml', 'packages:\n  - apps/*\n');
+  put('apps/docs/package.json', '{"name":"fixture-docs","private":true}');
+  put('apps/docs/index.test.ts', 'import {test,expect} from "vitest";test("fixture arithmetic",()=>expect(2+2).toBe(4));');
+  put('vitest.config.mjs', 'import {readFileSync} from "node:fs";const {testProjects}=JSON.parse(readFileSync("tooling/ci/local-verification-manifest.json"));export default {test:{passWithNoTests:false,projects:[{test:{name:"apps",...testProjects.apps}}]}};');
+  put('package.json', JSON.stringify({ name: 'vitest-linux-fixture', private: true, packageManager: 'pnpm@10.4.1',
+    devDependencies: { vitest: '4.1.11' } }));
+  run('pnpm', ['install', '--lockfile-only', '--ignore-scripts'], root);
+  run('git', ['init', '-q'], root);
+  const commit = () => {
+    run('git', ['add', '.'], root);
+    run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'fixture'], root);
+    return run('git', ['rev-parse', 'HEAD'], root);
+  };
+  for (const filter of ['apps/docs/', 'apps/missing/', 'apps/docs/empty.test.ts']) {
+    if (filter.endsWith('empty.test.ts')) put(filter, 'export const noTests = true;');
+    const manifest = readVerificationManifest();
+    const task = manifest.tasks.find(({ id }) => id === 'tooling-1');
+    task.dependencies = [];
+    task.inputs = [];
+    task.commands = [
+      { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
+      { executable: 'pnpm', argv: ['vitest', 'run', '--project', 'apps', filter, '--maxWorkers=1'], cwd: '.' },
+    ];
+    put('tooling/ci/local-verification-manifest.json', JSON.stringify(manifest));
+    const head = commit();
+    const identity = collectIdentity(root, head);
+    const plan = buildVerificationPlan({ changedFiles: [], identity, root, manifest });
+    const outcome = filter === 'apps/docs/' ? 'passed' : filter.endsWith('empty.test.ts') ? 'empty' : 'missing';
+    const path = join(root, '.git', `${outcome}-plan.json`);
+    const output = join(root, '.git', outcome);
+    const artifacts = join(root, '.git/artifacts');
+    writeFileSync(path, JSON.stringify(plan));
+
+    if (filter === 'apps/docs/') {
+      const result = runTask(plan, 'tooling-1', output, artifacts, path, root);
+
+      assert.equal(result.status, 'passed');
+      validateTaskResult(plan, plan.tasks.find(({ id }) => id === 'tooling-1'), result, output, artifacts);
+      assert.match(readFileSync(join(output, 'tooling-1-1.log'), 'utf8'), /1 passed/u);
+    } else {
+      assert.throws(() => runTask(plan, 'tooling-1', output, artifacts, path, root), (error) => {
+        assert.ok(error instanceof Error);
+        assert.ok(existsSync(join(output, 'tooling-1.json')), error.message);
+        assert.match(error.message, /Linux task tooling-1 failed/u);
+        return true;
+      });
+
+      const result = JSON.parse(readFileSync(join(output, 'tooling-1.json'), 'utf8'));
+      assert.equal(result.status, 'failed');
+      assert.equal(result.commands[1].exitCode, 1);
+      assert.match(readFileSync(join(output, 'tooling-1-1.log'), 'utf8'), /No test files found|No test suite found/u);
+      assert.throws(() => validateTaskResult(plan, plan.tasks.find(({ id }) => id === 'tooling-1'),
+        result, output, artifacts), /invalid task result/u);
+    }
+    mkdirSync(evidenceParent, { recursive: true });
+    const evidence = mkdtempSync(join(evidenceParent, 'vitest-runner-'));
+    cpSync(output, join(evidence, 'results'), { recursive: true });
+    copyFileSync(path, join(evidence, 'plan.json'));
+  }
+
+  // Given: a pre-existing absent apps suite and a real docs-only execution plan.
+  rmSync(join(root, 'apps/docs/index.test.ts'));
+  rmSync(join(root, 'apps/docs/empty.test.ts'));
+  const check = 'import assert from "node:assert/strict";import {readFileSync} from "node:fs";assert.equal(JSON.parse(readFileSync("tooling/ci/local-verification-manifest.json")).tasks.length,16);';
+  put('check.mjs', check);
+  put('docs.mjs', `${check}import {mkdirSync,writeFileSync} from "node:fs";mkdirSync(".artifacts/docs-site",{recursive:true});writeFileSync(".artifacts/docs-site/index.html","verified docs fixture");`);
+  put('tooling/release/verify-changeset-release-lane.mjs',
+    'import assert from "node:assert/strict";assert.ok(process.argv.some(arg=>/^--base-ref=[a-f0-9]{40}$/.test(arg)));');
+  put('tooling/ci/verification-runner.docker-test.mjs',
+    'import assert from "node:assert/strict";import {spawnSync} from "node:child_process";import test from "node:test";test("Docker daemon",()=>assert.equal(spawnSync("docker",["info"]).status,0));');
+  put('package.json', JSON.stringify({ name: 'docs-linux-fixture', private: true, packageManager: 'pnpm@10.4.1',
+    devDependencies: { vitest: '4.1.11' }, scripts: {
+      'verify:platform-consistency-governance': 'node check.mjs',
+      'verify:docs': 'node docs.mjs', 'docs:package': 'node check.mjs', 'docs:release-check': 'node check.mjs',
+    } }));
+  const manifest = readVerificationManifest();
+  put('tooling/ci/local-verification-manifest.json', JSON.stringify(manifest));
+  const base = commit();
+  put('docs/guide.md', '# Fixture documentation');
+  commit();
+  const identity = collectIdentity(root, base);
+  const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity, root, manifest });
+  const path = join(root, '.git/docs-plan.json');
+  const output = join(root, '.git/docs-results');
+  const artifacts = join(root, '.git/docs-artifacts');
+  writeFileSync(path, JSON.stringify(plan));
+  assert.deepEqual(plan.tasks.map(({ id }) => id), ['static']);
+  assert.equal(plan.capabilityTasks.apps, undefined);
+  const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const resolver = workflow.match(/node --input-type=module <<'EOF'\n([\s\S]+?)\n {10}EOF/u)?.[1];
+  assert.ok(resolver);
+  put('.omo/ci-plan/plan.json', JSON.stringify(plan));
+  const matrixPath = join(root, '.git/matrix-output');
+  run('node', ['--input-type=module', '-e', `process.env.GITHUB_OUTPUT=${JSON.stringify(matrixPath)};\n${resolver}`], root);
+  const fields = Object.fromEntries(readFileSync(matrixPath, 'utf8').trim().split('\n').map((line) => line.split('=')));
+  assert.deepEqual(JSON.parse(fields.tasks), ['static']);
+  assert.deepEqual(JSON.parse(fields.compatibility), []);
+  assert.equal(fields.has_build, 'false');
+  const jobs = { plan: { result: 'success' }, build: { result: 'skipped' },
+    compatibility: { result: 'skipped' }, verification: { result: 'success' } };
+
+  // When: execute all selected commands and genuine host evidence before aggregation.
+  runHostChecks(plan, output, root);
+  runTask(plan, 'static', output, artifacts, path, root);
+  const results = aggregateResults(plan, output, artifacts, jobs, root);
+
+  // Then: unselected groups/artifacts are unnecessary; selected evidence is mandatory.
+  assert.deepEqual(results.map(({ taskId }) => taskId), ['static']);
+  assert.throws(() => aggregateResults(plan, output, artifacts,
+    { ...jobs, verification: { result: 'skipped' } }, root), /job failed/u);
+  const resultPath = join(output, 'static.json');
+  const genuine = readFileSync(resultPath, 'utf8');
+  for (const mutation of [
+    (result) => { result.commands.pop(); },
+    (result) => { result.artifacts = []; },
+    (result) => { result.headSha = 'a'.repeat(40); },
+    (result) => { result.status = 'cancelled'; },
+  ]) {
+    const result = JSON.parse(genuine);
+    mutation(result);
+    writeFileSync(resultPath, JSON.stringify(result));
+    assert.throws(() => aggregateResults(plan, output, artifacts, jobs, root), /invalid task result|missing output/u);
+  }
+  writeFileSync(resultPath, genuine);
+  const evidence = mkdtempSync(join(evidenceParent, 'docs-runner-'));
+  cpSync(output, join(evidence, 'results'), { recursive: true });
+  cpSync(artifacts, join(evidence, 'artifacts'), { recursive: true });
+  copyFileSync(path, join(evidence, 'plan.json'));
+  writeFileSync(join(artifacts, 'docs-site/index.html'), 'tampered');
+  assert.throws(() => aggregateResults(plan, output, artifacts, jobs, root), /artifact changed/u);
+  rmSync(resultPath);
+  assert.throws(() => aggregateResults(plan, output, artifacts, jobs, root), /missing task/u);
+});
+
 test('real Docker: scoped build archive -> selected clean outputs and authenticated Linux reuse', { timeout: 240_000 }, (t) => {
   assert.equal(spawnSync('docker', ['info'], { stdio: 'ignore' }).status, 0, 'scoped Docker fixture requires an available daemon');
   const root = mkdtempSync(join(tmpdir(), 'fluo-scoped-linux-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const file of [
     'tooling/ci/verification-runner.mjs', 'tooling/ci/local-verification.mjs',
-    'tooling/ci/detect-pr-verification-scope.mjs', 'tooling/ci/prepared-build.mjs',
+    'tooling/ci/detect-pr-verification-scope.mjs', 'tooling/ci/test-catalog.mjs', 'tooling/ci/prepared-build.mjs',
     'tooling/ci/local-verification-manifest.json', 'tooling/ci/local-verification-receipt.schema.json',
     'tooling/ci/verification-environment.mjs', 'tooling/ci/probe-verification-environment.mjs',
     'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
@@ -93,7 +247,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
     'tooling/ci/verification-environment.mjs', 'tooling/ci/probe-verification-environment.mjs',
     'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
     'tooling/ci/prepared-build.mjs',
-    'tooling/ci/detect-pr-verification-scope.mjs',
+    'tooling/ci/detect-pr-verification-scope.mjs', 'tooling/ci/test-catalog.mjs',
     '.agents/workflow-contracts/schema-validator.mjs',
   ]) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
@@ -145,7 +299,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   const plan = buildVerificationPlan({ changedFiles: [],
     identity: { ...fixtureIdentity, root, baseRef: headSha, baseSha: headSha, mergeBase: headSha,
       headSha, treeSha, worktreeStatusDigest: digest('') },
-    manifest });
+    manifest, root });
   const path = join(root, '.git', 'plan.json');
   writeFileSync(path, JSON.stringify(plan));
   const output = join(root, '.git', 'results');
@@ -201,9 +355,8 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   assert.ok(failed.diagnostics.some(({ path }) => path.endsWith('trace.zip')));
   assert.ok(failed.diagnostics.some(({ path }) => path.endsWith('error-context.md')));
   assert.throws(() => aggregateResults(plan, output, artifacts, null, root), /artifact changed|missing task|invalid task result/u);
-  const evidenceParent = new URL('../../.omo/verification/ci-parity/runner/', import.meta.url);
   mkdirSync(evidenceParent, { recursive: true });
-  const evidence = mkdtempSync(join(evidenceParent.pathname, 'fixture-'));
+  const evidence = mkdtempSync(join(evidenceParent, 'fixture-'));
   cpSync(output, join(evidence, 'results'), { recursive: true });
   cpSync(artifacts, join(evidence, 'artifacts'), { recursive: true });
   writeFileSync(join(evidence, 'source.json'), `${JSON.stringify({
