@@ -144,7 +144,8 @@ const controller = new AbortController();
 const reason = new Error('pre-abort-identity');
 controller.abort(reason);
 const preAborted = new Request('http://fluo.test/pre-abort', { signal: controller.signal });
-assert(preAborted.signal.aborted && preAborted.signal.reason === reason && preAborted.signal === preAborted.signal, 'Native pre-abort reason or signal identity lost');
+const preAbortedSignal = preAborted.signal;
+assert(preAbortedSignal.aborted && preAbortedSignal.reason === reason && preAbortedSignal === preAborted.signal, 'Native pre-abort reason or signal identity lost');
 records.push({ mode: 'constructed-pre-abort', aborted: true, reasonIdentityPreserved: true });
 
 console.log(JSON.stringify({

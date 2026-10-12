@@ -15,8 +15,8 @@ Bun 고유 runtime 최적화나 독립적으로 수용된 adapter 개선은 없�
 
 - 승인 변경: `.omo/verification/3915-unproven-candidate-exclusion-20261012.json`
   (`OWNER_APPROVED_COMPLETION_SCOPE_AMENDMENT`).
-- 승인 preflight: `.omo/verification/3913-exclusion-preflight-20261012.json`,
-  digest `88f2ef4ec8b60ed841919d86798adfd82e4199aee48a27a59e3e3f7452d2c5f0`.
+- 승인 preflight: `.omo/verification/3913-exclusion-preflight-lint-fix-20261012.json`,
+  digest `5bfe9ce19783ce6f80c66688d84b5f541249894f0e48c46d15aced28117eb0f3`.
 - 원본 inventory: `.omo/verification/3915-current-acceptance-status-20261011.md`.
   이 inventory의 당시 소유자 결정 대기 문구는 이후 승인 변경으로 대체되었으나
   당시 수치와 판정은 유지한다.
@@ -85,7 +85,9 @@ portability 및 native correctness 회귀 의무는 철회하지 않는다.
 [lead 판정](./lead-abort-adjudication-20261008.md),
 [diagnostic script](./deno-close-diagnosis-20261008T2315.mjs)와
 [raw log](./deno-close-diagnosis-20261008T2315-run1.log)를 보존한다.
-Script와 log의 bytes는 수정 시작 HEAD와 동일하게 유지한다.
+Raw log의 bytes는 수정 시작 HEAD와 동일하게 유지한다. Script 원본은 당시
+commit과 아래 pre-exclusion archive에 보존하며, 현재 script에는 아래에 명시한
+CI lint 정정만 적용한다.
 당시 source `1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18`, digest, 관측, 실패,
 미검증 항목과 추가 작업 제안은 역사 기록이며 재작성하지 않는다.
 당시 제안은 현재 승인 범위의 실행 요구가 아니다.
@@ -111,6 +113,23 @@ import하거나 실행하지 않는다. Package build/typecheck, native conforma
 새 성능 행렬 또는 full local CI를 실행한 결과로 주장하지 않는다.
 계약·code·verification 세 축의 exact-head review와 final PR full GitHub CI는
 lead의 후속 단계이며 아직 완료된 근거가 아니다.
+
+### 2026-10-12 CI lint 정정
+
+PR #3935의 head `e75522fd1beb03d9bc2a6f5bf72b4bde11958661`에서
+GitHub run `38197782167`, static job `114645060998`의 `pnpm lint`가 실패했다.
+집중 검사에서도 진단 script의 `preAborted.signal === preAborted.signal`이
+`lint/suspicious/noSelfCompare` 오류 1건으로 재현됐다.
+
+첫 native `Request.signal` 읽기를 지역 변수에 보관하고 이후 property 읽기와
+비교하도록 정리했다. Aborted 상태, 원래 reason 및 반복 읽기 identity assertion은
+유지한다. 진단을 새로 실행하거나 당시 log·측정 결과를 바꾸지 않으며, 오류를
+무시하는 lint 설정이나 suppression은 추가하지 않는다. 원본 script는 commit
+`15443d0c4c55f66c504b02b81438846c4980eb4a` 및 pre-exclusion archive에 남아 있다.
+
+이번 정정의 검증은 변경 script의 Biome lint, `node --check`, raw log byte equality와
+`git diff --check`다. Full local CI는 이 세션의 명시적 사용자 지시로 실행하지 않는다.
+새 head의 세 축 리뷰와 전체 GitHub CI는 계속 필요하다.
 
 ## Local durable archive
 
