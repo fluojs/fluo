@@ -30,6 +30,68 @@ async function resolveService(moduleType: Constructor): Promise<DiscordService> 
 }
 
 describe('DiscordService lifecycle regressions', () => {
+  it('drains every immediately accepted send even when another delivery rejects during shutdown', async () => {
+    const failure = new Error('First delivery rejected.');
+    let releaseDelivery = (): void => {
+      throw new Error('Delivery resolver was not initialized.');
+    };
+    let reportDeliveryStarted = (): void => {
+      throw new Error('Delivery-start resolver was not initialized.');
+    };
+    const delivery = new Promise<void>((resolve) => {
+      releaseDelivery = resolve;
+    });
+    const deliveryStarted = new Promise<void>((resolve) => {
+      reportDeliveryStarted = resolve;
+    });
+    let deliverySettled = false;
+    const close = vi.fn(async () => {
+      expect(deliverySettled).toBe(true);
+    });
+    const service = await resolveService(
+      DiscordModule.forRoot({
+        transport: {
+          create: async () => ({
+            close,
+            async send(message) {
+              if (message.content === 'reject') {
+                throw failure;
+              }
+
+              reportDeliveryStarted();
+              await delivery;
+              deliverySettled = true;
+              return { messageId: 'last-delivery', ok: true };
+            },
+          }),
+        },
+      }),
+    );
+    await service.onModuleInit();
+
+    const rejected = service.send({ content: 'reject' });
+    const rejection = expect(rejected).rejects.toBe(failure);
+    const accepted = service.send({ content: 'pending' });
+    const shutdown = service.onApplicationShutdown();
+
+    try {
+      await deliveryStarted;
+      await rejection;
+      expect(close).not.toHaveBeenCalled();
+      await expect(service.send({ content: 'too late' })).rejects.toBeInstanceOf(DiscordTransportError);
+
+      releaseDelivery();
+
+      await expect(accepted).resolves.toMatchObject({ messageId: 'last-delivery', ok: true });
+      await expect(shutdown).resolves.toBeUndefined();
+      await service.onApplicationShutdown();
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      releaseDelivery();
+      await Promise.allSettled([rejected, accepted, shutdown]);
+    }
+  }, 5_000);
+
   it('keeps a rejected factory create failure out of shutdown cleanup diagnostics', async () => {
     const createError = new Error('discord transport factory unavailable');
     const create = vi.fn(async (): Promise<DiscordTransport> => {
