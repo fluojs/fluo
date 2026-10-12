@@ -434,7 +434,12 @@ test('keeps the shell resource operational after a malformed fragment', async ({
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/admin/qr');
   const probe = page.getByRole('button', { name: 'Probe shell resource' });
+  await subscribeToResourceAck(page, 1);
+  await probe.click();
+  const initialAck = await page.evaluate(() => Reflect.get(window, '__resourceAck'));
   const identity = await page.locator('[data-resource-id]').getAttribute('data-resource-id');
+  expect(identity).toBeTruthy();
+  expect(initialAck).toBe(`${identity}:1:ack`);
   await page.getByRole('button', { name: 'Page count: 0' }).click();
   await page.evaluate(() => { window.__softNavigationDocument = 'malformed-document'; });
 
@@ -444,9 +449,9 @@ test('keeps the shell resource operational after a malformed fragment', async ({
   // Then: page, shell, and a new resource operation survive without an effect error.
   await expect(page).toHaveURL(/\/admin\/qr#%$/u);
   await expect(page.getByRole('button', { name: 'Page count: 1' })).toBeVisible();
-  await subscribeToResourceAck(page, 1);
+  await subscribeToResourceAck(page, 2);
   await probe.click();
-  expect(await page.evaluate(() => Reflect.get(window, '__resourceAck'))).toBe(`${identity}:1:ack`);
+  expect(await page.evaluate(() => Reflect.get(window, '__resourceAck'))).toBe(`${identity}:2:ack`);
   expect(await page.locator('[data-resource-id]').getAttribute('data-resource-id')).toBe(identity);
   expect(await page.evaluate(() => window.__softNavigationDocument)).toBe('malformed-document');
   expect(errors).toEqual([]);

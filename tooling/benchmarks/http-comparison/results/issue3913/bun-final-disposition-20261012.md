@@ -15,8 +15,8 @@ Bun 고유 runtime 최적화나 독립적으로 수용된 adapter 개선은 없�
 
 - 승인 변경: `.omo/verification/3915-unproven-candidate-exclusion-20261012.json`
   (`OWNER_APPROVED_COMPLETION_SCOPE_AMENDMENT`).
-- 승인 preflight: `.omo/verification/3913-exclusion-preflight-lint-fix-20261012.json`,
-  digest `5bfe9ce19783ce6f80c66688d84b5f541249894f0e48c46d15aced28117eb0f3`.
+- 승인 preflight: `.omo/verification/3913-exclusion-preflight-browser-generated-fix-20261012.json`,
+  digest `b954deaf93d58e03c0a1337c7a48ffc6148370140a4e5eb035cdedd022dd36f7`.
 - 원본 inventory: `.omo/verification/3915-current-acceptance-status-20261011.md`.
   이 inventory의 당시 소유자 결정 대기 문구는 이후 승인 변경으로 대체되었으나
   당시 수치와 판정은 유지한다.
@@ -100,17 +100,18 @@ native signal 교체나 legacy-abort 비활성화의 근거가 되지 않는다.
 
 ## 유지되는 계약과 후속 검증
 
-이 변경은 report와 날짜가 명시된 역사 보고 pointer에 한정된다. Public runtime,
+이 변경은 report, 날짜가 명시된 역사 보고 pointer 및 아래 CI 정정에 한정된다. Public runtime,
 API, package contents, security defaults, lifecycle 또는 지원 범위 변경은 없다.
 Bun README 쌍의 body 소비, 요청 격리, status/header, native-route fallback,
 abort, streaming 및 retained shutdown drain 계약과 의미 있는 correctness
 회귀를 유지한다. 공개 산출물 변경이 없으므로 `CONTRIBUTING.md`의 release
 정책에 따라 Changeset을 추가하지 않으며 Book의 공개 계약 설명도 바꾸지 않는다.
 
-Focused checks는 `git diff --check`, 보존된 script의 `node --check`, 원본 bytes
-및 pointer-only 변경 확인이다. `node --check`는 구문 검사일 뿐 script를
-import하거나 실행하지 않는다. Package build/typecheck, native conformance,
-새 성능 행렬 또는 full local CI를 실행한 결과로 주장하지 않는다.
+초기 보고-only focused checks는 `git diff --check`, 보존된 script의 `node --check`,
+원본 bytes 및 pointer-only 변경 확인이었다. `node --check`는 구문 검사일 뿐
+script를 import하거나 실행하지 않는다. 아래 CI 정정에는 변경 파일 lint와
+실제 production 브라우저 테스트를 별도로 적용하며, 이를 native conformance,
+새 성능 행렬 또는 full local CI로 표현하지 않는다.
 계약·code·verification 세 축의 exact-head review와 final PR full GitHub CI는
 lead의 후속 단계이며 아직 완료된 근거가 아니다.
 
@@ -130,6 +131,29 @@ GitHub run `38197782167`, static job `114645060998`의 `pnpm lint`가 실패했�
 이번 정정의 검증은 변경 script의 Biome lint, `node --check`, raw log byte equality와
 `git diff --check`다. Full local CI는 이 세션의 명시적 사용자 지시로 실행하지 않는다.
 새 head의 세 축 리뷰와 전체 GitHub CI는 계속 필요하다.
+
+### 2026-10-12 브라우저 테스트 준비 상태 정정
+
+후속 run `38200144243`, tooling-1 job `114652382993`에서는
+`production-hydration.spec.ts`의 malformed-fragment 테스트가 실패했다.
+예상값은 `:1:ack`였지만 실제 응답에는 생성된 UUID가 있었다. 테스트가
+hydration 전에 SSR의 빈 resource ID를 먼저 읽은 것이며, 이 시점의
+React/example 구현과 의존성은 승인 base와 동일했다.
+
+같은 파일의 기존 render-failure 테스트처럼 먼저 MutationObserver를 구독하고
+실제 첫 resource ACK를 받은 뒤 nonempty identity를 캡처한다. Malformed
+navigation 뒤에는 같은 identity의 두 번째 ACK와 기존 URL, page state,
+document 및 error assertions를 모두 요구한다. React 구현이나 resource
+수명을 변경하지 않고, sleep·timeout 증가·skip·assertion 완화를 추가하지 않는다.
+검증은 기존 production build와 해당 실제 Chrome 테스트를 사용하며,
+workspace 준비 비용과 테스트 결과를 구분한다. 이는 Bun/Deno 성능 결과가
+아니라 이 PR의 CI를 통과시키기 위한 단일 테스트 동기화 수정이다.
+
+Example tsconfig가 테스트 파일도 포함하므로 이 수정은 생성된
+`src/generated/react-pages.ts`의 source fingerprint도 변경한다. 정상 typegen
+검사를 우회하지 않고 생성기가 계산한 fingerprint 16곳만 갱신한다.
+생성 결과와 기존 파일의 차이가 fingerprint뿐임을 확인했으며, type shape,
+generator, tsconfig 및 React runtime은 변경하지 않는다.
 
 ## Local durable archive
 
