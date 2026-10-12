@@ -15,6 +15,7 @@ function fixture(t) {
   for (const file of [
     'tooling/ci/verify-local.mjs', 'tooling/ci/verification-scheduler.mjs',
     'tooling/ci/prepared-build.mjs', 'tooling/ci/local-verification.mjs',
+    'tooling/ci/detect-pr-verification-scope.mjs',
     'tooling/ci/verification-runner.mjs', 'tooling/ci/verification-environment.mjs',
     'tooling/ci/local-verification-manifest.json', 'tooling/ci/local-verification-receipt.schema.json',
     'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
@@ -76,7 +77,7 @@ test('hashes the complete binary diff when it exceeds the default child-process 
   assert.equal(identity.clean, true);
 });
 
-test('the real local CLI produces a complete admissible receipt through the executor boundary', (t) => {
+for (const scenario of ['full', 'scoped', 'docs']) test(`local CLI: ${scenario} -> authentic selected receipt through executor boundary`, (t) => {
   // Given: only task execution is replaced; planning, source checks, aggregation,
   // receipt production and receipt authentication remain the production code.
   const { root, commit } = fixture(t);
@@ -152,7 +153,21 @@ if (process.argv[1] && import.meta.url === new URL('file://'+process.argv[1]).hr
   } catch(error) { process.stderr.write(String(error)+'\\n'); process.exitCode=1; }
 }
 `);
+  if (scenario === 'scoped') {
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+    mkdirSync(join(root, 'packages/leaf/src'), { recursive: true });
+    writeFileSync(join(root, 'packages/leaf/package.json'), JSON.stringify({ name: '@fixture/leaf', scripts: { build: 'build-leaf' } }));
+    writeFileSync(join(root, 'packages/leaf/src/index.ts'), 'export const value = 1;\n');
+  }
   const base = commit();
+  if (scenario === 'scoped') {
+    writeFileSync(join(root, 'packages/leaf/src/index.ts'), 'export const value = 2;\n');
+    commit();
+  } else if (scenario === 'docs') {
+    mkdirSync(join(root, 'docs'), { recursive: true });
+    writeFileSync(join(root, 'docs/guide.md'), '# Guide\n');
+    commit();
+  }
 
   // When: execute the actual CLI, not a hand-authored passing receipt.
   const execution = spawnSync(process.execPath, [join(root, 'tooling/ci/verify-local.mjs'), '--base-ref', base, '--concurrency', '2'], {
@@ -166,22 +181,79 @@ if (process.argv[1] && import.meta.url === new URL('file://'+process.argv[1]).hr
   const receipt = JSON.parse(bytes);
   const identity = collectIdentity(root, base);
   const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity,
-    manifest: readVerificationManifest(join(root, 'tooling/ci/local-verification-manifest.json')) });
+    root, manifest: readVerificationManifest(join(root, 'tooling/ci/local-verification-manifest.json')) });
   assert.equal(receiptMatchesPlan(receipt, identity, plan), true);
-  assert.equal(receipt.taskResults.length, 16);
+  assert.equal(plan.mode, scenario);
+  assert.equal(receipt.taskResults.length, plan.tasks.length);
   assert.equal(validateReceiptEvidence(receipt, {
     worktree: root, receiptPath: result.path.slice(root.length + 1), receiptSha256: digest(bytes),
   }).valid, true);
 
+  // Exercise the production aggregate CLI and its plan-aware workflow admission.
+  const evidenceFile = receipt.logs.find((file) => file.path.endsWith(`/results/${plan.tasks[0].id}.json`));
+  const output = dirname(join(root, evidenceFile.path));
+  const artifacts = join(dirname(output), 'artifacts');
+  const planFile = join(dirname(output), 'plan.json');
+  const jobs = {
+    plan: { result: 'success' },
+    build: { result: scenario === 'docs' ? 'skipped' : 'success' },
+    compatibility: { result: scenario === 'docs' ? 'skipped' : 'success' },
+    verification: { result: 'success' },
+  };
+  const aggregate = () => spawnSync(process.execPath, [new URL('./verification-runner.mjs', import.meta.url).pathname,
+    '--plan', planFile, '--aggregate', '--output', output, '--artifacts', artifacts], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, VERIFICATION_RESULTS: JSON.stringify(jobs) },
+  });
+  const admitted = aggregate();
+  assert.equal(admitted.status, 0, admitted.stderr);
+  const resultPath = join(root, evidenceFile.path);
+  const resultBytes = readFileSync(resultPath);
+  for (const status of ['skipped', 'failed', 'cancelled']) {
+    writeFileSync(resultPath, JSON.stringify({ ...receipt.taskResults[0], status }));
+    assert.notEqual(aggregate().status, 0);
+  }
+  rmSync(resultPath);
+  assert.notEqual(aggregate().status, 0);
+  writeFileSync(resultPath, resultBytes);
+  const logPath = join(output, receipt.taskResults[0].logs[0].path);
+  const logBytes = readFileSync(logPath);
+  writeFileSync(logPath, 'tampered log');
+  assert.notEqual(aggregate().status, 0);
+  writeFileSync(logPath, logBytes);
+  const requiredArtifact = receipt.artifacts[0];
+  const artifactPath = join(root, requiredArtifact.path);
+  const artifactBytes = readFileSync(artifactPath);
+  rmSync(artifactPath);
+  assert.notEqual(aggregate().status, 0);
+  writeFileSync(artifactPath, artifactBytes);
+
+  if (scenario === 'scoped') {
+    const eventPath = join(root, '.omo/full-event.json');
+    writeFileSync(eventPath, JSON.stringify({ pull_request: { labels: [{ name: 'ci:full-verify' }] } }));
+    for (const request of [
+      { argv: ['--full'], env: {} },
+      { argv: [], env: { CI_FORCE_FULL_VERIFY: '1' } },
+      { argv: [], env: { GITHUB_EVENT_PATH: eventPath } },
+    ]) {
+      const forced = spawnSync(process.execPath, [join(root, 'tooling/ci/verify-local.mjs'), '--plan',
+        '--base-ref', base, ...request.argv], { cwd: root, encoding: 'utf8', env: { ...process.env, ...request.env } });
+      assert.equal(forced.status, 0, forced.stderr);
+      const fullPlan = JSON.parse(forced.stdout);
+      assert.equal(fullPlan.mode, 'full');
+      assert.equal(fullPlan.forceFull, true);
+      assert.equal(fullPlan.tasks.length, 16);
+    }
+  }
+
   const failed = spawnSync(process.execPath, [join(root, 'tooling/ci/verify-local.mjs'), '--base-ref', base, '--concurrency', '2'], {
     cwd: root, encoding: 'utf8', timeout: 30_000,
-    env: { ...process.env, FLUO_FIXTURE_FAIL_TASK: 'build' },
+    env: { ...process.env, FLUO_FIXTURE_FAIL_TASK: scenario === 'docs' ? 'static' : 'build' },
   });
   assert.equal(failed.status, 1, failed.stdout + failed.stderr);
   const failure = JSON.parse(readFileSync(JSON.parse(failed.stdout).path, 'utf8'));
   assert.equal(failure.status, 'failed');
   assert.equal(failure.taskResults.length, 0);
-  assert.match(failure.reason, /build: runner exited 1: Error: fixture task failure/u);
+  assert.match(failure.reason, /(?:build|static): runner exited 1: Error: fixture task failure/u);
 });
 
 test('the local CLI rejects invalid concurrency before writing any receipt', (t) => {

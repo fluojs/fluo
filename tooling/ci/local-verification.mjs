@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { schemaFailure } from '../../.agents/workflow-contracts/schema-validator.mjs';
+import { isProsePath, resolveVerificationScope } from './detect-pr-verification-scope.mjs';
 import { imageKeyFor, loadEnvironmentLock, validateVerificationEnvironment } from './verification-environment.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -49,15 +51,7 @@ function isDocsChange(path) {
 }
 
 export function verificationModeForChanges(changedFiles, manifest = readVerificationManifest()) {
-  if (!Array.isArray(changedFiles) || changedFiles.length === 0) return 'full';
-  for (const file of changedFiles) {
-    if (typeof file !== 'string' || !file.startsWith('packages/') || isManifestChange(file)
-      || manifest.scope.fullPaths.includes(file)
-      || manifest.scope.fullPrefixes.some((prefix) => file.startsWith(prefix))) {
-      return 'full';
-    }
-  }
-  return 'scoped';
+  return resolveVerificationScope(changedFiles, { scope: manifest.scope }).mode;
 }
 
 const COMPANION_TRIGGERS = {
@@ -100,11 +94,12 @@ function companionChecks(changedFiles, manifest) {
 }
 
 export function buildVerificationPlan({ changedFiles, identity, manifest = readVerificationManifest(), profile = 'pr',
-  lock = loadEnvironmentLock() }) {
+  lock = loadEnvironmentLock(), root = fileURLToPath(new URL('../../', import.meta.url)), forceFull = false }) {
   if (!Array.isArray(changedFiles) || changedFiles.some((file) => typeof file !== 'string')) {
     throw new TypeError('changedFiles must be an array of paths.');
   }
   if (!['pr', 'extended'].includes(profile)) throw new TypeError(`unknown verification profile: ${profile}`);
+  if (typeof forceFull !== 'boolean') throw new TypeError('forceFull must be a boolean');
   if (!hasExactIdentity(identity) || !identity.clean) throw new TypeError('plan requires an exact clean source identity');
   if (manifest.hostChecks?.length !== 1 || manifest.hostChecks[0].id !== 'runner-integration'
     || manifest.hostChecks[0].executable !== 'node' || manifest.hostChecks[0].cwd !== '.'
@@ -113,7 +108,8 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
   }
   const definitions = companionDefinitions(manifest);
   const companionIds = companionChecks(changedFiles, manifest);
-  const mode = verificationModeForChanges(changedFiles, manifest);
+  const selection = resolveVerificationScope(changedFiles, { root, scope: manifest.scope, forceFull: forceFull || profile === 'extended' });
+  const mode = selection.mode;
   const cleanDist = changedFiles.some(isCleanDistChange);
   const taskIds = new Set(manifest.tasks.map((task) => task.id));
   if (taskIds.size !== 16 || manifest.tasks.length !== 16) throw new TypeError('missing or duplicate required verification task');
@@ -123,7 +119,7 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
   if (required.some((id) => !taskIds.has(id))) throw new TypeError('missing required capability task');
   const applicableBenchmark = changedFiles.some((file) => file.startsWith('tooling/benchmarks/http-comparison/'));
   const applicableReactBenchmark = changedFiles.some((file) => file.startsWith('tooling/benchmarks/react-app-comparison/'));
-  const tasks = manifest.tasks.map((definition) => {
+  let tasks = manifest.tasks.map((definition) => {
     if (!['primary', 'compat24', 'compat26', 'runtimeFloor'].includes(definition.runtime)
       || !Array.isArray(definition.dependencies) || !Array.isArray(definition.capabilities)
       || !Array.isArray(definition.inputs) || !Array.isArray(definition.outputs)
@@ -160,6 +156,101 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
         (capability !== 'isolated-benchmark' || applicableBenchmark)
         && (capability !== 'react-app-benchmark' || applicableReactBenchmark)) };
   });
+  if (mode !== 'full') {
+    const command = (executable, argv, env) => ({ executable, argv, cwd: '.', ...(env ? { env } : {}) });
+    const install = command('pnpm', ['install', '--frozen-lockfile']);
+    const task = (id) => tasks.find((item) => item.id === id);
+    const selected = new Set(['static', ...selection.tasks]);
+    const packagePaths = selection.packageDirectories.filter((path) => path.startsWith('packages/')).map((path) => `${path}/`);
+    const examplePaths = selection.packageDirectories.filter((path) => path.startsWith('examples/')).map((path) => `${path}/`);
+    const appPaths = selection.packageDirectories.filter((path) => path.startsWith('apps/')).map((path) => `${path}/`);
+    const toolingPaths = [...new Set([...selection.toolingPaths.filter((path) => !path.endsWith('.mjs')),
+      ...selection.packageDirectories.filter((path) => path.startsWith('tooling/')).map((path) => `${path}/`)])].sort();
+    const docs = changedFiles.some((path) => isProsePath(path) && !path.startsWith('.changeset/'))
+      || selection.packageDirectories.includes('apps/docs');
+    const needsBuild = mode === 'scoped' && selection.buildDirectories.length > 0;
+    if (needsBuild) selected.add('build');
+    const buildCommands = [install, command('pnpm', ['-r', ...selection.buildFilters, '--if-present', 'run', 'build'])];
+    if (selected.has('runtime-floor')) buildCommands.push(...task('build').commands.slice(2));
+    task('build').commands = buildCommands;
+    task('build').outputs = ['build.tar', 'build.json', ...(selected.has('runtime-floor') ? ['runtime-floor.tar'] : [])];
+    task('build').capabilities = ['install', 'build', ...(selected.has('runtime-floor') ? ['runtime-bundle'] : [])];
+    const staticTask = task('static');
+    staticTask.dependencies = needsBuild ? ['build'] : [];
+    staticTask.inputs = needsBuild ? ['build.tar'] : [];
+    staticTask.outputs = docs ? ['docs-site'] : [];
+    staticTask.commands = [install];
+    staticTask.capabilities = ['changeset', 'platform-governance'];
+    const typecheckNames = selection.typecheckNames;
+    if (typecheckNames.length) {
+      staticTask.commands.push(command('pnpm', ['-r', ...typecheckNames.map((name) => `--filter=${name}`), '--if-present', 'run', 'typecheck']));
+      staticTask.capabilities.push('typecheck');
+    }
+    if (examplePaths.length) {
+      staticTask.commands.push(command('pnpm', ['exec', 'tsc', '-p', 'examples/tsconfig.json', '--noEmit']));
+      if (!staticTask.capabilities.includes('typecheck')) staticTask.capabilities.push('typecheck');
+    }
+    if (toolingPaths.length) {
+      staticTask.commands.push(command('pnpm', ['exec', 'tsc', '-p', 'tsconfig.tools.json', '--noEmit']));
+    }
+    const lintPaths = selection.packageDirectories.length ? selection.packageDirectories
+      : changedFiles.filter((path) => /\.(?:[cm]?[jt]sx?|json)$/u.test(path));
+    if (lintPaths.length) {
+      staticTask.commands.push(command('pnpm', ['exec', 'biome', 'lint', ...lintPaths]),
+        command('pnpm', ['verify:public-export-tsdoc']));
+      staticTask.capabilities.push('lint', 'declaration-importers');
+    }
+    staticTask.commands.push(command('pnpm', ['verify:platform-consistency-governance']),
+      command('node', ['tooling/release/verify-changeset-release-lane.mjs', '--lane=stable', `--base-ref=${identity.baseSha}`]));
+    if (docs) {
+      staticTask.commands.push(...['verify:docs', 'docs:package'].map((name) => command('pnpm', [name])),
+        command('pnpm', ['docs:release-check', '--require-clean']));
+      staticTask.capabilities.push('docs', 'docs-package', 'docs-release', 'documentation-governance');
+    }
+    if (companionIds.includes('source-copy-inventory')) {
+      staticTask.commands.push(command('node', ['--test', 'tooling/ci/prepared-build.test.mjs']));
+      staticTask.capabilities.push('source-copy-inventory');
+    }
+    if (packagePaths.length) {
+      selected.add('packages-1');
+      task('packages-1').commands = [install, command('pnpm', ['vitest', 'run', '--project', 'packages', ...packagePaths, '--maxWorkers=1'])];
+      for (const id of ['compatibility-floor', 'compatibility-next']) {
+        selected.add(id);
+        task(id).commands = [install, buildCommands[1],
+          command('pnpm', ['vitest', 'run', '--project', 'packages', ...packagePaths, '--maxWorkers=1'])];
+        if (selected.has('starters')) task(id).commands.push(command('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix'],
+          { FLUO_CLI_SANDBOX_PROFILE: 'smoke', FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked' }));
+      }
+    }
+    if (examplePaths.length || appPaths.length || toolingPaths.length || selection.toolingPaths.some((path) => path.endsWith('.mjs'))) {
+      selected.add('tooling-1');
+      const tooling = task('tooling-1');
+      const product = examplePaths.includes('examples/react-vite-ssr/');
+      tooling.commands = [install];
+      tooling.capabilities = [];
+      for (const [project, paths] of [['apps', appPaths], ['examples', examplePaths], ['tooling', toolingPaths]]) {
+        if (!paths.length) continue;
+        tooling.commands.push(command('pnpm', ['vitest', 'run', '--project', project, ...paths, '--maxWorkers=1']));
+        tooling.capabilities.push(project === 'tooling' ? 'tooling-1' : project);
+      }
+      const nodePaths = selection.toolingPaths.filter((path) => path.endsWith('.mjs'));
+      if (nodePaths.length) tooling.commands.push(command('node', ['--test', ...nodePaths]));
+      if (product) {
+        const original = manifest.tasks.find((item) => item.id === 'tooling-1');
+        tooling.commands.push(...original.commands.filter((item) =>
+          item.argv.includes('tooling/ci/react-product-acceptance.mjs')
+          || item.argv.includes('playwright')
+          || item.argv.some((arg) => arg.startsWith('examples/react-vite-ssr/tests/'))));
+      }
+    }
+    tasks = tasks.filter(({ id }) => selected.has(id));
+    for (const item of tasks) {
+      if (!needsBuild) {
+        item.dependencies = item.dependencies.filter((id) => id !== 'build');
+        item.inputs = [];
+      }
+    }
+  }
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   for (const task of tasks) {
     if (task.dependencies.some((dependency) => !taskById.has(dependency) || dependency === task.id)) {
@@ -202,10 +293,15 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     manifestDigest: digest(JSON.stringify(manifest)),
     mode,
     notApplicableCapabilities: {
+      ...Object.fromEntries(manifest.tasks.flatMap((task) => task.capabilities)
+        .filter((capability) => !capabilityTasks[capability])
+        .map((capability) => [capability, 'outside changed workspace and explicit companion closure'])),
       ...(applicableBenchmark ? {} : { 'isolated-benchmark': 'no isolated benchmark changes' }),
       ...(applicableReactBenchmark ? {} : { 'react-app-benchmark': 'no React comparison changes' }),
     },
     profile,
+    forceFull,
+    selection,
     source: { headSha: identity.headSha, treeSha: identity.treeSha, baseSha: identity.baseSha },
     tasks,
     version: 2,
@@ -317,6 +413,7 @@ export function receiptMatchesPlan(receipt, identity, plan) {
   return plan.tasks.every((expected) => {
     const result = receipt.taskResults.find((item) => item.taskId === expected.id);
     return result && result.commands.length === expected.commands.length
+      && expected.outputs.every((name) => result.artifacts.some((file) => file.path === name || file.path.startsWith(`${name}/`)))
       && result.commands.every((item, index) => JSON.stringify(item.command) === JSON.stringify(expected.commands[index]));
   });
 }

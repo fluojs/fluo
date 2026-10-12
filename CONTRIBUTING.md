@@ -31,7 +31,18 @@ fluo uses a monorepo structure managed by `pnpm`.
 For ordinary changes, run focused checks for the changed behavior (including
 affected typechecks and real-surface tests where applicable), retain the results,
 and complete the selected exact-head reviews before opening or updating a PR.
-Full GitHub CI is required on the final PR head before merge.
+The canonical GitHub CI plan is required on the final PR head before merge.
+
+PR verification selects changed workspace owners and their transitive reverse
+dependents across all four dependency sections. Clean builds include prerequisite
+declarations and explicit native, starter, browser and packed-consumer companions.
+Prose-only changes run documentation and governance checks without runtime suites;
+Changesets remain release metadata and do not by themselves request a docs-site build.
+Unknown ownership, dependency graph or global verification changes run the full
+profile. Use `--full`, `CI_FORCE_FULL_VERIFY=1`, or the `ci:full-verify` PR label to
+request full verification; that choice is frozen in the plan. Extended verification
+always runs the full suite. The `Verify` aggregate requires every selected result
+and artifact, and admits skipped workflow groups only when they were not selected.
 
 CI execution/configuration changes additionally require full canonical local
 verification from a clean worktree after review and before publication. Use the
@@ -58,10 +69,11 @@ pnpm test
 
 The receipt binds clean source identity, profile, environment lock, measured
 runtime/browser versions, task results and evidence hashes. Old host-native
-receipts are not accepted for this profile. The primary Node 24 profile retains
+receipts are not accepted for this profile. The full primary Node 24 profile retains
 four package shards, two tooling shards, browser/native/docs/packed checks;
 24.11.0 and Node 26 retain independent builds, every package test and starter
-smoke. Exact 24.0.0 remains runtime-only. Full secondary coverage also gates the
+smoke. Affected PRs retain relevant independent compatibility builds/tests and
+runtime companions. Exact 24.0.0 remains runtime-only. Full secondary coverage also gates the
 exact release source before publishing. GitHub permissions, artifact transport,
 queueing and external outages still require remote evidence.
 

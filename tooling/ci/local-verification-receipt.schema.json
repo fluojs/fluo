@@ -60,7 +60,7 @@
     "hostChecks": { "type": ["object", "null"] },
     "capabilityTasks": { "type": "object" },
     "logs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/file" } },
-    "artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/file" } },
+    "artifacts": { "type": "array", "items": { "$ref": "#/$defs/file" } },
     "startedAt": { "type": "string", "format": "date-time" },
     "completedAt": { "type": "string", "format": "date-time" }
   },

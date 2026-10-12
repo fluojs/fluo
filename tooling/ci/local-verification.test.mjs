@@ -40,7 +40,7 @@ function receiptFor(plan, receiptIdentity = plan.identity) {
     imageId: `sha256:${'1'.repeat(64)}`, headSha: plan.source.headSha, treeSha: plan.source.treeSha,
     planDigest, environment: testEnvironment(plan.environment.lock),
     logs: task.commands.map((_, index) => ({ commandIndex: index, path: `${task.id}-${index}.log`, digest: digest('log') })),
-    artifacts: [],
+    artifacts: task.outputs.map((name) => ({ path: name === 'docs-site' ? `${name}/index.html` : name, digest: digest('archive') })),
     commands: task.commands.map((command) => ({ command, exitCode: 0, signal: null, spawnError: null,
       identityBefore: { headSha: plan.source.headSha, treeSha: plan.source.treeSha, statusDigest: digest('') },
       identityAfter: { headSha: plan.source.headSha, treeSha: plan.source.treeSha, statusDigest: digest('') } })),
@@ -59,7 +59,9 @@ function receiptFor(plan, receiptIdentity = plan.identity) {
       ...hostChecks.logs.map((log) => ({ path: `.omo/verification/ci-parity/runner/results/${log.path}`, digest: log.digest })),
       { path: '.omo/verification/ci-parity/runner/results/host-checks.json', digest: digest(`${JSON.stringify(hostChecks)}\n`) },
     ]),
-    artifacts: [{ path: '.omo/verification/ci-parity/runner/archive.tar', digest: digest('archive') }],
+    artifacts: taskResults.flatMap((result) => result.artifacts.map((file) => ({
+      path: `.omo/verification/ci-parity/runner/artifacts/${file.path}`, digest: file.digest,
+    }))),
     startedAt: '2026-09-14T00:00:00.000Z', completedAt: '2026-09-14T00:00:01.000Z',
   };
 }
@@ -155,9 +157,9 @@ test('v2 receipt authenticates log, archive and receipt bytes inside the real ev
     mkdirSync(join(root, file.path, '..'), { recursive: true });
     writeFileSync(join(root, file.path), result ? `${JSON.stringify(result)}\n` : 'log');
   }
-  for (const [file, content] of [[receipt.artifacts[0], 'archive']]) {
+  for (const file of receipt.artifacts) {
     mkdirSync(join(root, file.path, '..'), { recursive: true });
-    writeFileSync(join(root, file.path), content);
+    writeFileSync(join(root, file.path), 'archive');
   }
   const receiptPath = join(root, '.omo/verification/receipt.json');
   writeFileSync(receiptPath, JSON.stringify(receipt));

@@ -84,8 +84,18 @@
     { "id": "packed", "runtime": "primary", "dependencies": ["build"], "capabilities": ["packed-consumers"], "inputs": ["build.tar"], "outputs": [], "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }, { "executable": "node", "argv": ["tooling/testing/duplicate-module-safety.mjs"], "cwd": "." }] }
   ],
   "scope": {
-    "fullPrefixes": [".github/", "apps/", "docs/", "examples/", "tooling/"],
-    "fullPaths": ["biome.json", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json", "tsconfig.tools.json", "vitest.config.ts"]
+    "fullPrefixes": [".github/", ".agents/", "docs/", "book/", "tooling/ci/", "tooling/babel/", "tooling/scripts/", "tooling/testing/", "tooling/native-runtime/", "tooling/governance/", "tooling/release/", "tooling/docs/", "tooling/benchmarks/", "tooling/vitest/"],
+    "fullPaths": ["biome.json", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json", "tsconfig.tools.json", "vitest.config.ts", "vite.config.ts"],
+    "companionEdges": [
+      { "owners": ["@fluojs/core", "@fluojs/di", "@fluojs/config", "@fluojs/http", "@fluojs/runtime", "@fluojs/validation", "@fluojs/platform-nodejs"], "tasks": ["runtime-floor"], "buildPackages": ["@fluojs/core", "@fluojs/di", "@fluojs/config", "@fluojs/http", "@fluojs/runtime", "@fluojs/validation", "@fluojs/platform-nodejs"] },
+      { "owners": ["@fluojs/core", "@fluojs/http", "@fluojs/platform-bun", "@fluojs/drizzle", "@fluojs/runtime"], "tasks": ["native-bun"], "buildPackages": ["@fluojs/core", "@fluojs/http", "@fluojs/platform-bun", "@fluojs/drizzle", "@fluojs/runtime"] },
+      { "owners": ["@fluojs/core", "@fluojs/http", "@fluojs/runtime", "@fluojs/testing", "@fluojs/platform-deno", "@fluojs/platform-bun", "@fluojs/platform-cloudflare-workers"], "tasks": ["native-web"], "buildPackages": ["@fluojs/platform-deno", "@fluojs/platform-bun", "@fluojs/platform-cloudflare-workers", "@fluojs/testing"] },
+      { "owners": ["@fluojs/core", "@fluojs/di", "@fluojs/http", "@fluojs/jwt", "@fluojs/mongoose", "@fluojs/passport", "@fluojs/react", "@fluojs/runtime", "@fluojs/platform-nodejs", "@fluojs/platform-fastify", "@fluojs/platform-express"], "tasks": ["packed"] },
+      { "owners": ["@fluojs/cli", "@fluojs/core", "@fluojs/config", "@fluojs/http", "@fluojs/runtime", "@fluojs/react", "@fluojs/vite", "@fluojs/platform-fastify", "@fluojs/platform-nodejs", "@fluojs/microservices", "@fluojs/example-react-vite-ssr"], "tasks": ["starters"], "buildPackages": ["@fluojs/cli", "@fluojs/react", "@fluojs/vite", "@fluojs/platform-fastify", "@fluojs/microservices"] },
+      { "owners": ["@fluojs/studio", "@fluojs/diagnostics", "@fluojs-internal/tooling-vite"], "tasks": ["studio"], "consumers": ["@fluojs/studio"] },
+      { "owners": ["@fluojs/core", "@fluojs/di", "@fluojs/http", "@fluojs/runtime", "@fluojs/react", "@fluojs/vite", "@fluojs/cli", "@fluojs/platform-fastify"], "consumers": ["@fluojs/example-react-vite-ssr"], "toolingPaths": ["tooling/ci/react-product-acceptance.test.mjs", "tooling/governance/", "tooling/scripts/", "tooling/docs/fixtures/"] },
+      { "owners": ["@fluojs/terminus", "@fluojs/prisma"], "toolingPaths": ["tooling/scripts/"], "buildPackages": ["@fluojs/terminus", "@fluojs/prisma"] }
+    ]
   },
   "companions": [
     { "id": "manifest-lockfile", "when": "package-manifest", "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }] },

@@ -9,12 +9,12 @@ Node floors are classified by role. The 34 Node-bound public packages that are p
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
 | Exact Node `24.0.0` | Runtime-only floor lane: artifacts built under a supported compiler Node, then real public runtime entry imports with HTTP listener, dispatch, config, and shutdown behavior; no Babel 8 load and no install on 24.0.0 | Minimum supported runtime floor, not the release runtime |
-| Exact Node `24.11.0` | PR: frozen install, fresh build, all package tests and four-starter smoke; extended: full verification and browser journeys | Minimum compiler toolchain floor for Babel 8 |
-| Locked Node `24.x` | Full primary PR verification, `pnpm verify:docs`, generated starter dev/production browser matrix | Canonical development verification and Changesets release runtime |
-| Locked Node `26.x` | PR: frozen install, fresh build, all package tests and four-starter smoke; extended: full verification and browser journeys | Forward verification only; never publish |
+| Exact Node `24.11.0` | PR: independent frozen install/fresh build and affected package tests, relevant four-starter smoke; full PR: all packages; extended: full verification and browser journeys | Minimum compiler toolchain floor for Babel 8 |
+| Locked Node `24.x` | Selected primary PR verification, relevant docs and generated starter dev/production browser matrix; full PR and extended retain all primary checks | Canonical development verification and Changesets release runtime |
+| Locked Node `26.x` | PR: independent frozen install/fresh build and affected package tests, relevant four-starter smoke; full PR: all packages; extended: full verification and browser journeys | Forward verification only; never publish |
 | Bun, Deno, Cloudflare Workers | Their existing independent adapter/native-runtime lanes | Runtime-native deployment contracts |
 
-`.github/workflows/ci.yml` expands to 18 jobs including plan resolution and the required `Verify` aggregate. Sixteen execution tasks use the shared catalog in `tooling/ci/local-verification-manifest.json` and the runner in `tooling/ci/verification-runner.mjs`; `.github/workflows/node-verification.yml` hosts one task per invocation. Primary package tests retain four shards, tooling retains two, and apps/examples run once in the first tooling shard. The primary build supplies package artifacts and the runtime-floor bundle. Exact Node `24.0.0` executes that bundle without installing workspace dependencies or loading Babel.
+The full `.github/workflows/ci.yml` plan expands to 18 jobs including plan resolution and the required `Verify` aggregate. Sixteen execution tasks use the shared catalog in `tooling/ci/local-verification-manifest.json` and the runner in `tooling/ci/verification-runner.mjs`; `.github/workflows/node-verification.yml` hosts one task per invocation. Full primary package tests retain four shards, tooling retains two, and apps/examples run once in the first tooling shard. The primary build supplies selected package artifacts and, when required, the runtime-floor bundle. Exact Node `24.0.0` executes that bundle without installing workspace dependencies or loading Babel.
 
 This replaces the previous full three-version PR matrix with a full primary profile and two compatibility profiles. Supported package engine ranges do not change, but per-PR assurance on secondary versions is narrower: full secondary typecheck, lint, tooling, apps/examples and browser verification moves to `.github/workflows/extended-verification.yml` and the exact-source prerequisite of `.github/workflows/release.yml`. A previous scheduled success never substitutes for the publishing commit's extended verification.
 
@@ -63,6 +63,32 @@ Full-verification package builds are transferred only within the same workflow r
 Two native tasks preserve all runtime-specific checks. `native-bun` runs Bun routing/lifecycle and Drizzle using their respective locked versions. `native-web` runs the Deno adapter, every Bun/Deno/Workers portability case, and all three native cookie commands. Grouping does not replace a floor runtime with a newer one. Any required command failure, missing evidence, cancellation or unexpected skip blocks `Verify`.
 
 The focused `test:node-floor` command remains available for local checks, not as a substitute for full CI verification. It covers manifest classification, all scaffold profiles, config env-file/watch behavior, the published portable runtime import, Node HTTP listeners, adapter portability, and the existing Vite compatibility seam. The required runtime-only lane executes on exact Node `24.0.0`, so CI does not substitute a later 24.x patch for the runtime floor claim.
+
+## PR verification selection
+
+The frozen PR plan selects changed workspace owners and transitive reverse
+dependents through dependencies, devDependencies, peerDependencies and
+optionalDependencies. Prerequisite builds include emitted declarations and
+explicit native/starter/browser/packed-consumer edges absent from package
+manifests. Packed/starter inventories and tooling declaration checks can require
+all package builds without selecting unrelated package tests. Selected examples
+retain the shared `examples/tsconfig.json` typecheck; filtering a workspace does
+not narrow that shared compiler contract.
+
+Prose-only changes run documentation and governance without package runtime
+suites. Executable docs and enforcement are not prose. Changesets request release
+checks, not a docs-site build. Unknown ownership, unresolved local graph edges,
+manifest changes and global CI/build/test inputs force full verification.
+`--full`, `CI_FORCE_FULL_VERIFY=1` and the `ci:full-verify` PR label explicitly
+request full verification, frozen into the canonical plan. Extended verification
+always selects the full suite regardless of the diff.
+
+Build restoration authenticates the selected inventory and plan digest before
+prepared output reuse. Standalone global setup retains its existing builds.
+Workflow matrices, artifact production/acquisition and aggregation follow that
+same plan. Only unselected groups may be skipped; a selected skipped, missing,
+failed, cancelled, stale or tampered result blocks the always-running `Verify`.
+Documentation execution remains eligible when the unselected build job is skipped.
 
 ## Portable package boundaries
 

@@ -1,453 +1,186 @@
 #!/usr/bin/env node
 
-import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { appendFileSync, globSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { readVerificationManifest, verificationModeForChanges } from './local-verification.mjs';
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+const hash = (value) => createHash('sha256').update(value).digest('hex');
+const defaultScope = JSON.parse(readFileSync(new URL('./local-verification-manifest.json', import.meta.url), 'utf8')).scope;
 
-const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDirectory, '..', '..');
-
-const alwaysFullVerifyPrefixes = [
-  '.github/',
-  'docs/',
-  'tooling/',
-  'examples/',
-  'apps/',
-];
-
-const alwaysFullVerifyPaths = new Set([
-  'package.json',
-  'pnpm-lock.yaml',
-  'pnpm-workspace.yaml',
-  'tsconfig.base.json',
-  'tsconfig.tools.json',
-  'vitest.config.ts',
-  'biome.json',
-]);
-
-const isolatedHttpBenchmarkPrefix = 'tooling/benchmarks/http-comparison/';
-const reactAppBenchmarkPrefix = 'tooling/benchmarks/react-app-comparison/';
-
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    ...options,
-  });
-
-  if (result.status !== 0 && !options.allowFailure) {
-    throw new Error(`${command} ${args.join(' ')} failed with exit code ${result.status ?? 1}.`);
-  }
-
-  return result;
+export function isProsePath(path) {
+  // MDX, fixtures, generated source and enforcement scripts are executable.
+  return /(?:^|\/)(?:README(?:\.ko)?|CONTRIBUTING(?:\.ko)?)\.md$/u.test(path)
+    || /^(?:docs|book)\/.*\.(?:md|png|jpg|svg|webp)$/u.test(path)
+    || /^\.changeset\/[^/]+\.md$/u.test(path);
 }
 
-function parseWorkspaceGlobs() {
-  const workspaceFile = join(repoRoot, 'pnpm-workspace.yaml');
-  if (!existsSync(workspaceFile)) {
-    return [];
-  }
-
-  const content = readFileSync(workspaceFile, 'utf8');
-  const matches = [...content.matchAll(/^\s+-\s+['"]?([^'"#\n]+?)['"]?\s*$/gm)];
-  return matches.map((match) => match[1].trim());
-}
-
-function collectWorkspaceManifests() {
-  const manifests = [];
-  const workspaceGlobs = parseWorkspaceGlobs();
-
-  for (const workspace of workspaceGlobs) {
-    const [segment] = workspace.split('/');
-    const parentDirectory = join(repoRoot, segment);
-
-    if (!existsSync(parentDirectory)) {
-      continue;
-    }
-
-    for (const entry of readdirSync(parentDirectory, { withFileTypes: true })) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-
-      const workspaceDirectory = join(parentDirectory, entry.name);
-      const manifestPath = join(workspaceDirectory, 'package.json');
-      if (!existsSync(manifestPath)) {
-        continue;
-      }
-
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      if (typeof manifest.name !== 'string' || manifest.name.length === 0) {
-        continue;
-      }
-
-      manifests.push({
-        directory: `${segment}/${entry.name}`,
-        name: manifest.name,
-        manifest,
-      });
-    }
-  }
-
-  return manifests;
-}
-
-function collectLocalDependencies(manifest, workspaceNames) {
-  const dependencySections = [
-    manifest.dependencies,
-    manifest.devDependencies,
-    manifest.peerDependencies,
-    manifest.optionalDependencies,
-  ];
-
-  const dependencies = new Set();
-  for (const section of dependencySections) {
-    if (!section || typeof section !== 'object') {
-      continue;
-    }
-
-    for (const [dependencyName, dependencyVersion] of Object.entries(section)) {
-      if (!workspaceNames.has(dependencyName)) {
-        continue;
-      }
-
-      if (typeof dependencyVersion === 'string' && (dependencyVersion.startsWith('workspace:') || dependencyVersion === 'catalog:')) {
-        dependencies.add(dependencyName);
-      }
-    }
-  }
-
-  return dependencies;
-}
-
-function readPrLabels() {
-  const eventPath = process.env.GITHUB_EVENT_PATH;
-  if (!eventPath || !existsSync(eventPath)) {
-    return [];
-  }
-
-  const payload = JSON.parse(readFileSync(eventPath, 'utf8'));
-  const labels = payload?.pull_request?.labels;
-  if (!Array.isArray(labels)) {
-    return [];
-  }
-
-  return labels
-    .map((label) => label?.name)
-    .filter((name) => typeof name === 'string');
-}
-
-function changedFilesFromGit() {
-  const baseBranch = process.env.GITHUB_BASE_REF || 'main';
-  const preferredBase = `origin/${baseBranch}`;
-  const mergeBaseResult = run('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
-
-  if (mergeBaseResult.status !== 0 || mergeBaseResult.stdout.trim().length === 0) {
-    return {
-      ok: false,
-      reason: `unable to compute merge-base with ${preferredBase}`,
-      files: [],
-    };
-  }
-
-  const mergeBase = mergeBaseResult.stdout.trim();
-  const diffResult = run('git', ['diff', '--name-only', `${mergeBase}...HEAD`], { allowFailure: true });
-
-  if (diffResult.status !== 0) {
-    return {
-      ok: false,
-      reason: 'unable to compute changed files from git diff',
-      files: [],
-    };
-  }
-
-  const files = diffResult.stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  return {
-    ok: true,
-    reason: files.length === 0 ? 'no changed files detected; running full verification for safety' : 'changed files detected',
-    files,
-  };
-}
-
-export function shouldForceFullVerificationByPath(changedFiles) {
-  const scopeFiles = changedFiles.filter((path) => !path.startsWith('.changeset/'));
-  if (scopeFiles.length > 0 && verificationModeForChanges(scopeFiles, readVerificationManifest()) === 'full') {
-    return `changed ${scopeFiles[0]}`;
-  }
+export function shouldForceFullVerificationByPath(changedFiles, scope = defaultScope) {
   for (const path of changedFiles) {
-    if (path.startsWith('.changeset/')) {
-      continue;
-    }
-
-    if (alwaysFullVerifyPaths.has(path)) {
-      return `changed ${path}`;
-    }
-
-    if (alwaysFullVerifyPrefixes.some((prefix) => path.startsWith(prefix))) {
-      return `changed ${path}`;
-    }
-
-    if (path === 'README.md' || path === 'README.ko.md' || path.endsWith('/README.md') || path.endsWith('/README.ko.md')) {
-      return `changed public/docs surface file ${path}`;
-    }
-
-    if (!path.startsWith('packages/')) {
-      return `changed non-package file ${path}`;
+    if (isProsePath(path)) continue;
+    if (path === 'package.json' || path.endsWith('/package.json')
+      || /(?:global[-_]?setup|(?:^|\/)(?:tsconfig|vitest\.config|vite\.config))/u.test(path)
+      || scope.fullPaths.includes(path) || scope.fullPrefixes.some((prefix) => path.startsWith(prefix))) {
+      return `changed graph or global verification input ${path}`;
     }
   }
-
   return undefined;
 }
 
-export function shouldVerifyIsolatedHttpBenchmark(changedFiles) {
-  return changedFiles.some((path) => path.startsWith(isolatedHttpBenchmarkPrefix));
-}
-
-export function shouldVerifyReactAppBenchmark(changedFiles) {
-  return changedFiles.some((path) => path.startsWith(reactAppBenchmarkPrefix));
-}
-
-export function resolveChangedPackageDirectories(changedFiles) {
-  const directories = new Set();
-  for (const path of changedFiles) {
-    if (!path.startsWith('packages/')) {
-      continue;
-    }
-
-    const [, packageDirectory] = path.split('/');
-    if (packageDirectory) {
-      directories.add(`packages/${packageDirectory}`);
-    }
-  }
-
-  return directories;
-}
-
-export function resolveVerificationScope(changedFiles) {
-  const fullVerifyReason = shouldForceFullVerificationByPath(changedFiles);
-  if (fullVerifyReason) {
-    return {
-      mode: 'full',
-      reason: `${fullVerifyReason}; cannot prove safe affected-only coverage`,
-      filters: [],
-      packageNames: [],
-      packageDirectories: [],
-    };
-  }
-
-  const workspaceManifests = collectWorkspaceManifests();
-  const workspaceNames = new Set(workspaceManifests.map((manifest) => manifest.name));
-  const manifestsByDirectory = new Map(workspaceManifests.map((entry) => [entry.directory, entry]));
-
-  const changedDirectories = resolveChangedPackageDirectories(changedFiles);
-  if (changedDirectories.size === 0) {
-    return {
-      mode: 'full',
-      reason: 'no changed package directory detected; running full verification for safety',
-      filters: [],
-      packageNames: [],
-      packageDirectories: [],
-    };
-  }
-
-  const changedPackageNames = [];
-  for (const directory of changedDirectories) {
-    const manifest = manifestsByDirectory.get(directory);
-    if (!manifest) {
-      return {
-        mode: 'full',
-        reason: `unable to resolve workspace manifest for ${directory}`,
-        filters: [],
-        packageNames: [],
-        packageDirectories: [],
-      };
-    }
-
-    changedPackageNames.push(manifest.name);
-  }
-
-  const reverseDependents = new Map();
-  for (const workspace of workspaceManifests) {
-    const dependencies = collectLocalDependencies(workspace.manifest, workspaceNames);
-
-    for (const dependencyName of dependencies) {
-      const dependents = reverseDependents.get(dependencyName) ?? new Set();
-      dependents.add(workspace.name);
-      reverseDependents.set(dependencyName, dependents);
-    }
-  }
-
-  const closure = new Set(changedPackageNames);
-  const queue = [...changedPackageNames];
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) {
-      continue;
-    }
-
-    const dependents = reverseDependents.get(current);
-    if (!dependents) {
-      continue;
-    }
-
-    for (const dependent of dependents) {
-      if (closure.has(dependent)) {
-        continue;
+export function readWorkspaceGraph(root = repoRoot) {
+  const yaml = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8');
+  const block = yaml.match(/^packages:\s*\n((?:[ \t]+.*\n?)*)/mu)?.[1];
+  if (!block) throw new TypeError('workspace packages are missing');
+  const globs = block.split('\n').filter((line) => line.trim() && !line.trim().startsWith('#')).map((line) => {
+    const match = line.match(/^\s+-\s+['"]?([^'"#]+?)['"]?\s*$/u);
+    if (!match || match[1].includes('..') || match[1].startsWith('/')) throw new TypeError('unknown workspace glob');
+    return match[1];
+  });
+  const excluded = globs.filter((glob) => glob.startsWith('!')).map((glob) => glob.slice(1));
+  const paths = new Set(globs.filter((glob) => !glob.startsWith('!')).flatMap((glob) =>
+    globSync(`${glob}/package.json`, { cwd: root, exclude: excluded.map((glob) => `${glob}/**`) })));
+  if (!paths.size) throw new TypeError('workspace inventory is empty');
+  const entries = [...paths].sort().map((path) => {
+    const manifest = JSON.parse(readFileSync(join(root, path), 'utf8'));
+    if (typeof manifest.name !== 'string' || !manifest.name) throw new TypeError(`unnamed workspace ${path}`);
+    return { directory: dirname(path), name: manifest.name, manifest };
+  });
+  const byName = new Map(entries.map((entry) => [entry.name, entry]));
+  const byDirectory = new Map(entries.map((entry) => [entry.directory, entry]));
+  if (byName.size !== entries.length) throw new TypeError('duplicate workspace name');
+  for (const entry of entries) {
+    const dependencies = new Set();
+    for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+      for (const [name, version] of Object.entries(entry.manifest[section] ?? {})) {
+        if (typeof version !== 'string') throw new TypeError(`invalid dependency ${name}`);
+        let target = byName.get(name);
+        if (/^(?:file|link):/u.test(version) || version.startsWith('workspace:.')) {
+          const directory = relative(root, resolve(root, entry.directory, version.slice(version.indexOf(':') + 1)));
+          target = byDirectory.get(directory);
+          if (!target) throw new TypeError(`unresolved local dependency ${version}`);
+        } else if (/^(?:workspace|npm):(?:@[^/]+\/)?[^@]+@/u.test(version)) {
+          const alias = version.slice(version.indexOf(':') + 1).replace(/@[^@]*$/u, '');
+          target = byName.get(alias);
+          if (!target && version.startsWith('workspace:')) throw new TypeError(`unresolved workspace alias ${version}`);
+        }
+        if (target) dependencies.add(target.name);
+        else if (version.startsWith('workspace:')) throw new TypeError(`unresolved workspace ${name}`);
       }
-
-      closure.add(dependent);
-      queue.push(dependent);
     }
+    entry.dependencies = [...dependencies].sort();
   }
+  return { entries, digest: hash(JSON.stringify(entries)) };
+}
 
-  const packageNames = [...closure].sort((left, right) => left.localeCompare(right));
-  const directoryByPackageName = new Map(workspaceManifests.map((entry) => [entry.name, entry.directory]));
-  const packageDirectories = packageNames
-    .map((packageName) => directoryByPackageName.get(packageName))
-    .filter((directory) => typeof directory === 'string')
-    .sort((left, right) => left.localeCompare(right));
-  const testScriptPackageNames = packageNames.filter((packageName) => {
-    const directory = directoryByPackageName.get(packageName);
-    const manifest = directory ? manifestsByDirectory.get(directory) : undefined;
-    return typeof manifest?.manifest?.scripts?.test === 'string' && manifest.manifest.scripts.test.trim().length > 0;
-  });
-  const testPathFallbackDirectories = packageDirectories.filter((directory) => {
-    const manifest = manifestsByDirectory.get(directory);
-    return !(typeof manifest?.manifest?.scripts?.test === 'string' && manifest.manifest.scripts.test.trim().length > 0);
-  });
-
-  return {
-    mode: 'scoped',
-    reason: `scoped verification for ${packageNames.length} workspace package(s) from ${changedPackageNames.length} changed package(s)`,
-    filters: packageNames.map((name) => `--filter=${name}`),
-    buildFilters: packageNames.map((name) => `--filter=${name}...`),
-    packageNames,
-    packageDirectories,
-    testScriptPackageNames,
-    testPathFallbackDirectories,
+export function resolveVerificationScope(changedFiles, { root = repoRoot, scope = defaultScope, forceFull = false } = {}) {
+  const full = (reason) => ({ mode: 'full', reason, filters: [], buildFilters: [], packageNames: [],
+    packageDirectories: [], buildDirectories: [], graphDigest: null, tasks: [], toolingPaths: [], typecheckNames: [] });
+  if (forceFull) return full('explicit full verification request');
+  if (!changedFiles.length) return full('no changed paths');
+  const global = shouldForceFullVerificationByPath(changedFiles, scope);
+  if (global) return full(global);
+  if (changedFiles.every(isProsePath)) return { ...full('prose/documentation changes'), mode: 'docs' };
+  let graph;
+  try { graph = readWorkspaceGraph(root); }
+  catch (error) { return full(`unknown workspace graph: ${error.message}`); }
+  const byName = new Map(graph.entries.map((entry) => [entry.name, entry]));
+  const affected = new Set();
+  for (const path of changedFiles.filter((file) => !isProsePath(file))) {
+    const owner = graph.entries.filter((entry) => path.startsWith(`${entry.directory}/`))
+      .sort((a, b) => b.directory.length - a.directory.length)[0];
+    if (!owner) return full(`unknown workspace owner: ${path}`);
+    affected.add(owner.name);
+  }
+  const expandReverse = () => {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const entry of graph.entries) {
+        if (!affected.has(entry.name) && entry.dependencies.some((name) => affected.has(name))) {
+          affected.add(entry.name);
+          changed = true;
+        }
+      }
+    }
   };
+  expandReverse();
+  const tasks = new Set();
+  const toolingPaths = new Set();
+  const extraBuilds = new Set();
+  let previous;
+  do {
+    previous = affected.size;
+    for (const edge of scope.companionEdges ?? []) {
+      if (!edge.owners.some((name) => affected.has(name))) continue;
+      for (const name of edge.consumers ?? []) {
+        if (!byName.has(name)) return full(`unknown companion workspace ${name}`);
+        affected.add(name);
+      }
+      for (const task of edge.tasks ?? []) tasks.add(task);
+      for (const path of edge.toolingPaths ?? []) toolingPaths.add(path);
+      for (const name of edge.buildPackages ?? []) extraBuilds.add(name);
+    }
+    expandReverse();
+  } while (previous !== affected.size);
+  // The packed inventory authenticates every published package, not only seeds.
+  if (tasks.has('packed') || tasks.has('starters') || toolingPaths.size
+    || [...affected].some((name) => byName.get(name).directory.startsWith('tooling/'))) {
+    for (const entry of graph.entries.filter((entry) => entry.directory.startsWith('packages/'))) extraBuilds.add(entry.name);
+  }
+  const builds = new Set([...affected, ...extraBuilds]);
+  for (const name of builds) {
+    if (!byName.has(name)) return full(`unknown build companion ${name}`);
+    for (const dependency of byName.get(name).dependencies) builds.add(dependency);
+  }
+  const packageNames = [...affected].sort();
+  const packageDirectories = packageNames.map((name) => byName.get(name).directory).sort();
+  const typecheckNames = packageNames.filter((name) => {
+    const entry = byName.get(name);
+    return entry.manifest.scripts?.typecheck && (!entry.directory.startsWith('examples/') || entry.directory === 'examples/react-vite-ssr');
+  });
+  const buildDirectories = [...builds].map((name) => byName.get(name))
+    .filter((entry) => entry.manifest.scripts?.build && entry.directory.startsWith('packages/'))
+    .map((entry) => entry.directory).sort();
+  return { mode: 'scoped', reason: 'workspace reverse dependents and explicit companion closure',
+    filters: packageNames.map((name) => `--filter=${name}`),
+    buildFilters: buildDirectories.map((directory) => `--filter=${graph.entries.find((entry) => entry.directory === directory).name}`),
+    packageNames, packageDirectories, buildDirectories, graphDigest: graph.digest, typecheckNames,
+    tasks: [...tasks].sort(), toolingPaths: [...toolingPaths].sort() };
+}
+
+export const shouldVerifyIsolatedHttpBenchmark = (files) => files.some((path) => path.startsWith('tooling/benchmarks/http-comparison/'));
+export const shouldVerifyReactAppBenchmark = (files) => files.some((path) => path.startsWith('tooling/benchmarks/react-app-comparison/'));
+export const resolveChangedPackageDirectories = (files) => new Set(files.filter((path) => path.startsWith('packages/')).map((path) => path.split('/').slice(0, 2).join('/')));
+
+export function fullVerificationRequested(env = process.env) {
+  if (env.CI_FORCE_FULL_VERIFY === '1') return true;
+  if (!env.GITHUB_EVENT_PATH) return false;
+  const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'));
+  return event.pull_request?.labels?.some((label) => label.name === 'ci:full-verify') === true;
 }
 
 export function collectResult() {
-  const eventName = process.env.GITHUB_EVENT_NAME;
-  if (eventName !== 'pull_request') {
-    return {
-      mode: 'full',
-      reason: `event ${eventName ?? 'unknown'} requires full verification`,
-      filters: [],
-      packageNames: [],
-      packageDirectories: [],
-      verifyIsolatedHttpBenchmark: false,
-      verifyReactAppBenchmark: false,
-    };
-  }
-
-  const changedFilesResult = changedFilesFromGit();
-  const verifyIsolatedHttpBenchmark =
-    changedFilesResult.ok && shouldVerifyIsolatedHttpBenchmark(changedFilesResult.files);
-  const verifyReactAppBenchmark =
-    changedFilesResult.ok && shouldVerifyReactAppBenchmark(changedFilesResult.files);
-
-  if (process.env.CI_FORCE_FULL_VERIFY === '1') {
-    return {
-      mode: 'full',
-      reason: 'CI_FORCE_FULL_VERIFY=1',
-      filters: [],
-      packageNames: [],
-      packageDirectories: [],
-      verifyIsolatedHttpBenchmark,
-      verifyReactAppBenchmark,
-    };
-  }
-
-  const labels = readPrLabels();
-  if (labels.includes('ci:full-verify')) {
-    return {
-      mode: 'full',
-      reason: 'ci:full-verify label present',
-      filters: [],
-      packageNames: [],
-      packageDirectories: [],
-      verifyIsolatedHttpBenchmark,
-      verifyReactAppBenchmark,
-    };
-  }
-
-  if (!changedFilesResult.ok) {
-    return {
-      mode: 'full',
-      reason: changedFilesResult.reason,
-      filters: [],
-      packageNames: [],
-      packageDirectories: [],
-      verifyIsolatedHttpBenchmark,
-      verifyReactAppBenchmark,
-    };
-  }
-
-  if (changedFilesResult.files.length === 0) {
-    return {
-      mode: 'full',
-      reason: changedFilesResult.reason,
-      filters: [],
-      packageNames: [],
-      packageDirectories: [],
-      verifyIsolatedHttpBenchmark,
-      verifyReactAppBenchmark,
-    };
-  }
-
-  return {
-    ...resolveVerificationScope(changedFilesResult.files),
-    verifyIsolatedHttpBenchmark,
-    verifyReactAppBenchmark,
+  const run = (args) => {
+    const result = spawnSync('git', args, { cwd: repoRoot, encoding: 'utf8' });
+    if (result.status !== 0) throw new Error(result.stderr);
+    return result.stdout.trim();
   };
+  const base = run(['merge-base', 'HEAD', `origin/${process.env.GITHUB_BASE_REF || 'main'}`]);
+  const files = run(['diff', '--name-only', '--no-renames', `${base}...HEAD`]).split('\n').filter(Boolean);
+  return { ...resolveVerificationScope(files, { forceFull: fullVerificationRequested() || process.env.GITHUB_EVENT_NAME !== 'pull_request' }),
+    verifyIsolatedHttpBenchmark: shouldVerifyIsolatedHttpBenchmark(files), verifyReactAppBenchmark: shouldVerifyReactAppBenchmark(files) };
 }
 
 export function writeGithubOutput(result) {
-  const githubOutput = process.env.GITHUB_OUTPUT;
-  if (!githubOutput) {
-    return;
-  }
-
-  const lines = [
-    `mode=${result.mode}`,
-    `reason=${result.reason}`,
-    `build_filter_args=${(result.buildFilters ?? result.filters).join(' ')}`,
-    `filter_args=${result.filters.join(' ')}`,
-    `package_names=${result.packageNames.join(',')}`,
-    `test_filter_args=${(result.testScriptPackageNames ?? []).map((name) => `--filter=${name}`).join(' ')}`,
-    `test_package_names=${(result.testScriptPackageNames ?? []).join(',')}`,
-    `test_paths=${(result.testPathFallbackDirectories ?? result.packageDirectories).join(' ')}`,
-    `verify_isolated_http_benchmark=${result.verifyIsolatedHttpBenchmark === true ? 'true' : 'false'}`,
-    `verify_react_app_benchmark=${result.verifyReactAppBenchmark === true ? 'true' : 'false'}`,
-  ];
-  lines.push(`is_scoped=${result.mode === 'scoped' ? 'true' : 'false'}`);
-
-  const content = `${lines.join('\n')}\n`;
-  appendFileSync(githubOutput, content, 'utf8');
+  if (!process.env.GITHUB_OUTPUT) return;
+  appendFileSync(process.env.GITHUB_OUTPUT, `mode=${result.mode}\nreason=${result.reason}\nfilter_args=${result.filters.join(' ')}\nbuild_filter_args=${result.buildFilters.join(' ')}\n`);
 }
 
 export function main() {
   const result = collectResult();
-
-  console.log(`[ci][verification-scope] mode=${result.mode}`);
-  console.log(`[ci][verification-scope] reason=${result.reason}`);
-  if (result.packageNames.length > 0) {
-    console.log(`[ci][verification-scope] packages=${result.packageNames.join(', ')}`);
-  }
-
+  process.stdout.write(`${JSON.stringify(result)}\n`);
   writeGithubOutput(result);
 }
-
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
-}
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

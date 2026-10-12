@@ -66,8 +66,20 @@ jobs:
         with:
           name: ci-plan
           path: .omo/ci-plan
+      - name: Resolve selected task artifacts
+        id: selected
+        env:
+          TASK_ID: ${{ inputs.task-id }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const plan = JSON.parse(readFileSync('.omo/ci-plan/plan.json', 'utf8'));
+          const task = plan.tasks.find(({ id }) => id === process.env.TASK_ID);
+          if (!task) throw new Error('Unselected task');
+          appendFileSync(process.env.GITHUB_OUTPUT, `needs_build=${task.inputs.length > 0}\nhas_docs=${task.outputs.includes('docs-site')}\n`);
+          EOF
       - name: Acquire provenance-bound primary build
-        if: inputs.build-artifact-id != ''
+        if: steps.selected.outputs.needs_build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_ID: ${{ inputs.build-artifact-id }}
@@ -90,7 +102,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Upload standalone documentation preview
-        if: inputs.task-id == 'static'
+        if: steps.selected.outputs.has_docs == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: docs-site-${{ inputs.source-sha }}

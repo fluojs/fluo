@@ -45,7 +45,7 @@ export function validatePlan(plan, catalogRoot = process.cwd()) {
     || !sha256.test(plan.semanticDigest) || semanticPlanDigest(plan) !== plan.semanticDigest
     || digest(JSON.stringify(plan.environment.lock)) !== plan.environment.lockDigest
     || imageKeyFor(plan.environment.lock, readFileSync(join(here, 'Dockerfile'))) !== plan.environment.imageKey
-    || !Array.isArray(plan.tasks) || plan.tasks.length !== 16
+    || !Array.isArray(plan.tasks) || plan.tasks.length === 0
     || !Array.isArray(plan.changedFiles)
     || digest(plan.changedFiles.join('\n')) !== plan.identity.changedFilesDigest) {
     throw new TypeError('stale or malformed frozen verification plan');
@@ -53,7 +53,7 @@ export function validatePlan(plan, catalogRoot = process.cwd()) {
   const manifest = readVerificationManifest(join(catalogRoot, 'tooling/ci/local-verification-manifest.json'));
   const lock = loadEnvironmentLock(join(catalogRoot, 'tooling/ci/environment.lock.json'));
   const canonical = buildVerificationPlan({ changedFiles: plan.changedFiles, identity: plan.identity,
-    manifest, lock, profile: plan.profile });
+    manifest, lock, profile: plan.profile, root: catalogRoot, forceFull: plan.forceFull });
   if (JSON.stringify(canonical) !== JSON.stringify(plan)) {
     throw new TypeError('frozen plan differs from canonical catalog, profile or environment');
   }
@@ -135,10 +135,20 @@ export function validateTaskResult(plan, task, result, output, artifacts) {
 
 export function aggregateResults(plan, output, artifacts, jobResults = null, catalogRoot = process.cwd()) {
   validatePlan(plan, catalogRoot);
-  if (jobResults !== null && (typeof jobResults !== 'object'
-    || JSON.stringify(Object.keys(jobResults).sort()) !== JSON.stringify(['build', 'compatibility', 'plan', 'verification'])
-    || Object.values(jobResults).some((job) => job?.result !== 'success'))) {
-    throw new TypeError('required workflow job failed, skipped, cancelled or missing');
+  mkdirSync(artifacts, { recursive: true });
+  if (jobResults !== null) {
+    const groups = {
+      plan: true,
+      build: plan.tasks.some(({ id }) => id === 'build'),
+      compatibility: plan.tasks.some(({ id }) => id.startsWith('compatibility-')),
+      verification: plan.tasks.some(({ id }) => id !== 'build' && !id.startsWith('compatibility-')),
+    };
+    if (typeof jobResults !== 'object' || !jobResults
+      || JSON.stringify(Object.keys(jobResults).sort()) !== JSON.stringify(Object.keys(groups).sort())
+      || Object.entries(groups).some(([id, selected]) =>
+        jobResults[id]?.result !== (selected ? 'success' : 'skipped'))) {
+      throw new TypeError('required workflow job failed, skipped, cancelled or missing');
+    }
   }
   const results = plan.tasks.map((task) => {
     const file = resolve(output, `${task.id}.json`);
@@ -263,6 +273,10 @@ export function restoreBuildInputs(plan, task, artifacts, root) {
   const metadata = JSON.parse(readFileSync(join(artifacts, 'build.json'), 'utf8'));
   if (metadata.headSha !== plan.source.headSha || metadata.treeSha !== plan.source.treeSha
     || metadata.imageKey !== plan.environment.imageKey) throw new TypeError('build artifact source mismatch');
+  if (plan.mode !== 'full' && (metadata.planDigest !== plan.semanticDigest
+    || JSON.stringify(metadata.buildDirectories) !== JSON.stringify(plan.selection.buildDirectories))) {
+    throw new TypeError('build artifact scoped inventory mismatch');
+  }
   for (const name of task.inputs) {
     const file = join(artifacts, name);
     if (!sha256.test(metadata.files[name]) || hashFile(file) !== metadata.files[name]) {
@@ -322,7 +336,9 @@ function insideTask(plan, task, output, artifacts) {
         PLAYWRIGHT_BROWSERS_PATH: '/opt/google/chrome', FLUO_CLI_SANDBOX_ROOT: `/tmp/fluo-${task.id}`,
         FLUO_VITEST_SHUTDOWN_DEBUG: '1',
         FLUO_VITEST_SHUTDOWN_DEBUG_DIR: `.omo/verification/vitest-shutdown-debug/${task.id}`,
-        ...(preparedBuild ? { FLUO_VERIFIED_BUILD: preparedBuild } : {}),
+        ...(preparedBuild ? { FLUO_VERIFIED_BUILD: preparedBuild,
+          FLUO_VERIFIED_BUILD_DIRECTORIES: JSON.stringify(plan.mode === 'full' ? null : plan.selection.buildDirectories),
+          FLUO_VERIFIED_BUILD_PLAN: plan.semanticDigest } : {}),
         ...command.env } });
     writeFileSync(path, `${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}`);
     let identityAfter = null;
@@ -335,24 +351,30 @@ function insideTask(plan, task, output, artifacts) {
     if (result.status !== 0 || result.signal || result.error) failure ??= `command ${index} failed`;
     if (failure) break;
     if (command.executable === 'pnpm' && command.cwd === '.'
-      && (command.argv.join(' ') === 'build'
+      && (command.argv.join(' ') === 'build' || command.argv.includes('build') && command.argv.includes('run')
         || (task.inputs.includes('build.tar') && command.argv.join(' ') === 'install --frozen-lockfile'))) {
-      preparedBuild = recordPreparedBuild(root, plan.environment.imageKey);
+      preparedBuild = recordPreparedBuild(root, plan.environment.imageKey,
+        plan.mode === 'full' ? null : plan.selection.buildDirectories, plan.semanticDigest);
     }
   }
   const artifactsWritten = [];
   if (!failure && task.id === 'build') {
-    const dist = readdirSync(join(root, 'packages'), { withFileTypes: true })
+    const dist = plan.mode === 'full' ? readdirSync(join(root, 'packages'), { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && existsSync(join(root, 'packages', entry.name, 'dist')))
-      .map((entry) => `packages/${entry.name}/dist`);
+      .map((entry) => `packages/${entry.name}/dist`) : plan.selection.buildDirectories.map((directory) => `${directory}/dist`);
     execute('tar', ['-cf', join(artifacts, 'build.tar'), ...dist,
-      'packages/cli/src/new/published-internal-dependencies.ts'], { cwd: root });
-    execute('tar', ['-cf', join(artifacts, 'runtime-floor.tar'), '-C', join(root, '.omo/verification/runtime-floor'), '.']);
+      ...(dist.includes('packages/cli/dist') ? ['packages/cli/src/new/published-internal-dependencies.ts'] : [])], { cwd: root });
+    const archiveNames = ['build.tar'];
+    if (task.outputs.includes('runtime-floor.tar')) {
+      execute('tar', ['-cf', join(artifacts, 'runtime-floor.tar'), '-C', join(root, '.omo/verification/runtime-floor'), '.']);
+      archiveNames.push('runtime-floor.tar');
+    }
     const metadata = { headSha: plan.source.headSha, treeSha: plan.source.treeSha, imageKey: plan.environment.imageKey,
-      files: Object.fromEntries(['build.tar', 'runtime-floor.tar'].map((name) => [name, hashFile(join(artifacts, name))])) };
+      planDigest: plan.semanticDigest, buildDirectories: plan.selection.buildDirectories,
+      files: Object.fromEntries(archiveNames.map((name) => [name, hashFile(join(artifacts, name))])) };
     writeFileSync(join(artifacts, 'build.json'), `${JSON.stringify(metadata)}\n`);
   }
-  if (!failure && task.id === 'static') {
+  if (!failure && task.outputs.includes('docs-site')) {
     cpSync(join(root, '.artifacts/docs-site'), join(artifacts, 'docs-site'), { recursive: true });
   }
   if (!failure) {

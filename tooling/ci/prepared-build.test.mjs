@@ -67,6 +67,24 @@ test('missing package output cannot be recorded as a complete build', (t) => {
   assert.throws(() => recordPreparedBuild(root, 'sha256:fixture-image'), /output/u);
 });
 
+test('prepared build: scoped producer -> binds exact selected inventory and plan', (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, 'packages/unselected'), { recursive: true });
+  writeFileSync(join(root, 'packages/unselected/package.json'),
+    JSON.stringify({ name: '@fixture/unselected', scripts: { build: 'build-unselected' } }));
+  execFileSync('git', ['add', '.'], { cwd: root });
+  execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'unselected'], { cwd: root });
+  const directories = ['packages/sample'];
+  const planDigest = 'a'.repeat(64);
+
+  const path = recordPreparedBuild(root, 'sha256:fixture-image', directories, planDigest);
+
+  assert.equal(verifyPreparedBuild(root, path, directories, planDigest), true);
+  assert.throws(() => verifyPreparedBuild(root, path, ['packages/sample', 'packages/unselected'], planDigest), /inventory/u);
+  assert.throws(() => verifyPreparedBuild(root, path, directories, 'b'.repeat(64)), /inventory/u);
+  assert.throws(() => recordPreparedBuild(root, 'sha256:fixture-image'), /output missing/u);
+});
+
 test('real global setup preserves standalone builds and rejects stale reused artifacts', (t) => {
   // Given: The production setup runs against a fixture with an observable closure builder.
   const root = fixture(t);

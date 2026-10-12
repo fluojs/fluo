@@ -6,7 +6,9 @@ const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const buildClosureScript = fileURLToPath(new URL('../../scripts/run-workspace-build-closure.mjs', import.meta.url));
 
 export default function preparePackagesProjectEmittedArtifacts() {
-  if (verifyPreparedBuild(repoRoot, process.env.FLUO_VERIFIED_BUILD)) return;
+  if (verifyPreparedBuild(repoRoot, process.env.FLUO_VERIFIED_BUILD,
+    process.env.FLUO_VERIFIED_BUILD_DIRECTORIES ? JSON.parse(process.env.FLUO_VERIFIED_BUILD_DIRECTORIES) : undefined,
+    process.env.FLUO_VERIFIED_BUILD_PLAN)) return;
   for (const packageName of ['@fluojs/terminus', '@fluojs/prisma']) {
     execFileSync(process.execPath, [buildClosureScript, packageName], {
       cwd: repoRoot,
