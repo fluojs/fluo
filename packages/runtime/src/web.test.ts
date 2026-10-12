@@ -1,19 +1,19 @@
-import { describe, expect, it } from 'vitest';
-
 import { Container } from '@fluojs/di';
 import {
+  type AccessLogEvent,
   assertRequestContext,
   Controller,
   createAccessLogObserver,
   createCorrelationMiddleware,
   createDispatcher,
   createHandlerMapping,
-  Get,
-  SseResponse,
-  type AccessLogEvent,
+  createSecurityHeadersMiddleware,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
+  SseResponse,
 } from '@fluojs/http';
+import { describe, expect, it } from 'vitest';
 
 import type { RequestResponseFactory } from './adapters/request-response-factory.js';
 
@@ -42,6 +42,144 @@ function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T
 }
 
 describe('dispatchWebRequest', () => {
+  it('applies initial security headers while preserving the native JSON response body', async () => {
+    @Controller('/header-cost')
+    class HeaderCostController {
+      @Get('/')
+      get() {
+        return { ok: true };
+      }
+    }
+
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/header-cost');
+    const frameworkRequest = await factory.createRequest(request, request.signal);
+    const frameworkResponse = factory.createResponse(request.signal, request);
+    const dispatcher = createDispatcher({
+      appMiddleware: [createSecurityHeadersMiddleware()],
+      handlerMapping: createHandlerMapping([{ controllerToken: HeaderCostController }]),
+      rootContainer: new Container().register(HeaderCostController),
+    });
+
+    await dispatcher.dispatch(frameworkRequest, frameworkResponse);
+
+    const response = frameworkResponse.toResponse();
+    expect(response.headers.get('content-security-policy')).toBe("default-src 'self'");
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('content-type')).toContain('application/json');
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it('keeps first own enumerable header casing through direct mutations and map replacement', async () => {
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/header-mutations');
+    const response = factory.createResponse(request.signal, request);
+    response.setHeader('X-Custom', 'first');
+    response.headers['x-custom'] = 'second';
+    response.setHeader('X-CUSTOM', ['replacement', 'array']);
+    expect(response.headers['X-Custom']).toEqual(['replacement', 'array']);
+    expect(response.headers['x-custom']).toBe('second');
+
+    delete response.headers['X-Custom'];
+    response.setHeader('X-Custom', 'after-delete');
+    expect(response.headers['x-custom']).toBe('after-delete');
+    expect(Object.hasOwn(response.headers, 'X-Custom')).toBe(false);
+
+    const replacement: Record<string, string | string[]> = { 'x-CuStOm': 'new-map' };
+    Object.setPrototypeOf(replacement, { 'X-Inherited': 'prototype' });
+    Object.defineProperty(replacement, 'X-Hidden', { value: 'hidden', writable: true });
+    response.headers = replacement;
+    response.setHeader('X-CUSTOM', 'replaced-map');
+    response.setHeader('x-inherited', 'own');
+    response.setHeader('x-hidden', 'enumerable');
+    response.setHeader('Set-Cookie', 'one=1; Path=/');
+    response.setHeader('set-cookie', ['two=2; Path=/', 'three=3; Path=/']);
+    response.setHeader('Vary', ['Accept', 'Origin']);
+    response.setHeader('content-TYPE', 'application/custom');
+    await response.send('body');
+
+    expect(replacement['x-CuStOm']).toBe('replaced-map');
+    expect(replacement['X-Inherited']).toBe('prototype');
+    expect(replacement['x-inherited']).toBe('own');
+    expect(replacement['X-Hidden']).toBe('hidden');
+    expect(replacement['x-hidden']).toBe('enumerable');
+    const nativeResponse = response.toResponse();
+    expect(nativeResponse.headers.get('x-custom')).toBe('replaced-map');
+    expect(nativeResponse.headers.get('x-inherited')).toBe('own');
+    expect(nativeResponse.headers.get('x-hidden')).toBe('enumerable');
+    expect(nativeResponse.headers.getSetCookie()).toEqual([
+      'one=1; Path=/', 'two=2; Path=/', 'three=3; Path=/',
+    ]);
+    expect(nativeResponse.headers.get('vary')).toBe('Accept, Origin');
+    expect(nativeResponse.headers.get('content-type')).toBe('application/custom');
+    expect(response.toResponse()).toBe(nativeResponse);
+    await expect(nativeResponse.text()).resolves.toBe('body');
+  });
+
+  it('uses a replaced header map after internal writes without an earlier read', async () => {
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/header-replacement');
+    const response = factory.createResponse(request.signal, request);
+    response.setHeader('X-Original', 'initial');
+    response.headers = { 'x-ORIGINAL': 'replacement' };
+
+    response.setHeader('X-Original', 'updated');
+    await response.send('body');
+
+    expect(response.headers['x-ORIGINAL']).toBe('updated');
+    expect(Object.hasOwn(response.headers, 'X-Original')).toBe(false);
+    expect(response.toResponse().headers.get('x-original')).toBe('updated');
+  });
+
+  it('keeps header reads and nested map updates working after freezing the response object', () => {
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/frozen-response');
+    const response = factory.createResponse(request.signal, request);
+    response.setHeader('X-Frozen', 'initial');
+    Object.freeze(response);
+
+    expect(response.headers['X-Frozen']).toBe('initial');
+    response.setHeader('x-frozen', 'updated');
+
+    expect(response.headers['X-Frozen']).toBe('updated');
+  });
+
+  it('shares header exposure state through a transparent response proxy', () => {
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/proxied-response');
+    const original = factory.createResponse(request.signal, request);
+    const response = new Proxy(original, {});
+    response.setHeader('X-Proxy', 'initial');
+    const headers = response.headers;
+    delete headers['X-Proxy'];
+    headers['x-proxy'] = 'external';
+
+    response.setHeader('X-PROXY', 'updated');
+
+    expect(original.headers).toBe(headers);
+    expect(headers['x-proxy']).toBe('updated');
+    expect(Object.hasOwn(headers, 'X-PROXY')).toBe(false);
+  });
+
+  it.each([204, 205, 304])('keeps Web header overrides on body-forbidden status %i', async (status) => {
+    const factory = createWebRequestResponseFactory();
+    const request = new Request('https://runtime.test/body-forbidden');
+    const response = factory.createResponse(request.signal, request);
+    response.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    response.headers['X-Frame-Options'] = 'DENY';
+    response.setHeader('x-frame-options', 'custom');
+    response.setStatus(status);
+
+    await response.send({ ignored: true });
+
+    const nativeResponse = response.toResponse();
+    expect(response.headers['X-Frame-Options']).toBe('custom');
+    expect(nativeResponse.headers.get('x-frame-options')).toBe('custom');
+    expect(nativeResponse.status).toBe(status);
+    expect(nativeResponse.body).toBeNull();
+    expect(response.committed).toBe(true);
+  });
+
   it('delivers opted-in multipart parts to dispatch without pre-buffering', async () => {
     const boundary = 'fluo-web-streaming-route';
     const request = new Request('https://runtime.test/uploads', {
