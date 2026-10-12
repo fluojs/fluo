@@ -88,13 +88,13 @@ if (args[0] === 'pr' && args[1] === 'view') {
       reviews: obs.preflightPolicy.active_axes.map((reviewer) => ({ reviewer, reviewed_head_sha: obs.headSha,
         preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [] })) };
   };
-  const verify = (ok = true) => {
+  const verify = (ok = true, forceFull = false) => {
     const entry = JSON.parse(readFileSync(lanePath, 'utf8')).issues['42'];
     const base = entry.facts.preflight.value.base_sha;
     // This fixture exercises lane receipt admission, not real execution.
     // Docker-backed command execution is covered by verification-runner.docker-test.mjs.
     const identity = collectIdentity(worktree, base);
-    const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity,
+    const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity, forceFull,
       manifest: readVerificationManifest(join(worktree, 'tooling/ci/local-verification-manifest.json')) });
     const lock = plan.environment.lock;
     const actual = {
@@ -155,7 +155,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
     writeFileSync(hostResultPath, `${JSON.stringify(hostChecks)}\n`);
     logs.push({ path: relative(worktree, hostResultPath), digest: digest(readFileSync(hostResultPath)) });
     const receipt = {
-      version: 2, status: ok ? 'passed' : 'failed', profile: 'pr', identity,
+      version: 2, status: ok ? 'passed' : 'failed', profile: 'pr', forceFull, identity,
       source: plan.source, environment: { lock, imageKey: plan.environment.imageKey },
       imageIdentity: { key: plan.environment.imageKey, id: `sha256:${'1'.repeat(64)}` },
       environmentLockDigest: plan.environment.lockDigest,
@@ -179,6 +179,36 @@ if (args[0] === 'pr' && args[1] === 'view') {
   };
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog };
 };
+
+for (const file of ['docs/guide.md', '.github/workflows/ci.yml']) {
+  test(`CLI: forced full receipt admission and revalidation for ${file}`, (t) => {
+    const f = fixture(t);
+    f.set('preflight', f.preflight({
+      scope: ['docs/', '.github/workflows/'], predicted_files: [...new Set([file, 'docs/guide.md'])],
+    }));
+    f.implement();
+    f.commit(file, 'fixture full verification\n');
+    const review = f.review();
+    f.set('review', review, review.head_sha);
+    const receipt = f.verify(true, true);
+    f.set('local-checks', receipt, review.head_sha);
+    assert.equal(f.plan().obs.localChecks.status, 'passed');
+
+    const path = join(f.worktree, receipt.receiptPath);
+    const original = readFileSync(path, 'utf8');
+    for (const intent of [false, undefined]) {
+      const changed = JSON.parse(original);
+      if (intent === undefined) delete changed.forceFull;
+      else changed.forceFull = intent;
+      writeFileSync(path, JSON.stringify(changed));
+      f.set('local-checks', {
+        ...receipt, receiptSha256: createHash('sha256').update(readFileSync(path)).digest('hex'),
+      }, review.head_sha, false);
+    }
+    writeFileSync(path, original);
+    assert.equal(f.plan().obs.localChecks.status, 'passed');
+  });
+}
 
 const waiverFixture = (t) => {
   const f = fixture(t);

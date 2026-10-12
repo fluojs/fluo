@@ -274,6 +274,7 @@ export const validateLocalCheckFact = (
 		changedFiles: identity.changedFiles,
 		identity,
 		manifest: readVerificationManifest(manifestPath(root)),
+		forceFull: receipt.forceFull ?? false,
 	});
 	// Native v1 evidence is historical; only the exact Linux PR profile can
 	// satisfy the lane's post-review local gate.

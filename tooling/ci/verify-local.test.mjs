@@ -242,6 +242,15 @@ if (process.argv[1] && import.meta.url === new URL('file://'+process.argv[1]).hr
       assert.equal(fullPlan.mode, 'full');
       assert.equal(fullPlan.forceFull, true);
       assert.equal(fullPlan.tasks.length, 16);
+      const executed = spawnSync(process.execPath, [join(root, 'tooling/ci/verify-local.mjs'),
+        '--base-ref', base, '--concurrency', '2', ...request.argv], {
+        cwd: root, encoding: 'utf8', timeout: 30_000, env: { ...process.env, ...request.env },
+      });
+      assert.equal(executed.status, 0, executed.stdout + executed.stderr);
+      const fullReceipt = JSON.parse(readFileSync(JSON.parse(executed.stdout).path, 'utf8'));
+      assert.equal(fullReceipt.forceFull, true);
+      assert.equal(fullReceipt.planDigest, fullPlan.semanticDigest);
+      assert.equal(fullReceipt.taskResults.length, 16);
     }
   }
 

@@ -196,6 +196,7 @@ export async function main(argv = process.argv.slice(2)) {
     planDigest: plan.semanticDigest,
     profile: plan.profile,
     source: plan.source,
+    forceFull: plan.forceFull,
     startedAt,
     status: reason ? 'failed' : 'passed',
     taskResults,

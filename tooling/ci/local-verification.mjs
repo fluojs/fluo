@@ -400,6 +400,7 @@ export function receiptMatchesPlan(receipt, identity, plan) {
   if (!receiptIsCurrent(receipt, identity)
     || !plan || typeof plan !== 'object'
     || plan.version !== 2 || receipt.profile !== plan.profile
+    || (receipt.forceFull ?? false) !== plan.forceFull
     || JSON.stringify(receipt.source) !== JSON.stringify(plan.source)
     || receipt.manifestDigest !== plan.manifestDigest
     || receipt.planDigest !== semanticPlanDigest(plan)
