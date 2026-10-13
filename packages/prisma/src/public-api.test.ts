@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import ts from 'typescript';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
+import { createWorkspaceArtifactWriter, withWorkspaceArtifactSnapshot } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
 
 import type {
   PrismaClientLike,
@@ -18,6 +19,7 @@ import type { PrismaPlatformStatusSnapshotInput as StatusPrismaPlatformStatusSna
 const execFileAsync = promisify(execFile);
 const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 const packageDist = join(packageRoot, 'dist');
+const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
 let consumerDirectory: string | undefined;
 
 type PrismaPublicApiTestTransactionClient = {
@@ -54,7 +56,8 @@ function compilePackageRootConsumer(source: string): readonly ts.Diagnostic[] {
       ? ts.createSourceFile(path, source, languageVersion, true)
       : originalGetSourceFile(path, languageVersion, onError, shouldCreateNewSourceFile);
 
-  return ts.getPreEmitDiagnostics(ts.createProgram([fixture], options, host));
+  return withWorkspaceArtifactSnapshot(['@fluojs/prisma'], repositoryRoot, () =>
+    ts.getPreEmitDiagnostics(ts.createProgram([fixture], options, host)));
 }
 
 describe('@fluojs/prisma public API surface', () => {
@@ -103,50 +106,64 @@ describe('@fluojs/prisma public API surface', () => {
   });
 
   it('keeps removed APIs and module wiring absent from cold-built package artifacts', async () => {
-    // Given
-    const [rootJavaScript, rootDeclarations, serviceJavaScript, serviceDeclarations] = await Promise.all([
-      readFile(join(packageDist, 'index.js'), 'utf8'),
-      readFile(join(packageDist, 'index.d.ts'), 'utf8'),
-      readFile(join(packageDist, 'service.js'), 'utf8'),
-      readFile(join(packageDist, 'service.d.ts'), 'utf8'),
-    ]);
+    await withWorkspaceArtifactSnapshot(['@fluojs/prisma'], repositoryRoot, async () => {
+      // Given
+      const [rootJavaScript, rootDeclarations, serviceJavaScript, serviceDeclarations] = await Promise.all([
+        readFile(join(packageDist, 'index.js'), 'utf8'),
+        readFile(join(packageDist, 'index.d.ts'), 'utf8'),
+        readFile(join(packageDist, 'service.js'), 'utf8'),
+        readFile(join(packageDist, 'service.d.ts'), 'utf8'),
+      ]);
 
-    // When
-    consumerDirectory = await mkdtemp(join(packageRoot, '.fluo-prisma-public-api-'));
-    const consumer = join(consumerDirectory, 'consumer.mjs');
-    await writeFile(consumer, [
-      "import * as prisma from '@fluojs/prisma';",
-      "if ('PrismaTransactionInterceptor' in prisma) throw new Error('removed interceptor exported');",
-      "if ('createPrismaServiceFacade' in prisma) throw new Error('internal facade factory exported');",
-      "if ('createFacade' in prisma.PrismaService) throw new Error('removed static facade factory exported');",
-    ].join('\n'));
-    await execFileAsync(process.execPath, [consumer], { cwd: packageRoot });
+      // When
+      consumerDirectory = await mkdtemp(join(packageRoot, '.fluo-prisma-public-api-'));
+      const consumer = join(consumerDirectory, 'consumer.mjs');
+      await writeFile(consumer, [
+        "import * as prisma from '@fluojs/prisma';",
+        "if ('PrismaTransactionInterceptor' in prisma) throw new Error('removed interceptor exported');",
+        "if ('createPrismaServiceFacade' in prisma) throw new Error('internal facade factory exported');",
+        "if ('createFacade' in prisma.PrismaService) throw new Error('removed static facade factory exported');",
+      ].join('\n'));
+      await execFileAsync(process.execPath, [consumer], { cwd: packageRoot });
 
-    // Then
-    for (const artifact of [rootJavaScript, rootDeclarations, serviceJavaScript, serviceDeclarations]) {
-      expect(artifact).not.toContain('PrismaTransactionInterceptor');
-      expect(artifact).not.toContain('createFacade');
-    }
-    expect(rootJavaScript).not.toContain('createPrismaServiceFacade');
-    expect(rootDeclarations).not.toContain('createPrismaServiceFacade');
+      // Then
+      for (const artifact of [rootJavaScript, rootDeclarations, serviceJavaScript, serviceDeclarations]) {
+        expect(artifact).not.toContain('PrismaTransactionInterceptor');
+        expect(artifact).not.toContain('createFacade');
+      }
+      expect(rootJavaScript).not.toContain('createPrismaServiceFacade');
+      expect(rootDeclarations).not.toContain('createPrismaServiceFacade');
+    });
   });
 
-  it('rejects removed package-root imports and static facade access in built declarations', () => {
-    // Given
-    const internalFactoryDiagnostics = compilePackageRootConsumer(
-      "import { createPrismaServiceFacade } from '@fluojs/prisma';\nvoid createPrismaServiceFacade;",
-    );
-    const staticFacadeDiagnostics = compilePackageRootConsumer(
-      "import { PrismaService } from '@fluojs/prisma';\nPrismaService.createFacade();",
-    );
+  it('rejects removed package-root imports and static facade access in built declarations', async () => {
+    const writer = createWorkspaceArtifactWriter(packageDist, repositoryRoot, { timeoutMs: 10_000 });
+    try {
+      await writer.ready;
+      await withWorkspaceArtifactSnapshot(['@fluojs/prisma'], repositoryRoot, async () => {
+        expect(writer.attempt()).toMatchObject({ event: 'blocked', pid: writer.child.pid });
+        expect(writer.child.pid).not.toBe(process.pid);
+        // Given
+        const internalFactoryDiagnostics = compilePackageRootConsumer(
+          "import { createPrismaServiceFacade } from '@fluojs/prisma';\nvoid createPrismaServiceFacade;",
+        );
+        const staticFacadeDiagnostics = compilePackageRootConsumer(
+          "import { PrismaService } from '@fluojs/prisma';\nPrismaService.createFacade();",
+        );
 
-    // When
-    const missingModuleDiagnostics = [...internalFactoryDiagnostics, ...staticFacadeDiagnostics]
-      .filter((diagnostic) => diagnostic.code === 2307);
+        // When
+        const missingModuleDiagnostics = [...internalFactoryDiagnostics, ...staticFacadeDiagnostics]
+          .filter((diagnostic) => diagnostic.code === 2307);
 
-    // Then
-    expect(missingModuleDiagnostics).toEqual([]);
-    expect(internalFactoryDiagnostics.filter((diagnostic) => diagnostic.code === 2724)).toHaveLength(1);
-    expect(staticFacadeDiagnostics.filter((diagnostic) => diagnostic.code === 2339)).toHaveLength(1);
+        // Then
+        expect(missingModuleDiagnostics).toEqual([]);
+        expect(internalFactoryDiagnostics.filter((diagnostic) => diagnostic.code === 2724)).toHaveLength(1);
+        expect(staticFacadeDiagnostics.filter((diagnostic) => diagnostic.code === 2339)).toHaveLength(1);
+      });
+      expect((await writer.exited)[0]).toBe(0);
+      expect(writer.events).toEqual(['ready', 'attempt', 'blocked', 'completed']);
+    } finally {
+      await writer.stop();
+    }
   });
 });

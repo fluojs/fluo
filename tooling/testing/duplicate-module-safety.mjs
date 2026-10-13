@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { schemaFailure } from '../../.agents/workflow-contracts/schema-validator.mjs';
 import { publicWorkspacePackageNames, workspacePackageManifests } from '../release/release-intents.mjs';
 import { verifyPreparedBuild } from '../ci/prepared-build.mjs';
+import { withWorkspaceArtifactSnapshot } from '../scripts/run-workspace-build-closure.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultRoot = resolve(here, '..', '..');
@@ -495,19 +496,24 @@ export async function runDuplicateModuleSafety({
     try {
       const artifactRecords = { A: {}, B: {} };
       const artifacts = { A: {}, B: {} };
-      const externalArtifacts = await packExternalDependencies({
-        root, sandbox, packageClosure, timeoutMs, commands,
+      let externalArtifacts;
+      await withWorkspaceArtifactSnapshot(packageClosure, root, async () => {
+        // Validate provenance under the reader lease, not before a writer can remove it.
+        verifyPreparedBuild(root, process.env.FLUO_VERIFIED_BUILD);
+        externalArtifacts = await packExternalDependencies({
+          root, sandbox, packageClosure, timeoutMs, commands,
+        });
+        for (const packageName of packageClosure) {
+          artifactRecords.A[packageName] = await packPackage({
+            commands, packedArtifacts: { ...externalArtifacts(packageName), ...artifacts.A }, packageName, root, sandbox, side: 'A', timeoutMs,
+          });
+          artifactRecords.B[packageName] = await packPackage({
+            commands, packedArtifacts: { ...externalArtifacts(packageName), ...artifacts.B }, packageName, root, sandbox, side: 'B', timeoutMs,
+          });
+          artifacts.A[packageName] = artifactRecords.A[packageName].tarball;
+          artifacts.B[packageName] = artifactRecords.B[packageName].tarball;
+        }
       });
-      for (const packageName of packageClosure) {
-        artifactRecords.A[packageName] = await packPackage({
-          commands, packedArtifacts: { ...externalArtifacts(packageName), ...artifacts.A }, packageName, root, sandbox, side: 'A', timeoutMs,
-        });
-        artifactRecords.B[packageName] = await packPackage({
-          commands, packedArtifacts: { ...externalArtifacts(packageName), ...artifacts.B }, packageName, root, sandbox, side: 'B', timeoutMs,
-        });
-        artifacts.A[packageName] = artifactRecords.A[packageName].tarball;
-        artifacts.B[packageName] = artifactRecords.B[packageName].tarball;
-      }
       const compatibleArtifacts = { ...artifacts.B };
       compatibleArtifacts['@fluojs/core'] = await createCompatiblePatchArtifact({
         commands,

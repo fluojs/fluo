@@ -1,30 +1,135 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { once } from 'node:events';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { acquireWorkspaceArtifactLeases } from './clean-dist.mjs';
+import { performance } from 'node:perf_hooks';
 
 const WORKSPACE_BUILD_LOCK_DIRECTORY = '.workspace-build-closure.lock';
 const WORKSPACE_BUILD_LOCK_METADATA_FILE = 'owner.json';
-const WORKSPACE_BUILD_LOCK_TIMEOUT_MS = 300_000;
-const WORKSPACE_BUILD_LOCK_POLL_MS = 50;
 const WORKSPACE_BUILD_LOCK_STALE_GRACE_MS = 5_000;
 
-function sleep(milliseconds) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+// Test writers need separate PIDs: terminating a thread cannot invalidate a
+// process-owned lease. The FIFO bridge also works inside synchronous snapshots.
+export function createWorkspaceArtifactWriter(artifact, rootDirectory, options = {}) {
+  const lifetimeMs = options.timeoutMs ?? 10_000;
+  const target = join(realpathSync(dirname(artifact)), basename(artifact));
+  const key = createHash('sha256').update(target).digest('hex');
+  const registry = join(realpathSync(rootDirectory), '.omo/workspace-artifact-locks', key);
+  const sandbox = mkdtempSync(join(tmpdir(), 'fluo-artifact-writer-'));
+  const handshake = join(sandbox, 'handshake.fifo');
+  const hold = join(sandbox, 'hold.fifo');
+  for (const path of [handshake, hold]) {
+    const result = spawnSync('mkfifo', ['-m', '600', path], { encoding: 'utf8' });
+    if (result.status !== 0) {
+      rmSync(sandbox, { recursive: true, force: true });
+      throw new Error(result.stderr || 'Artifact writer FIFO creation failed.');
+    }
+  }
+  const child = spawn(process.execPath, ['--input-type=module', '--eval', `
+    import fs from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
+    const phase = ${JSON.stringify(options.pauseAfterPublication ?? null)};
+    const send = (event) => process.send(event);
+    const checkpoint = (path) => {
+      send('published');
+      fs.writeFileSync(${JSON.stringify(handshake)}, JSON.stringify({ event: 'published', pid: process.pid, path }));
+      fs.readFileSync(${JSON.stringify(hold)});
+    };
+    const rename = fs.renameSync;
+    fs.renameSync = (from, to) => {
+      rename(from, to);
+      if (phase === 'gate' && String(to).includes('/gate/')
+        && JSON.parse(fs.readFileSync(to, 'utf8')).ticket !== null) checkpoint(String(to));
+    };
+    syncBuiltinESMExports();
+    const { acquireWorkspaceArtifactLeases } = await import(${JSON.stringify(new URL('./clean-dist.mjs', import.meta.url).href)});
+    const wait = Atomics.wait;
+    let reported = false;
+    Atomics.wait = (...args) => {
+      if (!reported) {
+        reported = true;
+        send('blocked');
+        fs.writeFileSync(${JSON.stringify(handshake)}, JSON.stringify({ event: 'blocked', pid: process.pid }));
+      }
+      return wait(...args);
+    };
+    process.once('message', () => {
+      try {
+        send('attempt');
+        const lease = acquireWorkspaceArtifactLeases([${JSON.stringify(target)}], 'writer');
+        try {
+          if (phase === 'artifact') {
+            const owner = JSON.parse(lease.environment.FLUO_WORKSPACE_ARTIFACT_WRITERS)
+              .find((entry) => entry.pid === process.pid && entry.artifact === ${JSON.stringify(target)});
+            checkpoint(owner.path);
+          }
+          fs.rmSync(${JSON.stringify(target)}, { recursive: true, force: true });
+        } finally { lease.release(); }
+        process.send('completed', () => process.disconnect());
+      } catch (error) {
+        console.error(error);
+        process.exitCode = 1;
+        process.disconnect();
+      }
+    });
+    send('ready');
+  `], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  const events = [];
+  child.on('message', (message) => events.push(message));
+  const signal = AbortSignal.timeout(lifetimeMs);
+  const exited = once(child, 'close', { signal });
+  const ready = once(child, 'message', { signal }).then(([message]) => {
+    if (message !== 'ready') throw new Error(`Unexpected artifact writer readiness: ${message}`);
+  });
+  // Cleanup may be entered after another assertion fails; the original promises
+  // still reject for callers awaiting readiness or exit.
+  void ready.catch(() => {});
+  void exited.catch(() => {});
+  return {
+    child, ready, exited, events,
+    attempt: () => {
+      child.send('attempt-clean');
+      const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+        import { readFileSync } from 'node:fs';
+        process.stdout.write(readFileSync(${JSON.stringify(handshake)}));
+      `], { encoding: 'utf8', timeout: 10_000 });
+      if (result.status !== 0) throw new Error(result.stderr || result.error?.message || 'Artifact writer handshake failed.');
+      const observed = JSON.parse(result.stdout);
+      if (observed.pid !== child.pid || observed.event !== (options.pauseAfterPublication ? 'published' : 'blocked')) {
+        throw new Error(`Unexpected artifact writer handshake: ${result.stdout}`);
+      }
+      return observed;
+    },
+    stop: async () => {
+      const running = child.exitCode === null && child.signalCode === null;
+      const closed = running ? once(child, 'close', { signal: AbortSignal.timeout(10_000) }) : exited;
+      if (running) child.kill('SIGKILL');
+      try {
+        await closed;
+      } finally {
+        // Never remove the shared gate or entries belonging to a live process.
+        if (child.pid && !isProcessAlive(child.pid)) {
+          for (const directory of [registry, join(registry, 'gate')]) {
+            if (!existsSync(directory)) continue;
+            for (const token of readdirSync(directory).filter((entry) => entry.startsWith(`${child.pid}-`))) {
+              rmSync(join(directory, token), { force: true });
+            }
+          }
+        }
+        rmSync(sandbox, { recursive: true, force: true });
+      }
+    },
+  };
 }
 
 function getWorkspaceBuildLockMetadataPath(lockDirectory) {
   return join(lockDirectory, WORKSPACE_BUILD_LOCK_METADATA_FILE);
-}
-
-function writeWorkspaceBuildLockMetadata(lockDirectory) {
-  writeFileSync(
-    getWorkspaceBuildLockMetadataPath(lockDirectory),
-    JSON.stringify({ pid: process.pid, startedAt: Date.now() }),
-    'utf8',
-  );
 }
 
 function isProcessAlive(pid) {
@@ -59,37 +164,6 @@ function shouldRecoverWorkspaceBuildLock(lockDirectory) {
     return ageMs >= WORKSPACE_BUILD_LOCK_STALE_GRACE_MS;
   } catch {
     return true;
-  }
-}
-
-function acquireWorkspaceBuildLock(rootDirectory) {
-  const lockDirectory = join(rootDirectory, WORKSPACE_BUILD_LOCK_DIRECTORY);
-  const deadline = Date.now() + WORKSPACE_BUILD_LOCK_TIMEOUT_MS;
-
-  while (true) {
-    try {
-      mkdirSync(lockDirectory);
-      writeWorkspaceBuildLockMetadata(lockDirectory);
-
-      return () => {
-        rmSync(lockDirectory, { force: true, recursive: true });
-      };
-    } catch (error) {
-      if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') {
-        throw error;
-      }
-
-      if (shouldRecoverWorkspaceBuildLock(lockDirectory)) {
-        rmSync(lockDirectory, { force: true, recursive: true });
-        continue;
-      }
-
-      if (Date.now() >= deadline) {
-        throw new Error(`Timed out waiting for workspace build lock at ${lockDirectory}.`);
-      }
-
-      sleep(WORKSPACE_BUILD_LOCK_POLL_MS);
-    }
   }
 }
 
@@ -251,12 +325,24 @@ export function resolveWorkspaceBuildOrder(targetPackageName, rootDirectory) {
 }
 
 export function runWorkspaceBuildClosure(targetPackageName, rootDirectory, options = {}) {
+  const deadline = options.timeoutMs === undefined ? undefined : performance.now() + options.timeoutMs;
   const packageManager = options.packageManager ?? detectPackageManager();
   const stdio = options.stdio ?? 'pipe';
   const order = resolveWorkspaceBuildOrder(targetPackageName, rootDirectory);
   const workspaceManifests = collectWorkspaceManifests(rootDirectory);
   const manifestByName = new Map(workspaceManifests.map((entry) => [entry.name, entry]));
-  const releaseLock = acquireWorkspaceBuildLock(rootDirectory);
+  // An old crashed closure may have left the former workspace-wide lock.
+  // Recover it without reintroducing global serialization for independent artifacts.
+  const oldLock = join(rootDirectory, WORKSPACE_BUILD_LOCK_DIRECTORY);
+  if (existsSync(oldLock) && shouldRecoverWorkspaceBuildLock(oldLock)) {
+    rmSync(oldLock, { force: true, recursive: true });
+  }
+  // Reserve only overlapping builders in a stable artifact order. Reader leases
+  // remain compatible until each package actually starts emitting its output.
+  const buildLease = acquireWorkspaceArtifactLeases(
+    order.map((name) => join(manifestByName.get(name).directory, 'dist')), 'builder', deadline,
+  );
+  const leases = [buildLease];
 
   let stdout = '';
   let stderr = '';
@@ -268,11 +354,15 @@ export function runWorkspaceBuildClosure(targetPackageName, rootDirectory, optio
         continue;
       }
 
+      const artifact = join(realpathSync(entry.directory), 'dist');
+      buildLease.activate(artifact);
       const args = packageManager.startsWith('npm') ? ['run', 'build'] : ['run', 'build'];
       const result = spawnSync(packageManager, args, {
         cwd: entry.directory,
         encoding: 'utf8',
         stdio,
+        env: buildLease.environment,
+        timeout: deadline === undefined ? undefined : Math.max(1, Math.ceil(deadline - performance.now())),
       });
 
       if (stdio === 'pipe') {
@@ -315,17 +405,51 @@ export function runWorkspaceBuildClosure(targetPackageName, rootDirectory, optio
           stdout: stdout.trim(),
         };
       }
+      // Keep the emitted declarations readable through later builds and packing,
+      // but do not keep a writer on artifacts this closure has finished writing.
+      buildLease.downgrade(artifact);
     }
 
-    return {
+    buildLease.downgrade();
+    const snapshotPackages = new Set(
+      (options.snapshotPackages ?? []).flatMap((name) => resolveWorkspaceBuildOrder(name, rootDirectory)),
+    );
+    leases.push(acquireWorkspaceArtifactLeases(
+      [...snapshotPackages].filter((name) => !order.includes(name))
+        .map((name) => join(manifestByName.get(name).directory, 'dist')),
+      'reader', deadline,
+    ));
+    const result = {
       order,
       packageManager,
       status: 0,
       stderr: stderr.trim(),
       stdout: stdout.trim(),
     };
+    if (options.consume?.(result) instanceof Promise) {
+      throw new TypeError('Workspace build consumption must be synchronous.');
+    }
+    return result;
   } finally {
-    releaseLock();
+    for (const lease of leases.reverse()) lease.release();
+  }
+}
+
+export function withWorkspaceArtifactSnapshot(packageNames, rootDirectory, consume) {
+  const names = new Set(packageNames.flatMap((name) => resolveWorkspaceBuildOrder(name, rootDirectory)));
+  const manifests = new Map(collectWorkspaceManifests(rootDirectory).map((entry) => [entry.name, entry]));
+  const lease = acquireWorkspaceArtifactLeases(
+    [...names].map((name) => join(manifests.get(name).directory, 'dist')),
+    'reader',
+  );
+  try {
+    const result = consume();
+    if (result instanceof Promise) return result.finally(lease.release);
+    lease.release();
+    return result;
+  } catch (error) {
+    lease.release();
+    throw error;
   }
 }
 

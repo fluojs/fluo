@@ -6,10 +6,10 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
+import { runWorkspaceBuildClosure } from '../../../../tooling/scripts/run-workspace-build-closure.mjs';
 
 const packageRootPath = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const repoRootPath = resolve(fileURLToPath(new URL('../../../..', import.meta.url)));
-const workspaceBuildClosurePath = resolve(repoRootPath, 'tooling/scripts/run-workspace-build-closure.mjs');
 const commandTimeoutMs = 180_000;
 const tarBlockSize = 512;
 const consumerDependencyNames = [
@@ -143,9 +143,10 @@ function addPackedDependency(
 /**
  * Creates an offline consumer from locally packed workspace dependencies.
  *
+ * @param observeSnapshot Optional test barrier entered after build and before packing.
  * @returns A disposable consumer fixture with its packed manifest and typecheck command.
  */
-export function createPackedEmailConsumer(): PackedEmailConsumer {
+export function createPackedEmailConsumer(observeSnapshot?: () => void): PackedEmailConsumer {
   const sandboxPath = mkdtempSync(join(tmpdir(), 'fluo-email-clean-consumer-'));
 
   try {
@@ -153,18 +154,26 @@ export function createPackedEmailConsumer(): PackedEmailConsumer {
     const consumerDirectory = join(sandboxPath, 'consumer');
     mkdirSync(tarballDirectory);
     mkdirSync(consumerDirectory);
-    expectCommandSuccess(
-      'workspace build closure',
-      runCommand(process.execPath, [workspaceBuildClosurePath, '@fluojs/email'], repoRootPath),
-    );
-
     const archives: Record<string, string> = {};
-    const emailTarballPath = packPackage(packageRootPath, tarballDirectory);
-    const packedManifest = readPackedManifest(emailTarballPath);
-    archives[packedManifest.name] = `file:${emailTarballPath}`;
-    for (const dependencyName of consumerDependencyNames) {
-      addPackedDependency(dependencyName, resolveInstalledPackage(dependencyName, packageRootPath), tarballDirectory, archives);
+    let packedManifest: PackedManifest | undefined;
+    const build = runWorkspaceBuildClosure('@fluojs/email', repoRootPath, {
+      packageManager: 'pnpm',
+      timeoutMs: commandTimeoutMs,
+      snapshotPackages: consumerDependencyNames.filter((name) => name.startsWith('@fluojs/')),
+      consume: () => {
+        observeSnapshot?.();
+        const emailTarballPath = packPackage(packageRootPath, tarballDirectory);
+        packedManifest = readPackedManifest(emailTarballPath);
+        archives[packedManifest.name] = `file:${emailTarballPath}`;
+        for (const dependencyName of consumerDependencyNames) {
+          addPackedDependency(dependencyName, resolveInstalledPackage(dependencyName, packageRootPath), tarballDirectory, archives);
+        }
+      },
+    });
+    if (build.status !== 0) {
+      throw new Error(`workspace build closure failed with status ${build.status}.\n${build.stdout}\n${build.stderr}`);
     }
+    if (!packedManifest) throw new Error('Workspace build did not produce the packed Email snapshot.');
 
     const compilerOptions = {
       module: 'ESNext',
