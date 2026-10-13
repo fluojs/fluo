@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "issue": 3942,
+  "status": "MEASUREMENT_READY_LOCAL_PREPARATION",
+  "performanceEvidence": false,
+  "commitCreated": false,
+  "remoteActions": false,
+  "worktree": "/Users/ayden/Documents/fluo/.worktrees/issue-3942",
+  "branch": "issue-3942",
+  "head": "ce70426f3bf29430c4eb941f8e94baaf8f78d364",
+  "preflightSha256": "2db06833eb72bb88b7943ccc7bc8a234c9a95c0c9e6e226111cb50eceef20b1b",
+  "collector": {
+    "trafficSha256": "a256ed2f892d7c9c0ad4cbd6f2b23fae3f64dc5882fc5d76de159447987699a8",
+    "testSha256": "7dc5c812ba9316403a65faef6fd8916d642946d748982f9ccdc3862da7b2aa41"
+  },
+  "generator": {
+    "pid": 96186,
+    "hostname": "mac-mini.local",
+    "node": "v24.20.0",
+    "executable": "/Users/ayden/.nvm/versions/node/v24.20.0/bin/node",
+    "osRelease": "27.2.0",
+    "cpus": [
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro",
+      "Apple M4 Pro"
+    ],
+    "entryPath": "/Users/ayden/Documents/fluo/.worktrees/issue-3942/tooling/benchmarks/http-comparison/dist/issue-3942/generator/load-client.mjs",
+    "entrySha256": "0257aae1f12bec7ffe12e328c23114d0d47f861160740afca02d8afc7915eea6",
+    "nodeExecutableSha256": "9d050fd455b56426e25d4d603c7c501cbb2630348e836cf221dcce748e90588a",
+    "lockfileSha256": "00bab013fdc3a400e8f67c89f4b315502e8f782bf03686c9cbe9dc355ebdc027",
+    "bundleBytes": 1025814,
+    "role": "independent-Mac-generator",
+    "identityOnly": true
+  },
+  "preparedManifest": {
+    "path": "results/issue-3942/prepared-manifest-collector-integrity.json",
+    "sha256": "9725f329429dad7a781c5ac086844cbfa30a32fb8a4307aadf8098ca6b9fb3fe",
+    "bytes": 965625,
+    "role": "Mac-local-preparation-not-Windows-serving-freeze"
+  },
+  "policy": {
+    "path": "results/issue-3942/current-policy-collector-integrity.json",
+    "sha256": "ea97db743f9e247e3cf838eab38c5562c8263a7c3a12267f92f0140b806654cd",
+    "onlyPreflightBindingChanged": true
+  },
+  "checks": {
+    "focused": {
+      "command": "node --import tsx --test tests/issue-3942.test.mts tests/traffic-utf8.test.mts",
+      "exitCode": 0,
+      "passed": 30,
+      "failed": 0,
+      "durationMs": 5360.104208
+    },
+    "build": {
+      "command": "pnpm exec tsx src/issue-3942/build.ts",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "command": "pnpm exec tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --esModuleInterop src/issue-3942/*.ts tests/issue-3942.test.mts tests/traffic-utf8.test.mts",
+      "exitCode": 0
+    },
+    "lint": {
+      "command": "pnpm exec biome lint tooling/benchmarks/http-comparison/src/issue-3942 tooling/benchmarks/http-comparison/src/traffic.ts tooling/benchmarks/http-comparison/tests/issue-3942.test.mts tooling/benchmarks/http-comparison/tests/traffic-utf8.test.mts",
+      "exitCode": 0,
+      "sourceFilesChecked": 8
+    },
+    "hashGuardMutationRed": [
+      {
+        "field": "entrySha256",
+        "sameLengthValidJsonTamper": true,
+        "comparisonRemovedExitCode": 1,
+        "reason": "Missing expected exception.",
+        "comparisonRestored": true
+      },
+      {
+        "field": "nodeExecutableSha256",
+        "sameLengthValidJsonTamper": true,
+        "comparisonRemovedExitCode": 1,
+        "reason": "Missing expected exception.",
+        "comparisonRestored": true
+      },
+      {
+        "field": "lockfileSha256",
+        "sameLengthValidJsonTamper": true,
+        "comparisonRemovedExitCode": 1,
+        "reason": "Missing expected exception.",
+        "comparisonRestored": true
+      }
+    ],
+    "diffCheckExitCode": 0
+  },
+  "preservedOriginalFiles": {
+    "tooling/benchmarks/http-comparison/results/issue-3942/adapter-checks.log": "86b9cfaeffc33b9d58514bd3952c2bcf9131b48a2de3a96a073b46eb15400087",
+    "tooling/benchmarks/http-comparison/results/issue-3942/benchmark-checks.log": "4d08778d9b18fc3e6f01b5a7a144ea60cb3ba0c43ff173ce0480886cab948c5e",
+    "tooling/benchmarks/http-comparison/results/issue-3942/build.log": "6cb503d02954b5d4e7e1f53aa5d4cd45e4c0a7e8176b67f10848f173657a0b15",
+    "tooling/benchmarks/http-comparison/results/issue-3942/correctness-smoke.json": "98e05acf7286f66677b556b68c52cfc1120d75559cf37f17f859c687267a48f2",
+    "tooling/benchmarks/http-comparison/results/issue-3942/current-policy-windows-server.json": "715da81ec955e6babc39af4db14c2ca3dd90abe27c4df9d27fe4e8200c902abe",
+    "tooling/benchmarks/http-comparison/results/issue-3942/final-harness-checks.log": "064d89fad12eaac93d2dbe26f9a547540fe72da59b831dd94a897e45495ca343",
+    "tooling/benchmarks/http-comparison/results/issue-3942/harness-checks-2.log": "fb94bd003fd3b253433ddcb32dadfe2271762f5f2eeab82ea7d32b2298dd12d2",
+    "tooling/benchmarks/http-comparison/results/issue-3942/harness-checks.log": "69c5ca9124b7f01cb721033ab6d42cb07b5d9af9dde4f5e6d2ded071bb02f4dd",
+    "tooling/benchmarks/http-comparison/results/issue-3942/install.log": "e58d2fb01a3057bb2475365bb3182607adec63ce27198df135cfd7d25d8f58e2",
+    "tooling/benchmarks/http-comparison/results/issue-3942/lint-source-binding.log": "4cba0b2b021311eb88f2d508f5906934bb6ce6758eaddf6fd34aee2c361667a8",
+    "tooling/benchmarks/http-comparison/results/issue-3942/lint.log": "93fb3099f601633e4e728153d2553b2678340bd6e14b98b1fae19c3739cd0f83",
+    "tooling/benchmarks/http-comparison/results/issue-3942/prepare.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tooling/benchmarks/http-comparison/results/issue-3942/prepared-manifest-2.json": "25922b236c482b7b17f771065b6ff4459064fc1e5d9b5ce07239f242fa3c017c",
+    "tooling/benchmarks/http-comparison/results/issue-3942/prepared-manifest-final.json": "26a38f8d7c3e2dcaf87b4a7df6ddd08502095320d88687400e44b3f069654f92",
+    "tooling/benchmarks/http-comparison/results/issue-3942/prepared-manifest.json": "b6ce2d9e9f0aca9eebbe5af2516ac020e51bad3ba86e8a54de88845b027db4dd",
+    "tooling/benchmarks/http-comparison/results/issue-3942/source-binding-checks.log": "6ea082fd4803d6ea98b5d4b02aed2b81138f841ba5b154a2717baac3186e65ad",
+    "tooling/benchmarks/http-comparison/results/issue-3942/windows-server-binding-tests.log": "a0767046fdd749ed7ef7a7ca16d52afec3874f729ae29eb1bdc1180d61ddd922",
+    "packages/platform-express/src/adapter.test.ts": "fcd79e7b0b8977f6f45a0b1afcd264e7310408285da88b0b1ca7cf7f6a2df07d"
+  },
+  "rawChecksPath": "results/issue-3942/collector-integrity-checks.log",
+  "rawMutationPath": "results/issue-3942/collector-integrity-hash-removal-red.log",
+  "remainingParentInputs": [
+    "fresh Windows WSL2 server executable/version/hash, source/build/dependency/lock/host/controls evidence",
+    "fresh Mac identity observed through exact noninteractive SSH command used by shared load()",
+    "exclusive host lease on both server and generator",
+    "direct Windows HTTP origin/bind/transport correctness; no SSH tunnel",
+    "fresh role-correct issue-specific headroom and A/A; no old Node/Bun calibration reuse"
+  ],
+  "finiteOutputSize": {
+    "existingMaximumJsonBytes": 948352,
+    "currentPreparationBytes": 965625,
+    "observedTimingRawFiles": 0,
+    "storageFailureEstablished": false
+  }
+}
