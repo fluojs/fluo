@@ -3,6 +3,7 @@ import type { HttpApplicationAdapter } from '@fluojs/http';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
+import { HttpOperationScopes, WebSocketOperationScopes } from './operation-scope.js';
 import { GraphqlLifecycleService } from './service.js';
 import type { GraphqlModuleOptions } from './types.js';
 
@@ -41,11 +42,14 @@ describe('GraphqlLifecycleService cleanup ownership', () => {
     vi.spyOn(runtimeContainer, 'createRequestScope').mockReturnValue(operationContainer);
     const service = createService({}, runtimeContainer);
     const request = new Request('http://localhost/graphql');
-    const getOrCreateOperationContainer = getLifecycleMethod(service, 'getOrCreateOperationContainer');
-    const disposeOperationContainer = getLifecycleMethod(service, 'disposeOperationContainer');
+    const operationScopes = Reflect.get(service, 'httpOperationScopes');
 
-    Reflect.apply(getOrCreateOperationContainer, service, [request]);
-    await Reflect.apply(disposeOperationContainer, service, [request]);
+    if (!(operationScopes instanceof HttpOperationScopes)) {
+      throw new Error('Expected the HTTP operation scope owner.');
+    }
+
+    operationScopes.getOrCreate(request);
+    await operationScopes.dispose(request);
 
     await expect(service.onApplicationShutdown()).resolves.toBeUndefined();
     expect(dispose).toHaveBeenCalledTimes(2);
@@ -100,6 +104,77 @@ describe('GraphqlLifecycleService cleanup ownership', () => {
     await expect(service.onApplicationShutdown()).rejects.toBeInstanceOf(AggregateError);
     await expect(service.onApplicationShutdown()).resolves.toBeUndefined();
 
+    expect(dispose).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares in-flight websocket retry disposal across concurrent socket cleanup', async () => {
+    // Given
+    const cleanupError = new Error('first websocket disposal fails');
+    const runtimeContainer = new Container();
+    const operationContainer = runtimeContainer.createRequestScope();
+    vi.spyOn(runtimeContainer, 'createRequestScope').mockReturnValue(operationContainer);
+    const logger = { debug() {}, error: vi.fn(), log() {}, warn() {} };
+    const scopes = new WebSocketOperationScopes(runtimeContainer, logger);
+    const socket = {};
+    const dispose = vi.spyOn(operationContainer, 'dispose').mockRejectedValueOnce(cleanupError);
+    scopes.getOrCreate(socket, 'subscription');
+    await expect(scopes.dispose(socket, 'subscription')).resolves.toBe(cleanupError);
+    let releaseDisposal: (() => void) | undefined;
+    const disposalReleased = new Promise<void>((resolve) => {
+      releaseDisposal = resolve;
+    });
+    const disposalStarted = new Promise<void>((resolve) => {
+      dispose.mockImplementationOnce(async () => {
+        resolve();
+        await disposalReleased;
+      });
+    });
+
+    // When
+    const firstCleanup = scopes.disposeAll(socket);
+    await disposalStarted;
+    const secondCleanup = scopes.disposeAll(socket);
+    expect(dispose).toHaveBeenCalledTimes(2);
+    releaseDisposal?.();
+    await Promise.all([firstCleanup, secondCleanup]);
+
+    // Then
+    expect(dispose).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalledOnce();
+    await scopes.disposeAll(socket);
+    expect(dispose).toHaveBeenCalledTimes(2);
+  });
+
+  it('attempts failed websocket containers once per shutdown pass and retries on later shutdown', async () => {
+    // Given
+    const cleanupError = new Error('websocket disposal fails');
+    const runtimeContainer = new Container();
+    const operationContainer = runtimeContainer.createRequestScope();
+    vi.spyOn(runtimeContainer, 'createRequestScope').mockReturnValue(operationContainer);
+    const dispose = vi.spyOn(operationContainer, 'dispose')
+      .mockRejectedValueOnce(cleanupError)
+      .mockResolvedValueOnce(undefined);
+    const service = createService({}, runtimeContainer);
+    const scopes = Reflect.get(service, 'websocketOperationScopes');
+    if (!(scopes instanceof WebSocketOperationScopes)) {
+      throw new Error('Expected the WebSocket operation scope owner.');
+    }
+    const socket = {};
+    scopes.getOrCreate(socket, 'subscription');
+    Reflect.set(service, 'websocketTransport', {
+      dispose: () => scopes.disposeAll(socket),
+    });
+
+    // When
+    await expect(service.onApplicationShutdown()).rejects.toSatisfy((error: unknown) => (
+      error instanceof AggregateError && error.errors.length === 1 && error.errors[0] === cleanupError
+    ));
+
+    // Then
+    expect(dispose).toHaveBeenCalledOnce();
+    await expect(service.onApplicationShutdown()).resolves.toBeUndefined();
+    expect(dispose).toHaveBeenCalledTimes(2);
+    await service.onApplicationShutdown();
     expect(dispose).toHaveBeenCalledTimes(2);
   });
 });
