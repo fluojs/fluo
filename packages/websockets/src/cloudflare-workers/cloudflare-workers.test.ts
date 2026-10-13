@@ -405,6 +405,46 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     }
   });
 
+  it('accepts a Worker upgrade after a native throw releases its reservation', async () => {
+    const adapter = new TestWorkerAdapter();
+    const connected = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/upgrade-retry' })
+    class Gateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ limits: { maxConnections: 1 } })],
+      providers: [Gateway],
+    });
+    const app = await FluoFactory.create(AppModule, { adapter });
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+      if (!server) {
+        throw new Error('Expected Worker test server.');
+      }
+      vi.spyOn(server, 'upgrade').mockImplementationOnce(() => {
+        throw new Error('Native upgrade failed.');
+      });
+      const request = new Request('https://worker.test/upgrade-retry', {
+        headers: { upgrade: 'websocket' },
+      });
+      await expect(server.fetch(request)).rejects.toThrow('Native upgrade failed.');
+
+      const response = await server.fetch(request);
+      await connected.promise;
+
+      expect(response.status).toBe(200);
+      expect(server.lastSocket?.accepted).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('manages rooms and rejects stale joins through the Worker lifecycle service', async () => {
     const adapter = new TestWorkerAdapter();
     const connected = createDeferred<void>();
@@ -451,11 +491,14 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
       await connected.promise;
       service.joinRoom(socketId, 'room-a');
+      service.joinRoom(socketId, 'room-a');
       service.joinRoom(socketId, 'room-b');
 
       expect(Array.from(service.getRooms(socketId)).sort()).toEqual(['room-a', 'room-b']);
+      const snapshot = service.getRooms(socketId);
 
       service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_workers' });
+      service.leaveRoom(socketId, 'room-a');
       service.leaveRoom(socketId, 'room-a');
       service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_after_leave' });
 
@@ -463,6 +506,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
         JSON.stringify({ data: { orderId: 'ord_workers' }, event: 'order.updated' }),
       ]);
       expect(Array.from(service.getRooms(socketId))).toEqual(['room-b']);
+      expect(Array.from(snapshot).sort()).toEqual(['room-a', 'room-b']);
 
       const closeDelivery = createDeferred<void>();
       socket.delayCloseUntil(closeDelivery.promise);

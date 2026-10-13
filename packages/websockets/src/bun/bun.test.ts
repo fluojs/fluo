@@ -351,6 +351,53 @@ describe('@fluojs/websockets/bun', () => {
     }
   });
 
+  it.each(['false', 'throw'] as const)('accepts a Bun upgrade after a native %s failure releases its reservation', async (failure) => {
+    const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/upgrade-retry' })
+    class Gateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ limits: { maxConnections: 1 } })],
+      providers: [Gateway],
+    });
+    const app = await FluoFactory.create(AppModule, { adapter });
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+      if (!server) {
+        throw new Error('Expected Bun test server.');
+      }
+      vi.spyOn(server, 'upgrade').mockImplementationOnce(() => {
+        if (failure === 'throw') {
+          throw new Error('Native upgrade failed.');
+        }
+        return false;
+      });
+      const request = new Request('http://127.0.0.1:3000/upgrade-retry', {
+        headers: { upgrade: 'websocket' },
+      });
+      if (failure === 'throw') {
+        await expect(server.fetch(request)).rejects.toThrow('Native upgrade failed.');
+      } else {
+        expect((await server.fetch(request))?.status).toBe(400);
+      }
+
+      const response = await server.fetch(request);
+      await connected.promise;
+
+      expect(response).toBeUndefined();
+      expect(server.lastSocket?.readyState).toBe(WEBSOCKET_OPEN_READY_STATE);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('manages rooms and rejects stale joins through the Bun lifecycle service', async () => {
     const adapter = new TestBunAdapter();
     const connected = createDeferred<void>();
@@ -395,11 +442,14 @@ describe('@fluojs/websockets/bun', () => {
 
       await connected.promise;
       service.joinRoom(socketId, 'room-a');
+      service.joinRoom(socketId, 'room-a');
       service.joinRoom(socketId, 'room-b');
 
       expect(Array.from(service.getRooms(socketId)).sort()).toEqual(['room-a', 'room-b']);
+      const snapshot = service.getRooms(socketId);
 
       service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_bun' });
+      service.leaveRoom(socketId, 'room-a');
       service.leaveRoom(socketId, 'room-a');
       service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_after_leave' });
 
@@ -407,6 +457,7 @@ describe('@fluojs/websockets/bun', () => {
         JSON.stringify({ data: { orderId: 'ord_bun' }, event: 'order.updated' }),
       ]);
       expect(Array.from(service.getRooms(socketId))).toEqual(['room-b']);
+      expect(Array.from(snapshot).sort()).toEqual(['room-a', 'room-b']);
 
       const closeDelivery = createDeferred<void>();
       server.closeDeliveryPromise = closeDelivery.promise;

@@ -491,6 +491,43 @@ describe('@fluojs/platform-fastify', () => {
     expect(() => new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, Number.NaN)).toThrow(/shutdownTimeoutMs/i);
   });
 
+  it.each([-1, 65536, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'Fastify creation boundaries reject port %s before other invalid options',
+    (port) => {
+      const expected = new Error(`Invalid PORT value: ${String(port)}.`);
+
+      expect(() => FastifyHttpApplicationAdapter.create({ port, retryDelayMs: -1, maxBodySize: -1 })).toThrowError(expected);
+      expect(() => new FastifyHttpApplicationAdapter(port, undefined, -1, 20, undefined)).toThrowError(expected);
+    },
+  );
+
+  it.each([
+    { retryDelayMs: -1, retryLimit: -1, maxBodySize: -1, shutdownTimeoutMs: -1, first: 'retryDelayMs' },
+    { retryDelayMs: 0, retryLimit: -1, maxBodySize: -1, shutdownTimeoutMs: -1, first: 'retryLimit' },
+    { retryDelayMs: 0, retryLimit: 0, maxBodySize: -1, shutdownTimeoutMs: -1, first: 'maxBodySize' },
+    { retryDelayMs: 0, retryLimit: 0, maxBodySize: 0, shutdownTimeoutMs: -1, first: 'shutdownTimeoutMs' },
+  ])('Fastify creation boundaries preserve the first failure: $first', ({ first, ...options }) => {
+    const expected = new Error(`Invalid ${first} value: -1. Expected a non-negative integer.`);
+
+    expect(() => FastifyHttpApplicationAdapter.create(options)).toThrowError(expected);
+    expect(() => new FastifyHttpApplicationAdapter(
+      3000, undefined, options.retryDelayMs, options.retryLimit, undefined, undefined,
+      options.maxBodySize, false, options.shutdownTimeoutMs,
+    )).toThrowError(expected);
+  });
+
+  it.each([0, 65535])('Fastify create retains port %s with zero limits and an unsafe integer retry limit', async (port) => {
+    const adapter = FastifyHttpApplicationAdapter.create({
+      port, maxBodySize: 0, retryDelayMs: 0, retryLimit: 2 ** 53, shutdownTimeoutMs: 0,
+    });
+
+    try {
+      expect(adapter.getListenTarget().url).toBe(`http://localhost:${String(port)}`);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('honors zero-valued body and shutdown limits as explicit boundaries', async () => {
     @Controller('/zero')
     class ZeroController {

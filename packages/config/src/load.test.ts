@@ -659,6 +659,36 @@ describe('loadConfig', () => {
     });
   });
 
+  it.each(['load', 'reload'] as const)('bypasses built-in parsing and expansion for custom parser output during %s', (mode) => {
+    // Given
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-custom-boundary-'));
+    const envPath = join(cwd, '.env');
+    const content = 'VALUE="$BASE#literal"\n';
+    writeFileSync(envPath, content);
+    const parse = vi.fn((text: string) => ({ VALUE: text.trim() }));
+    const options = {
+      envFilePaths: [envPath],
+      processEnv: { BASE: 'expanded' },
+      parse,
+    };
+
+    if (mode === 'load') {
+      // When / Then
+      expect(loadConfig(options).VALUE).toBe('VALUE="$BASE#literal"');
+    } else {
+      const reloader = createConfigReloader(options);
+      try {
+        writeFileSync(envPath, `VALUE=\${BASE:-fallback}#reload\n`);
+
+        // When / Then
+        expect(reloader.reload().VALUE).toBe(`VALUE=\${BASE:-fallback}#reload`);
+      } finally {
+        reloader.close();
+      }
+    }
+    expect(parse).toHaveBeenCalledWith(content);
+  });
+
   it('uses a custom parse function when provided', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-custom-'));
     const envPath = join(cwd, '.env.dev');

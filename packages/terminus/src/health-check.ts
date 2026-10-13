@@ -145,9 +145,7 @@ function createUnsupportedEntryMessage(entryKey: string): string {
     : 'Indicator returned an unsupported status value for an empty result key.';
 }
 
-function createBlankKeyFailureKey(indicatorKey: string, seenKeys: ReadonlySet<string>): string {
-  const baseKey = `${indicatorKey}-blank-key-error`;
-
+function createAvailableFailureKey(baseKey: string, seenKeys: ReadonlySet<string>): string {
   if (!seenKeys.has(baseKey)) {
     return baseKey;
   }
@@ -165,7 +163,7 @@ function createBlankKeyFailureKey(indicatorKey: string, seenKeys: ReadonlySet<st
 
 function createBlankKeyFailure(indicatorKey: string, seenKeys: ReadonlySet<string>): HealthCheckEntry {
   return [
-    createBlankKeyFailureKey(indicatorKey, seenKeys),
+    createAvailableFailureKey(`${indicatorKey}-blank-key-error`, seenKeys),
     {
       message: 'Indicator returned a blank result key.',
       status: 'down',
@@ -252,31 +250,13 @@ function inferIndicatorKey(indicator: HealthIndicator, index: number): string {
   return `indicator-${String(index + 1)}`;
 }
 
-function createDuplicateKeyFailureKey(indicatorKey: string, seenKeys: ReadonlySet<string>): string {
-  const baseKey = `${indicatorKey}-duplicate-key-error`;
-
-  if (!seenKeys.has(baseKey)) {
-    return baseKey;
-  }
-
-  let suffix = 2;
-  let candidate = `${baseKey}-${String(suffix)}`;
-
-  while (seenKeys.has(candidate)) {
-    suffix += 1;
-    candidate = `${baseKey}-${String(suffix)}`;
-  }
-
-  return candidate;
-}
-
 function createDuplicateKeyFailure(
   indicatorKey: string,
   duplicateKeys: readonly string[],
   seenKeys: ReadonlySet<string>,
 ): HealthCheckEntry {
   return [
-    createDuplicateKeyFailureKey(indicatorKey, seenKeys),
+    createAvailableFailureKey(`${indicatorKey}-duplicate-key-error`, seenKeys),
     {
       message: `Indicator produced duplicate result key(s): ${duplicateKeys.join(', ')}.`,
       status: 'down',

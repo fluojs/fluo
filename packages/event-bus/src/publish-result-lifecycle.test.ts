@@ -15,6 +15,74 @@ function createDeferred() {
 }
 
 describe('result-aware event lifecycle', () => {
+  it.each([true, false])('preserves payload preparation rejection and releases drain tracking with waitForHandlers=%s', async (waitForHandlers) => {
+    // Given
+    const failure = new Error('payload preparation failed');
+    const event = new LifecycleEvent();
+    Object.defineProperty(event, 'payload', {
+      enumerable: true,
+      get() { throw failure; },
+    });
+    const close = vi.fn(async () => {});
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot({
+        transport: { async publish() {}, async subscribe() {}, close },
+      })],
+    });
+    const app = await FluoFactory.create(AppModule);
+    try {
+      const bus = await app.container.resolve(EventBusService);
+
+      // When / Then
+      await expect(bus.publish(event, { waitForHandlers })).rejects.toBe(failure);
+      await app.close();
+      expect(close).toHaveBeenCalledOnce();
+      expect(bus.createPlatformStatusSnapshot().details.shutdownDrainTimeouts).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preserves inbound payload rejection and releases drain tracking before transport cleanup', async () => {
+    // Given
+    const failure = new Error('inbound preparation failed');
+    const payload = Object.defineProperty({}, 'payload', {
+      enumerable: true,
+      get() { throw failure; },
+    });
+    let incoming: ((payload: unknown) => Promise<void>) | undefined;
+    const close = vi.fn(async () => {});
+    class Handler {
+      @OnEvent(LifecycleEvent)
+      handle() {}
+    }
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot({
+        transport: {
+          async publish() {},
+          async subscribe(_channel, handler) { incoming = handler; },
+          close,
+        },
+      })],
+      providers: [Handler],
+    });
+    const app = await FluoFactory.create(AppModule);
+    try {
+      if (!incoming) throw new Error('Expected an inbound subscription');
+      const bus = await app.container.resolve(EventBusService);
+
+      // When / Then
+      await expect(incoming(payload)).rejects.toBe(failure);
+      await app.close();
+      expect(close).toHaveBeenCalledOnce();
+      expect(bus.createPlatformStatusSnapshot().details.shutdownDrainTimeouts).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('refuses publication after failed bootstrap while retaining the bootstrap rejection', async () => {
     // Given
     @Inject(Symbol('missing'))

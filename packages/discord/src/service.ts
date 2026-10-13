@@ -91,7 +91,7 @@ type DiscordServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping
 @FrameworkService({ id: '@fluojs/discord/DiscordService', version: 1 })
 @Inject(DISCORD_OPTIONS)
 export class DiscordService implements OnModuleInit, OnApplicationShutdown {
-  private readonly acceptedDeliveryPromises = new Set<Promise<unknown>>();
+  private readonly acceptedDeliveryCompletions = new Set<Promise<void>>();
   private lifecycleFailurePhase: DiscordServiceLifecycleFailurePhase | undefined;
   private lifecycleState: DiscordServiceLifecycleState = 'created';
   private ownedTransportCleanupPromise: Promise<void> | undefined;
@@ -413,34 +413,23 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async drainAcceptedDeliveries(): Promise<void> {
-    await Promise.allSettled(this.acceptedDeliveryPromises);
+    await Promise.all(this.acceptedDeliveryCompletions);
   }
 
-  private trackAcceptedDelivery<T>(startDelivery: () => Promise<T>): Promise<T> {
-    let rejectDelivery: ((reason?: unknown) => void) | undefined;
-    let resolveDelivery: ((value: T | PromiseLike<T>) => void) | undefined;
-    const delivery = new Promise<T>((resolve, reject) => {
-      rejectDelivery = reject;
-      resolveDelivery = resolve;
+  private async trackAcceptedDelivery<T>(startDelivery: () => Promise<T>): Promise<T> {
+    let completeDelivery = (): void => undefined;
+    const completion = new Promise<void>((resolve) => {
+      completeDelivery = resolve;
     });
 
-    this.acceptedDeliveryPromises.add(delivery);
-    void delivery.then(
-      () => {
-        this.acceptedDeliveryPromises.delete(delivery);
-      },
-      () => {
-        this.acceptedDeliveryPromises.delete(delivery);
-      },
-    );
-
-    if (!resolveDelivery || !rejectDelivery) {
-      throw new Error('Discord delivery tracker failed to initialize.');
+    // Register before invoking a renderer that can synchronously initiate shutdown.
+    this.acceptedDeliveryCompletions.add(completion);
+    try {
+      return await startDelivery();
+    } finally {
+      this.acceptedDeliveryCompletions.delete(completion);
+      completeDelivery();
     }
-
-    void startDelivery().then(resolveDelivery, rejectDelivery);
-
-    return delivery;
   }
 
   private async handleTransportInitializationFailure(error: unknown): Promise<never> {

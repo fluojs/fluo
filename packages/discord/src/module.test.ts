@@ -232,6 +232,125 @@ describe('DiscordModule', () => {
     transportState.verifyCalls = 0;
   });
 
+  it.each(['success', 'renderer-rejection', 'transport-rejection'] as const)(
+    'drains notifications dispatch through the real graph before app.close when delivery ends in %s',
+    async (outcome) => {
+      const failure = new Error(`${outcome} failure`);
+      const events: string[] = [];
+      let releaseRendering = (): void => {
+        throw new Error('Rendering resolver was not initialized.');
+      };
+      let releaseDelivery = (): void => {
+        throw new Error('Delivery resolver was not initialized.');
+      };
+      let reportRenderingStarted = (): void => {
+        throw new Error('Rendering-start resolver was not initialized.');
+      };
+      let reportDeliveryStarted = (): void => {
+        throw new Error('Delivery-start resolver was not initialized.');
+      };
+      let reportShutdownStarted = (): void => {
+        throw new Error('Shutdown-start resolver was not initialized.');
+      };
+      const rendering = new Promise<void>((resolve) => { releaseRendering = resolve; });
+      const delivery = new Promise<void>((resolve) => { releaseDelivery = resolve; });
+      const renderingStarted = new Promise<void>((resolve) => { reportRenderingStarted = resolve; });
+      const deliveryStarted = new Promise<void>((resolve) => { reportDeliveryStarted = resolve; });
+      const shutdownStarted = new Promise<void>((resolve) => { reportShutdownStarted = resolve; });
+      const close = vi.fn(async () => {
+        expect(events).toEqual(outcome === 'renderer-rejection'
+          ? ['render-start', 'render-end']
+          : ['render-start', 'render-end', 'send-start', 'send-end']);
+        events.push('close');
+      });
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [
+          DiscordModule.forRoot({
+            renderer: {
+              async render() {
+                events.push('render-start');
+                reportRenderingStarted();
+                await rendering;
+                events.push('render-end');
+                if (outcome === 'renderer-rejection') {
+                  throw failure;
+                }
+                return { content: 'Rendered notification' };
+              },
+            },
+            transport: {
+              create: async () => ({
+                close,
+                async send() {
+                  events.push('send-start');
+                  reportDeliveryStarted();
+                  await delivery;
+                  events.push('send-end');
+                  if (outcome === 'transport-rejection') {
+                    throw failure;
+                  }
+                  return { messageId: 'graph-drained', ok: true };
+                },
+              }),
+            },
+          }),
+          NotificationsModule.forRootAsync({
+            inject: [DISCORD_CHANNEL],
+            useFactory: (channel: unknown) => {
+              if (!(channel instanceof DiscordChannel)) {
+                throw new Error('DiscordChannel was not resolved.');
+              }
+              return { channels: [channel] };
+            },
+          }),
+        ],
+      });
+      const app = await FluoFactory.create(AppModule);
+      const notifications = await app.container.resolve(NotificationsService);
+      const service = await app.container.resolve(DiscordService);
+      const originalShutdown = service.onApplicationShutdown.bind(service);
+      vi.spyOn(service, 'onApplicationShutdown').mockImplementation(() => {
+        const shutdown = originalShutdown();
+        reportShutdownStarted();
+        return shutdown;
+      });
+      const dispatch = notifications.dispatch({ channel: 'discord', payload: {}, template: 'deploy.finished' });
+      const dispatchResult = outcome === 'success'
+        ? expect(dispatch).resolves.toMatchObject({ deliveryId: 'graph-drained', status: 'delivered' })
+        : expect(dispatch).rejects.toBe(failure);
+      let shutdown: Promise<void> | undefined;
+
+      try {
+        await renderingStarted;
+        shutdown = app.close();
+        await shutdownStarted;
+
+        await expect(notifications.dispatch({ channel: 'discord', payload: { content: 'too late' } }))
+          .rejects.toBeInstanceOf(DiscordTransportError);
+        expect(events).toEqual(['render-start']);
+        expect(close).not.toHaveBeenCalled();
+        releaseRendering();
+        if (outcome !== 'renderer-rejection') {
+          await deliveryStarted;
+          expect(close).not.toHaveBeenCalled();
+          releaseDelivery();
+        }
+
+        await dispatchResult;
+        await expect(shutdown).resolves.toBeUndefined();
+        expect(close).toHaveBeenCalledOnce();
+        expect(events.at(-1)).toBe('close');
+      } finally {
+        releaseRendering();
+        releaseDelivery();
+        await Promise.allSettled([dispatch, dispatchResult, shutdown]);
+        await app.close();
+      }
+    },
+    5_000,
+  );
+
   it('exposes default-global Discord providers across a real module graph for notifications', async () => {
     @Inject(DiscordService)
     class DiscordVisibilityConsumer {

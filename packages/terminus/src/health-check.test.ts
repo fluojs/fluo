@@ -260,6 +260,143 @@ describe('runHealthCheck', () => {
     });
   });
 
+  it.each([
+    { occupied: [], suffix: '' },
+    { occupied: [''], suffix: '-2' },
+    { occupied: ['', '-2', '-3'], suffix: '-4' },
+    { occupied: ['', '-2', '-4'], suffix: '-3' },
+    { occupied: ['-2', '-3'], suffix: '' },
+  ])('allocates blank and duplicate diagnostics at the first available suffix: $occupied', async ({ occupied, suffix }) => {
+    const blankBase = 'dependencies-blank-key-error';
+    const duplicateBase = 'dependencies-duplicate-key-error';
+    const occupiedEntries = Object.fromEntries(
+      [blankBase, duplicateBase].flatMap((base) => occupied.map((ending) => [
+        `${base}${ending}`, { status: 'up' as const },
+      ])),
+    );
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'dependencies',
+        check: async () => ({
+          database: { status: 'up' },
+          ...occupiedEntries,
+          ' ': { status: 'up' },
+        }),
+      },
+      {
+        key: 'dependencies',
+        check: async () => ({ database: { status: 'down' } }),
+      },
+    ];
+
+    const report = await runHealthCheck(indicators);
+
+    expect(report.contributors).toEqual({
+      down: [`${blankBase}${suffix}`, `${duplicateBase}${suffix}`],
+      up: ['database', ...Object.keys(occupiedEntries)],
+    });
+    expect(report.info).toEqual({ database: { status: 'up' }, ...occupiedEntries });
+    expect(Object.keys(report.error)).toEqual([`${blankBase}${suffix}`, `${duplicateBase}${suffix}`]);
+    expect(Object.keys(report.details)).toEqual([
+      'database', ...Object.keys(occupiedEntries), `${blankBase}${suffix}`, `${duplicateBase}${suffix}`,
+    ]);
+  });
+
+  it('preserves encounter order when user keys collide with multiple generated blank diagnostics', async () => {
+    const indicator: HealthIndicator = {
+      key: 'dependencies',
+      check: async () => ({
+        ' dependencies ': { latencyMs: 4, status: 'up' },
+        'dependencies-blank-key-error-2': { status: 'up' },
+        ' ': { status: 'up' },
+        'dependencies-blank-key-error': { status: 'up' },
+        '': { status: 'up' },
+        '\t': { status: 'up' },
+        'dependencies-blank-key-error-3': { status: 'up' },
+        'dependencies-duplicate-key-error': { status: 'up' },
+        'dependencies-duplicate-key-error-2': { status: 'up' },
+        'dependencies-duplicate-key-error-4': { status: 'up' },
+      }),
+    };
+
+    const report = await runHealthCheck([indicator]);
+
+    expect(report.contributors).toEqual({
+      down: [
+        'dependencies-blank-key-error',
+        'dependencies-blank-key-error-3',
+        'dependencies-blank-key-error-4',
+        'dependencies-duplicate-key-error-3',
+      ],
+      up: [
+        ' dependencies ',
+        'dependencies-blank-key-error-2',
+        'dependencies-duplicate-key-error',
+        'dependencies-duplicate-key-error-2',
+        'dependencies-duplicate-key-error-4',
+      ],
+    });
+    expect(report.info[' dependencies ']).toEqual({ latencyMs: 4, status: 'up' });
+    expect(report.error['dependencies-duplicate-key-error-3']).toEqual({
+      message: 'Indicator produced duplicate result key(s): dependencies-blank-key-error, dependencies-blank-key-error-3.',
+      status: 'down',
+    });
+  });
+
+  it('aggregates in input order when indicators complete in reverse order with diagnostic collisions', async () => {
+    const secondCompleted = createDeferred<void>();
+    const completionOrder: string[] = [];
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'first',
+        check: async () => {
+          await secondCompleted.promise;
+          completionOrder.push('first');
+          return {
+            database: { latencyMs: 4, status: 'up' },
+            redis: { status: 'up' },
+            'second-duplicate-key-error': { status: 'up' },
+            'second-duplicate-key-error-2': { status: 'up' },
+            'second-duplicate-key-error-4': { status: 'up' },
+            'second-blank-key-error': { status: 'up' },
+          };
+        },
+      },
+      {
+        key: 'second',
+        check: async () => {
+          completionOrder.push('second');
+          secondCompleted.resolve();
+          return {
+            redis: { status: 'down' },
+            database: { status: 'down' },
+            ' ': { status: 'up' },
+            cache: { status: 'down' },
+          };
+        },
+      },
+    ];
+
+    const report = await runHealthCheck(indicators);
+
+    expect(completionOrder).toEqual(['second', 'first']);
+    expect(report.contributors).toEqual({
+      down: ['cache', 'second-duplicate-key-error-3'],
+      up: [
+        'database', 'redis', 'second-duplicate-key-error', 'second-duplicate-key-error-2',
+        'second-duplicate-key-error-4', 'second-blank-key-error',
+      ],
+    });
+    expect(report.info.database).toEqual({ latencyMs: 4, status: 'up' });
+    expect(report.error['second-duplicate-key-error-3']).toEqual({
+      message: 'Indicator produced duplicate result key(s): redis, database, second-blank-key-error.',
+      status: 'down',
+    });
+    expect(Object.keys(report.details)).toEqual([
+      ...report.contributors.up, 'cache', 'second-duplicate-key-error-3',
+    ]);
+  }, 5_000);
+
   it('marks hung indicators as down when an execution timeout is configured', async () => {
     const report = await runHealthCheck(
       [

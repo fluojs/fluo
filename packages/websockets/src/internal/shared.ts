@@ -15,6 +15,69 @@ import type {
 const textDecoder = new TextDecoder();
 
 /**
+ * Owns bidirectional room membership for fetch-style gateways.
+ *
+ * Runtime services retain socket admission, native sending and lifecycle ownership.
+ * @internal
+ */
+export class WebSocketRoomIndex {
+  private readonly roomSockets = new Map<string, Set<string>>();
+  private readonly socketRooms = new Map<string, Set<string>>();
+
+  join(socketId: string, room: string): void {
+    let rooms = this.socketRooms.get(socketId);
+    if (!rooms) {
+      rooms = new Set<string>();
+      this.socketRooms.set(socketId, rooms);
+    }
+    rooms.add(room);
+
+    let sockets = this.roomSockets.get(room);
+    if (!sockets) {
+      sockets = new Set<string>();
+      this.roomSockets.set(room, sockets);
+    }
+    sockets.add(socketId);
+  }
+
+  leave(socketId: string, room: string): void {
+    const rooms = this.socketRooms.get(socketId);
+    rooms?.delete(room);
+    if (rooms && rooms.size === 0) {
+      this.socketRooms.delete(socketId);
+    }
+
+    const sockets = this.roomSockets.get(room);
+    sockets?.delete(socketId);
+    if (sockets && sockets.size === 0) {
+      this.roomSockets.delete(room);
+    }
+  }
+
+  removeSocket(socketId: string): void {
+    const rooms = this.socketRooms.get(socketId);
+    if (rooms) {
+      for (const room of rooms) {
+        this.leave(socketId, room);
+      }
+    }
+  }
+
+  getRooms(socketId: string): ReadonlySet<string> {
+    return new Set(this.socketRooms.get(socketId));
+  }
+
+  getSockets(room: string): ReadonlySet<string> | undefined {
+    return this.roomSockets.get(room);
+  }
+
+  clear(): void {
+    this.socketRooms.clear();
+    this.roomSockets.clear();
+  }
+}
+
+/**
  * Describes the discovery candidate contract.
  */
 export interface DiscoveryCandidate {

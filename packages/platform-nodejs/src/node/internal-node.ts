@@ -51,7 +51,7 @@ import {
   defaultNodeShutdownSignals,
   registerShutdownSignals,
 } from './internal-node-shutdown.js';
-
+import { NodeHttpAdapterOptionPolicy } from './internal-node-options.js';
 /**
  * Settings for `NodeHttpApplicationAdapter.create`, including transport and body parsing.
  */
@@ -273,6 +273,7 @@ export {
   createRequestSignal,
   defaultNodeShutdownSignals,
   normalizePrimaryContentType,
+  NodeHttpAdapterOptionPolicy,
   parseCookieHeader,
   parseQueryParamsFromSearch,
   readPrimaryHeaderValue,
@@ -367,15 +368,9 @@ function closeIdleConnections(server: import('node:http').Server): void {
 }
 
 function validateNodeLifecycleOptions(options: Required<Pick<NodeHttpAdapterOptions, 'retryDelayMs' | 'retryLimit' | 'shutdownTimeoutMs'>>): void {
-  validateNonNegativeIntegerOption('retryDelayMs', options.retryDelayMs);
-  validateNonNegativeIntegerOption('retryLimit', options.retryLimit);
-  validateNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs);
-}
-
-function validateNonNegativeIntegerOption(name: string, value: number): void {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`Invalid ${name} value: ${String(value)}. Expected a non-negative integer.`);
-  }
+  NodeHttpAdapterOptionPolicy.validateNonNegativeIntegerOption('retryDelayMs', options.retryDelayMs);
+  NodeHttpAdapterOptionPolicy.validateNonNegativeIntegerOption('retryLimit', options.retryLimit);
+  NodeHttpAdapterOptionPolicy.validateNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs);
 }
 
 function forceCloseConnections(server: import('node:http').Server, sockets: ReadonlySet<Socket>): void {
