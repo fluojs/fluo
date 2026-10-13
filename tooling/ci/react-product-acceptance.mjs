@@ -327,7 +327,7 @@ function requiredBrowserCases(surface) {
 
 
 export function productDomainPlan(domain, output) {
-  const browserConfig = resolve(sourceRoot, 'tooling/ci/browser-playwright.config.mjs');
+  const browserConfig = '../../tooling/ci/browser-playwright.config.mjs';
   const browserEnv = (id, suite) => ({
     FLUO_BROWSER_SUITE: suite, FLUO_BROWSER_OUTPUT: resolve(output),
     FLUO_BACKGROUND_EVIDENCE: resolve(output, `${id}-background`),

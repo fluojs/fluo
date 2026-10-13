@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { cpSync, createWriteStream, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, createWriteStream, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { finished } from 'node:stream/promises';
 import test, { after } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
 import { buildReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
 import representative from '../benchmarks/react-app-comparison/config/representative.json' with { type: 'json' };
@@ -1422,6 +1422,32 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 test('final external evidence: expanded reusable job identities -> passes through product domain guards', async (t) => {
   const value = externalFixture(t);
+
+  assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+  await assert.rejects(consumeProduct(value.matrix, value.receipt, value.root, head, tree), /engine inventory/u);
+});
+
+test('final external evidence: relocated producer checkout -> preserves canonical browser command identity', async (t) => {
+  const value = externalFixture(t);
+  const repo = fileURLToPath(new URL('../..', import.meta.url));
+  const producerRoot = join(value.root, 'producer-checkout');
+  mkdirSync(join(producerRoot, 'tooling/ci'), { recursive: true });
+  for (const path of ['.agents', 'examples']) {
+    symlinkSync(join(repo, path), join(producerRoot, path), 'dir');
+  }
+  symlinkSync(join(repo, 'tooling/benchmarks'), join(producerRoot, 'tooling/benchmarks'), 'dir');
+  for (const file of ['react-product-acceptance.mjs', 'browser-preparation.mjs']) {
+    cpSync(join(repo, 'tooling/ci', file), join(producerRoot, 'tooling/ci', file));
+  }
+  const producer = await import(pathToFileURL(join(producerRoot, 'tooling/ci/react-product-acceptance.mjs')));
+  const receipt = value.domains.find((entry) => entry.domain === 'tooling');
+  const plan = producer.productDomainPlan('tooling', join(value.root, 'tooling'));
+  for (const command of plan.filter((entry) => entry.browserReport)) {
+    for (const entries of [receipt.commands, receipt.checks]) {
+      entries.find((entry) => entry.id === command.id).command = [command.executable, ...command.args].join(' ');
+    }
+  }
+  value.receipt.external.ciDomains[0] = value.save('tooling/tooling-receipt.json', receipt);
 
   assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
   await assert.rejects(consumeProduct(value.matrix, value.receipt, value.root, head, tree), /engine inventory/u);

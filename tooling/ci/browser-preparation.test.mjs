@@ -37,7 +37,6 @@ function preparedFixture(t, id = 'fault-browser') {
     'src/navigation-admin.ts': { file: 'admin.js' },
   });
   const command = structuredClone(productDomainPlan('tooling', '/fixture').find((entry) => entry.id === id));
-  command.args[command.args.indexOf('--config') + 1] = join(root, 'tooling/ci/browser-playwright.config.mjs');
   return { root, command, write };
 }
 
@@ -66,6 +65,47 @@ test('browser preparation: two server entries -> retains normal subprocess and f
   ]);
   assert.deepEqual(prepared.observer, browserObservationPolicy);
 });
+
+for (const key of ['src/entry-client.ts', 'src/entry-server.ts', 'client-dependency', 'client-through-server']) {
+  test(`browser preparation: unsupported JavaScript output ${key} -> input error before spawn`, (t) => {
+    const value = preparedFixture(t);
+    const manifest = JSON.parse(readFileSync(join(value.root, 'examples/react-vite-ssr/dist/client/.vite/manifest.json')));
+    if (key === 'client-dependency' || key === 'client-through-server') {
+      manifest[key] = { file: 'unsupported.css' };
+      manifest['src/entry-client.ts'].imports = [key === 'client-through-server' ? 'src/entry-server.ts' : key];
+      if (key === 'client-through-server') manifest['src/entry-server.ts'].imports = [key];
+    } else {
+      manifest[key].file = 'unsupported.css';
+    }
+    value.write('dist/client/unsupported.css', 'body {}');
+    value.write('dist/client/.vite/manifest.json', manifest);
+
+    assert.throws(() => prepareBrowserCommand(value.root, value.command), (error) => {
+      assert.equal(error.kind, 'input-preparation');
+      assert.match(error.message, /unsupported JavaScript output/u);
+      assert.ok(error.message.includes(key));
+      return true;
+    });
+  });
+}
+
+for (const extension of ['js', 'mjs', 'cjs']) {
+  test(`browser preparation: supported ${extension} graph and unrelated CSS entry -> accepts runtime contract`, (t) => {
+    const value = preparedFixture(t);
+    const manifest = JSON.parse(readFileSync(join(value.root, 'examples/react-vite-ssr/dist/client/.vite/manifest.json')));
+    manifest['src/entry-client.ts'].file = `client.${extension}`;
+    manifest['src/entry-client.ts'].imports = ['dependency'];
+    manifest.dependency = { file: `dependency.${extension}`, imports: ['src/entry-client.ts'] };
+    manifest.stylesheet = { file: 'standalone.css' };
+    manifest['src/entry-server.ts'].imports = ['stylesheet'];
+    value.write(`dist/client/client.${extension}`, 'export {};');
+    value.write(`dist/client/dependency.${extension}`, 'export {};');
+    value.write('dist/client/standalone.css', 'body {}');
+    value.write('dist/client/.vite/manifest.json', manifest);
+
+    assert.doesNotThrow(() => prepareBrowserCommand(value.root, value.command));
+  });
+}
 
 for (const env of ['FLUO_BACKGROUND_EVIDENCE', 'FLUO_RELIABILITY_OUTPUT', 'FLUO_RELIABILITY_REPORT',
   'FLUO_BROWSER_OUTPUT', 'FLUO_RELIABILITY_SEED', 'FLUO_RELIABILITY_ACTIONS', 'FLUO_BROWSER_SUITE']) {

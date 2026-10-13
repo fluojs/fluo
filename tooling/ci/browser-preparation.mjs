@@ -58,7 +58,8 @@ export function prepareBrowserCommand(root, command) {
   requireInput(report === resolve(env.FLUO_BROWSER_OUTPUT, command.browserReport),
     `${command.id}: report path mismatch`);
   const wrapper = resolve(root, 'tooling/ci/browser-playwright.config.mjs');
-  requireInput(Array.isArray(command.args) && command.args.includes(wrapper), `${command.id}: missing prepared package-local config`);
+  requireInput(Array.isArray(command.args) && command.args.includes(relative(resolve(root, 'examples/react-vite-ssr'), wrapper)),
+    `${command.id}: missing prepared package-local config`);
   let wrapperDigest;
   try { wrapperDigest = digest(readFileSync(wrapper)); }
   catch (error) { throw new BrowserPreparationError(`${command.id}: missing prepared config artifact: ${error.message}`); }
@@ -96,6 +97,20 @@ export function prepareBrowserCommand(root, command) {
     for (const imported of entry.imports ?? []) {
       requireInput(Object.hasOwn(manifest, imported), `${command.id}: missing manifest import ${imported}`);
     }
+  }
+  const pending = ['src/entry-client.ts'];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const key = pending.pop();
+    if (visited.has(key)) continue;
+    visited.add(key);
+    pending.push(...(manifest[key].imports ?? []));
+  }
+  for (const key of new Set(['src/entry-server.ts', ...visited])) {
+    const entry = manifest[key];
+    const pathname = entry.file.split(/[?#]/u, 1)[0];
+    requireInput(['.js', '.mjs', '.cjs'].some((extension) => pathname.endsWith(extension)),
+      `${command.id}: unsupported JavaScript output ${key}: ${entry.file}`);
   }
   for (const module of ['src/navigation-product.ts', 'src/navigation-admin.ts']) {
     requireInput(Object.entries(manifest).some(([key, entry]) =>
