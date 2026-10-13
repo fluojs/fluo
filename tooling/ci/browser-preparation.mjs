@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { spawnOwnedCommand } from '../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
+import { claimEvidenceRoot, createCommandEvidence } from './command-evidence.mjs';
 
 export class BrowserPreparationError extends TypeError {
   constructor(reason) {
@@ -134,8 +135,11 @@ export function prepareBrowserCommand(root, command) {
 }
 
 /** Ownership remains with the runner until real close, including descendants. */
-export async function runBrowserOwnedCommand(command, options, { signal, onChild, observer } = {}) {
+export async function runBrowserOwnedCommand(command, options, { signal, onChild, observer, evidence } = {}) {
   assertBrowserObservation(observer ?? browserObservationPolicy);
+  const capture = evidence ? createCommandEvidence(
+    typeof evidence.root === 'string' ? claimEvidenceRoot(evidence.root) : evidence.root,
+    evidence.label ?? command.id, command, options, evidence.emit) : null;
   const started = performance.now();
   const owned = spawnOwnedCommand(command.executable, command.args, options, 4_000);
   const child = owned.child;
@@ -145,14 +149,17 @@ export async function runBrowserOwnedCommand(command, options, { signal, onChild
   });
   const cancel = () => owned.stop();
   signal?.addEventListener('abort', cancel, { once: true });
+  capture?.attach(child);
   onChild?.(child);
   if (signal?.aborted) cancel();
   try {
     const outcome = await closed;
-    return { ...outcome, closed: true, descendantCleanup: 'owned-group-close',
+    const result = { ...outcome, closed: true, descendantCleanup: 'owned-group-close',
       cancelled: signal?.aborted === true, forced: owned.forced,
       status: signal?.aborted ? 'cancelled' : outcome.exitCode === 0 && outcome.signal === null ? 'passed' : 'test-failed',
       elapsedMs: performance.now() - started };
+    if (capture) result.evidence = capture.finish(result);
+    return result;
   } finally {
     signal?.removeEventListener('abort', cancel);
   }

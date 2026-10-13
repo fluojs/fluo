@@ -69,6 +69,21 @@ streams, not only summaries. Missing, truncated, altered, stale or out-of-scope
 inputs fail before the review wave. The preparer rechecks observations after
 reading evidence.
 
+`common.readable_index` is decoder-free machine metadata derived from those
+authenticated receipts and raw artifacts, with exact head/tree, distinct
+`contract_sha256` and `policy_sha256`, actual command outcomes/durations and
+source references. Actual Node reporter summaries or a receipt's `test_results`
+artifact supply test metadata; missing counts remain `null`. A receipt's
+`packed_receipt` supplies the actual packed command inventory, authenticated
+against each command receipt, separate raw streams, combined log and any browser
+report. Retain packed artifacts beside their original producer receipt when
+archiving; producer absolute paths are relocated within that artifact subtree.
+An optional input `readable_index:{path,sha256,bytes}` authenticates a previously
+retained index and must equal the freshly derived index. Missing, truncated,
+altered or rebound index/source evidence is an input-preparation failure.
+Every selected axis receives the identical returned index; no decoder, shell
+execution or invented summary counts are required to inspect it.
+
 Give each selected child the returned `reviewers[i].input` unchanged: every
 axis receives the same `common` contract/policy, source footprint, authored
 diff, checkout and focused evidence. Do not substitute an implementer-reported

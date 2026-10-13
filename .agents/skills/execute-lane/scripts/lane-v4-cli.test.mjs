@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { once } from 'node:events';
+import { createServer } from 'node:net';
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
@@ -14,9 +16,99 @@ import { summarizeIntegrationMeasurements } from './generated-integration.mjs';
 import { localCheckBinding } from './lane-v4.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
+
+test('gh pager: readiness and actual observation close -> final run attempt collection without key input', async (t) => {
+  const value = fixture(t);
+  value.implement();
+  const head = value.git(value.worktree, 'rev-parse', 'HEAD');
+  const run = { id: 101, run_attempt: 2, head_sha: head, path: '.github/workflows/ci.yml',
+    status: 'completed', conclusion: 'success', created_at: '2026-10-13T01:00:00Z',
+    run_started_at: '2026-10-13T01:02:00Z', html_url: 'https://github.com/fluojs/fluo/actions/runs/101' };
+  const closePath = join(value.root, 'gh-close.log');
+  const bin = join(value.root, 'bin/gh');
+  writeFileSync(bin, `#!${process.execPath}
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { connect } from 'node:net';
+const args = process.argv.slice(2), kind = args[0] + ':' + (args[1] ?? '');
+const log = ${JSON.stringify(closePath)};
+process.on('exit', () => appendFileSync(log, kind + '\\n'));
+const run = ${JSON.stringify(run)};
+let output;
+if (args[0] === 'pr') output = { number: 77, state: 'MERGED', headRefOid: run.head_sha,
+  mergeCommit: { oid: run.head_sha }, mergedAt: '2026-10-13T01:05:00Z', mergeable: 'MERGEABLE', statusCheckRollup: [] };
+else if (args[0] === 'issue') output = { state: 'CLOSED', title: 'fixture', body: '' };
+else if (args.at(-1).includes('/actions/runs?')) {
+  if (!existsSync(log) || !readFileSync(log, 'utf8').includes('pr:view')) process.exit(8);
+  output = [{ total_count: 1, workflow_runs: [run] }];
+} else if (args.at(-1).endsWith('/attempts/1')) output = { ...run, run_attempt: 1, conclusion: 'failure' };
+else {
+  const attempt = args.at(-1).includes('/attempts/1/') ? 1 : 2;
+  output = [{ total_count: 1, jobs: [{ id: 200 + attempt, run_id: run.id, run_attempt: attempt,
+    name: 'Verify', status: 'completed', conclusion: attempt === 1 ? 'failure' : 'success',
+    started_at: '2026-10-13T01:02:00Z', completed_at: '2026-10-13T01:04:00Z' }] }];
+}
+const socket = connect(Number(process.env.GH_READY_PORT), '127.0.0.1');
+socket.on('connect', () => socket.write(JSON.stringify({ kind, pager: process.env.GH_PAGER }) + '\\n'));
+socket.on('data', () => {
+  if (process.env.GH_PAGER !== 'cat') { socket.end(() => process.exit(9)); return; }
+  socket.end(() => { process.stdout.write(JSON.stringify(output)); });
+});
+`);
+  const ready = [];
+  const sockets = [];
+  const closures = [];
+  const timeout = AbortSignal.timeout(10_000);
+  const server = createServer((socket) => {
+    sockets.push(socket);
+    closures.push(once(socket, 'close', { signal: timeout }));
+    let pending = '';
+    socket.on('data', (chunk) => {
+      pending += chunk;
+      if (!pending.endsWith('\n')) return;
+      ready.push(JSON.parse(pending));
+      socket.write('release\n');
+    });
+  });
+  t.after(() => { for (const socket of sockets) socket.destroy(); server.close(); });
+  const listening = once(server, 'listening', { signal: timeout });
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const driver = `
+    const { execFileSync } = require('node:child_process');
+    const common = ${JSON.stringify(['--root', value.root, '--lane', value.lanePath, '--issue', '42'])};
+    execFileSync(process.execPath, [${JSON.stringify(script)}, 'plan', ...common]);
+    execFileSync(process.execPath, [${JSON.stringify(script)}, 'retro-ci', ...common]);
+  `;
+  const child = spawn(process.execPath, ['-e', driver], {
+    env: { ...value.env, GH_PAGER: 'less', GH_READY_PORT: String(server.address().port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(() => child.kill('SIGKILL'));
+  const closed = once(child, 'close', { signal: timeout });
+  let stderr = '';
+  child.stdout.resume();
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+
+  const [exit, signal] = await closed;
+  await Promise.all(closures);
+
+  assert.equal(exit, 0, stderr);
+  assert.equal(signal, null);
+  assert.ok(ready.length >= 5);
+  assert.ok(ready.every((event) => event.pager === 'cat'));
+  const closes = readFileSync(closePath, 'utf8').trim().split('\n');
+  assert.equal(closes[0], 'pr:view');
+  assert.ok(closes.includes('api:--paginate'));
+  const events = readRetroEvents(value.root, 'fixture');
+  assert.ok(events.some((event) => event.data.run?.head === head
+    && event.data.run.attempt === 2 && event.data.complete === true && event.data.conclusion === 'success'));
+  assert.ok(events.some((event) => event.data.job?.conclusion === 'failure'));
+});
 const fixture = (t, isolatedOrchestrator = false) => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-lane-v4-')));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();
+  mkdirSync(directory, { recursive: true });
+  const root = realpathSync(mkdtempSync(join(directory, 'fluo-lane-v4-')));
+  if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
   const bin = join(root, 'bin');
   mkdirSync(bin);
   const ghState = join(root, 'gh.json');
@@ -187,7 +279,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
     return { status: receipt.status, valid: ok, receiptPath: relative(worktree, path),
       receiptSha256: createHash('sha256').update(bytes).digest('hex') };
   };
-  return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog };
+  return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog, env };
 };
 
 for (const file of ['docs/guide.md', '.github/workflows/ci.yml']) {

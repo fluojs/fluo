@@ -204,6 +204,9 @@ export const recordCiSnapshot = (root, laneId, issue, run, jobs) => {
 		recorded.push(recordRetroEvent(root, laneId, issue, "ci", {
 			run: identity,
 			conclusion: run.conclusion,
+			status: run.status,
+			complete: jobs.length > 0 && run.conclusion !== null && run.conclusion !== undefined
+				&& jobs.every((job) => job.status === "completed" && typeof job.conclusion === "string"),
 			createdAt: run.created_at,
 			completedAt: end === null ? null : new Date(end).toISOString(),
 			elapsedMs: Number.isFinite(start) && end !== null && end >= start
@@ -227,11 +230,32 @@ export const retrospectiveRequest = (root, laneId, snapshots) => {
 		item.decision.action !== "done"
 	).map((item) => item.issue);
 	if (remaining.length) return { action: "wait-lane", remaining };
+	const events = readRetroEvents(root, laneId);
+	const requirements = [];
+	for (const { issue, obs } of snapshots) {
+		const pr = obs.pr;
+		if (!pr?.number) continue;
+		const runs = pr.ciRuns;
+		let reason = null;
+		if (!Array.isArray(runs) || runs.length === 0) reason = "missing-final-run-observation";
+		else if (runs.some((run) => run.head !== pr.headSha || run.status !== "completed"
+			|| !Number.isSafeInteger(run.id) || !Number.isSafeInteger(run.attempt) || run.attempt < 1
+			|| typeof run.workflow !== "string")) reason = "incomplete-final-run-observation";
+		else if (runs.some((run) => !events.some((event) => event.issue === issue && event.kind === "ci"
+			&& event.data.complete === true && event.data.status === "completed"
+			&& event.data.run.id === run.id && event.data.run.attempt === run.attempt
+			&& event.data.run.head === pr.headSha && event.data.run.workflow === run.workflow
+			&& event.data.conclusion === run.conclusion))) reason = "missing-final-ci-collection";
+		if (reason) requirements.push({ issue, pr: pr.number, head: pr.headSha, reason });
+	}
+	if (requirements.length) return { action: "collect-ci", kind: "input-preparation",
+		issues: requirements.map((entry) => entry.issue), requirements };
 	const units = snapshots.map(({ issue, obs }) => ({
 		issue,
 		pr: obs.pr?.number ?? null,
 		head: obs.pr?.headSha ?? null,
 		mergeCommit: obs.pr?.mergeCommit ?? null,
+		ciRuns: obs.pr?.ciRuns ?? [],
 	})).sort((a, b) => a.issue - b.issue);
 	const subjectKey = digest({ laneId, units });
 	const path = resolve(

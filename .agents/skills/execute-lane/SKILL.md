@@ -126,6 +126,17 @@ observer requirement; it does not modify workstation monitor defaults.
 Observer timeout is missing observation, never a test verdict. Retain failed
 and cancelled receipts and restoration results as well as successful ones.
 
+Canonical captures and isolated diagnostics must claim a fresh evidence root
+before any affected command spawns. A root with artifacts or an existing owner
+marker is rejected without changing its bytes. Child directories inside the
+owning canonical run are permitted; an isolated diagnosis never reuses that run.
+The existing owned runners retain separate complete stdout/stderr, the combined
+log, command metadata and actual close/cancellation state. Their terminal output
+is a bounded reference to the retained command receipt, not the raw stream.
+Do not rerun a completed command merely to recover clipped terminal output.
+The prepared reviewer input includes one identical readable, authenticated index
+of actual focused results and packed command/report metadata for every axis.
+
 ## Decision loop and recovery
 
 1. Run `plan` (or `plan-all`) using fresh observations.
@@ -204,6 +215,13 @@ ledger. CI failures are captured by actual run/attempt/job identity. Call
 `retro-ci` on a failure notification before fix-back; merge/fix-back recording
 and CI watch transitions also capture history. Missing API evidence becomes an
 explicit collection gap, never a passing gate or an absent-failure claim.
+
+All CLI `gh` observations run with `GH_PAGER=cat`. Before retrospective dispatch,
+fresh PR observations include final-head applicable run/attempt identities.
+`collect-ci` / `input-preparation` means retain/recollect the missing final CI
+events and refresh observations; it is not product failure or implementation
+fix-back. Earlier-head success, earlier attempts and incomplete job collection
+cannot unblock dispatch. Older failures remain immutable after recollection.
 
 Use `plan-all --with-retro` for the completion handoff. It preserves the issue
 decisions but reports `settled: false` and a `retrospective.action: retro`

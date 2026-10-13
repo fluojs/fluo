@@ -49,6 +49,12 @@ Keep this root outside issue worktrees so cleanup cannot erase it.
 2. Run `retro-plan` with `--root` and `--lane`. `wait-lane` means continue normal
    execution. `done` means the same completed merge set already has a report;
    return it without dispatching another analyst.
+   `collect-ci` is an input-preparation requirement: run `retro-ci` for its issue
+   list and refresh `retro-plan`. Every completed PR must have authenticated
+   completed CI events for its freshly observed final head and applicable final
+   run/attempt identities, with complete jobs. Missing or stale collection never
+   falls back to an earlier PASS, even when a previous report exists. Recollection
+   preserves older failures and deduplicates replayed complete observations.
 3. For `retro`, run `retro-evidence` with the same arguments. Capture its JSON
    using `apply_patch` in the retrospective directory. The collector includes
    observations, original fact/attempt snapshots, source references and unique
@@ -85,6 +91,8 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs retro-report --root . -
   implementation start/end. `totalElapsedMs` remains `null` unless a separate
   measured lifecycle contract is introduced; never sum parallel CI, review,
   provisioning and soak timings into total work time.
+- CI elapsed duration uses run/job timestamps only. Observation time cannot
+  supply a missing execution start or completion time.
 - Attempt counters reset and observations deduplicate. Describe distinct
   recorded outcomes, not a complete execution-count history.
 - Reviewer BLOCK is a claim. Verify its cited checkout/symbol and lead

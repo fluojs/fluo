@@ -1,9 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
-import { finished } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { isValidLocalCiWaiver, localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
@@ -12,6 +11,7 @@ import { authoringRejections } from '../../examples/react-vite-ssr/tests/verify-
 import { assertMethodConfig, hashObject } from '../benchmarks/react-app-comparison/src/fa-v2.mjs';
 import { environmentConfigIdentity, planMeasurements } from '../benchmarks/react-app-comparison/src/measure.mjs';
 import { browserObservationPolicy, prepareBrowserCommand, runBrowserOwnedCommand } from './browser-preparation.mjs';
+import { claimEvidenceRoot } from './command-evidence.mjs';
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const requiredRows = Object.freeze([
@@ -394,14 +394,16 @@ export async function captureDomain(domain, outputDirectory) {
     && (requested.startsWith(`${resolve(sourceRoot, '.omo/verification/issue-3879')}/`)
       || process.env.FLUO_PRODUCT_CI === '1' && requested.startsWith('/evidence/react-product/')),
   'Local product outputs belong to a unique assigned worktree run; CI uses its canonical evidence mount');
-  mkdirSync(outputDirectory, { recursive: true });
-  const output = realpathSync(outputDirectory);
-  requireValue(readdirSync(output).length === 0, 'Use a new output directory; never overwrite partial raw evidence');
+  const evidenceRoot = claimEvidenceRoot(outputDirectory);
+  const output = evidenceRoot.root;
   const git = (...args) => execFileSync('git', args, { cwd: sourceRoot, encoding: 'utf8' }).trim();
   const source = { head: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}'),
     clean: git('status', '--porcelain') === '' };
   requireValue(source.clean, 'Current runtime capture requires clean committed source');
-  const reference = (path) => ({ path: relative(output, path), sha256: sha(readFileSync(path)) });
+  const reference = (path) => {
+    const bytes = readFileSync(path);
+    return { path: relative(output, path), sha256: sha(bytes), bytes: bytes.length };
+  };
   const inputPaths = ['pnpm-lock.yaml', 'examples/react-vite-ssr/package.json',
     'examples/react-vite-ssr/vite.client.config.ts', 'examples/react-vite-ssr/vite.server.config.ts',
     'examples/react-vite-ssr/playwright.config.ts', 'examples/react-vite-ssr/playwright.reliability.config.ts',
@@ -441,31 +443,20 @@ export async function captureDomain(domain, outputDirectory) {
       if (command.id === 'packed-product') mkdirSync(resolve(output, 'packed-product'), { recursive: true });
       const started = performance.now();
       const logPath = resolve(output, `${command.id}.log`);
-      const log = createWriteStream(logPath);
       // Packed runners own nested command groups. Give their bounded cleanup
       // time to settle before escalating the outer capture group.
-      let outcome;
-      try {
-        outcome = await runBrowserOwnedCommand(command, {
+      const outcome = await runBrowserOwnedCommand(command, {
           cwd: sourceRoot, env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...command.env },
         }, {
-          signal: cancellation.signal,
-          onChild(child) {
-            for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
-              log.write(chunk); process.stdout.write(chunk);
-            });
-          },
+          signal: cancellation.signal, evidence: { root: evidenceRoot, label: command.id },
         });
-      } finally {
-        log.end(); await finished(log);
-      }
       const { exitCode, signal } = outcome;
       if (signal !== null || exitCode === null) cancelled ??= signal ?? 'unknown termination';
       if (outcome.forced) cancelled ??= 'forced descendant termination';
       const observed = { id: command.id, head: source.head, status: !cancelled && exitCode === 0 ? 'passed' : 'failed',
         exitCode, signal, elapsedMs: performance.now() - started,
         command: [command.executable, ...command.args].join(' '), env: command.env, log: reference(logPath),
-        close: true, descendantCleanup: 'owned-group-close', cancellation: cancelled,
+        close: outcome.closed, evidence: outcome.evidence, descendantCleanup: 'owned-group-close', cancellation: cancelled,
         ...(preparation ? { preparation } : {}) };
       receipt.commands.push(observed);
       save();
@@ -523,15 +514,10 @@ export async function captureDomain(domain, outputDirectory) {
         args: [...exampleFilter, 'build'],
         env: { REACT_VITE_FORM_TEST_SERVER: '0', REACT_VITE_BUILD_VARIANT: 'A' } };
       const logPath = resolve(output, 'deployment-restore.log');
-      const log = createWriteStream(logPath);
       try {
         const restored = await runBrowserOwnedCommand(command, {
           cwd: sourceRoot, env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...command.env },
-        }, { onChild(child) {
-          for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
-            log.write(chunk); process.stdout.write(chunk);
-          });
-        } });
+        }, { evidence: { root: evidenceRoot, label: command.id } });
         receipt.restoration = { ...restored, command: [command.executable, ...command.args].join(' '),
           env: command.env, head: source.head };
         requireValue(restored.status === 'passed', 'Normal deployment restore command failed');
@@ -543,7 +529,6 @@ export async function captureDomain(domain, outputDirectory) {
         receipt.restoration = { ...receipt.restoration, status: 'failed', error: error.message };
         receipt.status = 'failed';
       } finally {
-        log.end(); await finished(log);
         receipt.restoration.log = reference(logPath);
       }
     } else {
@@ -576,8 +561,10 @@ function artifact(root, reference) {
   const path = realpathSync(resolve(root, reference.path));
   const inside = relative(root, path);
   requireValue(inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside), 'Artifact escaped evidence root');
-  requireValue(statSync(path).isFile() && statSync(path).size > 0, 'Missing or empty artifact');
+  requireValue(statSync(path).isFile() && (statSync(path).size > 0
+    || reference.bytes === 0 && /\.(stdout|stderr)\.raw\.log$/u.test(path)), 'Missing or empty artifact');
   const bytes = readFileSync(path);
+  requireValue(reference.bytes === undefined || bytes.length === reference.bytes, 'Artifact byte count mismatch');
   requireValue(sha(bytes) === reference.sha256, 'Artifact digest mismatch');
   return { path, bytes };
 }

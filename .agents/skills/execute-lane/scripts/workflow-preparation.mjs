@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { contractDigest, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
@@ -94,7 +94,8 @@ export function readPreparationArtifact(root, reference, label) {
  * any reviewer. It is preparation, not an engine, dispatcher or ledger writer.
  */
 export function prepareReviewInput(input) {
-  exact(input, ['version', 'stage', 'root', 'checkout', 'issue', 'issue_sha256', 'contract',
+  const { readable_index: suppliedIndex, ...preparation } = input;
+  exact(preparation, ['version', 'stage', 'root', 'checkout', 'issue', 'issue_sha256', 'contract',
     'policy', 'base_ref', 'base_head_sha', 'head_sha', 'artifact_root', 'diff',
     'changed_paths', 'required_checks', 'evidence', 'footprint', 'accepted_contract_path', 'observation'], 'review preparation');
   requireInput(input.version === 1 && input.stage === 'review', 'review preparation: invalid stage');
@@ -167,13 +168,34 @@ export function prepareReviewInput(input) {
   'review preparation: missing required focused evidence inventory');
   const tree = text(checkout, 'rev-parse', 'HEAD^{tree}');
   const observedCommands = new Set();
+  const indexCommands = [];
+  const authenticated = [];
+  const readEvidence = (reference, label) => {
+    const bytes = readPreparationArtifact(input.artifact_root, reference, label);
+    authenticated.push({ reference, label });
+    return bytes;
+  };
+  const readReport = (reference, label) => {
+    try { return JSON.parse(readEvidence(reference, label)); }
+    catch (error) {
+      if (error instanceof WorkflowPreparationError) throw error;
+      throw new WorkflowPreparationError(`${label}: invalid JSON: ${error.message}`);
+    }
+  };
+  const nodeSummary = (stdout, source) => {
+    const summary = {};
+    for (const match of stdout.matchAll(/^(?:#|\u2139)\s+(tests|suites|pass|fail|cancelled|skipped|todo)\s+(\d+)\s*$/gmu)) {
+      summary[match[1]] = Number(match[2]);
+    }
+    return Object.hasOwn(summary, 'tests') ? { source, summary } : null;
+  };
   for (const check of input.evidence) {
     exact(check, ['command', 'receipt'], 'focused evidence');
     requireInput(input.required_checks.includes(check.command) && !observedCommands.has(check.command),
       'review preparation: unexpected/duplicate focused command');
     observedCommands.add(check.command);
     let receipt;
-    try { receipt = JSON.parse(readPreparationArtifact(input.artifact_root, check.receipt, 'focused receipt')); }
+    try { receipt = JSON.parse(readEvidence(check.receipt, 'focused receipt')); }
     catch (error) {
       if (error instanceof WorkflowPreparationError) throw error;
       throw new WorkflowPreparationError(`focused receipt: incomplete JSON: ${error.message}`);
@@ -184,9 +206,84 @@ export function prepareReviewInput(input) {
     requireInput(receipt.status === 'passed' && receipt.exit_code === 0 && receipt.signal === null
       && Number.isFinite(receipt.duration_ms) && receipt.duration_ms >= 0,
     'focused receipt: no completed passing command');
-    readPreparationArtifact(input.artifact_root, receipt.stdout, 'focused stdout');
-    readPreparationArtifact(input.artifact_root, receipt.stderr, 'focused stderr');
+    const stdout = readEvidence(receipt.stdout, 'focused stdout').toString();
+    readEvidence(receipt.stderr, 'focused stderr');
+    let testResults = null;
+    if (receipt.test_results) {
+      const report = readReport(receipt.test_results, 'test results');
+      requireInput(report && Array.isArray(report.suites) && report.stats && typeof report.stats === 'object',
+        'test results: missing actual reporter metadata');
+      testResults = { source: receipt.test_results, stats: report.stats };
+    } else {
+      testResults = nodeSummary(stdout, receipt.stdout);
+    }
+    const packedCommands = [];
+    if (receipt.packed_receipt) {
+      const packed = readReport(receipt.packed_receipt, 'packed receipt');
+      requireInput(packed.head === input.head_sha && packed.source?.head === input.head_sha
+        && packed.source.tree === tree && packed.status === 'passed' && Array.isArray(packed.commands)
+        && packed.commands.length > 0,
+      'packed receipt: stale head/tree or incomplete inventory');
+      const producerRoot = dirname(packed.authoring?.generatedArtifact ?? packed.commands[0]?.log ?? '');
+      requireInput(isAbsolute(producerRoot), 'packed receipt: missing producer artifact root');
+      const rawReference = (reference) => {
+        requireInput(reference && typeof reference.path === 'string' && isAbsolute(reference.path),
+          'packed receipt: missing absolute raw source reference');
+        const inside = relative(producerRoot, reference.path);
+        requireInput(pathSafe(inside), 'packed receipt: source escaped producer root');
+        return { ...reference, path: relative(input.artifact_root,
+          resolve(dirname(resolve(input.artifact_root, receipt.packed_receipt.path)), inside)) };
+      };
+      const labels = new Set();
+      for (const entry of packed.commands) {
+        requireInput(typeof entry.label === 'string' && !labels.has(entry.label)
+          && Array.isArray(entry.command) && entry.command.every((arg) => typeof arg === 'string')
+          && entry.command.length > 0 && typeof entry.cwd === 'string' && entry.env
+          && Number.isInteger(entry.exit) && entry.signal === null && Number.isFinite(entry.elapsedMs)
+          && entry.elapsedMs >= 0 && entry.evidence, 'packed receipt: incomplete command metadata');
+        labels.add(entry.label);
+        const commandReceiptRef = rawReference(entry.evidence.receipt);
+        const commandReceipt = readReport(commandReceiptRef, 'packed command receipt');
+        requireInput(commandReceipt.complete === true && commandReceipt.closed === true
+          && commandReceipt.executable === entry.command[0]
+          && isDeepStrictEqual(commandReceipt.args, entry.command.slice(1))
+          && commandReceipt.cwd === entry.cwd && isDeepStrictEqual(commandReceipt.env, entry.env)
+          && commandReceipt.exit_code === entry.exit && commandReceipt.signal === entry.signal,
+        'packed command receipt: rebound command metadata');
+        let packedStdout;
+        for (const name of ['stdout', 'stderr', 'log']) {
+          requireInput(isDeepStrictEqual(commandReceipt[name], entry.evidence[name]),
+            'packed command receipt: rebound raw artifact');
+          const bytes = readEvidence(rawReference(commandReceipt[name]), `packed ${name}`);
+          if (name === 'stdout') packedStdout = bytes.toString();
+        }
+        requireInput(commandReceipt.log.path === entry.log && commandReceipt.log.sha256 === entry.logSha256,
+          'packed command receipt: rebound combined log');
+        let report = nodeSummary(packedStdout, rawReference(commandReceipt.stdout));
+        if (entry.browserReport) {
+          const reportRef = { path: rawReference({ path: entry.browserReport }).path,
+            sha256: entry.browserReportSha256, bytes: entry.browserReportBytes };
+          const browser = readReport(reportRef, 'packed browser report');
+          requireInput(browser.stats && Array.isArray(browser.suites), 'packed browser report: missing reporter metadata');
+          report = { source: reportRef, stats: browser.stats };
+        }
+        packedCommands.push({ label: entry.label, command: entry.command, cwd: entry.cwd, env: entry.env,
+          exit_code: entry.exit, signal: entry.signal, duration_ms: entry.elapsedMs,
+          expected_rejection: entry.expectedRejection, receipt: commandReceiptRef, test_results: report });
+      }
+    }
+    indexCommands.push({ command: check.command, receipt: check.receipt, status: receipt.status,
+      exit_code: receipt.exit_code, signal: receipt.signal, duration_ms: receipt.duration_ms,
+      stdout: receipt.stdout, stderr: receipt.stderr, test_results: testResults, packed_commands: packedCommands });
   }
+  const readable = { version: 1, head_sha: input.head_sha, tree_sha: tree,
+    contract_sha256: input.contract.sha256, policy_sha256: input.policy.sha256, commands: indexCommands };
+  const readableIndex = { ...readable, sha256: contractDigest(readable) };
+  if (Object.hasOwn(input, 'readable_index')) {
+    requireInput(isDeepStrictEqual(readReport(suppliedIndex, 'readable index'), readableIndex),
+      'readable index: rebound or stale source metadata');
+  }
+  for (const { reference, label } of authenticated) readPreparationArtifact(input.artifact_root, reference, label);
   // Recheck after reading evidence: moving the checkout during preparation is blocked.
   requireInput(text(checkout, 'rev-parse', 'HEAD') === input.head_sha
     && text(root, 'rev-parse', `${input.base_ref}^{commit}`) === baseHead
@@ -199,7 +296,7 @@ export function prepareReviewInput(input) {
     verification_base_sha: pinned, authored_merge_base_sha: mergeBase, base_head_sha: baseHead,
     accepted_contract_path: input.accepted_contract_path, observation: input.observation,
     changed_paths: changedPaths, diff: input.diff, artifact_root: input.artifact_root,
-    required_checks: input.required_checks, evidence: input.evidence, footprint };
+    required_checks: input.required_checks, evidence: input.evidence, readable_index: readableIndex, footprint };
   return { status: 'prepared', kind: 'review-input', common,
     reviewers: input.policy.active_axes.map((reviewer) => ({ reviewer, input: common })) };
 }

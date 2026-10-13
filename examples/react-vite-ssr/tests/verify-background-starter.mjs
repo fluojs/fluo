@@ -1,10 +1,10 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { copyFileSync, createWriteStream, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { finished } from 'node:stream/promises';
+import { copyFileSync, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { claimEvidenceRoot, createCommandEvidence } from '../../../tooling/ci/command-evidence.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const output = process.env.FLUO_BACKGROUND_EVIDENCE;
@@ -92,6 +92,7 @@ export function spawnOwnedCommand(executable, args, options, graceMs = 2_000) {
   return owned;
 }
 export function createCommandRunner(output, commands, attempt = randomUUID()) {
+const evidenceRoot = claimEvidenceRoot(output);
 let cancelled = null;
 const activeChildren = new Set();
 const terminate = (signal) => {
@@ -103,36 +104,33 @@ const onInt = () => terminate('SIGINT');
 process.on('SIGTERM', onTerm); process.on('SIGINT', onInt);
 async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedRejection = false, expectedExit = 1) {
   if (cancelled) throw new Error(`${label} cancelled by ${cancelled}; no command started.`);
-  console.log(`COMMAND ${label}: ${JSON.stringify({ command: [executable, ...args], cwd, env })}`);
+  const capture = createCommandEvidence(evidenceRoot, `${label}-${attempt}`, { executable, args, env }, { cwd });
   const owned = spawnOwnedCommand(executable, args, {
     cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   const { child } = owned;
   activeChildren.add(owned);
   const started = performance.now();
-  const chunks = [];
-  const log = join(output, `${label}-${attempt}.log`);
-  const raw = createWriteStream(log);
-  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
-    chunks.push(chunk); raw.write(chunk); process.stdout.write(chunk);
-  });
+  capture.attach(child);
   let outcome;
   try {
     outcome = await new Promise((done, fail) => {
       child.once('error', fail); child.once('close', (exit, signal) => done({ exit, signal }));
     });
   } finally {
-    raw.end(); await finished(raw);
     activeChildren.delete(owned);
   }
   const { exit, signal } = outcome;
   if (signal !== null || exit === null) cancelled ??= signal ?? 'unknown termination';
   if (owned.forced) cancelled ??= 'forced descendant termination';
-  const diagnostics = Buffer.concat(chunks).toString();
+  const evidence = capture.finish({ exitCode: exit, signal, closed: true, cancelled: cancelled !== null, forced: owned.forced });
+  const log = evidence.log.path;
+  const diagnostics = readFileSync(log, 'utf8');
   commands.push({ label, command: [executable, ...args], cwd, env, exit,
-    signal, expectedRejection: Boolean(expectedRejection), elapsedMs: performance.now() - started, log, logSha256: sha(log),
+    signal, close: true, evidence, expectedRejection: Boolean(expectedRejection), elapsedMs: performance.now() - started, log, logSha256: sha(log),
     ...(env.PLAYWRIGHT_JSON_OUTPUT_NAME && exit === 0 ? {
       browserReport: env.PLAYWRIGHT_JSON_OUTPUT_NAME, browserReportSha256: sha(env.PLAYWRIGHT_JSON_OUTPUT_NAME),
+      browserReportBytes: statSync(env.PLAYWRIGHT_JSON_OUTPUT_NAME).size,
     } : {}) });
   if (cancelled || signal !== null || exit === null
     || (expectedRejection ? exit !== expectedExit || !expectedRejection.test(diagnostics) : exit !== 0)) {
