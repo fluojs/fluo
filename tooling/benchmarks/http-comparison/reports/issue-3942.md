@@ -58,14 +58,39 @@ External raw archive:
 SHA256 `d427591cd618a37dea5d092846fa8c0f567ab56a713281d5f76dd6aa7ac27573`.
 This archive is preserved externally, not staged as source.
 
-Actual authored fixture source matches both the Mac collector preparation and
-Windows preparation snapshots byte-for-byte. The local preparation snapshot's
-1,520 package source/manifest entries, 114 benchmark snapshot files and 660 build
-artifacts match the current local files. All 17 original result files and the
-native-body adapter test match the original receipt hashes. Exact inherited
-shared collector/test hashes remain unchanged. This authenticates retained
-focused build/type/lint evidence; it does not create a post-commit exact-head
-review receipt. The parent owns that receipt after this local commit.
+The preparation snapshots describe the collector used for the retained Windows
+measurement, not the hardened source introduced by the build-drift fix-back.
+The parent independently compared all 30 retained samples against all 660 frozen
+build entries and found zero mismatches, recorded in
+`/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/adjudication-3942-build-drift.json`.
+The prior INCONCLUSIVE verdict and immutable raw originals remain unchanged.
+Current `experiment.ts` and its regression tests differ from those preparation
+snapshots; their old hashes and checks do not attest the newly hardened source.
+The inherited shared collector/test are unchanged. The parent prepares new
+exact-head receipts and contract/code/verification reviews after this local commit.
+
+준비 snapshot은 보존된 Windows 측정에 사용한 과거 collector를 식별합니다.
+부모가 30개 표본의 serving artifact를 각각 660개 동결 build 항목과 비교한
+결과 불일치는 0개였습니다. 이번 fix-back의 `experiment.ts`와 회귀 테스트는
+과거 preparation source와 다르며, 기존 hash와 검증으로 새 source의 검증을
+대체하지 않습니다. 기존 INCONCLUSIVE 및 원본은 그대로 보존합니다.
+
+### Frozen build fix-back / 동결 build fix-back
+
+Each ordinary condition now re-reads the actual serving entry and every frozen
+linked build before starting a server or sending correctness, warmup or capture
+traffic. The freshly read hashes must match the original `binding.builds`;
+a replacement cannot become a new accepted attestation. `TimingIdentityFailure`
+retains the path, expected digest and actual digest through the existing
+condition journal. Startup and post-capture authentication remain in place.
+
+각 ordinary condition은 서버 시작 및 모든 요청 전에 실제 serving entry와
+동결된 linked build 전체를 다시 읽고 원래 `binding.builds`와 비교합니다.
+실제 파일 byte를 condition 사이에 교체하는 결정적 회귀 테스트는 serving
+entry와 linked build 변경을 각각 거부하고 journal의 실패 증거 보존을 확인합니다.
+검증은 correctness-only이며 성능 실행이나 기존 판정의 상향은 없습니다.
+Raw RED/GREEN 및 affected types/lint 증거는
+`results/issue-3942/fix-back-1-build-drift-*`에 별도로 보존합니다.
 
 ### Local finalization and limits / 로컬 최종화와 한계
 

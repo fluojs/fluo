@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { FIXTURES } from '../src/issue-3942/fixtures.js';
-import { assertGenerator, calibrationVerdicts, ownedPath, retainWarmup, smoke } from '../src/issue-3942/experiment.js';
+import { EvidenceJournal } from '../src/evidence.js';
+import { assertGenerator, calibrationVerdicts, fixtureTarget, ownedPath, prepareOrdinaryIdentity, RESULTS, retainWarmup, smoke } from '../src/issue-3942/experiment.js';
 import { evaluate, headroomGate, interval, type Metrics, POLICY } from '../src/issue-3942/gates.js';
 import { assertFrozen, frozenPlan, localBinding, parseHosts } from '../src/issue-3942/manifest.js';
 import { sha256 } from '../src/profile-report.js';
+import { WORKSPACE_ROOT } from '../src/provenance.js';
 import { WDIR } from '../src/targets.js';
 
 const metrics: Metrics = { throughput: 1_000, cpuPerRequest: 0.001, p95: 2, p99: 3, rss: 100_000_000 };
@@ -235,6 +237,48 @@ test('frozen manifest: source, fixture, build and policy drift -> rejects before
   }
   assert.throws(() => assertFrozen({ ...plan, policy: { ...POLICY, timing: { ...POLICY.timing, pairs: 9 } } }, binding), /policy drift/);
 });
+
+for (const changed of ['server.mjs', 'linked.mjs']) {
+  test(`ordinary identity: ${changed} bytes replaced between conditions -> rejects frozen build drift`, { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(RESULTS, 'build-drift-test-'));
+    const entry = join(directory, 'server.mjs');
+    const linked = join(directory, 'linked.mjs');
+    const original = 'export const value = 1;\n';
+    const replacement = 'export const value = 2;\n';
+    const target = { ...fixtureTarget('plain-json', 0), args: [entry] };
+    const binding = { builds: {
+      [relative(WORKSPACE_ROOT, entry)]: sha256(original),
+      [relative(WORKSPACE_ROOT, linked)]: sha256(original),
+    } };
+    const samples: unknown[] = [];
+    const journalPath = join(directory, 'raw.json');
+    const journal = new EvidenceJournal(journalPath, () => ({ samples }));
+    try {
+      await writeFile(entry, original);
+      await writeFile(linked, original);
+      const first = await prepareOrdinaryIdentity(target, binding);
+      assert.equal(first.artifacts[entry], sha256(original));
+      assert.equal(first.artifacts[linked], sha256(original));
+      const path = join(directory, changed);
+      await writeFile(path, replacement);
+
+      await assert.rejects(journal.record({ side: 'b' }, samples, async (complete) => {
+        complete(await prepareOrdinaryIdentity(target, binding));
+      }), /Frozen serving build drift/);
+
+      journal.flush();
+      const raw = JSON.parse(await readFile(journalPath, 'utf8'));
+      assert.deepEqual(raw.samples, []);
+      assert.deepEqual(raw.invalidAttempts[0].condition, { side: 'b' });
+      assert.deepEqual(raw.invalidAttempts[0].error.identity, {
+        path, expected: sha256(original), actual: sha256(replacement),
+      });
+    } finally {
+      journal.finish();
+      await rm(directory, { recursive: true });
+    }
+  });
+}
 
 for (const item of FIXTURES) {
   test(`fixture ${item.name}: real Express listener -> exact status/body and native contract`, { timeout: 30_000 }, async () => {

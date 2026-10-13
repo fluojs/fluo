@@ -6,7 +6,8 @@ import { load } from '../load.js';
 import { runProfiles } from '../profile.js';
 import { object, sha256 } from '../profile-report.js';
 import { monitorServer } from '../resources.js';
-import { authenticateTimingIdentity, prepareTimingIdentity } from '../timing-identity.js';
+import type { AppShape } from '../scenarios.js';
+import { authenticateTimingIdentity, prepareTimingIdentity, TimingIdentityFailure } from '../timing-identity.js';
 import { startTargets, stopTargets, type TargetConfig, waitForTarget, WDIR } from '../targets.js';
 import { fixture, FIXTURES } from './fixtures.js';
 import { evaluate, headroomGate, type Metrics, type Pair, POLICY } from './gates.js';
@@ -85,19 +86,31 @@ export async function retainWarmup(value: unknown, hosts: Hosts, path: string) {
   await writeFile(path, JSON.stringify(value, null, 2), { flag: 'wx' });
   assertGenerator(value, hosts);
 }
-async function ordinary(name: string, connections: number, workers: number, duration: number,
-  warmup: number, hosts: Hosts, binding: Binding, logDirectory: string) {
-  const url = new URL(hosts.serverOrigin);
-  const target = fixtureTarget(name, Number(url.port || 80), hosts.server.nodeExecutable);
-  const prepared = await prepareTimingIdentity(target, fixture(name).scenario.appShape);
+export async function prepareOrdinaryIdentity(target: TargetConfig, binding: Pick<Binding, 'builds'>,
+  appShape: AppShape = 'read-search-local') {
+  const prepared = await prepareTimingIdentity(target, appShape);
   // Include linked serving dependencies, not just the bundled fixture entry.
   const files = [...new Set([...Object.keys(prepared.artifacts),
     ...Object.keys(binding.builds).map((path) => join(WDIR, '../../..', path))])].sort();
   const hashes = Object.fromEntries(await Promise.all(files.map(async (path) => [path, sha256(await readFile(path))])));
-  const attestation = {
+  const frozen = Object.fromEntries(Object.entries(binding.builds).map(([path, hash]) => [join(WDIR, '../../..', path), hash]));
+  // Each condition must use the original freeze, never a replacement build's new attestation.
+  for (const path of new Set([prepared.entry, ...Object.keys(frozen)])) {
+    if (hashes[path] !== frozen[path]) {
+      throw new TimingIdentityFailure('Frozen serving build drift', { path, expected: frozen[path], actual: hashes[path] });
+    }
+  }
+  return {
     ...prepared, artifacts: hashes, artifactsSha256: sha256(JSON.stringify(hashes)),
     env: { ...prepared.env, BENCH_TIMING_FILES: JSON.stringify(files) },
   };
+}
+
+async function ordinary(name: string, connections: number, workers: number, duration: number,
+  warmup: number, hosts: Hosts, binding: Binding, logDirectory: string) {
+  const url = new URL(hosts.serverOrigin);
+  const target = fixtureTarget(name, Number(url.port || 80), hosts.server.nodeExecutable);
+  const attestation = await prepareOrdinaryIdentity(target, binding, fixture(name).scenario.appShape);
   let stdout = '';
   const logs = { stdout: '', stderr: '' };
   const servers = startTargets(fixture(name).scenario.appShape, [target], {
