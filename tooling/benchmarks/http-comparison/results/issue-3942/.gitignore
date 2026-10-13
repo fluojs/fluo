@@ -1,0 +1,7 @@
+# Keep exact raw evidence locally; commit only authored policy and bounded receipts.
+/*
+!/.gitignore
+!/current-policy-windows-server.json
+!/current-policy-collector-integrity.json
+!/collector-integrity-receipt.json
+!/finalization-receipt.json

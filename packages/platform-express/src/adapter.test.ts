@@ -762,6 +762,52 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it.each(['/native-body', '//native-body'])(
+    'native body baseline: %s -> materializes wire bytes instead of native request.body',
+    async (path) => {
+      const nativeBody = { value: 'native-only' };
+      const nativeMiddleware: RequestHandler = (request, _response, next) => {
+        request.body = nativeBody;
+        request.headers['content-type'] = 'application/json';
+        next();
+      };
+
+      @Controller('/native-body')
+      class NativeBodyController {
+        @Post('')
+        read(_input: undefined, context: RequestContext) {
+          return {
+            body: context.request.body,
+            raw: context.request.rawBody ? Buffer.from(context.request.rawBody).toString('utf8') : null,
+          };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [NativeBodyController] });
+      const adapter = createExpressAdapter({
+        host: '127.0.0.1', port: 0, rawBody: true, nativeMiddleware: [nativeMiddleware],
+      });
+      const app = await FluoFactory.create(AppModule, { adapter });
+      try {
+        await app.listen();
+
+        const response = await requestHttp({
+          path, port: getBoundPort(adapter.getServer()), method: 'POST',
+          headers: { 'content-type': 'text/plain' }, body: '{"value":"wire-only"}',
+        });
+
+        expect(response.statusCode).toBe(201);
+        expect(JSON.parse(response.body)).toEqual({
+          body: { value: 'wire-only' }, raw: '{"value":"wire-only"}',
+        });
+        expect(nativeBody).toEqual({ value: 'native-only' });
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('preserves native Vary values when HTTP adds error representation negotiation', async () => {
     const nativeMiddleware: RequestHandler = (_request, response, next) => {
       response.setHeader('Vary', 'Origin');

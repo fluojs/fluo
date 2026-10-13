@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "issue": 3942,
+  "preflightSha256": "2db06833eb72bb88b7943ccc7bc8a234c9a95c0c9e6e226111cb50eceef20b1b",
+  "configuration": "default",
+  "fixtures": ["plain-json", "native-header-json", "native-metadata-json", "json-body-command", "rest-route-mix"],
+  "timing": {
+    "connections": [16, 64],
+    "pairs": 8,
+    "warmupSeconds": 10,
+    "captureSeconds": 40,
+    "order": "AB/BA"
+  },
+  "headroom": {
+    "connections": 64,
+    "pairs": 3,
+    "workers": [1, 4],
+    "warmupSeconds": 3,
+    "captureSeconds": 10,
+    "maximumRatio": 1.02
+  },
+  "profile": {
+    "connections": 64,
+    "repeats": 2,
+    "modes": ["cpu", "allocation"],
+    "warmupSeconds": 10,
+    "captureSeconds": 30,
+    "controlSeconds": 30
+  },
+  "stability": {
+    "maximumCv": 0.03,
+    "primaryRatio": [0.98, 1.02],
+    "secondaryRatio": [0.95, 1.05]
+  },
+  "adoption": {
+    "minimumGain": 0.03,
+    "noiseMultiplier": 2,
+    "throughputLower": 0.98,
+    "cpuUpper": 1.02,
+    "latencyRssUpper": 1.05
+  },
+  "confidence": {
+    "level": 0.95,
+    "method": "paired-log-ratio-student-t",
+    "tCriticalDf7": 2.364624251
+  },
+  "historical": {
+    "verdicts": ["NOT_ESTABLISHED", "FAIL", "INCONCLUSIVE"],
+    "rejectedStreamOnlyCpuRatio": 1.0508237154627784
+  }
+}

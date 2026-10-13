@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "issue": 3942,
+  "previousHead": "02ac3ff89d2f9d2c1a87eb3cba1b14d86716c5a3",
+  "preflightSha256": "2db06833eb72bb88b7943ccc7bc8a234c9a95c0c9e6e226111cb50eceef20b1b",
+  "performanceEvidence": false,
+  "performanceRerun": false,
+  "retainedVerdict": "INCONCLUSIVE",
+  "comparisonRestored": true,
+  "temporaryFileMutationCleaned": true,
+  "regressionBoundary": "prepareOrdinaryIdentity reads actual entry and linked build bytes before ordinary starts a server or traffic; EvidenceJournal retains condition/path/expected/actual on rejection",
+  "checks": [
+    {
+      "kind": "RED",
+      "command": "node --import tsx --test --test-name-pattern='bytes replaced between conditions' tests/issue-3942.test.mts",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 2,
+      "reason": "Missing expected rejection.",
+      "log": "results/issue-3942/fix-back-1-build-drift-red.log",
+      "sha256": "82aadaaac49cbbb3d14f994fbf4b05ccb7f581d2fda21e3276ad07345042ff12"
+    },
+    {
+      "kind": "comparison-only-removal-RED",
+      "command": "node --import tsx --test --test-name-pattern='bytes replaced between conditions' tests/issue-3942.test.mts",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 2,
+      "reason": "Missing expected rejection.",
+      "log": "results/issue-3942/fix-back-1-build-drift-comparison-removal-red.log",
+      "sha256": "9b188b627b85ae381c0029c0c1095b5291cbc9747679c86d7c4a53fced77e1cd"
+    },
+    {
+      "kind": "GREEN",
+      "command": "node --import tsx --test tests/issue-3942.test.mts tests/traffic-utf8.test.mts",
+      "exitCode": 0,
+      "passed": 32,
+      "failed": 0,
+      "durationMs": 5268.369375,
+      "log": "results/issue-3942/fix-back-1-build-drift-green.log",
+      "sha256": "e978e97296586b44a3acbf155fca10ed9b35d724ff498a3a0f4256e81fcc842b"
+    },
+    {
+      "kind": "affected-types",
+      "command": "pnpm exec tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --esModuleInterop src/issue-3942/*.ts tests/issue-3942.test.mts tests/traffic-utf8.test.mts",
+      "exitCode": 0
+    },
+    {
+      "kind": "source-lint",
+      "command": "pnpm exec biome lint tooling/benchmarks/http-comparison/src/issue-3942 tooling/benchmarks/http-comparison/tests/issue-3942.test.mts",
+      "exitCode": 0,
+      "checkedSourceFiles": 7,
+      "testFilesIgnoredByExistingBiomeConfig": true
+    },
+    {
+      "kind": "LSP",
+      "files": [
+        "tooling/benchmarks/http-comparison/src/issue-3942/experiment.ts",
+        "tooling/benchmarks/http-comparison/tests/issue-3942.test.mts"
+      ],
+      "diagnostics": 0
+    },
+    {
+      "kind": "diff-check",
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "typesLintLog": {
+    "path": "results/issue-3942/fix-back-1-build-drift-types-lint.log",
+    "sha256": "a01e6c076a767ad03f6c085480d82614525b115dab1c4c4326ddecd276b77c85"
+  },
+  "preservedOriginals": {
+    "headroom-windows-01/raw.json": "04119d92dbcf59b7b5f5e8fee5b11893d7633ffe2c2dbb4ea5ae03a3799812b9",
+    "frozen-windows-01.json": "6bba0c95c9192bcf23bc1c20f005e31780ad28640e34c54eec3e4617611a0aed"
+  },
+  "unchangedSharedCollector": {
+    "src/traffic.ts": "a256ed2f892d7c9c0ad4cbd6f2b23fae3f64dc5882fc5d76de159447987699a8",
+    "tests/traffic-utf8.test.mts": "7dc5c812ba9316403a65faef6fd8916d642946d748982f9ccdc3862da7b2aa41"
+  },
+  "releaseRationale": "Only internal benchmark tooling, its regression tests and report/receipt changed; no published package behavior, API or contents changed, so CONTRIBUTING.md does not require a Changeset.",
+  "fullLocalCi": "not-run",
+  "remoteWrites": false,
+  "parentNotification": "Local checks finished; no further host use; Fastify may reserve hosts. Delivered to Execute HTTP Performance Lane.",
+  "newExactHeadReceiptsAndReviews": "parent-owned"
+}

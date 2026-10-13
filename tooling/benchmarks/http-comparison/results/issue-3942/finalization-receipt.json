@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "issue": 3942,
+  "lane_id": "http-performance-3939-3943-20261013-1a832301",
+  "status": "LOCAL_FINALIZATION_EVIDENCE",
+  "previous_head_sha": "ce70426f3bf29430c4eb941f8e94baaf8f78d364",
+  "contract_sha256": "2db06833eb72bb88b7943ccc7bc8a234c9a95c0c9e6e226111cb50eceef20b1b",
+  "performance": {
+    "verdict": "INCONCLUSIVE",
+    "headroom": "NOT_ESTABLISHED",
+    "records": 30,
+    "planned_records": 30,
+    "completed_measured_requests": 1977122,
+    "traffic_errors": 0,
+    "invalid_attempts": 0,
+    "failed_conditions": 5,
+    "upper_95_percent": {
+      "plain-json": 1.096369195225683,
+      "native-header-json": 1.3093232769733736,
+      "native-metadata-json": 1.0350011329128534,
+      "json-body-command": 1.9173704943913186,
+      "rest-route-mix": 1.1641077330604208
+    },
+    "maximum_upper": 1.02,
+    "method": "paired-log-ratio-student-t",
+    "degrees_of_freedom": 2,
+    "critical_value": 4.30265273,
+    "raw_counts_and_intervals_recomputed": true,
+    "bottleneck_exclusion_established": false,
+    "decision": "stop-failed-prerequisite-path",
+    "aa_run": false,
+    "profiles_run": false,
+    "candidate_selected": false,
+    "before_after_run": false,
+    "optimization_adopted": false,
+    "unchanged_retry": false
+  },
+  "evidence": {
+    "parent_verdict": {
+      "path": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/headroom-3942-windows-01-verdict.json",
+      "sha256": "1b3e1cdccb16a843fd142fa9a23a50b9948e0605856e411fe2dbd3f75c5af0e1"
+    },
+    "raw": {
+      "path": "results/issue-3942/headroom-windows-01/raw.json",
+      "sha256": "04119d92dbcf59b7b5f5e8fee5b11893d7633ffe2c2dbb4ea5ae03a3799812b9"
+    },
+    "frozen": {
+      "path": "results/issue-3942/frozen-windows-01.json",
+      "sha256": "6bba0c95c9192bcf23bc1c20f005e31780ad28640e34c54eec3e4617611a0aed",
+      "matches_raw_plan_sha256": true
+    },
+    "external_archive": {
+      "path": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/headroom-3942-windows-01.tar.gz",
+      "sha256": "d427591cd618a37dea5d092846fa8c0f567ab56a713281d5f76dd6aa7ac27573"
+    },
+    "preparation": {
+      "path": "results/issue-3942/prepared-manifest-collector-integrity.json",
+      "sha256": "9725f329429dad7a781c5ac086844cbfa30a32fb8a4307aadf8098ca6b9fb3fe",
+      "package_source_entries_matched": 1520,
+      "benchmark_snapshot_files_matched": 114,
+      "build_artifacts_matched_before_final_package_checks": 660,
+      "windows_fixture_and_benchmark_source_matched": true
+    },
+    "collector_receipt": {
+      "path": "results/issue-3942/collector-integrity-receipt.json",
+      "sha256": "477f5e704b697812762084e02521ac89c59df34855f45cc4e435bf9c8d0215b1",
+      "all_17_original_result_hashes_and_adapter_test_preserved": true
+    }
+  },
+  "source_sha256": {
+    "tooling/benchmarks/http-comparison/src/issue-3942/build.ts": "64414f33b129c648acee153df7caeedb78d610f00130877839f5a63c5387ac8e",
+    "tooling/benchmarks/http-comparison/src/issue-3942/experiment.ts": "2f164ccb69b7bd2f9497fc44f10ba4489347da53e59e4e03d70d875b35d6ad15",
+    "tooling/benchmarks/http-comparison/src/issue-3942/fixtures.ts": "9de4cb769d3ff6de510adbcba34e07793a9de426d89742d010d4f2c32623c526",
+    "tooling/benchmarks/http-comparison/src/issue-3942/gates.ts": "68e061fe0b08546e0f80cf8835a32dd7c1af5e3babc0225f931ff246151400b1",
+    "tooling/benchmarks/http-comparison/src/issue-3942/load-client.ts": "167e099ea4b7c81507ae3e7c41c0e6730387f2313521d463f5a0b1f51a889c74",
+    "tooling/benchmarks/http-comparison/src/issue-3942/manifest.ts": "28c5ac3f251c02fa7faa1db2dbf31c24d13c1726ad4c2012907fcf421945241a",
+    "tooling/benchmarks/http-comparison/src/issue-3942/server.ts": "6f9d8253f1900a2cb716573c3b89d084994ad4fa5edce4dfab1bd0b4dda4ab89",
+    "tooling/benchmarks/http-comparison/src/issue-3942/tsconfig.build.json": "3172c85c90928e89f7d4d9cc40bbf15fa391f9fca8acf304ccd9b175ba3d4db5",
+    "tooling/benchmarks/http-comparison/src/traffic.ts": "a256ed2f892d7c9c0ad4cbd6f2b23fae3f64dc5882fc5d76de159447987699a8",
+    "tooling/benchmarks/http-comparison/tests/traffic-utf8.test.mts": "7dc5c812ba9316403a65faef6fd8916d642946d748982f9ccdc3862da7b2aa41",
+    "tooling/benchmarks/http-comparison/tests/issue-3942.test.mts": "45046d446ac7ff0fb6b7e8d717bb980b2ac04798bd014e22110e7e7ae0bca229",
+    "packages/platform-express/src/adapter.test.ts": "fcd79e7b0b8977f6f45a0b1afcd264e7310408285da88b0b1ca7cf7f6a2df07d"
+  },
+  "checks": [
+    {
+      "command": "node --import tsx --test tests/issue-3942.test.mts tests/traffic-utf8.test.mts",
+      "cwd": "tooling/benchmarks/http-comparison",
+      "status": "passed",
+      "exit_code": 0,
+      "passed": 30,
+      "failed": 0,
+      "duration_ms": 5360.104208,
+      "evidence": "results/issue-3942/collector-integrity-checks.log",
+      "retained_source_and_build_bound": true,
+      "repeated": false
+    },
+    {
+      "command": "pnpm exec tsx src/issue-3942/build.ts",
+      "cwd": "tooling/benchmarks/http-comparison",
+      "status": "passed",
+      "exit_code": 0,
+      "evidence": "results/issue-3942/collector-integrity-checks.log",
+      "retained_source_and_build_bound": true,
+      "repeated": false
+    },
+    {
+      "command": "pnpm exec tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --esModuleInterop src/issue-3942/*.ts tests/issue-3942.test.mts tests/traffic-utf8.test.mts",
+      "cwd": "tooling/benchmarks/http-comparison",
+      "status": "passed",
+      "exit_code": 0,
+      "evidence": "results/issue-3942/collector-integrity-checks.log",
+      "retained_source_and_build_bound": true,
+      "repeated": false
+    },
+    {
+      "command": "pnpm exec biome lint tooling/benchmarks/http-comparison/src/issue-3942 tooling/benchmarks/http-comparison/src/traffic.ts tooling/benchmarks/http-comparison/tests/issue-3942.test.mts tooling/benchmarks/http-comparison/tests/traffic-utf8.test.mts",
+      "status": "passed",
+      "exit_code": 0,
+      "source_files_checked": 8,
+      "test_files_ignored_by_existing_biome_config": true,
+      "evidence": "results/issue-3942/collector-integrity-checks.log",
+      "retained_source_and_build_bound": true,
+      "repeated": false
+    },
+    {
+      "command": "pnpm --filter @fluojs/platform-express typecheck",
+      "status": "passed",
+      "exit_code": 0,
+      "monitor": "mon_XRZQG37HR1K7W2BB",
+      "terminal_session": "bash_4",
+      "run_during_finalization": true
+    },
+    {
+      "command": "pnpm vitest run packages/platform-express/src/adapter.test.ts packages/platform-nodejs/src --maxWorkers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "test_files": 18,
+      "passed": 260,
+      "failed": 0,
+      "runner_duration_ms": 34700,
+      "monitor": "mon_DKZKK611QYDEQVX9",
+      "terminal_session": "bash_5",
+      "run_during_finalization": true,
+      "dependency_builds_run_by_existing_test_setup": true
+    }
+  ],
+  "preserved_failures": [
+    "Original decorator build failure and invalid/intermediate preparation manifests remain untouched.",
+    "Initial collector RED failed on missing assertGenerator export; later same-length hash-guard removal REDs failed on Missing expected exception and were restored before GREEN.",
+    "Earlier wrapper failures remain retained by the parent.",
+    "Parent reported Windows first focused run 29 pass / 1 fail from missing packages/config/dist; root build repaired the environment and recovery passed 30/30 with exit 0.",
+    "Earlier Mac-server Node/Bun attempts are not Windows performance evidence.",
+    "Historical NOT_ESTABLISHED, FAIL, INCONCLUSIVE and rejected stream-only CPU ratio 1.0508237154627784 remain unchanged."
+  ],
+  "limits": {
+    "post_commit_exact_head_review_receipt": "parent-owned; not fabricated by this receipt",
+    "canonical_local_ci": "not-run",
+    "remote_ci": "not-run",
+    "push": false,
+    "pr_operations": false,
+    "cleanup": false,
+    "production_runtime_changed": false,
+    "raw_matrices_caches_dist_staged": false,
+    "raw_evidence_deleted": false,
+    "release_rationale": "CONTRIBUTING.md exempts test-only coverage and internal tooling without consumer-visible impact; no published runtime/API/package content changes and no Changeset."
+  }
+}
