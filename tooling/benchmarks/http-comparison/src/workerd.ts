@@ -2,6 +2,7 @@ import { type ChildProcess, execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readFile, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { isIPv4 } from 'node:net';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
@@ -35,6 +36,10 @@ export function workerdConfig(target: TargetConfig, appShape: AppShape, configur
   if (!/^[a-z-]+$/.test(appShape) || !['default', 'equivalent'].includes(configuration)) {
     throw new WorkerdFailure('Invalid workerd text bindings', { appShape, configuration });
   }
+  const bindHost = process.env.BENCH_BIND_HOST ?? '127.0.0.1';
+  if (!isIPv4(bindHost)) {
+    throw new WorkerdFailure('BENCH_BIND_HOST must be an explicit IPv4 address', { bindHost });
+  }
   const directory = join(root, 'dist', target.name);
   const path = join(directory, `${appShape}-${configuration}.capnp`);
   const text = `using Workerd = import "/workerd/workerd.capnp";
@@ -48,7 +53,7 @@ const config :Workerd.Config = (
       (name = "BENCH_CONFIGURATION", text = "${configuration}")
     ]
   ))],
-  sockets = [(name = "http", address = "127.0.0.1:0", http = (), service = (name = "benchmark"))]
+  sockets = [(name = "http", address = "${bindHost}:0", http = (), service = (name = "benchmark"))]
 );
 `;
   return { path, text, bundle: join(directory, 'server.js'), metafile: join(directory, 'meta.json') };

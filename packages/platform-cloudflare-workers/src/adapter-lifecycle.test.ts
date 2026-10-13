@@ -84,6 +84,59 @@ afterEach(() => {
 });
 
 describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
+  for (const terminal of ['fulfilled', 'rejected'] as const) {
+    it(`fetch: SSE EOF before ${terminal} dispatch -> retains waitUntil and close until dispatch settles`, async () => {
+      const adapter = CloudflareWorkerHttpApplicationAdapter.create();
+      const release = createDeferred<void>();
+      const responseSent = createDeferred<void>();
+      const registered = createDeferred<Promise<unknown>>();
+      let lifecycleSettled = false;
+      let closeSettled = false;
+      await adapter.listen({
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          response.setHeader('Content-Type', 'text/event-stream');
+          const stream = response.stream;
+          if (!stream) {
+            throw new Error('Expected the Web response stream.');
+          }
+          stream.write('data: {"ok":true}\n\n');
+          stream.close();
+          responseSent.resolve();
+          await release.promise;
+          if (terminal === 'rejected') {
+            throw new Error('dispatch failed after response');
+          }
+        },
+      });
+
+      const fetch = adapter.fetch(new Request('https://worker.test/early'), {}, createExecutionContext(
+        (promise) => { registered.resolve(promise); void promise.then(() => { lifecycleSettled = true; }); },
+      ));
+      try {
+        await responseSent.promise;
+        const response = await fetch;
+        await expect(response.text()).resolves.toBe('data: {"ok":true}\n\n');
+        const close = adapter.close().then(() => { closeSettled = true; });
+        // This public rejection observes the still-active drain, without polling or a sleep.
+        await expect(adapter.listen({ async dispatch() {} })).rejects.toThrow(/still draining/);
+        expect(lifecycleSettled).toBe(false);
+        expect(closeSettled).toBe(false);
+        release.resolve();
+        await registered.promise;
+        await close;
+        expect(lifecycleSettled).toBe(true);
+        expect(closeSettled).toBe(true);
+      } finally {
+        release.resolve();
+        const response = await fetch;
+        if (!response.bodyUsed) {
+          await response.body?.cancel();
+        }
+        await adapter.close();
+      }
+    }, 5_000);
+  }
+
   it('keeps public Worker seam declarations on public package barrels while runtime values use internal seams', () => {
     const source = readFileSync(new URL('./adapter.ts', import.meta.url), 'utf8');
 

@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "issue": 3943,
+  "frozenSha256": "617899c1a4dbcc07c60b334177c7eae822596be003e25939eb7d3e9c3503408b",
+  "status": "INCONCLUSIVE",
+  "calibration": "NOT_ESTABLISHED",
+  "adoption": false,
+  "completedArms": 12,
+  "plannedArms": 12,
+  "measuredRequests": 502195,
+  "trafficErrors": 0,
+  "manifestInvalidAttempts": [
+    {
+      "condition": null,
+      "error": {
+        "name": "Error",
+        "message": "headroom/stage-minimal/throughput CV exceeds3%"
+      }
+    }
+  ],
+  "throughputGroups": [
+    {
+      "condition": "stage-minimal/one",
+      "samples": [
+        4978.8,
+        4749.2,
+        5026.4
+      ],
+      "cv": 0.030138222108850293
+    },
+    {
+      "condition": "stage-minimal/four",
+      "samples": [
+        5062.8099999999995,
+        5036.21,
+        4975.799999999999
+      ],
+      "cv": 0.008873016091515654
+    },
+    {
+      "condition": "json-command-local/one",
+      "samples": [
+        3405.2,
+        3333.2,
+        3374.2
+      ],
+      "cv": 0.010714026644607206
+    },
+    {
+      "condition": "json-command-local/four",
+      "samples": [
+        3361.7999999999997,
+        3449.1,
+        3469.6
+      ],
+      "cv": 0.016705113651999476
+    }
+  ],
+  "threshold": 0.03,
+  "firstFailure": "stage-minimal/one throughput CV 0.030138222108850293 exceeds 0.03",
+  "archive": {
+    "path": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/headroom-3943-windows-01.tar.gz",
+    "sha256": "772764afac0bebd8bb5f4dc8f33b333f0371ce4937f3aafc799a9aa5973a9c29"
+  },
+  "notRun": [
+    "A/A",
+    "CPU/allocation profiles",
+    "candidate",
+    "BEFORE/AFTER",
+    "Cloudflare deployment"
+  ],
+  "noAutomaticRepeat": true,
+  "remainingUserDecision": null,
+  "preflightSha256": "5e8dd98a9aec84100429508100d0e438413ff9cca99dad0c4742d185c363b887",
+  "userDecision": {
+    "date": "2026-10-13",
+    "selection": "로컬 결과로 마무리 (Recommended)",
+    "scope": "Local diagnostic tooling, regressions and rejected-result reports; optimization deferred and Cloudflare measurement excluded.",
+    "closure": "Authorized after focused checks, exact-head review, GitHub CI and merge"
+  }
+}
