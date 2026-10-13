@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -13,7 +13,7 @@ import { createCommandRunner } from '../../examples/react-vite-ssr/tests/verify-
 function evidenceFixture(t, prefix) {
   const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();
   mkdirSync(directory, { recursive: true });
-  const root = mkdtempSync(join(directory, prefix));
+  const root = realpathSync(mkdtempSync(join(directory, prefix)));
   if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
   return root;
 }
