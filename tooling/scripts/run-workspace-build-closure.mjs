@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { once } from 'node:events';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { acquireWorkspaceArtifactLeases } from './clean-dist.mjs';
 import { performance } from 'node:perf_hooks';
@@ -10,6 +13,120 @@ import { performance } from 'node:perf_hooks';
 const WORKSPACE_BUILD_LOCK_DIRECTORY = '.workspace-build-closure.lock';
 const WORKSPACE_BUILD_LOCK_METADATA_FILE = 'owner.json';
 const WORKSPACE_BUILD_LOCK_STALE_GRACE_MS = 5_000;
+
+// Test writers need separate PIDs: terminating a thread cannot invalidate a
+// process-owned lease. The FIFO bridge also works inside synchronous snapshots.
+export function createWorkspaceArtifactWriter(artifact, rootDirectory, options = {}) {
+  const lifetimeMs = options.timeoutMs ?? 10_000;
+  const target = join(realpathSync(dirname(artifact)), basename(artifact));
+  const key = createHash('sha256').update(target).digest('hex');
+  const registry = join(realpathSync(rootDirectory), '.omo/workspace-artifact-locks', key);
+  const sandbox = mkdtempSync(join(tmpdir(), 'fluo-artifact-writer-'));
+  const handshake = join(sandbox, 'handshake.fifo');
+  const hold = join(sandbox, 'hold.fifo');
+  for (const path of [handshake, hold]) {
+    const result = spawnSync('mkfifo', ['-m', '600', path], { encoding: 'utf8' });
+    if (result.status !== 0) {
+      rmSync(sandbox, { recursive: true, force: true });
+      throw new Error(result.stderr || 'Artifact writer FIFO creation failed.');
+    }
+  }
+  const child = spawn(process.execPath, ['--input-type=module', '--eval', `
+    import fs from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
+    const phase = ${JSON.stringify(options.pauseAfterPublication ?? null)};
+    const send = (event) => process.send(event);
+    const checkpoint = (path) => {
+      send('published');
+      fs.writeFileSync(${JSON.stringify(handshake)}, JSON.stringify({ event: 'published', pid: process.pid, path }));
+      fs.readFileSync(${JSON.stringify(hold)});
+    };
+    const rename = fs.renameSync;
+    fs.renameSync = (from, to) => {
+      rename(from, to);
+      if (phase === 'gate' && String(to).includes('/gate/')
+        && JSON.parse(fs.readFileSync(to, 'utf8')).ticket !== null) checkpoint(String(to));
+    };
+    syncBuiltinESMExports();
+    const { acquireWorkspaceArtifactLeases } = await import(${JSON.stringify(new URL('./clean-dist.mjs', import.meta.url).href)});
+    const wait = Atomics.wait;
+    let reported = false;
+    Atomics.wait = (...args) => {
+      if (!reported) {
+        reported = true;
+        send('blocked');
+        fs.writeFileSync(${JSON.stringify(handshake)}, JSON.stringify({ event: 'blocked', pid: process.pid }));
+      }
+      return wait(...args);
+    };
+    process.once('message', () => {
+      try {
+        send('attempt');
+        const lease = acquireWorkspaceArtifactLeases([${JSON.stringify(target)}], 'writer');
+        try {
+          if (phase === 'artifact') {
+            const owner = JSON.parse(lease.environment.FLUO_WORKSPACE_ARTIFACT_WRITERS)
+              .find((entry) => entry.pid === process.pid && entry.artifact === ${JSON.stringify(target)});
+            checkpoint(owner.path);
+          }
+          fs.rmSync(${JSON.stringify(target)}, { recursive: true, force: true });
+        } finally { lease.release(); }
+        process.send('completed', () => process.disconnect());
+      } catch (error) {
+        console.error(error);
+        process.exitCode = 1;
+        process.disconnect();
+      }
+    });
+    send('ready');
+  `], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  const events = [];
+  child.on('message', (message) => events.push(message));
+  const signal = AbortSignal.timeout(lifetimeMs);
+  const exited = once(child, 'close', { signal });
+  const ready = once(child, 'message', { signal }).then(([message]) => {
+    if (message !== 'ready') throw new Error(`Unexpected artifact writer readiness: ${message}`);
+  });
+  // Cleanup may be entered after another assertion fails; the original promises
+  // still reject for callers awaiting readiness or exit.
+  void ready.catch(() => {});
+  void exited.catch(() => {});
+  return {
+    child, ready, exited, events,
+    attempt: () => {
+      child.send('attempt-clean');
+      const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+        import { readFileSync } from 'node:fs';
+        process.stdout.write(readFileSync(${JSON.stringify(handshake)}));
+      `], { encoding: 'utf8', timeout: 10_000 });
+      if (result.status !== 0) throw new Error(result.stderr || result.error?.message || 'Artifact writer handshake failed.');
+      const observed = JSON.parse(result.stdout);
+      if (observed.pid !== child.pid || observed.event !== (options.pauseAfterPublication ? 'published' : 'blocked')) {
+        throw new Error(`Unexpected artifact writer handshake: ${result.stdout}`);
+      }
+      return observed;
+    },
+    stop: async () => {
+      const running = child.exitCode === null && child.signalCode === null;
+      const closed = running ? once(child, 'close', { signal: AbortSignal.timeout(10_000) }) : exited;
+      if (running) child.kill('SIGKILL');
+      try {
+        await closed;
+      } finally {
+        // Never remove the shared gate or entries belonging to a live process.
+        if (child.pid && !isProcessAlive(child.pid)) {
+          for (const directory of [registry, join(registry, 'gate')]) {
+            if (!existsSync(directory)) continue;
+            for (const token of readdirSync(directory).filter((entry) => entry.startsWith(`${child.pid}-`))) {
+              rmSync(join(directory, token), { force: true });
+            }
+          }
+        }
+        rmSync(sandbox, { recursive: true, force: true });
+      }
+    },
+  };
+}
 
 function getWorkspaceBuildLockMetadataPath(lockDirectory) {
   return join(lockDirectory, WORKSPACE_BUILD_LOCK_METADATA_FILE);

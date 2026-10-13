@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter, once } from 'node:events';
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
 
-import { resolveWorkspaceBuildOrder, runWorkspaceBuildClosure, withWorkspaceArtifactSnapshot } from './run-workspace-build-closure.mjs';
+import { createWorkspaceArtifactWriter, resolveWorkspaceBuildOrder, runWorkspaceBuildClosure, withWorkspaceArtifactSnapshot } from './run-workspace-build-closure.mjs';
 import * as buildClosure from './run-workspace-build-closure.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -159,6 +159,76 @@ async function releaseGateBarrier(path: string) {
   const closed = once(writer, 'close', { signal: AbortSignal.timeout(10_000) });
   expect((await closed)[0]).toBe(0);
 }
+
+describe('workspace artifact writer termination', () => {
+  it.each(['gate', 'artifact'] as const)('writer.stop: cancelled after %s publication -> releases only its process entries', async (phase) => {
+    const fixture = gateFixture();
+    const owner = createWorkspaceArtifactWriter(fixture.artifact, fixture.root, { pauseAfterPublication: phase });
+    try {
+      await owner.ready;
+      const publication = owner.attempt();
+      if (!publication.path) throw new Error('Writer did not report its published owner path.');
+      expect(existsSync(publication.path)).toBe(true);
+
+      await owner.stop();
+
+      expect(existsSync(publication.path)).toBe(false);
+      expect(readdirSync(fixture.gate)).toEqual([]);
+      expect(readdirSync(fixture.lockDirectory).filter((entry) => entry.endsWith('.json'))).toEqual([]);
+      withWorkspaceArtifactSnapshot(['@test/app'], fixture.root, () => {
+        expect(declarationDiagnostics(fixture.directory)).toEqual([]);
+      });
+    } finally {
+      await owner.stop();
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['gate', 'artifact'] as const)('writer: terminated after %s publication -> future consumers recover with parent alive', async (phase) => {
+    const fixture = gateFixture();
+    const owner = createWorkspaceArtifactWriter(fixture.artifact, fixture.root, { pauseAfterPublication: phase });
+    const actors = ['reader', 'writer'].map((mode) => artifactProcess(`
+      const clean = await import(${JSON.stringify(new URL('./clean-dist.mjs', import.meta.url).href)});
+      const lease = clean.acquireWorkspaceArtifactLeases([${JSON.stringify(fixture.artifact)}], ${JSON.stringify(mode)});
+      lease.release();
+    `, fixture.root));
+    const states = actors.map((actor) => Promise.race([
+      actor.event('blocked').then(() => 'blocked'),
+      actor.event('completed').then(() => 'completed'),
+    ]));
+    try {
+      await owner.ready;
+      const publication = owner.attempt();
+      if (!publication.path) throw new Error('Writer did not report its published owner path.');
+      expect(JSON.parse(readFileSync(publication.path, 'utf8')).pid).toBe(publication.pid);
+      owner.child.kill('SIGKILL');
+      expect((await owner.exited)[1]).toBe('SIGKILL');
+      process.kill(process.pid, 0);
+      const observed: string[] = [];
+      for (const [index, actor] of actors.entries()) {
+        actor.child.send('start');
+        const state = await states[index];
+        observed.push(state);
+        if (state === 'completed') expect((await actor.closed)[0]).toBe(0);
+      }
+      console.info('TERMINATED_OWNER_OBSERVATION', JSON.stringify({
+        phase, parentPid: process.pid, ownerPid: publication.pid, parentAlive: true, observed,
+      }));
+      expect(observed).toEqual(['completed', 'completed']);
+      expect(publication.pid).not.toBe(process.pid);
+      for (const actor of actors) expect((await actor.closed)[0]).toBe(0);
+      withWorkspaceArtifactSnapshot(['@test/app'], fixture.root, () => {
+        expect(declarationDiagnostics(fixture.directory)).toEqual([]);
+      });
+      expect(readdirSync(fixture.gate)).toEqual([]);
+      expect(readdirSync(fixture.lockDirectory).filter((entry) => entry.endsWith('.json'))).toEqual([]);
+    } finally {
+      for (const actor of actors) actor.stop();
+      await owner.stop();
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('workspace artifact gate ownership', () => {
   it('gate: partial owner publication -> does not admit a reader beside a paused writer', async () => {

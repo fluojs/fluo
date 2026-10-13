@@ -3,11 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { once } from 'node:events';
-import { Worker } from 'node:worker_threads';
 import ts from 'typescript';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
-import { withWorkspaceArtifactSnapshot } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
+import { createWorkspaceArtifactWriter, withWorkspaceArtifactSnapshot } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
 
 import type {
   PrismaClientLike,
@@ -139,35 +137,12 @@ describe('@fluojs/prisma public API surface', () => {
   });
 
   it('rejects removed package-root imports and static facade access in built declarations', async () => {
-    const state = new Int32Array(new SharedArrayBuffer(4));
-    const writer = new Worker(`
-      const { parentPort, workerData } = require('node:worker_threads');
-      const state = new Int32Array(workerData.buffer);
-      const wait = Atomics.wait;
-      Atomics.wait = (...args) => {
-        Atomics.store(state, 0, 1); Atomics.notify(state, 0);
-        return wait(...args);
-      };
-      parentPort.once('message', async () => {
-        process.argv[1] = require('node:url').fileURLToPath(workerData.cleanUrl);
-        process.argv[2] = workerData.dist;
-        await import(workerData.cleanUrl);
-        Atomics.store(state, 0, 2); Atomics.notify(state, 0);
-        parentPort.close();
-      });
-    `, { eval: true, workerData: {
-      buffer: state.buffer, dist: packageDist,
-      cleanUrl: new URL('../../../tooling/scripts/clean-dist.mjs', import.meta.url).href,
-    } });
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10_000);
-    const exited = once(writer, 'exit', { signal: controller.signal });
-    void exited.catch(() => {});
+    const writer = createWorkspaceArtifactWriter(packageDist, repositoryRoot, { timeoutMs: 10_000 });
     try {
+      await writer.ready;
       await withWorkspaceArtifactSnapshot(['@fluojs/prisma'], repositoryRoot, async () => {
-        writer.postMessage('attempt-clean');
-        expect(Atomics.wait(state, 0, 0, 10_000)).not.toBe('timed-out');
-        expect(Atomics.load(state, 0)).toBe(1);
+        expect(writer.attempt()).toMatchObject({ event: 'blocked', pid: writer.child.pid });
+        expect(writer.child.pid).not.toBe(process.pid);
         // Given
         const internalFactoryDiagnostics = compilePackageRootConsumer(
           "import { createPrismaServiceFacade } from '@fluojs/prisma';\nvoid createPrismaServiceFacade;",
@@ -185,11 +160,10 @@ describe('@fluojs/prisma public API surface', () => {
         expect(internalFactoryDiagnostics.filter((diagnostic) => diagnostic.code === 2724)).toHaveLength(1);
         expect(staticFacadeDiagnostics.filter((diagnostic) => diagnostic.code === 2339)).toHaveLength(1);
       });
-      expect((await exited)[0]).toBe(0);
-      expect(Atomics.load(state, 0)).toBe(2);
+      expect((await writer.exited)[0]).toBe(0);
+      expect(writer.events).toEqual(['ready', 'attempt', 'blocked', 'completed']);
     } finally {
-      clearTimeout(timer);
-      await writer.terminate();
+      await writer.stop();
     }
   });
 });
