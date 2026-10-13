@@ -205,7 +205,31 @@
       ],
       "failure": "ENOENT finite/run-9-X.child.json",
       "baseOnlyReproduction": false,
-      "rerun": false
+      "followUp": {
+        "owner": "parent",
+        "head": "ce70426f3bf29430c4eb941f8e94baaf8f78d364",
+        "adjudication": ".omo/verification/http-performance-3939-3943-20261013-1a832301/adjudication-3940.json",
+        "adjudicationSha256": "9c8163fce4ce75cc47fb8cf13b05e06c4f7a1ab45d1d6cb99f2425fb7252bd04",
+        "reproduction": {
+          "families": 2,
+          "completedChildren": 24,
+          "failedChildren": 0,
+          "exitCode": 0,
+          "summary": "paired-repro/summary.json"
+        },
+        "fullRecheck": {
+          "command": "pnpm --ignore-workspace test",
+          "passed": 465,
+          "failed": 0,
+          "skipped": 1,
+          "exitCode": 0,
+          "log": "benchmark-tests-adjudication.log",
+          "logSha256": "8a30f4bb8062e5335ecb9e7dd53eeda2d481f3f32eb38411cf8fdfd36be75ab0"
+        },
+        "conclusion": "Original failures did not recur in the retained reproduction or completed full-scope recheck. Preserve the original failures. Concurrency pressure is a hypothesis, not an established cause; the precise original child exit reason is unavailable because those tests removed per-child evidence.",
+        "exactHeadReceiptForCompanionCommit": false,
+        "performanceAccepted": false
+      }
     },
     "exclusions": [
       "Earlier Mac-server/WSL-generator attempts are not Windows performance evidence.",
@@ -219,7 +243,7 @@
   "noReleaseRationale": "Private benchmark tooling, directly relevant tests and reports only; no public package runtime/API/contract/shipped-content change. CONTRIBUTING.md internal/test-only exception; no Changeset or Book/package README update.",
   "notRun": [
     "full local CI",
-    "full benchmark suite rerun",
+    "new full benchmark suite run during local finalization",
     "new performance measurements",
     "headroom",
     "profiles",
@@ -229,6 +253,7 @@
     "GitHub CI"
   ],
   "parentBoundary": [
+    "canonical exact-head focused receipts after companion commit",
     "independent exact-head contract/code/verification review",
     "publication"
   ],

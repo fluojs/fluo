@@ -89,7 +89,16 @@ correctness-only probe 기록은 새 성능 PASS가 아닙니다.
 과거 전체 benchmark suite는 **458 passed, 2 failed, 1 skipped**, exit 1입니다.
 수정하지 않은 `tests/paired-ab.test.mts:193`와 `tests/paired-node.test.mts:381`의
 finite child JSON ENOENT를 보존하며 base-only 재현은 하지 않았습니다.
-이번에는 이 broad suite와 full local CI를 실행하지 않았습니다.
+Parent가 보존한 후속 `results/issue-3940/benchmark-tests-adjudication.log`는
+`pnpm --ignore-workspace test`의 **465 passed, 0 failed, 1 skipped**, exit 0을 기록합니다.
+Repository 상대 경로 `.omo/verification/http-performance-3939-3943-20261013-1a832301/adjudication-3940.json`은
+이 recheck와 두 family 재현의 **24 completed children, 0 failed**, exit 0을
+준비 HEAD `ce70426f3bf29430c4eb941f8e94baaf8f78d364`에 연결합니다.
+기존 실패는 다시 발생하지 않았습니다. Concurrency pressure는 가설이며,
+기존 테스트가 per-child evidence를 제거했으므로 정확한 최초 child exit 원인은
+알 수 없습니다. 기존 실패와 완료된 후속 검증을 모두 보존합니다.
+이 과거 recheck는 최종 companion commit의 exact-head receipt나 성능 PASS가 아닙니다.
+로컬 finalization 중 새 broad suite 또는 full local CI는 실행하지 않았습니다.
 
 ## 로컬 handoff
 
@@ -99,5 +108,8 @@ EN/KO 보고서를 포함합니다. Public package runtime/API/계약/배포 내
 없으므로 CONTRIBUTING.md의 internal/test-only 예외에 따라 Changeset은 없습니다.
 Book/package README 변경도 필요하지 않습니다.
 
-독립 exact-head contract/code/verification 리뷰와 publication은 parent가 담당합니다.
+Issue-owned `results/issue-3940/.gitignore`는 원본을 삭제하거나 authored
+MTS/design/receipt companion을 숨기지 않고 로그, generated collector bundle과
+`paired-repro/`를 ignore합니다. Companion commit 이후 canonical exact-head focused
+receipt, 독립 contract/code/verification 리뷰와 publication은 parent가 담당합니다.
 원격 작업, issue close, laneDone, merge 또는 cleanup은 수행하지 않았습니다.

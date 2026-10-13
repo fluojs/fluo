@@ -88,7 +88,16 @@ correctness-only probe records are not a new performance PASS.
 The historical full benchmark suite had **458 passed, 2 failed, 1 skipped**, exit 1.
 Retain finite child JSON ENOENT failures in unchanged `tests/paired-ab.test.mts:193`
 and `tests/paired-node.test.mts:381`; no base-only reproduction was performed.
-Neither that broad suite nor full local CI ran during this finalization.
+The parent's preserved follow-up `results/issue-3940/benchmark-tests-adjudication.log`
+records **465 passed, 0 failed, 1 skipped**, exit 0, for `pnpm --ignore-workspace test`.
+Repository-relative `.omo/verification/http-performance-3939-3943-20261013-1a832301/adjudication-3940.json`
+binds that recheck and a two-family reproduction with **24 completed children, 0 failed**,
+exit 0, to preparation HEAD `ce70426f3bf29430c4eb941f8e94baaf8f78d364`.
+The original failures did not recur. Concurrency pressure remains a hypothesis;
+the precise original child exit reason is unavailable because those tests removed
+their per-child evidence. Retain both the original failures and completed follow-up.
+This historical recheck is not an exact-head receipt for the final companion commit
+or a performance PASS. No new broad suite or full local CI ran during local finalization.
 
 ## Local handoff
 
@@ -98,5 +107,8 @@ tests, machine companions and this EN/KO report pair. No public package
 runtime/API/contract/shipped-content change requires a Changeset under
 CONTRIBUTING.md internal/test-only exception. No Book/package README edit is needed.
 
-The parent owns independent exact-head contract/code/verification reviews and publication.
+Issue-owned `results/issue-3940/.gitignore` ignores logs, generated collector bundles
+and `paired-repro/` without deleting originals or hiding authored MTS/design/receipt companions.
+The parent owns canonical exact-head focused receipts after the companion commit,
+independent contract/code/verification reviews and publication.
 No remote writes, issue closure, laneDone, merge or cleanup occurred.

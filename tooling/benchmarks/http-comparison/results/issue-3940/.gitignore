@@ -1,0 +1,6 @@
+*.log
+/collector-integrity-*-load-client.mjs
+/paired-repro/
+!/design.json
+!/design-windows-server.json
+!/finalization-receipt.json
