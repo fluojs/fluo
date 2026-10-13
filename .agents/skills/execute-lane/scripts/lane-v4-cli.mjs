@@ -94,6 +94,7 @@ const run = (cwd, cmd, cmdArgs, trim = true) => {
 			cwd,
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],
+			env: { ...process.env, GH_PAGER: "cat" },
 		});
 		return trim ? output.trim() : output;
 	} catch {
@@ -135,7 +136,7 @@ export const captureRetroCi = (root, lane, issue, query = run) => {
 		readRetroEvents(root, lane.lane_id)
 			.filter((event) =>
 				event.issue === issue && event.kind === "ci" &&
-				Object.hasOwn(event.data, "conclusion")
+				Object.hasOwn(event.data, "conclusion") && event.data.complete === true
 			)
 			.map((event) => `${event.data.run.id}:${event.data.run.attempt}`),
 	);
@@ -540,6 +541,29 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 			mergeCommit: parsed.mergeCommit?.oid ?? null,
 			mergedAt: parsed.mergedAt ?? null,
 		};
+		const runJson = parsed.state === "MERGED" ? run(root, "gh", ["api", "--paginate", "--slurp",
+			`repos/{owner}/{repo}/actions/runs?branch=${encodeURIComponent(branch)}&event=pull_request&per_page=100`]) : null;
+		pr.ciRuns = null;
+		if (runJson !== null) {
+			const pages = JSON.parse(runJson);
+			if (Array.isArray(pages) && pages.every((page) => Array.isArray(page.workflow_runs))
+				&& pages[0]?.total_count === pages.flatMap((page) => page.workflow_runs).length) {
+				const latest = new Map();
+				for (const observed of pages.flatMap((page) => page.workflow_runs)) {
+					if (observed.head_sha !== pr.headSha) continue;
+					if (!Number.isSafeInteger(observed.id) || !Number.isSafeInteger(observed.run_attempt)
+						|| observed.run_attempt < 1 || typeof observed.path !== "string") {
+						throw new TypeError("Invalid final GitHub CI run identity");
+					}
+					const previous = latest.get(observed.path);
+					if (!previous || observed.id > previous.id) latest.set(observed.path, {
+						id: observed.id, attempt: observed.run_attempt, head: observed.head_sha,
+						workflow: observed.path, status: observed.status, conclusion: observed.conclusion,
+					});
+				}
+				pr.ciRuns = [...latest.values()].sort((a, b) => a.workflow.localeCompare(b.workflow));
+			}
+		}
 	}
 
 	const issueJson = run(root, "gh", [
@@ -860,6 +884,8 @@ const main = () => {
 							process.stdout.write(
 								`RETRO-READY ${JSON.stringify(request)}\n`,
 							);
+						} else if (request.action === "collect-ci") {
+							process.stdout.write(`RETRO-COLLECT ${JSON.stringify(request)}\n`);
 						}
 					}
 					process.stdout.write(

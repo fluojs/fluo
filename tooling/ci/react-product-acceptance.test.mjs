@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { once } from 'node:events';
+import { on, once } from 'node:events';
 import { cpSync, createWriteStream, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -865,6 +865,86 @@ for (const defect of ['wrong-head', 'wrong-tree', 'signal', 'wrong-exit', 'wrong
 }
 
 let captureCheckout;
+function observeMessage(child, predicate, signal) {
+  const messages = on(child, 'message', { signal });
+  return (async () => {
+    for await (const args of messages) if (predicate(args[0])) return args;
+  })();
+}
+function retainCapture(t, output, prefix) {
+  if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) return;
+  mkdirSync(process.env.FLUO_PRODUCT_TEST_EVIDENCE, { recursive: true });
+  const destination = mkdtempSync(join(process.env.FLUO_PRODUCT_TEST_EVIDENCE, prefix));
+  t.after(() => cpSync(output, destination, { recursive: true }));
+}
+test('canonical capture roots: failed run reused -> zero new spawns and original artifacts unchanged', async (t) => {
+  if (!captureCheckout) {
+    captureCheckout = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-capture-checkout-')));
+    execFileSync('git', ['clone', '--quiet', '--shared', '--no-hardlinks',
+      fileURLToPath(new URL('../..', import.meta.url)), captureCheckout]);
+  }
+  const output = join(captureCheckout, '.omo/verification/issue-3879/exclusive-canonical');
+  retainCapture(t, output, 'canonical-reuse-');
+  const target = join(captureCheckout, 'tooling/ci/react-product-acceptance.mjs');
+  const implementation = fileURLToPath(new URL('./react-product-acceptance.mjs', import.meta.url));
+  const preparation = fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url));
+  const driver = `
+    import cp from 'node:child_process';
+    import fs from 'node:fs';
+    import { registerHooks, syncBuiltinESMExports } from 'node:module';
+    import { pathToFileURL } from 'node:url';
+    const target = pathToFileURL(${JSON.stringify(target)}).href;
+    registerHooks({ resolve(specifier, context, next) {
+      if (specifier.endsWith('/command-evidence.mjs')) return { url: ${JSON.stringify(new URL('./command-evidence.mjs', import.meta.url).href)}, shortCircuit: true };
+      return next(specifier, context);
+    }, load(url, context, next) {
+      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      if (url === new URL('./browser-preparation.mjs', target).href) return { format: 'module', source: fs.readFileSync(${JSON.stringify(preparation)}, 'utf8'), shortCircuit: true };
+      return next(url, context);
+    } });
+    const originalSpawn = cp.spawn;
+    let starts = 0;
+    cp.spawn = (_executable, _args, options) => {
+      starts++;
+      return originalSpawn(process.execPath, ['-e', 'console.log("original stdout tail"); console.error("original stderr tail"); process.exit(7);'], options);
+    };
+    syncBuiltinESMExports();
+    const { captureDomain } = await import(target);
+    const output = ${JSON.stringify(output)};
+    let firstError, secondError;
+    try { await captureDomain('tooling', output); } catch (error) { firstError = error.message; }
+    fs.writeFileSync(output + '/report.json', '{"previous":"failed"}');
+    fs.writeFileSync(output + '/error-context.md', 'original failure context\\n');
+    const snapshot = () => Object.fromEntries(fs.readdirSync(output).map(name => [name, fs.readFileSync(output + '/' + name).toString('hex')]));
+    const before = snapshot();
+    const firstStarts = starts;
+    try { await captureDomain('tooling', output); } catch (error) { secondError = error.message; }
+    process.send({ firstError, secondError, firstStarts, starts, before, after: snapshot() });
+    process.disconnect();
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', driver], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  t.after(() => child.kill('SIGKILL'));
+  const timeout = AbortSignal.timeout(10_000);
+  const result = observeMessage(child, (message) => Object.hasOwn(message, 'firstStarts'), timeout);
+  const close = once(child, 'close', { signal: timeout });
+  child.stdout.resume();
+  let stderr = '';
+  child.stderr.on('data', (bytes) => { stderr += bytes; });
+
+  const [[observed], [exit, signal]] = await Promise.all([result, close]);
+
+  assert.equal(exit, 0, stderr);
+  assert.equal(signal, null);
+  assert.equal(observed.firstStarts, 1);
+  assert.equal(observed.starts, 1);
+  assert.match(observed.firstError, /source-http \(7\)/u);
+  assert.match(observed.secondError, /evidence root/u);
+  assert.deepEqual(observed.after, observed.before);
+  for (const name of Object.keys(observed.before)) {
+    assert.equal(digest(Buffer.from(observed.after[name], 'hex')), digest(Buffer.from(observed.before[name], 'hex')));
+  }
+});
+
 async function descendantLifecycle(t, signal, mode) {
   const root = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? mkdtempSync(join(tmpdir(), 'fluo-descendants-'));
   mkdirSync(root, { recursive: true });
@@ -965,7 +1045,7 @@ async function descendantLifecycle(t, signal, mode) {
     }
     import { createCommandRunner } from ${JSON.stringify(process.env.FLUO_BACKGROUND_TEST_IMPLEMENTATION ?? fileURLToPath(new URL('../../examples/react-vite-ssr/tests/verify-background-starter.mjs', import.meta.url)))};
     const commands = [];
-    const { run, dispose } = createCommandRunner(${JSON.stringify(output)}, commands);
+    const { run, dispose } = createCommandRunner(${JSON.stringify(join(output, 'inner'))}, commands);
     const results = await Promise.allSettled(${JSON.stringify(scripts)}.map((script, i) =>
       run('inner-' + i, ['-e', script], process.cwd(), {}, process.execPath)));
     dispose();
@@ -992,6 +1072,7 @@ async function descendantLifecycle(t, signal, mode) {
     const runnerTarget = new URL('../../examples/react-vite-ssr/tests/verify-background-starter.mjs', target).href;
     const preparationTarget = new URL('./browser-preparation.mjs', target).href;
     registerHooks({ resolve(specifier, context, next) {
+      if (specifier.endsWith('/command-evidence.mjs')) return { url: ${JSON.stringify(new URL('./command-evidence.mjs', import.meta.url).href)}, shortCircuit: true };
       if (specifier === './browser-preparation.mjs' && context.parentURL === target) return { url: preparationTarget, shortCircuit: true };
       return next(specifier, context);
     }, load(url, context, next) {
@@ -1100,6 +1181,7 @@ async function captureDeploymentRestoration(t, mode, restoreSignal = null) {
   }
   mkdirSync(join(captureCheckout, '.omo/verification/issue-3879'), { recursive: true });
   const output = mkdtempSync(join(captureCheckout, '.omo/verification/issue-3879/restore-'));
+  retainCapture(t, output, 'restoration-');
   const target = join(captureCheckout, 'tooling/ci/react-product-acceptance.mjs');
   const reports = Object.fromEntries(['ordinary-browser', 'product-browser', 'fault-browser', 'reliability-browser']
     .map((id) => [id, reportFixture(id)]));
@@ -1119,6 +1201,7 @@ async function captureDeploymentRestoration(t, mode, restoreSignal = null) {
     const target = pathToFileURL(${JSON.stringify(target)}).href;
     const preparationTarget = new URL('./browser-preparation.mjs', target).href;
     registerHooks({ resolve(specifier, context, next) {
+      if (specifier.endsWith('/command-evidence.mjs')) return { url: ${JSON.stringify(new URL('./command-evidence.mjs', import.meta.url).href)}, shortCircuit: true };
       if (specifier === './browser-preparation.mjs' && context.parentURL === target)
         return { url: preparationTarget, shortCircuit: true };
       return next(specifier, context);
@@ -1212,7 +1295,7 @@ async function captureDeploymentRestoration(t, mode, restoreSignal = null) {
   const child = spawn(process.execPath, ['--input-type=module', '-e', driver],
     { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
   const timeout = AbortSignal.timeout(15_000);
-  const observed = once(child, 'message', { signal: timeout });
+  const observed = observeMessage(child, (message) => Object.hasOwn(message, 'receipt'), timeout);
   const closed = once(child, 'close', { signal: timeout });
   let stdout = '';
   let stderr = '';
@@ -1298,19 +1381,24 @@ async function captureCancellation(t, signal, phase) {
     const runnerTarget = new URL('../../examples/react-vite-ssr/tests/verify-background-starter.mjs', target).href;
     const preparationTarget = new URL('./browser-preparation.mjs', target).href;
     registerHooks({ resolve(specifier, context, next) {
+      if (specifier.endsWith('/command-evidence.mjs')) return { url: ${JSON.stringify(new URL('./command-evidence.mjs', import.meta.url).href)}, shortCircuit: true };
       if (specifier === './browser-preparation.mjs' && context.parentURL === target) return { url: preparationTarget, shortCircuit: true };
       return next(specifier, context);
     }, load(url, context, next) {
       if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
-      if (url === preparationTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(
-        fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url)))}, 'utf8'), shortCircuit: true };
+      if (url === preparationTarget) {
+        const source = fs.readFileSync(${JSON.stringify(fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url)))}, 'utf8');
+        return { format: 'module', source: phase === 'between-commands'
+          ? source.replace('export async function runBrowserOwnedCommand', 'async function runPreparedCommand')
+            + '\\nexport async function runBrowserOwnedCommand(...args) { const result = await runPreparedCommand(...args); await globalThis.captureBetweenCommands(); return result; }'
+          : source, shortCircuit: true };
+      }
       if (url === runnerTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(
         process.env.FLUO_BACKGROUND_TEST_IMPLEMENTATION
           ?? fileURLToPath(new URL('../../examples/react-vite-ssr/tests/verify-background-starter.mjs', import.meta.url)))}, 'utf8'), shortCircuit: true };
       return next(url, context);
     } });
     const originalSpawn = cp.spawn;
-    const originalStream = fs.createWriteStream;
     let starts = 0;
     const pids = [];
     let injected = false;
@@ -1346,18 +1434,8 @@ async function captureCancellation(t, signal, phase) {
       }
       return child;
     };
-    if (phase === 'between-commands') fs.createWriteStream = (...args) => {
-      const stream = originalStream(...args);
-      const end = stream.end;
-      stream.end = function(...values) {
-        if (!injected) {
-          injected = true;
-          void cancel().then(() => end.apply(this, values));
-          return this;
-        }
-        return end.apply(this, values);
-      };
-      return stream;
+    globalThis.captureBetweenCommands = async () => {
+      if (!injected) { injected = true; await cancel(); }
     };
     syncBuiltinESMExports();
     const listeners = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
@@ -1383,7 +1461,7 @@ async function captureCancellation(t, signal, phase) {
     child.kill('SIGKILL');
   });
   // Subscribe to the terminal result before any child readiness can trigger a signal.
-  const result = once(child, 'message', { signal: controller.signal });
+  const result = observeMessage(child, (message) => Object.hasOwn(message, 'starts'), controller.signal);
   const closed = once(child, 'close', { signal: controller.signal });
   let stdout = '';
   let stderr = '';
@@ -1436,7 +1514,7 @@ test('final external evidence: relocated producer checkout -> preserves canonica
     symlinkSync(join(repo, path), join(producerRoot, path), 'dir');
   }
   symlinkSync(join(repo, 'tooling/benchmarks'), join(producerRoot, 'tooling/benchmarks'), 'dir');
-  for (const file of ['react-product-acceptance.mjs', 'browser-preparation.mjs']) {
+  for (const file of ['react-product-acceptance.mjs', 'browser-preparation.mjs', 'command-evidence.mjs']) {
     cpSync(join(repo, 'tooling/ci', file), join(producerRoot, 'tooling/ci', file));
   }
   const producer = await import(pathToFileURL(join(producerRoot, 'tooling/ci/react-product-acceptance.mjs')));

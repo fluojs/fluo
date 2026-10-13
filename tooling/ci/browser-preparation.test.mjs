@@ -1,12 +1,222 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { assertBrowserObservation, browserObservationPolicy, prepareBrowserCommand, runBrowserOwnedCommand } from './browser-preparation.mjs';
 import { productDomainPlan } from './react-product-acceptance.mjs';
+import { createCommandRunner } from '../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
+
+function evidenceFixture(t, prefix) {
+  const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();
+  mkdirSync(directory, { recursive: true });
+  const root = realpathSync(mkdtempSync(join(directory, prefix)));
+  if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
+  return root;
+}
+
+for (const path of ['browser', 'packed']) {
+  test(`command evidence: ${path} actual nonexistent executable -> original error after real close and complete receipt`, { timeout: 5000 }, async (t) => {
+    const parent = evidenceFixture(t, `fluo-spawn-error-${path}-`);
+    const root = join(parent, 'fresh');
+    const executable = join(parent, 'nonexistent-executable');
+    const args = ['spawn-error-case'];
+    const env = { EVIDENCE_CASE: 'spawn-error' };
+    const commands = [];
+    let terminal = '';
+    let originalError;
+    let actualClose;
+    let child;
+    assert.equal(existsSync(executable), false);
+    const runner = path === 'packed' ? createCommandRunner(root, commands, 'attempt-1') : null;
+    if (runner) {
+      t.after(() => runner.dispose());
+      const write = process.stdout.write.bind(process.stdout);
+      t.mock.method(process.stdout, 'write', (text, ...args) => {
+        if (typeof text === 'string' && text.startsWith('{"kind":"command-evidence"')) {
+          terminal += text;
+          return true;
+        }
+        return write(text, ...args);
+      });
+    }
+    const label = path === 'packed' ? 'missing-attempt-1' : 'missing';
+
+    await assert.rejects(path === 'packed'
+      ? runner.run('missing', args, parent, env, executable)
+      : runBrowserOwnedCommand({ id: 'missing', executable, args, env }, { cwd: parent, env: { ...process.env, ...env } }, {
+        evidence: { root, label, emit: (text) => { terminal += text; } },
+        onChild(value) {
+          child = value;
+          child.once('error', (error) => { originalError = error; });
+          child.once('close', (exitCode, signal) => { actualClose = { exitCode, signal }; });
+        },
+      }), (error) => {
+      assert.equal(error.code, 'ENOENT');
+      assert.equal(error.path, executable);
+      assert.deepEqual(error.spawnargs, args);
+      if (path === 'browser') {
+        assert.equal(error, originalError);
+        assert.deepEqual(actualClose, { exitCode: -2, signal: null });
+      }
+      return true;
+    });
+
+    const receiptPath = join(root, `${label}.command-receipt.json`);
+    assert.equal(existsSync(receiptPath), true, 'actual spawn error must finalize evidence before rejection');
+    const receipt = JSON.parse(readFileSync(receiptPath));
+    assert.equal(receipt.complete, true);
+    assert.equal(receipt.closed, true);
+    assert.equal(receipt.exit_code, -2);
+    assert.equal(receipt.signal, null);
+    assert.equal(receipt.cancelled, false);
+    assert.equal(receipt.executable, executable);
+    assert.deepEqual(receipt.args, args);
+    assert.equal(receipt.cwd, parent);
+    assert.deepEqual(receipt.env, env);
+    assert.equal(receipt.error.code, 'ENOENT');
+    assert.equal(receipt.error.path, executable);
+    assert.ok(receipt.duration_ms >= 0);
+    for (const name of ['stdout', 'stderr', 'log']) {
+      const bytes = readFileSync(receipt[name].path);
+      assert.equal(bytes.length, 0);
+      assert.equal(receipt[name].bytes, 0);
+      assert.equal(receipt[name].sha256, createHash('sha256').update(bytes).digest('hex'));
+    }
+    assert.ok(Buffer.byteLength(terminal) < 4096);
+    const bounded = JSON.parse(terminal);
+    assert.equal(bounded.kind, 'command-evidence');
+    assert.equal(bounded.receipt.path, receiptPath);
+    assert.equal(bounded.closed, true);
+    assert.equal(bounded.exit_code, -2);
+    if (child) {
+      assert.equal(child.stdout.listenerCount('data'), 0);
+      assert.equal(child.stderr.listenerCount('data'), 0);
+    }
+    if (runner) {
+      assert.equal(commands.length, 1);
+      assert.equal(commands[0].close, true);
+      assert.equal(commands[0].exit, -2);
+      assert.equal(commands[0].signal, null);
+      assert.equal(commands[0].evidence.receipt.path, receiptPath);
+    }
+  });
+}
+
+test('evidence roots: reused packed diagnostic root -> rejects before spawn and preserves bytes', (t) => {
+  const root = evidenceFixture(t, 'fluo-root-reuse-');
+  const originals = ['report.json', 'error-context.md', 'receipt.json', 'command.log'];
+  for (const path of originals) writeFileSync(join(root, path), `previous ${path}\n`);
+  let runner;
+
+  assert.throws(() => { runner = createCommandRunner(root, []); }, /evidence root/u);
+
+  runner?.dispose();
+  for (const path of originals) assert.equal(readFileSync(join(root, path), 'utf8'), `previous ${path}\n`);
+});
+
+test('evidence roots: two packed owners claim one empty root -> exclusive claim before either spawn', (t) => {
+  const parent = evidenceFixture(t, 'fluo-root-exclusive-');
+  const root = join(parent, 'fresh');
+  mkdirSync(root);
+  const runner = createCommandRunner(root, []);
+  t.after(() => runner.dispose());
+
+  assert.throws(() => createCommandRunner(root, []), /evidence root/u);
+});
+
+test('packed command evidence: fresh root and real stdout/stderr -> retained combined contract and raw refs', async (t) => {
+  const parent = evidenceFixture(t, 'fluo-packed-evidence-');
+  const commands = [];
+  const runner = createCommandRunner(join(parent, 'fresh'), commands, 'attempt-1');
+  t.after(() => runner.dispose());
+  const stdout = `${'O'.repeat(60_000)}PACKED_STDOUT_TAIL\n`;
+  const stderr = `${'E'.repeat(60_000)}PACKED_STDERR_TAIL\n`;
+
+  const diagnostics = await runner.run('large', ['-e',
+    `process.stdout.write('O'.repeat(60_000) + 'PACKED_STDOUT_TAIL\\n'); process.stderr.write('E'.repeat(60_000) + 'PACKED_STDERR_TAIL\\n');`],
+  parent, { PACKED_CASE: 'large' }, process.execPath);
+
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].close, true);
+  assert.equal(readFileSync(commands[0].evidence.stdout.path, 'utf8'), stdout);
+  assert.equal(readFileSync(commands[0].evidence.stderr.path, 'utf8'), stderr);
+  assert.equal(readFileSync(commands[0].log, 'utf8'), diagnostics);
+  assert.ok(diagnostics.includes('PACKED_STDOUT_TAIL'));
+  assert.ok(diagnostics.includes('PACKED_STDERR_TAIL'));
+});
+
+for (const mode of ['success', 'failure', 'cancellation']) {
+  test(`command evidence: ${mode} real large streams -> exact raw tailbytes and bounded terminal receipt`, async (t) => {
+    const parent = evidenceFixture(t, 'fluo-command-evidence-');
+    const root = join(parent, 'fresh');
+    const expected = { stdout: `${'O'.repeat(70_000)}STDOUT_TAIL\n`, stderr: `${'E'.repeat(70_000)}STDERR_TAIL\n` };
+    const controller = new AbortController();
+    let child;
+    let ready;
+    const command = { id: 'large', executable: process.execPath, env: { EVIDENCE_CASE: mode },
+      args: ['-e', `
+        ${mode === 'cancellation' ? `
+          process.on('SIGTERM', () => process.exit(0));
+          process.on('message', () => {});
+          let pending = 2;
+          const written = () => {
+            if (--pending === 0) process.send('ready');
+          };
+          process.stdout.write('O'.repeat(70_000) + 'STDOUT_TAIL\\n', written);
+          process.stderr.write('E'.repeat(70_000) + 'STDERR_TAIL\\n', written);
+        ` : `
+          process.stdout.write('O'.repeat(70_000) + 'STDOUT_TAIL\\n');
+          process.stderr.write('E'.repeat(70_000) + 'STDERR_TAIL\\n');
+          process.exitCode = ${mode === 'failure' ? 7 : 0};
+        `}
+      `] };
+    assert.ok(Buffer.byteLength(command.args[1]) < 4096, 'large output must be generated in the child, not embedded in argv');
+    let terminal = '';
+    const completed = runBrowserOwnedCommand(command, { cwd: parent, env: { ...process.env, ...command.env } }, {
+      signal: controller.signal, evidence: { root, label: 'large', emit: (text) => { terminal += text; } },
+      onChild(value) {
+        child = value;
+        if (mode === 'cancellation') {
+          ready = once(child, 'message', { signal: AbortSignal.timeout(5000) });
+        }
+      },
+    });
+    t.after(() => child?.kill('SIGKILL'));
+
+    if (mode === 'cancellation') {
+      const [message] = await ready;
+      assert.equal(message, 'ready');
+      controller.abort('SIGINT');
+    }
+    const outcome = await completed;
+
+    assert.ok(outcome.evidence, 'real owned execution must retain separate raw streams');
+    const receipt = JSON.parse(readFileSync(outcome.evidence.receipt.path));
+    for (const name of ['stdout', 'stderr']) {
+      const bytes = readFileSync(receipt[name].path);
+      assert.equal(bytes.toString(), expected[name]);
+      assert.equal(receipt[name].bytes, Buffer.byteLength(expected[name]));
+      assert.equal(receipt[name].sha256, createHash('sha256').update(bytes).digest('hex'));
+    }
+    assert.equal(receipt.closed, true);
+    assert.equal(receipt.exit_code, mode === 'failure' ? 7 : 0);
+    assert.equal(receipt.signal, null);
+    assert.equal(receipt.cancelled, mode === 'cancellation');
+    assert.equal(receipt.executable, command.executable);
+    assert.deepEqual(receipt.args, command.args);
+    assert.equal(receipt.cwd, parent);
+    assert.deepEqual(receipt.env, command.env);
+    assert.ok(Buffer.byteLength(terminal) < 4096);
+    assert.ok(terminal.includes(outcome.evidence.receipt.path));
+    assert.ok(!terminal.includes('STDOUT_TAIL'));
+    await assert.rejects(runBrowserOwnedCommand(command, { cwd: parent, env: process.env },
+      { evidence: { root, label: 'again' }, onChild() { assert.fail('reused evidence root spawned'); } }), /evidence root/u);
+  });
+}
 
 function preparedFixture(t, id = 'fault-browser') {
   const root = mkdtempSync(join(tmpdir(), 'fluo-browser-preparation-'));

@@ -27,16 +27,22 @@ import {
 const head = "a".repeat(40);
 const mergeCommit = "b".repeat(40);
 const laneId = "retro-test";
-const fixture = (t) => {
-	const root = mkdtempSync(resolve(tmpdir(), "retrospective-lane-"));
-	t.after(() => rmSync(root, { recursive: true, force: true }));
+const fixture = (t, completeCi = false) => {
+	const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();
+	mkdirSync(directory, { recursive: true });
+	const root = mkdtempSync(resolve(directory, "retrospective-lane-"));
+	if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
+	if (completeCi) recordCiSnapshot(root, laneId, 1, ciRun(), [ciJob()]);
 	return root;
 };
 const snapshots = [{
 	issue: 1,
 	decision: { action: "done" },
 	obs: {
-		pr: { number: 10, headSha: head, mergeCommit },
+		pr: { number: 10, headSha: head, mergeCommit, ciRuns: [{
+			id: 20, attempt: 1, head, workflow: ".github/workflows/ci.yml",
+			status: "completed", conclusion: "failure",
+		}] },
 		facts: {},
 		attempts: {},
 	},
@@ -79,6 +85,60 @@ const ciJob = (attempt = 1, conclusion = "failure") => ({
 	completed_at: "2026-10-08T01:03:00Z",
 	html_url: "https://github.com/fluojs/fluo/actions/runs/20/job/31",
 	steps: [{ number: 1, name: "Execute task", conclusion }],
+});
+
+test("final CI preparation: missing final run collection -> no retrospective dispatch", (t) => {
+	const root = fixture(t);
+
+	const request = retrospectiveRequest(root, laneId, snapshots);
+
+	assert.equal(request.action, "collect-ci");
+	assert.deepEqual(request.issues, [1]);
+});
+
+for (const defect of ["missing-observation", "old-head", "old-attempt", "incomplete-jobs", "tampered-event"]) {
+	test(`final CI preparation: ${defect} -> collection required or integrity rejection`, (t) => {
+		const root = fixture(t);
+		const observed = structuredClone(snapshots);
+		let run = ciRun();
+		let job = ciJob();
+		if (defect === "missing-observation") delete observed[0].obs.pr.ciRuns;
+		if (defect === "old-head") run = { ...run, head_sha: "c".repeat(40) };
+		if (defect === "old-attempt") observed[0].obs.pr.ciRuns[0].attempt = 2;
+		if (defect === "incomplete-jobs") job = { ...job, status: "in_progress", conclusion: null };
+		const stored = recordCiSnapshot(root, laneId, 1, run, [job]);
+		if (defect === "tampered-event") {
+			const path = stored.at(-1).path;
+			const event = JSON.parse(readFileSync(path));
+			event.data.complete = true;
+			event.data.run.attempt = 2;
+			writeFileSync(path, JSON.stringify(event));
+		}
+
+		if (defect === "tampered-event") assert.throws(() => retrospectiveRequest(root, laneId, observed), /Invalid retrospective/u);
+		else assert.equal(retrospectiveRequest(root, laneId, observed).action, "collect-ci");
+	});
+}
+
+test("final CI preparation: recollected final attempt -> unblocks without losing failures or inventing duration", (t) => {
+	const root = fixture(t, true);
+	const observed = structuredClone(snapshots);
+	observed[0].obs.pr.ciRuns[0] = { ...observed[0].obs.pr.ciRuns[0], attempt: 2, conclusion: "success" };
+	assert.equal(retrospectiveRequest(root, laneId, observed).action, "collect-ci");
+	const run = { ...ciRun(2), conclusion: "success", run_started_at: "2026-10-08T01:01:00Z" };
+	const stored = recordCiSnapshot(root, laneId, 1, run, [ciJob(2, "success")]);
+	const bytes = readFileSync(stored.at(-1).path);
+
+	const request = retrospectiveRequest(root, laneId, observed);
+
+	assert.equal(request.action, "retro");
+	recordCiSnapshot(root, laneId, 1, run, [ciJob(2, "success")]);
+	assert.deepEqual(readFileSync(stored.at(-1).path), bytes);
+	const events = readRetroEvents(root, laneId);
+	assert.equal(events.filter((event) => event.data.conclusion === "success").length, 1);
+	assert.equal(events.find((event) => event.data.conclusion === "success").data.elapsedMs, 120000);
+	assert.ok(events.some((event) => event.data.job?.conclusion === "failure"));
+	assert.equal(retrospectiveEvidence(root, laneId, observed).ciFailurePatterns[0].failures, 1);
 });
 
 test("raw reviewer blockers remain immutable after PASS and deduplicate replayed input", (t) => {
@@ -210,7 +270,7 @@ test("CI failures can be retained before the whole run settles without fabricati
 });
 
 test("lane retrospective waits for all original execution decisions and deduplicates a completed merge set", (t) => {
-	const root = fixture(t);
+	const root = fixture(t, true);
 	const pending = [...snapshots, {
 		issue: 2,
 		decision: { action: "cleanup" },
@@ -253,7 +313,7 @@ test("lane retrospective waits for all original execution decisions and deduplic
 });
 
 test("reports reject stale subjects, invented references and invented total elapsed time", (t) => {
-	const root = fixture(t);
+	const root = fixture(t, true);
 	const event = recordRetroEvent(root, laneId, 1, "incident", {
 		command: "node --test",
 		exitCode: 1,
@@ -284,7 +344,7 @@ test("reports reject stale subjects, invented references and invented total elap
 });
 
 test("a Markdown write failure does not publish a completed report marker", (t) => {
-	const root = fixture(t);
+	const root = fixture(t, true);
 	const event = recordRetroEvent(root, laneId, 1, "incident", {
 		exitCode: 1,
 	});
@@ -302,7 +362,7 @@ test("a Markdown write failure does not publish a completed report marker", (t) 
 });
 
 test("improvement recommendations are retained without editing the target workflow", (t) => {
-	const root = fixture(t);
+	const root = fixture(t, true);
 	const target = resolve(root, "workflow.json");
 	writeFileSync(target, JSON.stringify({ enabled: true }));
 	const before = readFileSync(target);
@@ -332,7 +392,8 @@ test("improvement recommendations are retained without editing the target workfl
 
 test("missing history and API collection gaps require explicitly partial analysis", (t) => {
 	const root = fixture(t);
-	const request = retrospectiveRequest(root, laneId, snapshots);
+	let request = retrospectiveRequest(root, laneId, snapshots);
+	assert.equal(request.action, "collect-ci");
 	assert.throws(
 		() =>
 			recordRetrospective(root, request, {
@@ -341,6 +402,8 @@ test("missing history and API collection gaps require explicitly partial analysi
 			}),
 		TypeError,
 	);
+	recordCiSnapshot(root, laneId, 1, ciRun(), [ciJob()]);
+	request = retrospectiveRequest(root, laneId, snapshots);
 	const gap = recordRetroEvent(root, laneId, 1, "gap", {
 		code: "ci-unavailable",
 	});
@@ -378,7 +441,7 @@ test("tampered observations fail validation instead of becoming retrospective ev
 });
 
 test("recording and report analysis leave the execution ledger unchanged", (t) => {
-	const root = fixture(t);
+	const root = fixture(t, true);
 	const directory = resolve(root, ".omo/lanes-v4");
 	mkdirSync(directory, { recursive: true });
 	const lane = {
@@ -414,14 +477,14 @@ test("recording and report analysis leave the execution ledger unchanged", (t) =
 		JSON.stringify({ verdict_signal: "BLOCK" }),
 	]);
 	assert.deepEqual(readFileSync(path), before);
-	const event = readRetroEvents(root, laneId)[0];
+	const event = readRetroEvents(root, laneId).find((entry) => entry.kind === "review");
 	const request = retrospectiveRequest(root, laneId, snapshots);
 	recordRetrospective(root, request, report(request, event.eventId));
 	assert.deepEqual(readFileSync(path), before);
 });
 
 test("actual lane-end CLI generates one report and preserves the execution file", (t) => {
-	const root = fixture(t);
+	const root = fixture(t, true);
 	const path = resolve(root, "lane.json");
 	writeFileSync(
 		path,
@@ -450,7 +513,7 @@ test("actual lane-end CLI generates one report and preserves the execution file"
 		`#!${process.execPath}
 const args=process.argv.slice(2);
 const pr={number:10,state:'MERGED',headRefOid:'${head}',mergeCommit:{oid:'${mergeCommit}'},mergedAt:'2026-10-08T02:00:00Z',mergeable:'MERGEABLE',statusCheckRollup:[]};
-console.log(JSON.stringify(args[0]==='pr'?pr:{state:'CLOSED',title:'fixture',body:''}));
+console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON.stringify(ciRun())}]}]:args[0]==='pr'?pr:{state:'CLOSED',title:'fixture',body:''}));
 `,
 		{ mode: 0o755 },
 	);
@@ -498,7 +561,7 @@ console.log(JSON.stringify(args[0]==='pr'?pr:{state:'CLOSED',title:'fixture',bod
 			line.startsWith("RETRO-READY ")
 		),
 	);
-	assert.equal(invoke("retro-evidence").events.length, 1);
+	assert.equal(invoke("retro-evidence").events.length, 3);
 	const analysis = resolve(root, "analysis.json");
 	writeFileSync(analysis, JSON.stringify(report(request, event.eventId)));
 	const saved = invoke("retro-report", ["--value-file", analysis]);

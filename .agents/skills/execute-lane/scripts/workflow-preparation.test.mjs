@@ -8,14 +8,17 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { prepareReviewInput, prepareSourceFootprint, sourceFootprintCategories } from './workflow-preparation.mjs';
+import { createCommandRunner } from '../../../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const git = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 const modulePath = fileURLToPath(new URL('./workflow-preparation.mjs', import.meta.url));
 
 function fixture(t) {
-  const root = mkdtempSync(join(tmpdir(), 'fluo-workflow-preparation-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();
+  mkdirSync(directory, { recursive: true });
+  const root = mkdtempSync(join(directory, 'fluo-workflow-preparation-'));
+  if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
   git(root, 'init', '-q', '-b', 'main');
   git(root, 'config', 'user.name', 'Preparation Test');
   git(root, 'config', 'user.email', 'preparation@example.invalid');
@@ -96,6 +99,115 @@ test('review preparation: real merged graph -> one identical authenticated input
   assert.deepEqual(result.reviewers.map((entry) => entry.reviewer), ['contract', 'code', 'verification']);
   for (const reviewer of result.reviewers) assert.equal(reviewer.input, result.common);
 });
+
+test('review readable index: retained focused receipts -> authenticated decoder free exact results and unknown counts', (t) => {
+  const value = fixture(t);
+
+  const result = prepareReviewInput(value.input);
+
+  assert.ok(result.common.readable_index, 'reviewers need a readable authenticated index');
+  const index = result.common.readable_index;
+  assert.equal(index.head_sha, value.head);
+  assert.equal(index.tree_sha, value.tree);
+  assert.equal(index.contract_sha256, value.input.contract.sha256);
+  assert.equal(index.policy_sha256, value.input.policy.sha256);
+  assert.equal(index.commands[0].command, 'node focused check');
+  assert.equal(index.commands[0].test_results, null);
+  assert.deepEqual(index.commands[0].packed_commands, []);
+  assert.equal(index.commands[0].receipt.sha256, value.input.evidence[0].receipt.sha256);
+  assert.equal(index.commands[0].stdout.sha256, value.receipt.stdout.sha256);
+  assert.ok(index.sha256);
+  for (const reviewer of result.reviewers) assert.equal(reviewer.input.readable_index, index);
+});
+
+async function packedIndexFixture(t) {
+  const value = fixture(t);
+  const root = join(value.input.artifact_root, 'packed');
+  const commands = [];
+  const runner = createCommandRunner(root, commands, 'actual-1');
+  t.after(() => runner.dispose());
+  const testPath = join(value.input.artifact_root, 'actual.test.mjs');
+  writeFileSync(testPath, `import test from 'node:test'; import assert from 'node:assert/strict';
+test('actual check', () => assert.equal(1 + 1, 2));\n`);
+  await runner.run('actual-tests', ['--test', '--test-reporter=tap', testPath], value.input.artifact_root,
+    { NODE_TEST_CONTEXT: undefined }, process.execPath);
+  value.receipt.stdout = value.store('focused.stdout', readFileSync(commands[0].evidence.stdout.path, 'utf8'));
+  value.receipt.packed_receipt = value.store('packed/pack-release.json', { head: value.head,
+    source: { head: value.head, tree: value.tree }, status: 'passed', commands });
+  value.input.evidence[0].receipt = value.store('focused.json', value.receipt);
+  return value;
+}
+
+test('review readable index: real packed command and Node results -> exposes actual inventory without decoder', async (t) => {
+  const value = await packedIndexFixture(t);
+
+  const { common } = prepareReviewInput(value.input);
+
+  assert.ok(common.readable_index.commands[0].test_results, 'actual Node subprocess must report its executed tests');
+  assert.equal(common.readable_index.commands[0].test_results.summary.tests, 1);
+  assert.equal(common.readable_index.commands[0].test_results.summary.pass, 1);
+  const packed = common.readable_index.commands[0].packed_commands;
+  assert.equal(packed.length, 1);
+  assert.equal(packed[0].label, 'actual-tests');
+  assert.equal(packed[0].command[0], process.execPath);
+  assert.equal(packed[0].exit_code, 0);
+  assert.equal(packed[0].signal, null);
+  assert.equal(packed[0].test_results.summary.tests, 1);
+  assert.ok(packed[0].duration_ms >= 0);
+  const supplied = value.store('readable-index.json', common.readable_index);
+  assert.deepEqual(prepareReviewInput({ ...value.input, readable_index: supplied }).common.readable_index, common.readable_index);
+});
+
+for (const defect of ['missing', 'truncated', 'altered', 'rebound-count', 'stale-head', 'rebound-policy', 'rebound-contract']) {
+  test(`review readable index: ${defect} retained index -> input preparation rejection`, (t) => {
+    const value = fixture(t);
+    const index = prepareReviewInput(value.input).common.readable_index;
+    value.input.readable_index = value.store('readable-index.json', index);
+    if (defect === 'missing') rmSync(join(value.input.artifact_root, 'readable-index.json'));
+    if (defect === 'truncated') writeFileSync(join(value.input.artifact_root, 'readable-index.json'), '{}');
+    if (defect === 'altered') {
+      const bytes = readFileSync(join(value.input.artifact_root, 'readable-index.json'));
+      bytes[bytes.length - 3] ^= 1;
+      writeFileSync(join(value.input.artifact_root, 'readable-index.json'), bytes);
+    }
+    if (defect.startsWith('rebound') || defect === 'stale-head') {
+      if (defect === 'rebound-count') index.commands[0].test_results = { summary: { tests: 99 } };
+      else index[defect === 'stale-head' ? 'head_sha' : defect === 'rebound-policy' ? 'policy_sha256' : 'contract_sha256'] = 'd'.repeat(defect === 'stale-head' ? 40 : 64);
+      value.input.readable_index = value.store('readable-index.json', index);
+    }
+
+    assert.throws(() => prepareReviewInput(value.input), (error) => {
+      assert.equal(error.kind, 'input-preparation');
+      assert.equal(error.fix_back_eligible, false);
+      assert.match(error.message, /readable index/u);
+      return true;
+    });
+  });
+}
+
+for (const defect of ['missing-packed', 'truncated-packed', 'rebound-command', 'stale-packed-head', 'altered-raw']) {
+  test(`review readable index: ${defect} packed source -> authenticated source rejection`, async (t) => {
+    const value = await packedIndexFixture(t);
+    const path = join(value.input.artifact_root, 'packed/pack-release.json');
+    const packed = JSON.parse(readFileSync(path));
+    if (defect === 'missing-packed') rmSync(path);
+    if (defect === 'truncated-packed') writeFileSync(path, '{}');
+    if (defect === 'rebound-command' || defect === 'stale-packed-head') {
+      if (defect === 'rebound-command') packed.commands[0].command = ['pnpm', 'fiction'];
+      else packed.head = 'd'.repeat(40);
+      value.receipt.packed_receipt = value.store('packed/pack-release.json', packed);
+      value.input.evidence[0].receipt = value.store('focused.json', value.receipt);
+    }
+    if (defect === 'altered-raw') writeFileSync(packed.commands[0].evidence.stdout.path, 'changed raw bytes');
+
+    assert.throws(() => prepareReviewInput(value.input), (error) => {
+      assert.equal(error.kind, 'input-preparation');
+      assert.equal(error.fix_back_eligible, false);
+      assert.match(error.message, /packed/u);
+      return true;
+    });
+  });
+}
 
 const defects = [
   ['wrong-checkout', (v) => { v.input.checkout = v.root; git(v.root, 'checkout', '-q', 'main'); }, /wrong checkout\/head/u],
