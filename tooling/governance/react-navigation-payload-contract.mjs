@@ -9,6 +9,7 @@ const serverPath = 'packages/react/src/page-result.ts';
 const transferPath = 'packages/react/src/navigation-payload.ts';
 const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
+const prefetchPath = 'packages/react/src/client/prefetch.ts';
 const formStorePath = 'packages/react/src/client/form-store.ts';
 const formPath = 'packages/react/src/client/form.ts';
 const formTransportPath = 'packages/react/src/client/form-transport.ts';
@@ -51,6 +52,11 @@ export function enforceReactNavigationPayloadContract(
   const transfer = ts.createSourceFile(transferPath, readText(transferPath), ts.ScriptTarget.Latest, true);
   const metadataSource = ts.createSourceFile(metadataPath, readText(metadataPath), ts.ScriptTarget.Latest, true);
   const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
+  const prefetch = ts.createSourceFile(prefetchPath, readText(prefetchPath), ts.ScriptTarget.Latest, true);
+  const prefetchFactory = findNode(prefetch, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'createClientPrefetchStore');
+  const prefetchOperations = prefetchFactory && findNode(prefetchFactory, (node) =>
+    ts.isReturnStatement(node) && node.expression && ts.isObjectLiteralExpression(node.expression));
   const formStore = ts.createSourceFile(formStorePath, readText(formStorePath), ts.ScriptTarget.Latest, true);
   const form = ts.createSourceFile(formPath, readText(formPath), ts.ScriptTarget.Latest, true);
   const formTransport = ts.createSourceFile(formTransportPath, readText(formTransportPath), ts.ScriptTarget.Latest, true);
@@ -337,8 +343,18 @@ export function enforceReactNavigationPayloadContract(
     ts.isVariableDeclaration(node) && node.name.getText(store) === 'navigateDocument');
   const permission = navigation && findNode(navigation, (node) =>
     ts.isCallExpression(node) && node.expression.getText(store) === 'requestPermission');
+  const prefetchOwner = findNode(store, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'prefetches');
+  const prefetchImport = findNode(store, (node) =>
+    ts.isImportDeclaration(node) && node.moduleSpecifier.getText(store) === "'./prefetch.js'"
+    && findNode(node, (child) => ts.isImportSpecifier(child) && child.name.text === 'createClientPrefetchStore'));
+  const adoptPrefetch = prefetchOperations && findNode(prefetchOperations, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(prefetch) === 'adopt');
+  const markAdopted = adoptPrefetch && findNode(adoptPrefetch, (node) =>
+    ts.isBinaryExpression(node) && node.getText(prefetch) === 'active.adopted = true');
   const adoption = navigation && findNode(navigation, (node) =>
-    ts.isBinaryExpression(node) && node.getText(store) === 'activePrefetch.adopted = true');
+    ts.isCallExpression(node) && node.expression.getText(store) === 'prefetches.adopt'
+    && node.arguments[0]?.getText(store) === 'key');
   const cancelFormsForNavigation = navigation && findNode(navigation, (node) =>
     ts.isCallExpression(node) && node.expression.getText(store) === 'cancelForms');
   const historyPermission = findNode(history, (node) =>
@@ -360,7 +376,11 @@ export function enforceReactNavigationPayloadContract(
   const capturedPermission = findNode(store, (node) =>
     ts.isPropertyAssignment(node) && node.name.getText(store) === 'navigationCurrent'
     && node.initializer.getText(store) === '() => expectedPermission === permissionGeneration');
-  if (!permission || !adoption || !cancelFormsForNavigation
+  if (!prefetchImport || !prefetchOwner?.initializer || !ts.isCallExpression(prefetchOwner.initializer)
+    || prefetchOwner.initializer.expression.getText(store) !== 'createClientPrefetchStore'
+    || prefetchOwner.initializer.arguments[0]?.getText(store) !== '() => environment'
+    || prefetchOwner.initializer.arguments[1]?.getText(store) !== '() => sessionGeneration'
+    || !markAdopted || !permission || !adoption || !cancelFormsForNavigation
     || permission.end >= adoption.pos || permission.end >= cancelFormsForNavigation.pos
     || !historyPermission || !historyLoad || historyPermission.end >= historyLoad.pos
     || !detachDecision || !abortDecision || detachDecision.end >= abortDecision.pos
@@ -431,7 +451,7 @@ export function enforceReactNavigationPayloadContract(
       ts.isNewExpression(node) && node.expression.getText(store) === 'URL'
       && node.arguments?.[0]?.getText(store) === 'browser.currentHref()')
     || !findNode(refreshBody, (node) =>
-      ts.isCallExpression(node) && node.expression.getText(store) === 'discardPrefetches')
+      ts.isCallExpression(node) && node.expression.getText(store) === 'prefetches.discard')
     || !findNode(refreshBody, (node) =>
       ts.isCallExpression(node) && node.expression.getText(store) === 'cancelPending')
     || !successCommit || successCommit.pos <= approvalGuard.end
@@ -447,16 +467,21 @@ export function enforceReactNavigationPayloadContract(
     ts.isCallExpression(node) && node.expression.getText(store) === 'loadAndCommit');
   const formReadType = formApproval && findNode(formApproval, (node) =>
     ts.isVariableDeclaration(node) && node.name.getText(store) === 'type');
+  const invalidatePrefetch = prefetchOperations && findNode(prefetchOperations, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(prefetch) === 'invalidate');
+  const clearPrefetchCache = invalidatePrefetch && findNode(invalidatePrefetch, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(prefetch) === 'cached.clear');
+  const discardPrefetch = invalidatePrefetch && findNode(invalidatePrefetch, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(prefetch) === 'discard');
   if (!formRead || formRead.arguments[0]?.getText(store) !== 'browser'
     || formRead.arguments[1]?.getText(store) !== 'destination'
     || formRead.arguments[2]?.getText(store) !== 'type'
     || formRead.arguments[3]?.getText(store) !== 'undefined'
     || formRead.arguments[4]?.kind !== ts.SyntaxKind.TrueKeyword
     || formReadType?.initializer?.getText(store) !== "followUp === 'refresh' ? 'refresh' : 'push'"
+    || !clearPrefetchCache || !discardPrefetch || clearPrefetchCache.end >= discardPrefetch.pos
     || !findNode(formApproval, (node) =>
-      ts.isCallExpression(node) && node.expression.getText(store) === 'cached.clear')
-    || !findNode(formApproval, (node) =>
-      ts.isCallExpression(node) && node.expression.getText(store) === 'discardPrefetches')) {
+      ts.isCallExpression(node) && node.expression.getText(store) === 'prefetches.invalidate')) {
     throw new Error('React navigation form follow-up must reuse fresh HTTP approval, not a cached or alternate destination path.');
   }
   const sessionBarrier = findNode(store, (node) =>
@@ -471,12 +496,33 @@ export function enforceReactNavigationPayloadContract(
     ts.isBinaryExpression(node) && node.getText(store) === 'pending = null');
   const abortOld = sessionBarrier && findNode(sessionBarrier, (node) =>
     ts.isCallExpression(node) && node.expression.getText(store) === 'oldPending?.controller.abort');
+  const detachPrefetch = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'oldPrefetch'
+    && node.initializer && ts.isCallExpression(node.initializer) && node.initializer.expression.getText(store) === 'prefetches.detach');
+  const detachPrefetchOwner = prefetchOperations && findNode(prefetchOperations, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(prefetch) === 'detach');
+  const clearPendingPrefetch = detachPrefetchOwner && findNode(detachPrefetchOwner, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(prefetch) === 'prefetched.clear');
+  const clearDetachedCache = detachPrefetchOwner && findNode(detachPrefetchOwner, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(prefetch) === 'cached.clear');
+  const returnDetachedControllers = detachPrefetchOwner && findNode(detachPrefetchOwner, (node) =>
+    ts.isReturnStatement(node) && node.expression?.getText(prefetch) === 'controllers');
+  const abortPrefetch = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isForOfStatement(node) && node.expression.getText(store) === 'oldPrefetch'
+    && findNode(node.statement, (child) =>
+      ts.isCallExpression(child) && child.expression.getText(store) === 'controller.abort'));
   const formSession = findNode(formStore, (node) =>
     ts.isCallExpression(node) && node.expression.getText(formStore) === 'environment.sessionChanged');
   const formReadAfterSave = findNode(formStore, (node) =>
     ts.isCallExpression(node) && node.expression.getText(formStore) === 'read'
     && node.arguments[0]?.getText(formStore) === 'mutation');
   if (!advanceSession || !revokeSnapshot || !detachPending || !abortOld
+    || !detachPrefetch || !clearPendingPrefetch || !clearDetachedCache || !returnDetachedControllers || !abortPrefetch
+    || clearPendingPrefetch.end >= returnDetachedControllers.pos || clearDetachedCache.end >= returnDetachedControllers.pos
+    || findNode(detachPrefetchOwner, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(prefetch).endsWith('.abort'))
+    || detachPrefetch.end >= abortOld.pos || detachPrefetch.end >= abortPrefetch.pos
+    || revokeSnapshot.end >= abortPrefetch.pos || advanceSession.end >= detachPrefetch.pos
     || detachPending.end >= abortOld.pos || revokeSnapshot.end >= abortOld.pos
     || !findNode(sessionBarrier, (node) =>
       ts.isBinaryExpression(node) && node.getText(store) === 'expected !== sessionGeneration')

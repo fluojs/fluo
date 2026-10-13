@@ -11,6 +11,7 @@ const serverPath = 'packages/react/src/page-result.ts';
 const transferPath = 'packages/react/src/navigation-payload.ts';
 const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
+const prefetchPath = 'packages/react/src/client/prefetch.ts';
 const formStorePath = 'packages/react/src/client/form-store.ts';
 const formPath = 'packages/react/src/client/form.ts';
 const formTransportPath = 'packages/react/src/client/form-transport.ts';
@@ -25,6 +26,7 @@ const sources = new Map([
   [transferPath, readFileSync(resolve(repoRoot, transferPath), 'utf8')],
   [metadataPath, readFileSync(resolve(repoRoot, metadataPath), 'utf8')],
   [storePath, readFileSync(resolve(repoRoot, storePath), 'utf8')],
+  [prefetchPath, readFileSync(resolve(repoRoot, prefetchPath), 'utf8')],
   [formStorePath, readFileSync(resolve(repoRoot, formStorePath), 'utf8')],
   [formPath, readFileSync(resolve(repoRoot, formPath), 'utf8')],
   [formTransportPath, readFileSync(resolve(repoRoot, formTransportPath), 'utf8')],
@@ -83,7 +85,11 @@ it.each([
   [storePath, 'requestPermission(\n      { destination: destinationUrl, type }', 'Boolean(\n      { destination: destinationUrl, type }'],
   [historyPath, 'handlers.permission(activated)', 'false'],
   [storePath, 'expectedSession === sessionGeneration', 'true'],
-  [storePath, 'activePrefetch.adopted = true', 'activePrefetch.adopted = false'],
+  [prefetchPath, 'active.adopted = true', 'active.adopted = false'],
+  [storePath, 'prefetches.adopt(key)', 'undefined'],
+  [storePath, 'createClientPrefetchStore(() => environment, () => sessionGeneration)',
+    'createClientPrefetchStore(() => environment, () => 0)'],
+  [prefetchPath, '  return {\n    keyFor,', '  const inert = {\n    keyFor,'],
   [guardPath, 'store.registerNavigationGuard(() => current.current)', 'store.subscribe(() => {})'],
   [storePath, 'navigationCurrent: () => expectedPermission === permissionGeneration', 'navigationCurrent: () => true'],
   [formStorePath, 'navigationCurrent?.() === false', 'false'],
@@ -112,6 +118,9 @@ it.each([
 it.each([
   [storePath, '++sessionGeneration', 'sessionGeneration'],
   [storePath, 'oldPending?.controller.abort();', 'oldPending?.controller.signal;'],
+  [storePath, 'const oldPrefetch = prefetches.detach();', 'const oldPrefetch = [];'],
+  [prefetchPath, 'prefetched.clear();', 'prefetched.size;'],
+  [prefetchPath, '      prefetched.clear();', '      controllers.forEach((controller) => controller.abort());\n      prefetched.clear();'],
   [formStorePath, 'environment.sessionChanged(mutation.session)', 'Promise.resolve(true)'],
   [experiencePath, "revoked ? createElement('section'", "false ? createElement('section'"],
 ])('rejects a bypass of session ownership and revoked initial-page fallback in %s', (path, original, changed) => {
@@ -126,18 +135,20 @@ it.each([
 });
 
 it.each([
-  ['loadAndCommit(browser, destination, type, undefined, true, origin);',
+  [storePath, 'loadAndCommit(browser, destination, type, undefined, true, origin);',
     'loadAndCommit(browser, destination, type);'],
-  ['      cached.clear();\n      discardPrefetches();',
-    '      discardPrefetches();'],
-  ["const type = followUp === 'refresh' ? 'refresh' : 'push';",
+  [prefetchPath, '      cached.clear();\n      discard();',
+    '      discard();'],
+  [storePath, "const type = followUp === 'refresh' ? 'refresh' : 'push';",
     "const type = 'replace';"],
-] as const)('rejects a form follow-up bypass of existing fresh HTTP approval (%s)', (original, changed) => {
-  const source = sources.get(storePath);
+  [storePath, '      prefetches.invalidate();\n      if (browser.load',
+    '      prefetches.discard();\n      if (browser.load'],
+] as const)('rejects a form follow-up bypass of existing fresh HTTP approval (%s)', (path, original, changed) => {
+  const source = sources.get(path);
   const variant = source?.replace(original, changed) ?? '';
   expect(variant).not.toBe(source);
-  expect(() => enforceReactNavigationPayloadContract((path: string) =>
-    path === storePath ? variant : sources.get(path) ?? '',
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
   )).toThrow(/React navigation form follow-up/u);
 });
 
