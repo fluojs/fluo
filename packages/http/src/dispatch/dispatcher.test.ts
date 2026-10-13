@@ -3,6 +3,8 @@ import { Container } from '@fluojs/di';
 import { IsNumber, IsString, MinLength, ValidateNested } from '@fluojs/validation';
 import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation/mapped-types';
 import { describe, expect, it, vi } from 'vitest';
+import { RequestAbortedError } from '../errors.js';
+import { NotAcceptableException } from '../exceptions.js';
 import type {
   CallHandler,
   FrameworkRequest,
@@ -43,11 +45,9 @@ import {
   UseGuards,
   UseInterceptors,
 } from '../index.js';
-import { RequestAbortedError } from '../errors.js';
-import { NotAcceptableException } from '../exceptions.js';
+import { registerFrameworkResponseWriter } from '../internal.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
-import { registerFrameworkResponseWriter } from '../internal.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
   return {
@@ -476,7 +476,7 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(2);
   });
 
-  it('lazily promotes manual RequestContext container access to a request scope', async () => {
+  it.each(['dispatch', 'native'] as const)('lazily promotes manual RequestContext container access to a request scope during %s dispatch', async (mode) => {
     let created = 0;
 
     @ScopeDecorator('request')
@@ -501,24 +501,35 @@ describe('dispatcher runtime', () => {
     }
 
     const root = new CountingContainer().register(RequestStore, ManualContextController);
+    const handlerMapping = createHandlerMapping([{ controllerToken: ManualContextController }]);
     const dispatcher = createDispatcher({
-      handlerMapping: createHandlerMapping([{ controllerToken: ManualContextController }]),
+      handlerMapping,
       rootContainer: root,
     });
 
-    const firstResponse = createResponse();
-    await dispatcher.dispatch(createRequest('/manual-context', 'GET'), firstResponse);
+    const responses = [];
+    for (let index = 0; index < 2; index += 1) {
+      const request = createRequest('/manual-context', 'GET');
+      const response = createResponse();
+      if (mode === 'native') {
+        const match = handlerMapping.match(request);
+        if (!match || !dispatcher.dispatchNativeRoute) {
+          throw new Error('Expected native route dispatch support.');
+        }
+        expect(await dispatcher.dispatchNativeRoute(match, request, response)).toBe(true);
+      } else {
+        await dispatcher.dispatch(request, response);
+      }
+      responses.push(response);
+    }
 
-    const secondResponse = createResponse();
-    await dispatcher.dispatch(createRequest('/manual-context', 'GET'), secondResponse);
-
-    expect(firstResponse.body).toEqual({ store: 1 });
-    expect(secondResponse.body).toEqual({ store: 2 });
+    expect(responses[0].body).toEqual({ store: 1 });
+    expect(responses[1].body).toEqual({ store: 2 });
     expect(root.requestScopeCreateCount).toBe(2);
     expect(root.requestScopeDisposeCount).toBe(2);
   });
 
-  it('does not create a late request scope when captured RequestContext.container is read after dispatch', async () => {
+  it.each(['dispatch', 'native'] as const)('does not create a late request scope when captured RequestContext.container is read after %s dispatch', async (mode) => {
     let capturedContext: RequestContext | undefined;
 
     @ScopeDecorator('request')
@@ -534,19 +545,31 @@ describe('dispatcher runtime', () => {
     }
 
     const root = new CountingContainer().register(RequestStore, CapturedContextController);
+    const handlerMapping = createHandlerMapping([{ controllerToken: CapturedContextController }]);
     const dispatcher = createDispatcher({
-      handlerMapping: createHandlerMapping([{ controllerToken: CapturedContextController }]),
+      handlerMapping,
       rootContainer: root,
     });
     const response = createResponse();
+    const request = createRequest('/captured-context', 'GET');
 
-    await dispatcher.dispatch(createRequest('/captured-context', 'GET'), response);
+    if (mode === 'native') {
+      const match = handlerMapping.match(request);
+      if (!match || !dispatcher.dispatchNativeRoute) {
+        throw new Error('Expected native route dispatch support.');
+      }
+      expect(await dispatcher.dispatchNativeRoute(match, request, response)).toBe(true);
+    } else {
+      await dispatcher.dispatch(request, response);
+    }
 
     expect(response.body).toEqual({ ok: true });
-    expect(capturedContext).toBeDefined();
+    if (!capturedContext) {
+      throw new Error('Expected a captured request context.');
+    }
     expect(root.requestScopeCreateCount).toBe(0);
 
-    const lateContainer = capturedContext!.container;
+    const lateContainer = capturedContext.container;
 
     expect(lateContainer).toBe(root);
     expect(root.requestScopeCreateCount).toBe(0);

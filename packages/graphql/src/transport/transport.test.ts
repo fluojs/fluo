@@ -237,6 +237,10 @@ describe('writeFetchResponse', () => {
     const stream = frameworkResponse.stream;
     let closeListener: (() => void) | undefined;
     const removeCloseListener = vi.fn();
+    let notifyCloseListenerRegistered: (() => void) | undefined;
+    const closeListenerRegistered = new Promise<void>((resolve) => {
+      notifyCloseListenerRegistered = resolve;
+    });
 
     if (!stream) {
       throw new Error('Expected stream mock to exist.');
@@ -244,12 +248,13 @@ describe('writeFetchResponse', () => {
 
     stream.onClose = vi.fn((listener: () => void) => {
       closeListener = listener;
+      notifyCloseListenerRegistered?.();
       return removeCloseListener;
     });
 
     const writePromise = writeFetchResponse(fetchResponse, frameworkResponse);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await closeListenerRegistered;
 
     Reflect.set(stream, 'closed', true);
     closeListener?.();
