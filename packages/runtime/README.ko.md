@@ -32,7 +32,7 @@ Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전�
 npm install @fluojs/runtime
 ```
 
-배포된 package는 의도적으로 package-wide `engines.node`를 선언하지 않습니다. Root, `./web`, runtime-neutral internal seam에는 eager Node builtin import가 없으며 Node, Bun, Deno, Cloudflare Workers 및 다른 Web 표준 host가 공유합니다. Node listener, filesystem, logger, compression, process-signal 책임은 검증된 Node engine 범위를 선언하는 `@fluojs/platform-nodejs`에 있습니다.
+배포된 package는 의도적으로 package-wide `engines.node`를 선언하지 않습니다. Root, `./web`, runtime-neutral internal seam에는 eager Node builtin import가 없으며 Node, Bun, Deno, Cloudflare Workers 및 다른 Web 표준 host가 공유합니다. Node listener, filesystem, logger, compression, process-signal 책임은 검증된 Node engine 범위를 선언하는 `@fluojs/platform-nodejs`에 있습니다. Deno 전용 integration은 deprecated 이전 경로이며 새 host 선택지가 아닙니다. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
 
 ## Node 정적 에셋 source
 
@@ -47,6 +47,8 @@ npm install @fluojs/runtime
 - **진단 및 검사**: CLI 내보내기를 위한 기계 읽기 가능한 플랫폼 snapshot, compiled route catalog, diagnostic issue를 생산하되, 그래프 보기와 Mermaid 표현은 Studio에 맡길 때.
 
 ## 퀵 스타트
+
+최소 HTTP 예제는 controller, module과 listener를 모두 선언합니다. 예제에서 직접 import하는 `@fluojs/core`, `@fluojs/http`, `@fluojs/platform-nodejs`도 설치하고 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)의 standard decorator 설정을 적용하세요.
 
 ### 최소 HTTP 애플리케이션
 

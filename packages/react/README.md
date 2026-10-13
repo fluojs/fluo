@@ -2,20 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-HTTP-first full-stack React application framework for fluo, with a runtime-neutral
-package root. The official composition provides streamed SSR/hydration, approved
-navigation, progressive forms, independent background operations and session
-revocation. The [full-stack product contract](../../docs/contracts/react-fullstack-product.md)
-and [long-session guide](../../docs/guides/react-long-session-reliability.md)
-separate shipped capabilities from actual current-head execution and the
-lead-owned final product gate. The [product acceptance guide](../../docs/guides/react-product-acceptance.md)
-connects authenticated CRUD at `/catalog/session/products`, jukebox lifetimes,
-packed authoring/dev/production and machine-consumed receipts. Demo sessions and
-process-local private products are not production authentication or durable storage.
-Original numeric FAIL/INCONCLUSIVE is disclosed nonblocking diagnostics for final
-#3879; evidence quality/correctness/stability/cleanup and zero Fluo errors still
-block. This lane requires a completed one-hour soak, keeps the scheduled two-hour
-default and explicitly defers physical mobile/tablet to #3906 without PASS.
+HTTP-first full-stack React application framework for fluo. Build React pages on HTTP routes and DI modules, composing streamed SSR/hydration, approved navigation, progressive forms, independent background operations, and session revocation. The package root is runtime-neutral; start your first app with the official CLI starter in [Zero-to-First-Page Workflow](#zero-to-first-page-workflow) below.
+
+The [full-stack product contract](../../docs/contracts/react-fullstack-product.md) owns shared guarantees and responsibilities. See [Current Limitations](#current-limitations) for unsupported capabilities and verification limits.
 
 Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages. React remains a `0.x` minor release, not a `1.0` graduation.
 
@@ -53,11 +42,7 @@ Preparing for the coordinated Node 24 release? Follow the [consumer migration gu
 
 ## Installation
 
-The package has completed its initial `0.1.0` release and no longer uses the `0.0.0` bootstrap
-placeholder. Future versions are recorded through committed Changesets and published only through
-the canonical release workflow.
-
-When the package is published, install it with React and React DOM as peers:
+Install React and React DOM as peers. Follow [Runtime and Peer Contract](#runtime-and-peer-contract) below for their supported ranges and execution environments:
 
 ```bash
 npm install @fluojs/react react react-dom
@@ -73,6 +58,8 @@ DTO binding, versioning, guards, interceptors, headers, route validation, matchi
 continue to use the HTTP runtime contracts.
 
 ## Zero-to-First-Page Workflow
+
+This command creates a generated app with registry dependencies, not a repository example. It requires Node.js `>=24.11.0 <27`, pnpm, and an installed [`@fluojs/cli`](../cli/README.md#installation). Run the application commands inside the generated directory.
 
 Use the official generated composition when you want streamed SSR, hydration, and Vite assets
 without assembling every stable seam before editing the first page:
@@ -1500,6 +1487,8 @@ The stable package root remains RSC-free. The policy currently marks graduation 
 documentation change neither adds the stable subpath nor starts the deprecation window.
 
 ## Current Limitations
+
+The official starter's demo sessions and process-local private products are not production authentication or durable storage. The [product acceptance guide](../../docs/guides/react-product-acceptance.md) distinguishes original numeric FAIL/INCONCLUSIVE, required correctness/stability/cleanup, the one-hour acceptance soak, and the scheduled two-hour default. Original numeric verdicts are disclosed nonblocking diagnostics; evidence quality failures and Fluo measured/warmup errors still block acceptance. Physical mobile/tablet verification is deferred to #3906, not PASS. Consult the [long-session guide](../../docs/guides/react-long-session-reliability.md) and actual receipts. Shipped code or this README alone does not establish product acceptance for the current checkout.
 
 This package currently does **not** provide:
 

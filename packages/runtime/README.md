@@ -32,7 +32,7 @@ Preparing for the coordinated Node 24 release? Follow the [consumer migration gu
 npm install @fluojs/runtime
 ```
 
-The published package intentionally declares no package-wide `engines.node`: its root, `./web`, and runtime-neutral internal seams contain no eager Node builtin imports and are shared by Node, Bun, Deno, Cloudflare Workers, and other Web-standard hosts. Node listener, filesystem, logger, compression, and process-signal responsibilities live in `@fluojs/platform-nodejs`, which declares the verified Node engine range.
+The published package intentionally declares no package-wide `engines.node`: its root, `./web`, and runtime-neutral internal seams contain no eager Node builtin imports and are shared by Node, Bun, Deno, Cloudflare Workers, and other Web-standard hosts. Node listener, filesystem, logger, compression, and process-signal responsibilities live in `@fluojs/platform-nodejs`, which declares the verified Node engine range. Deno-specific integrations are deprecated migration paths, not new host choices. Follow the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
 
 ## Node Static Asset Source
 
@@ -47,6 +47,8 @@ Use this package when you need to:
 - **Diagnostic Inspection**: Produce machine-readable platform snapshots, compiled route catalogs, and diagnostic issues for CLI export while leaving graph viewing and Mermaid presentation to Studio.
 
 ## Quick Start
+
+The minimal HTTP example declares the controller, module, and listener together. Also install the directly imported `@fluojs/core`, `@fluojs/http`, and `@fluojs/platform-nodejs` and apply the standard decorator configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
 
 ### Minimal HTTP Application
 

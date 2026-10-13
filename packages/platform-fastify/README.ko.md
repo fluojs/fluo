@@ -28,7 +28,7 @@ npm install @fluojs/platform-fastify
 
 ## 런타임 요구 사항
 
-`@fluojs/platform-fastify`는 Node.js HTTP adapter이며 `engines.node >=24.0.0 <27`을 선언합니다. Listener-level RFC `QUERY` 요청이 Fastify wildcard fallback과 fluo dispatch에 도달하도록 이 패키지가 HTTP 서버를 소유하는 로컬 개발, CI, 컨테이너, 프로덕션 호스트는 이 정확한 범위의 Node.js에서 실행해야 합니다. Node 24 미만과 Node 27 이상은 제외됩니다. 비 Node 런타임에서는 이 Node 전용 adapter를 import하지 말고 `@fluojs/platform-bun`, `@fluojs/platform-deno`, 또는 `@fluojs/platform-cloudflare-workers`를 사용하세요.
+`@fluojs/platform-fastify`는 Node.js HTTP adapter이며 `engines.node >=24.0.0 <27`을 선언합니다. Listener-level RFC `QUERY` 요청이 Fastify wildcard fallback과 fluo dispatch에 도달하도록 이 패키지가 HTTP 서버를 소유하는 로컬 개발, CI, 컨테이너, 프로덕션 호스트는 이 정확한 범위의 Node.js에서 실행해야 합니다. Node 24 미만과 Node 27 이상은 제외됩니다. 비 Node 런타임에서는 이 Node 전용 adapter를 import하지 말고 `@fluojs/platform-bun` 또는 `@fluojs/platform-cloudflare-workers`를 사용하세요. `@fluojs/platform-deno`는 deprecated이며 기존 앱 이전에만 유지합니다. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 참고하세요.
 
 어댑터는 Fastify 기반 Node `http` 또는 `https` listener를 소유합니다. 포트, 인증서 material, hostname 같은 process-specific value는 애플리케이션 경계에 두고, 최종 option만 adapter에 명시적으로 전달하세요.
 

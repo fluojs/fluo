@@ -34,6 +34,8 @@ npm install @fluojs/notifications
 
 ## 빠른 시작
 
+기존 앱에 넣는 channel/module/service fragment입니다. 예제 `emailChannel`은 console 출력만 수행하고 실제 메일을 보내지 않습니다. 실제 channel로 교체하고 `WelcomeService`를 앱 module의 `providers`에 등록하세요. 앱 bootstrap과 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
+
 ### 1. foundation 모듈 등록
 
 알림 모듈 등록은 `channels`에 명시적인 `NotificationChannel` 값을 전달하는 `NotificationsModule.forRoot(...)` 또는 `NotificationsModule.forRootAsync(...)`로 구성합니다.

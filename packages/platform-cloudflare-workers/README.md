@@ -22,7 +22,7 @@ Cloudflare Workers HTTP adapter for the fluo runtime, optimized for the edge.
 npm install @fluojs/platform-cloudflare-workers
 ```
 
-This package is intended to run on Cloudflare Workers. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Workers runtime contract; the repository's Node.js 20+ requirement only applies to the maintainer build/test toolchain.
+This package is intended to run on Cloudflare Workers. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Workers runtime contract; the repository's Node.js `>=24.11.0 <27` requirement only applies to the maintainer build/test toolchain.
 
 ## When to Use
 
@@ -33,6 +33,8 @@ The adapter binds each request lifecycle to `executionContext.waitUntil(...)` af
 During application shutdown, the adapter stops accepting new ingress immediately and gives active HTTP handlers a bounded 10-second drain window before `close()` fails with a timeout instead of hanging indefinitely. While that drain is still in progress, a concurrent `listen()` call rejects with `Cloudflare Workers adapter cannot listen while shutdown is still draining.` instead of reopening the Worker. Once closed, follow-up HTTP and WebSocket upgrade requests receive the same JSON `503` shutdown response until the adapter is explicitly listened again. Lazy hosts keep returning shutdown responses while a timed-out close is still draining, but they clear that temporary gate once the underlying close eventually settles so a later request can bootstrap a fresh Worker application.
 
 ## Quick Start
+
+These entrypoint fragments belong in an existing Workers project. They require `AppModule` from the application-owned `./app.module`, the `@fluojs/runtime` dependency, decorator build configuration, and Worker deployment configuration. Retain the module composition in [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) and the host ownership contracts below.
 
 ### Direct Application Creation
 Create the concrete adapter first, then let `FluoFactory.create` own application

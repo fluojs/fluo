@@ -54,6 +54,8 @@ i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때
 
 ## 빠른 시작
 
+기존 앱에 넣는 module 등록 fragment입니다. 서버 entrypoint는 포함하지 않으므로 앱의 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)과 decorator 설정을 유지하세요.
+
 ```ts
 import { Module } from '@fluojs/core';
 import { I18nModule } from '@fluojs/i18n';

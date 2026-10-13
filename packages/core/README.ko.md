@@ -33,10 +33,26 @@ npm install @fluojs/core
 
 ## 빠른 시작
 
-모든 fluo 애플리케이션은 `@fluojs/core`가 기록하는 모듈 메타데이터에서 시작합니다.
+모든 fluo 애플리케이션은 `@fluojs/core`가 기록하는 모듈 메타데이터에서 시작합니다. 아래는 필요한 class를 모두 선언한 모듈 구성 예제입니다. `DatabaseService`는 외부 DB를 연결하지 않는 예제 provider이며 `global: true`, provider 등록과 export visibility를 보여 줍니다. HTTP 서버 실행은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따르세요.
 
 ```ts
 import { Inject, Module, Scope } from '@fluojs/core';
+
+class DatabaseService {
+  status() {
+    return 'ready';
+  }
+}
+
+@Inject(DatabaseService)
+@Scope('singleton')
+class UserService {
+  constructor(private readonly db: DatabaseService) {}
+
+  status() {
+    return this.db.status();
+  }
+}
 
 @Module({
   global: true,
@@ -50,12 +66,6 @@ class CoreModule {}
   providers: [UserService],
 })
 class AppModule {}
-
-@Inject(DatabaseService)
-@Scope('singleton')
-class UserService {
-  constructor(private readonly db: DatabaseService) {}
-}
 ```
 
 ## 주요 기능

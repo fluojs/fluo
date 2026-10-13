@@ -45,6 +45,8 @@ export default defineConfig({
 
 ## Quick Start
 
+This fragment belongs inside an existing Vitest test. Import the application-under-test `AppModule` and Vitest's `expect`; register a route that returns 201 for `POST /users/`. `Test.createApp` here does not open a real network listener.
+
 `Test` is the only public entrypoint for app and testing-module construction. Import it from `@fluojs/testing` (or the non-mock `@fluojs/testing/module` subpath).
 
 **Breaking migration:** replace free-function imports of `createTestApp` / `createTestingModule` with `Test`, then call `Test.createApp(options)` / `Test.createTestingModule(options)`. The free functions and `@fluojs/testing/app` subpath are removed, not compatibility aliases. Keep explicit `rootModule`, bootstrap options, override chains, and unconditional app/container cleanup unchanged.

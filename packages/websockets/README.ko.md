@@ -33,6 +33,8 @@ fluo 애플리케이션에 실시간 WebSocket 기능을 추가할 때 이 패�
 
 ## 빠른 시작
 
+기존 앱에 넣는 gateway/module fragment입니다. 지원되는 Node server-backed adapter로 앱을 시작해야 listener가 열립니다. Adapter 선택, decorator 및 앱 시작은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따르세요.
+
 Gateway decorator와 shared contract는 runtime-neutral root에서 import합니다. 기본 Node.js 기반 websocket runtime을 선택하려면 Node subpath의 `NodeWebSocketModule.forRoot()`를 사용합니다.
 
 ```typescript
@@ -164,6 +166,8 @@ handlePing(payload, _socket, _request, socketId) {
 - Metadata helper와 symbol: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
 
 ## 런타임별 서브패스
+
+아래 표의 Deno 행은 기존 앱 이전용 deprecated binding입니다. 새 앱은 Node.js, Bun 또는 Workers를 선택하고 [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
 
 Registration과 runtime projection에는 runtime subpath를 사용하세요. Root `@fluojs/websockets` entrypoint는 runtime-neutral이며 gateway decorator, metadata helper, descriptor, shared contract를 여기서 import합니다. `NodeWebSocketModule`과 `NodeWebSocketGatewayLifecycleService`는 Node subpath에서 import하고 Bun, Deno, Workers module과 native projection은 해당 subpath와 platform package에서 import합니다. 제거된 root Node registration과 lifecycle alias에는 compatibility export가 없습니다.
 

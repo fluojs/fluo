@@ -21,7 +21,7 @@ fluo 런타임을 위한 Express 기반 HTTP 어댑터 패키지입니다.
 npm install @fluojs/platform-express express
 ```
 
-`@fluojs/platform-express`는 Node.js `>=24.0.0 <27`이 필요합니다. Listener-level RFC `QUERY` 요청이 Express와 fluo dispatch에 도달하도록 package manifest는 `engines.node >=24.0.0 <27`을 선언합니다. Node 24 미만과 Node 27 이상은 제외됩니다. Deployment host가 Bun, Deno, Cloudflare Workers라면 fetch-style adapter를 선택하세요.
+`@fluojs/platform-express`는 Node.js `>=24.0.0 <27`이 필요합니다. Listener-level RFC `QUERY` 요청이 Express와 fluo dispatch에 도달하도록 package manifest는 `engines.node >=24.0.0 <27`을 선언합니다. Node 24 미만과 Node 27 이상은 제외됩니다. Deployment host가 Bun 또는 Cloudflare Workers라면 fetch-style adapter를 선택하세요. 기존 Deno adapter는 deprecated 이전 경로입니다. 새 앱에는 사용하지 말고 [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
 
 ## 사용 시점
 
@@ -32,6 +32,8 @@ Express를 host로 유지해도 NestJS legacy decorator 또는 reflection metada
 Express 호환성은 native Express/Connect `(req, res, next)` middleware를 fluo의 애플리케이션 레벨 `middleware` 옵션에 직접 전달할 수 있다는 의미가 아닙니다. 이 옵션은 fluo middleware(`handle(context, next)`) 또는 route-scoped fluo middleware provider를 받습니다. Migration 전용 native handler는 adapter의 명시적 `nativeMiddleware` 옵션에 등록하거나, Fastify, raw Node.js, Bun, Deno, Workers adapter로도 이동할 수 있도록 fluo `Middleware` 계약 뒤에 감싸세요.
 
 ## 빠른 시작
+
+아래는 애플리케이션이 이미 선언한 `./app.module`의 `AppModule`을 사용하는 entrypoint fragment입니다. 해당 모듈 파일, 직접 import하는 `@fluojs/runtime` dependency와 standard decorator 설정이 필요합니다. 모듈 작성과 시작 순서는 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
 
 ```typescript
 import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';

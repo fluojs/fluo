@@ -35,10 +35,26 @@ Use this package when you are:
 
 ## Quick Start
 
-Every fluo application starts with module metadata declared through `@fluojs/core`.
+Every fluo application starts with module metadata declared through `@fluojs/core`. This module composition example declares every required class. `DatabaseService` is an example provider without an external database connection, illustrating `global: true`, provider registration, and export visibility. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) to run an HTTP server.
 
 ```ts
 import { Inject, Module, Scope } from '@fluojs/core';
+
+class DatabaseService {
+  status() {
+    return 'ready';
+  }
+}
+
+@Inject(DatabaseService)
+@Scope('singleton')
+class UserService {
+  constructor(private readonly db: DatabaseService) {}
+
+  status() {
+    return this.db.status();
+  }
+}
 
 @Module({
   global: true,
@@ -52,12 +68,6 @@ class CoreModule {}
   providers: [UserService],
 })
 class AppModule {}
-
-@Inject(DatabaseService)
-@Scope('singleton')
-class UserService {
-  constructor(private readonly db: DatabaseService) {}
-}
 ```
 
 ## Key Capabilities

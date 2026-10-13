@@ -47,6 +47,8 @@ export default defineConfig({
 
 ## 빠른 시작
 
+아래는 기존 Vitest test 안에 넣는 fragment입니다. 테스트 대상 `AppModule`과 Vitest의 `expect`를 import하고, 해당 앱이 `POST /users/`에 201을 반환하도록 route를 등록해야 합니다. `Test.createApp`은 실제 network listener를 여는 예제가 아닙니다.
+
 `Test`는 app과 testing module 생성을 위한 유일한 공개 entrypoint입니다. `@fluojs/testing` 또는 non-mock `@fluojs/testing/module` subpath에서 import하세요.
 
 **Breaking migration:** `createTestApp` / `createTestingModule` free-function import를 `Test`로 바꾸고 `Test.createApp(options)` / `Test.createTestingModule(options)`를 호출하세요. Free function과 `@fluojs/testing/app` subpath는 제거되며 compatibility alias로 남지 않습니다. 명시적 `rootModule`, bootstrap option, override chain, unconditional app/container cleanup은 그대로 유지하세요.

@@ -70,6 +70,8 @@ Deno, Cloudflare Workers, and other unverified non-Node hosts are outside this r
 
 ## Quick Start
 
+This is a PostgreSQL module registration fragment. It requires a running PostgreSQL instance, `DATABASE_URL`, `pg`, and `@fluojs/config`. Retain application entrypoint and decorator configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
+
 ```ts
 import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';

@@ -21,7 +21,7 @@ Express-backed HTTP adapter for the fluo runtime.
 npm install @fluojs/platform-express express
 ```
 
-`@fluojs/platform-express` requires Node.js `>=24.0.0 <27`. Its package manifest declares `engines.node >=24.0.0 <27` so listener-level RFC `QUERY` requests reach Express and fluo dispatch; Node versions below 24 and Node 27+ are excluded. Choose a fetch-style adapter instead when the deployment host is Bun, Deno, or Cloudflare Workers.
+`@fluojs/platform-express` requires Node.js `>=24.0.0 <27`. Its package manifest declares `engines.node >=24.0.0 <27` so listener-level RFC `QUERY` requests reach Express and fluo dispatch; Node versions below 24 and Node 27+ are excluded. Choose a fetch-style adapter instead when the deployment host is Bun or Cloudflare Workers. The existing Deno adapter is a deprecated migration path. Do not adopt it for new apps; follow the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
 
 ## When to Use
 
@@ -32,6 +32,8 @@ Keeping Express as the host does not preserve NestJS legacy decorator or reflect
 Express compatibility does not mean that native Express/Connect `(req, res, next)` middleware can be passed directly to fluo's application-level `middleware` option. That option accepts fluo middleware (`handle(context, next)`) or route-scoped fluo middleware providers. Register migration-only native handlers through the adapter's explicit `nativeMiddleware` option, or wrap the behavior behind the fluo `Middleware` contract so it remains portable to Fastify, raw Node.js, Bun, Deno, and Workers adapters.
 
 ## Quick Start
+
+This entrypoint fragment uses `AppModule` from the application-owned `./app.module`. It requires that module file, the directly imported `@fluojs/runtime` dependency, and standard decorator configuration. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for module authoring and startup order.
 
 ```typescript
 import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';

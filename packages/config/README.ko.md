@@ -33,6 +33,8 @@ npm install @fluojs/config
 
 ## 빠른 시작
 
+아래는 기존 앱에 넣는 설정/module fragment입니다. 이 예제에는 `zod`를 별도로 설치하고 `.env` 또는 `process.env.DATABASE_URL`에 유효한 URL을 제공하세요. 검증된 snapshot을 다시 등록할 때 `envFilePaths: []`로 파일 재로딩을 끕니다.
+
 `ConfigModule.load(...)`로 application boundary에서 검증된 스냅샷 하나를 만든 뒤, 그 스냅샷을 주입용으로 등록하세요.
 
 ```ts
@@ -55,7 +57,7 @@ const config = ConfigModule.load({
 });
 
 @Module({
-  imports: [ConfigModule.forRoot({ runtimeOverrides: config })],
+  imports: [ConfigModule.forRoot({ envFilePaths: [], runtimeOverrides: config })],
 })
 class AppModule {}
 ```

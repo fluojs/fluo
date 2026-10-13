@@ -44,6 +44,8 @@ pnpm add @prisma/client
 
 ## Quick Start
 
+This module registration fragment belongs in an existing app. Configure the application's Prisma schema and datasource, then generate its client before using it. It requires a real database connection and the decorator/startup configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
+
 Register the `PrismaModule` in your root module by providing a `PrismaClient` instance.
 
 ```typescript

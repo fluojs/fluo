@@ -23,23 +23,50 @@
 
 <br/>
 
-> **Deno: Deprecated.** Not recommended for new projects. No new features, performance work, or new runtime compatibility; critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths and examples below remain usable; removal is planned for the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). Follow the [Deno migration guide](./docs/getting-started/migrate-from-deno.md).
+**fluo** is a TypeScript backend framework built on TC39 standard decorators and explicit dependency injection. Build API servers with controllers, services, and modules, or connect React pages to the same HTTP pipeline for a full-stack application. Add database, authentication, and messaging packages as needed.
 
-**fluo** is a TypeScript backend framework built on TC39 standard decorators and explicit dependency injection. Organize applications into controllers, services, and modules, then connect the database, authentication, and messaging packages you need.
+[Quick Start](#quick-start) · [Choose Your Application](#choose-your-application) · [Book](./book/README.md) · [Documentation](./docs/README.md) · [Examples](./examples/README.md)
 
-[Quick Start](#quick-start) · [Book](./book/README.md) · [Documentation](./docs/README.md) · [Examples](./examples/README.md)
+## Quick Start
 
-## Why fluo?
+**Prerequisites:** Install Node.js 24.x and pnpm 10. The CLI and Babel 8 compiler toolchain require Node.js `>=24.11.0 <27`; Node.js runtime packages support `>=24.0.0 <27`. The CLI itself runs on Node.js even when generating a project for another runtime.
 
-- **Standard decorators**: No dependency on `experimentalDecorators`, `emitDecoratorMetadata`, or `reflect-metadata`. fluo uses framework-owned metadata stores and standard decorator metadata integration.
-- **Explicit dependencies**: Declare constructor tokens with class-level `@Inject(...)` and register providers and controllers with `@Module(...)`.
-- **Testable features**: Compose HTTP routing, request validation, and response serialization, then verify DI wiring and request handling with the testing tools.
-- **A choice of hosts**: Connect runtime-specific adapters to a shared module and DI model. Host lifecycle and package coverage follow each adapter's contract.
-- **Scaffolding through diagnostics**: Use the CLI to generate projects and features and manage development, builds, and startup. `fluo inspect` and Studio provide paths to application structure and diagnostics.
+Start with the CLI published on npm; no repository clone is needed.
+
+```bash
+pnpm --allow-build=esbuild dlx @fluojs/cli new my-backend --package-manager pnpm
+cd my-backend
+pnpm dev
+```
+
+`--allow-build=esbuild` is a pnpm option that approves the CLI dependency's install script. If prompted, keep the default `standard` / HTTP application / Node.js / Fastify choices and install dependencies. A global CLI installation is not required.
+
+Once the server starts, send a request from another terminal. The default port is `3000`; change it through `PORT` in the generated `.env` file.
+
+```bash
+curl http://localhost:3000/greeting
+```
+
+```json
+{"message":"Hello from fluo","framework":"fluo","project":"my-backend"}
+```
+
+`GET /health` also returns `200` and `{"status":"ok"}`. To change your first response, edit the message in `src/greeting/greeting.repo.ts`, then send the same `curl` request again to confirm the new response. Follow request handling and dependency wiring in `greeting.controller.ts`, `greeting.service.ts`, and `greeting.module.ts` in the same directory.
+
+Run the tests and build from the generated project directory:
+
+```bash
+pnpm test
+pnpm build
+```
+
+The starter includes a Fastify app, `/greeting`, `/health`, `/ready`, tests, and build configuration. Add authentication, persistent storage, and deployment configuration in your application. See the [CLI guide](./packages/cli/README.md) for other starters and runner options, and the [toolchain contract](./docs/reference/toolchain-contract-matrix.md) for supported transforms.
 
 ## The Developer Experience
 
-This minimal example puts an HTTP route, service injection, module registration, and Fastify startup in one file. The CLI starter below supplies the decorator transform and build configuration.
+The app from the quick start handles requests through a controller, service, and repository. `@Module(...)` registers the components and `@Inject(...)` makes dependencies explicit. Startup follows `FluoFactory.create(AppModule, { adapter })` → `app.listen()`.
+
+The following explanatory example condenses that structure into one file. It is not a step to replace your generated app; continue editing your first response in `src/greeting/greeting.repo.ts` above.
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
@@ -81,44 +108,23 @@ const app = await FluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-Here, `GET /greeting` returns `{"message":"Hello from fluo"}`. Generated projects split this structure into separate files and add a repository, health checks, and tests. To run this example separately, replace the generated project's `src/main.ts` with the code above. The quick start below uses the unmodified starter.
+The generated app separates these roles into files and includes a repository, health checks, tests, and build configuration. Check it against the generated response shown in the quick start, rather than this example's abbreviated response.
 
-## Quick Start
+## Choose Your Application
 
-**Prerequisites:** Install Node.js 24.x and pnpm 10. The CLI and Babel 8 compiler toolchain require Node.js `>=24.11.0 <27`; Node.js runtime packages support `>=24.0.0 <27`. The CLI itself runs on Node.js even when generating a project for another runtime.
+| What you want to build | Start here |
+| --- | --- |
+| HTTP API server | Extend the Node.js + Fastify app from the quick start above. |
+| React full-stack app | Use the official `react-vite-ssr` starter in [React first page](./packages/react/README.md#zero-to-first-page-workflow). Compose SSR, hydration, navigation, and forms on the same HTTP routes and DI. |
+| Another host or a message-based service | Choose a supported starter in the [CLI guide](./packages/cli/README.md), then check the packages you need in the [runtime support matrix](./docs/reference/package-surface.md). |
 
-Start with the CLI published on npm; no repository clone is needed.
+## Why fluo?
 
-```bash
-pnpm --allow-build=esbuild dlx @fluojs/cli new my-backend --package-manager pnpm
-cd my-backend
-pnpm dev
-```
-
-`--allow-build=esbuild` is a pnpm option that approves the CLI dependency's install script. If prompted, keep the default `standard` / HTTP application / Node.js / Fastify choices and install dependencies. A global CLI installation is not required.
-
-Once the server starts, send a request from another terminal. The default port is `3000`; change it through `PORT` in the generated `.env` file.
-
-```bash
-curl http://localhost:3000/greeting
-```
-
-```json
-{"message":"Hello from fluo","framework":"fluo","project":"my-backend"}
-```
-
-`GET /health` also returns `200` and `{"status":"ok"}`. To change your first response, edit `src/greeting/greeting.repo.ts`. Follow request handling and dependency wiring in `greeting.controller.ts`, `greeting.service.ts`, and `greeting.module.ts` in the same directory.
-
-Run the tests and build from the generated project directory:
-
-```bash
-pnpm test
-pnpm build
-```
-
-The starter includes a Fastify app, `/greeting`, `/health`, `/ready`, tests, and build configuration. Add authentication, persistent storage, and deployment configuration in your application. See the [CLI guide](./packages/cli/README.md) for other starters and runner options, and the [toolchain contract](./docs/reference/toolchain-contract-matrix.md) for supported transforms.
-
-**Upgrading an existing project?** Follow the Node, packages, then imports order in the [Node 24 migration guide](./docs/getting-started/migrate-node24.md). Upgrading the CLI does not automatically rewrite an existing app's configuration. Also check the [Node.js support policy](./docs/reference/node-support.md) and [HTTP dependency security update](./docs/reference/dependency-security-update.md).
+- **Standard decorators**: No dependency on `experimentalDecorators`, `emitDecoratorMetadata`, or `reflect-metadata`. fluo uses framework-owned metadata stores and standard decorator metadata integration.
+- **Explicit dependencies**: Declare constructor tokens with class-level `@Inject(...)` and register providers and controllers with `@Module(...)`.
+- **Testable features**: Compose HTTP routing, request validation, and response serialization, then verify DI wiring and request handling with the testing tools.
+- **A choice of hosts**: Connect runtime-specific adapters to a shared module and DI model. Host lifecycle and package coverage follow each adapter's contract.
+- **Scaffolding through diagnostics**: Use the CLI to generate projects and features and manage development, builds, and startup. `fluo inspect` and Studio provide paths to application structure and diagnostics.
 
 ## A Modular Ecosystem
 
@@ -128,7 +134,7 @@ Connect the capabilities you need. These are representative packages; the [packa
 | :--- | :--- |
 | **Foundations** | [Core](./packages/core/README.md), [DI](./packages/di/README.md), [Runtime](./packages/runtime/README.md), [Config](./packages/config/README.md), [I18n](./packages/i18n/README.md) |
 | **HTTP/API** | [HTTP](./packages/http/README.md), [Validation](./packages/validation/README.md), [Serialization](./packages/serialization/README.md), [OpenAPI](./packages/openapi/README.md), [GraphQL](./packages/graphql/README.md) |
-| **Host adapters** | [Fastify](./packages/platform-fastify/README.md), [Express](./packages/platform-express/README.md), [Node.js](./packages/platform-nodejs/README.md), [Next.js](./packages/platform-nextjs/README.md), [Bun](./packages/platform-bun/README.md), [Deno (Deprecated)](./packages/platform-deno/README.md), [Workers](./packages/platform-cloudflare-workers/README.md) |
+| **Host adapters** | [Fastify](./packages/platform-fastify/README.md), [Express](./packages/platform-express/README.md), [Node.js](./packages/platform-nodejs/README.md), [Next.js](./packages/platform-nextjs/README.md), [Bun](./packages/platform-bun/README.md), [Workers](./packages/platform-cloudflare-workers/README.md) |
 | **Authentication** | [JWT](./packages/jwt/README.md), [Passport](./packages/passport/README.md) |
 | **Data and caching** | [Prisma](./packages/prisma/README.md), [Drizzle](./packages/drizzle/README.md), [Mongoose](./packages/mongoose/README.md), [Redis](./packages/redis/README.md), [Cache Manager](./packages/cache-manager/README.md) |
 | **Messaging and jobs** | [Microservices](./packages/microservices/README.md), [CQRS](./packages/cqrs/README.md), [Event Bus](./packages/event-bus/README.md), [Queue](./packages/queue/README.md), [Cron](./packages/cron/README.md) |
@@ -136,7 +142,7 @@ Connect the capabilities you need. These are representative packages; the [packa
 | **Operations** | [Health (Terminus)](./packages/terminus/README.md), [Metrics](./packages/metrics/README.md), [Throttler](./packages/throttler/README.md) |
 | **React and developer tools** | [React](./packages/react/README.md), [CLI](./packages/cli/README.md), [Testing](./packages/testing/README.md), [Vite](./packages/vite/README.md), [Studio](./packages/studio/README.md) |
 
-**Runtime support is package-specific.** Having an adapter does not make every package portable to that host. For example, the Drizzle integration fully supports Node.js `>=24.0.0 <27` and conditionally runs on Bun 1.4 with an async transaction driver such as `drizzle-orm/libsql`; synchronous `drizzle-orm/bun-sqlite` cannot preserve rollback after an awaited callback. The Socket.IO adapter supports Node.js and Bun but not Deno or Workers. The Next.js integration targets Node.js hosts, not the Edge Runtime. Before changing hosts, check startup, shutdown, and dependency requirements in the [Canonical Runtime Package Matrix](./docs/reference/package-surface.md) and the owning package README.
+**Runtime support is package-specific.** Having an adapter does not make every package portable to that host. Check host support and driver limitations in the [Canonical Runtime Package Matrix](./docs/reference/package-surface.md), and installation, startup, and shutdown requirements in the owning package README.
 
 ## Where to Go Next?
 
@@ -150,6 +156,14 @@ Connect the capabilities you need. These are representative packages; the [packa
 | Compare runnable code | Check each app's environment and verification scope in the [examples catalog](./examples/README.md). |
 
 The Book is the primary learning path; the short HTTP exercise is a companion. The exercise starts from separate repository checkpoints rather than continuing directly in a CLI-generated app. It does not provide completed applications for every Book chapter.
+
+## Support and Migration
+
+**Upgrading an existing project?** Follow the Node, packages, then imports order in the [Node 24 migration guide](./docs/getting-started/migrate-node24.md). Upgrading the CLI does not automatically rewrite an existing app's configuration. Also check the [Node.js support policy](./docs/reference/node-support.md) and [HTTP dependency security update](./docs/reference/dependency-security-update.md).
+
+> **Deno: Deprecated.** Not recommended for new projects. No new features, performance work, or new runtime compatibility; critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths and examples remain usable; removal is planned for the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). Follow the [Deno migration guide](./docs/getting-started/migrate-from-deno.md).
+
+Existing Deno API usage remains documented in the [Deno adapter README](./packages/platform-deno/README.md).
 
 ## Community
 

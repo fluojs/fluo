@@ -32,6 +32,8 @@ pnpm add @fluojs/openapi
 
 ## 빠른 시작
 
+아래는 controller, module과 listener를 함께 선언하는 HTTP 예제입니다. `@fluojs/core`, `@fluojs/http`, `@fluojs/runtime`, `@fluojs/platform-nodejs`도 앱 dependency로 설치하고 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)의 decorator 설정을 적용하세요.
+
 `OpenApiModule`을 등록하고 `sources`, 미리 만든 `descriptors`, 또는 둘 다를 전달해 문서에 포함할 HTTP 핸들러를 명시합니다. 두 입력을 모두 제공하면 병합됩니다.
 
 ```typescript

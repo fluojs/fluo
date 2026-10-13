@@ -34,6 +34,8 @@ Use this package when you need to:
 
 ## Quick Start
 
+This configuration/module fragment belongs in an existing app. Install `zod` separately and provide a valid URL in `.env` or `process.env.DATABASE_URL`. Register the validated snapshot with `envFilePaths: []` to disable file reloading.
+
 Use `ConfigModule.load(...)` to create the one validated snapshot at the application boundary, then register that snapshot for injection.
 
 ```typescript

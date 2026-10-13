@@ -33,6 +33,8 @@ Socket.IO가 제공하는 room, namespace, broadcast, 자동 재연결 같은 �
 
 ## 빠른 시작
 
+기존 앱에 넣는 gateway/module fragment입니다. 아래 module만으로 listener를 열지 않습니다. 지원되는 Node 또는 Bun adapter로 앱을 시작하고 아래 runtime 지원·binding 계약을 따르세요. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)이 decorator와 앱 시작을 설명합니다.
+
 ```ts
 import { Inject, Module } from '@fluojs/core';
 import { SOCKETIO_ROOM_SERVICE, SocketIoModule, type SocketIoRoomService } from '@fluojs/socket.io';

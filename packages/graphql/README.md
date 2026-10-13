@@ -35,6 +35,8 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 ## Quick Start
 
+The first async registration block is a fragment replacing the registration portion of the complete HTTP example below. Keep the `Module` and `GraphqlModule` imports and an already-declared `HelloResolver` in scope. For the complete example, also install `@fluojs/core`, `@fluojs/runtime`, and `@fluojs/platform-nodejs` directly and apply the decorator configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
+
 Register `GraphqlModule.forRoot(...)` and define a resolver using standard decorators. Use
 `GraphqlModule.forRootAsync({ inject, useFactory })` when module options must be resolved from
 explicit application-graph dependencies before GraphQL registration.

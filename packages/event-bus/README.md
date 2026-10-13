@@ -34,6 +34,8 @@ npm install @fluojs/event-bus ioredis
 
 ## Quick Start
 
+Combine the two event/handler/module fragments in the same app. If split into files, import `UserSignedUpEvent` and `NotificationService` in the second file. Retain application startup and decorator configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
+
 ### 1. Define an Event and Handler
 
 Create an event class and a public instance handler method decorated with `@OnEvent`. Private and static methods are not supported.

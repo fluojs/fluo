@@ -9,26 +9,6 @@ fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 Reac
 
 ## Canonical command vocabulary
 
-같은 `react-vite-ssr` starter에 `/catalog/session` sign-in과
-`/catalog/session/products`의 authenticated list/search/detail/create/update/delete
-companion을 제공합니다. 기존 HTTP/typegen/`Link`/`useForm` 조립을 사용하며 private
-process-local product는 변경하지 않은 public catalog/editor-cookie demo와 분리합니다.
-Demo session은 production auth나 durable storage가 아닙니다.
-[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)는 shipped code,
-실제 packed dev/production receipt 및 lead-owned 최종 gate를 구분합니다. 원래 수치
-FAIL/INCONCLUSIVE는 공개된 diagnostics이고 quality/correctness/stability/cleanup은
-계속 차단합니다. Lane soak는 1시간, scheduled default는 2시간이며 physical
-device는 PASS 없이 #3906으로 분리합니다.
-
-`fluo new my-react-app --starter react-vite-ssr`는 `/catalog/background`에 동일한 native
-`useForm` background 작업도 제공합니다. 실제 GET search/widget read, stable-id queue
-POST, fresh current-page approval을 사용합니다. `pnpm dev`와 production `build`/`start`는
-기존 provider 하나와 HTTP DTO/auth/CSRF, native fallback을 공유합니다. queue/persistence/
-idempotency는 앱 코드 책임입니다. 생성 `tests/background-interactions.spec.ts`는 명시적
-`FLUO_REACT_FORM_TEST_SERVER=1` test entry에서만 listener started/release/cleaned barrier를
-사용하며 정상 startup에는 fault route를 설치하지 않습니다. 기존 앱은
-[form migration](../../docs/getting-started/migrate-react-progressive-forms.ko.md)을 따르세요.
-
 - 새 앱은 `fluo new`로 스캐폴딩합니다. `create`는 compatibility alias로 유지됩니다.
 - 쓰기를 지원하는 명령의 preview에는 `--dry-run`을 사용합니다. 각 명령의 plan payload를 유지하면서 쓰기, dependency install, git initialization, CLI update 확인을 수행하지 않습니다.
 - 읽기 전용 진단에는 `fluo doctor`를 사용합니다. `info`는 compatibility alias이고 `analyze`는 별도 project summary이며, 세 명령 모두 dependency install 또는 CLI self-update를 수행하지 않습니다. `fluo upgrade`는 latest CLI state와 migration guidance를 보고하지만 read-only가 아닙니다. Interactive TTY에서 새 버전을 찾으면 CLI update를 제안할 수 있고, 명시적 승인 뒤 package-manager global install을 실행할 수 있습니다. 다른 interactive non-preview 명령도 같은 승인형 self-update를 제안할 수 있습니다. `--dry-run` preview와 help/version 경로는 update check를 건너뜁니다.
@@ -168,7 +148,7 @@ fluo new my-node-app --shape application --transport http --runtime node --platf
 
 Raw Node starter는 `NodeHttpApplicationAdapter.create(options)`로 adapter를 만들고 `FluoFactory.create(AppModule, { adapter })` 다음 `app.listen()`을 실행합니다. Host가 `app.close()`와 명시적인 signal 등록/해제를 소유합니다. 기존 run helper의 middleware/logger/signal 기본값에서 이전하려면 [Node adapter 생성 마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)을 따르세요. 기존 프로젝트는 자동 변경하지 않습니다.
 
-애플리케이션 매트릭스에는 런타임별 entrypoint, scripts, dependency 세트를 갖춘 Bun, Deno, Cloudflare Workers 네이티브 스타터도 포함됩니다.
+애플리케이션 매트릭스에는 런타임별 entrypoint, scripts, dependency 세트를 갖춘 Bun과 Cloudflare Workers 네이티브 스타터도 포함됩니다. 아래 Deno 명령은 deprecated 이전 경로를 설명하기 위해 유지하며 새 프로젝트에는 사용하지 마세요.
 
 ```bash
 fluo new my-bun-app --shape application --transport http --runtime bun --platform bun
@@ -676,6 +656,10 @@ Query wire alias, module props, native form contract는 같은 generation/check/
 
 
 ## React starter session composition
+
+`fluo new my-react-app --starter react-vite-ssr`로 SSR/hydration과 Vite 개발 환경을 갖춘 React 앱을 생성합니다. `/catalog/session`의 sign-in과 `/catalog/session/products`의 authenticated CRUD, `/catalog/background`의 native `useForm` 작업은 HTTP/typegen/`Link`/`useForm` 사용 예제입니다. Queue, persistence, idempotency는 애플리케이션 책임이며 demo session과 process-local product는 production auth나 durable storage가 아닙니다.
+
+실제 실행 receipt와 correctness/stability/cleanup 조건, 원래 수치 FAIL/INCONCLUSIVE, 1시간 수용 soak와 scheduled 2시간 default, PASS가 아닌 physical device 유보(#3906)는 [제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)에 있습니다. 수치 판정은 공개된 비차단 diagnostics이며 증거 품질 실패와 Fluo measured/warmup error는 계속 차단합니다. Generated `tests/background-interactions.spec.ts`의 listener started/release/cleaned barrier는 `FLUO_REACT_FORM_TEST_SERVER=1` test entry에서만 활성화되며 정상 startup에는 fault route를 설치하지 않습니다. 기존 앱의 form 이전은 [form migration](../../docs/getting-started/migrate-react-progressive-forms.ko.md)을 따르세요.
 
 Generated React Vite starter의 `/catalog/session` fixture는 일반 HTTP origin/CSRF
 보호 login/logout/permissions handler와 기존 provider/router session barrier를

@@ -34,22 +34,14 @@ npm install @fluojs/throttler
 
 ## Quick Start
 
+This controller/module fragment belongs in an existing HTTP app. Retain the decorator/entrypoint configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md). The module below registers the declared `AuthController` in `controllers`.
+
 Register the `ThrottlerModule`, wire `ThrottlerGuard` with `@UseGuards(...)`, and apply the `Throttle` decorator to controllers or methods that need route-specific limits.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import { ThrottlerGuard, ThrottlerModule, Throttle, SkipThrottle } from '@fluojs/throttler';
 import { Controller, Post, UseGuards } from '@fluojs/http';
-
-@Module({
-  imports: [
-    ThrottlerModule.forRoot({
-      ttl: 60,   // 60 seconds
-      limit: 10, // 10 requests
-    }),
-  ],
-})
-class AppModule {}
 
 @Controller('/auth')
 @UseGuards(ThrottlerGuard)
@@ -66,6 +58,17 @@ class AuthController {
     return { info: '...' };
   }
 }
+
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      ttl: 60,   // 60 seconds
+      limit: 10, // 10 requests
+    }),
+  ],
+  controllers: [AuthController],
+})
+class AppModule {}
 ```
 
 ## Common Patterns

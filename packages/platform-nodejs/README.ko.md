@@ -44,6 +44,8 @@ Express나 Fastify와 같은 중간 프레임워크의 오버헤드 없이 Node.
 
 ## 빠른 시작
 
+아래는 애플리케이션이 이미 선언한 `./app.module`의 `AppModule`을 사용하는 entrypoint fragment입니다. 해당 모듈 파일, 직접 import하는 `@fluojs/runtime` dependency와 standard decorator 설정이 필요합니다. 모듈 작성과 시작 순서는 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
+
 ```typescript
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';

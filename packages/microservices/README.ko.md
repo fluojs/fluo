@@ -42,6 +42,8 @@ gRPC transport는 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-loader@^0.8.0`을 요�
 
 ## 빠른 시작
 
+아래는 handler, module과 TCP listener를 선언하는 예제입니다. 직접 import하는 `@fluojs/core`와 `@fluojs/runtime`도 설치하고 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)의 standard decorator 설정을 적용하세요. 이 TCP 예제에는 외부 broker가 필요하지 않습니다.
+
 ```ts
 import { MessagePattern, MicroservicesModule } from '@fluojs/microservices';
 import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';

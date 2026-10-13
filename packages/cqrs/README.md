@@ -36,6 +36,8 @@ npm install @fluojs/cqrs
 
 ## Quick Start
 
+This Command/Handler/provider registration fragment does not include a server entrypoint. Add it to an existing application module graph and retain the decorator and startup configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
+
 Register the `CqrsModule` and define your first command and handler.
 
 Use `CqrsModule.forRoot(...)` to wire CQRS buses and handler discovery.

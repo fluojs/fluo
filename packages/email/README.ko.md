@@ -48,11 +48,13 @@ Node 전용 SMTP 전달은 명시적인 `@fluojs/email/node` 서브패스에서 
 ## 사용 시점
 
 - 이메일을 직접 보내는 기능과 `@fluojs/notifications` 채널 연동을 한 패키지에서 처리하고 싶을 때.
-- transport 선택을 Node, Bun, Deno, Cloudflare 호환 애플리케이션 경계 전반에서 명시적이고 이식 가능하게 유지해야 할 때.
+- transport 선택을 Node, Bun, Cloudflare 호환 애플리케이션 경계 전반에서 명시적이고 이식 가능하게 유지해야 할 때. 기존 Deno 조립은 deprecated 이전 경로이며 새 배포 선택지가 아닙니다. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
 - 이메일 transport 리소스가 애플리케이션 bootstrap/shutdown 수명 주기에 참여해야 하지만 코어 패키지가 특정 런타임을 가정하면 안 될 때.
 - 대량 알림 이메일을 요청 경로에서 직접 보내지 않고 `@fluojs/queue`로 넘기고 싶을 때.
 
 ## 빠른 시작
+
+기존 앱에 넣는 모듈/서비스 fragment입니다. `ExampleTransport`는 결과 shape만 보여 주며 실제 메일을 보내지 않습니다. 운영에서는 실제 transport로 교체하고 `WelcomeService`를 앱 module의 `providers`에 등록하세요. 앱 bootstrap과 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
 
 ### 모듈 등록
 

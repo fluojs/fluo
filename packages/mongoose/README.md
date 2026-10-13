@@ -48,6 +48,8 @@ The root `@fluojs/mongoose` wrapper uses Node.js `node:async_hooks` for ambient 
 
 ## Quick Start
 
+This module registration fragment belongs in an existing app and requires MongoDB running at `mongodb://localhost:27017/test`. Transactions additionally require MongoDB transaction prerequisites, such as a replica set. Retain application startup and decorator configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
+
 ```ts
 import { Module } from '@fluojs/core';
 import { MongooseModule } from '@fluojs/mongoose';

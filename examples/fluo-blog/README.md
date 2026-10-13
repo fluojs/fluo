@@ -86,8 +86,9 @@ into `00-start/src/`, then keep working in `00-start`.
 
 ## Run inside the repository
 
-Use Node.js 24 and the root-pinned pnpm version. The declared Node support range
-is `>=24.0.0 <27`. From a clean clone's repository root:
+Use Node.js `>=24.11.0 <27` and the root-pinned pnpm version for the repository
+build tools. This differs from the runtime packages' `>=24.0.0 <27` support range.
+From a clean clone's repository root:
 
 ```bash
 pnpm install --frozen-lockfile

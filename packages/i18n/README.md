@@ -54,6 +54,8 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 
 ## Quick Start
 
+This module registration fragment belongs in an existing app. It does not include a server entrypoint; retain the application's [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) and decorator configuration.
+
 ```ts
 import { Module } from '@fluojs/core';
 import { I18nModule } from '@fluojs/i18n';

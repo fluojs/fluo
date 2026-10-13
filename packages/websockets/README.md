@@ -33,6 +33,8 @@ Use this package to add real-time WebSocket capabilities to your fluo applicatio
 
 ## Quick Start
 
+This gateway/module fragment belongs in an existing app. Start the application with a supported Node server-backed adapter to open a listener. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for adapter selection, decorators, and application startup.
+
 Import gateway decorators and shared contracts from the runtime-neutral root. Use `NodeWebSocketModule.forRoot()` from the Node subpath to select the default Node.js-backed websocket runtime.
 
 ```typescript
@@ -164,6 +166,8 @@ handlePing(payload, _socket, _request, socketId) {
 - Metadata helpers and symbols: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
 
 ## Runtime-Specific Subpaths
+
+The Deno row below is a deprecated binding for existing-app migration. Choose Node.js, Bun, or Workers for new apps and follow the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
 
 Use runtime subpaths for registration and runtime projections. The root `@fluojs/websockets` entrypoint is runtime-neutral: import gateway decorators, metadata helpers, descriptors, and shared contracts there. Import `NodeWebSocketModule` and `NodeWebSocketGatewayLifecycleService` from the Node subpath; import Bun, Deno, or Workers modules and native projections from their respective subpaths and platform packages. The removed root Node registration and lifecycle alias have no compatibility export.
 

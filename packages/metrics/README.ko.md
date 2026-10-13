@@ -32,6 +32,8 @@ pnpm add @fluojs/metrics
 
 ## 빠른 시작
 
+기존 HTTP 앱에 넣는 module 등록 fragment입니다. 서버 entrypoint와 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따르세요. `/metrics` 접근 보호는 아래 설명처럼 배포 경계에서 별도로 구성합니다.
+
 ```ts
 import { MetricsModule } from '@fluojs/metrics';
 import { Module } from '@fluojs/core';

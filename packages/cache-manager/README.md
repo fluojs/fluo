@@ -53,6 +53,8 @@ You can instead pass an application-owned compatible client through `redis.clien
 
 ## Quick Start
 
+This controller/module fragment extends an existing HTTP app. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for the entrypoint that starts `AppModule` and decorator configuration. The application-level example assumes a consumer-implemented `fetchUserProfile` lookup function.
+
 ### HTTP Response Caching
 
 Register the `CacheModule` and use the `CacheInterceptor` on your controllers.

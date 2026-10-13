@@ -22,7 +22,7 @@ Bun-backed HTTP adapter for the fluo runtime, built on native `Bun.serve()`.
 npm install @fluojs/platform-bun
 ```
 
-This package is intended to run on Bun. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Bun runtime contract; the repository's Node.js 20+ requirement only applies to the maintainer build/test toolchain.
+This package is intended to run on Bun. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Bun runtime contract; the repository's Node.js `>=24.11.0 <27` requirement only applies to the maintainer build/test toolchain.
 
 ## When to Use
 
@@ -31,6 +31,8 @@ Use this package when running fluo applications on the [Bun](https://bun.sh/) ru
 During application shutdown, the adapter stops all new ingress, including websocket upgrade attempts, with a `503` shutdown response and starts `server.stop(stopActiveConnections)` before draining accepted work from realtime binding evaluation through its HTTP response or upgrade outcome. The bounded timeout only rejects the caller-facing `close()` promise: accepted work and adapter state remain retained until the underlying drain settles, so the timeout does not force another teardown. If signal-driven shutdown exceeds `forceExitTimeoutMs` or fails, fluo reports that condition through logging and `process.exitCode` while leaving final process termination to Bun or the surrounding host.
 
 ## Quick Start
+
+This entrypoint fragment uses `AppModule` from the application-owned `./app.module`. It requires that module file, the directly imported `@fluojs/runtime` dependency, and standard decorator configuration. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for module authoring and startup order.
 
 ```typescript
 import { BunHttpApplicationAdapter, createBunShutdownSignalRegistration } from '@fluojs/platform-bun';

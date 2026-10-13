@@ -30,6 +30,8 @@ npm install @fluojs/redis ioredis
 
 ## Quick Start
 
+These module/service fragments belong in an existing app and require Redis running at `localhost:6379`. Register `CacheRepository` in the application module's `providers` and retain the decorator/startup configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
+
 ### Register the Module
 
 Use `RedisModule.forRoot(options)` to register the default Redis client and `RedisService` facade.

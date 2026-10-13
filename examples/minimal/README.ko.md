@@ -27,7 +27,7 @@ pnpm install
 pnpm vitest run examples/minimal
 ```
 
-Node.js `>=24.0.0 <27`과 저장소의 표준 decorator 테스트 설정을 사용합니다. Decorated declaration 평가 전 metadata 준비를 보존하며 예제를 실행하기 위해 legacy decorator flag를 켜지 않습니다. 진입점은 숫자 port `3000`을 직접 전달하며 `PORT` parser나 자동 Node signal 등록이 없습니다.
+저장소의 빌드·테스트에는 Node.js `>=24.11.0 <27`과 표준 decorator 테스트 설정을 사용합니다. Runtime 패키지의 지원 범위는 `>=24.0.0 <27`입니다. Decorated declaration 평가 전 metadata 준비를 보존하며 예제를 실행하기 위해 legacy decorator flag를 켜지 않습니다. 진입점은 숫자 port `3000`을 직접 전달하며 `PORT` parser나 자동 Node signal 등록이 없습니다.
 
 ## 프로젝트 구조
 
@@ -55,7 +55,9 @@ fluo new my-app
 fluo new my-app --shape application --transport http --runtime node --platform fastify
 ```
 
-이 예제는 Express/raw Node.js/Bun/Deno/Cloudflare Workers application starter, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice starter, mixed single-package starter까지 다루지는 않습니다. 해당 계약은 `../../packages/cli/README.ko.md`, `../../docs/reference/fluo-new-support-matrix.ko.md`, `../../docs/reference/toolchain-contract-matrix.ko.md`를 기준으로 확인하세요.
+이 예제는 Express/raw Node.js/Bun/Cloudflare Workers application starter, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice starter, mixed single-package starter까지 다루지는 않습니다. 해당 계약은 `../../packages/cli/README.ko.md`, `../../docs/reference/fluo-new-support-matrix.ko.md`, `../../docs/reference/toolchain-contract-matrix.ko.md`를 기준으로 확인하세요.
+
+기존 Deno starter는 deprecated 상태로 이전 기간에만 유지합니다. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 참고하세요.
 
 ## 관련 문서
 

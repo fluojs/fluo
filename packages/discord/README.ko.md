@@ -35,11 +35,13 @@ npm install @fluojs/discord @fluojs/notifications
 ## 사용 시점
 
 - Discord 메시지를 직접 보내는 기능과 `@fluojs/notifications` 채널 연동을 한 패키지에서 처리하고 싶을 때.
-- transport 선택을 Node, Bun, Deno, Cloudflare 호환 애플리케이션 경계 전반에서 명시적이고 이식 가능하게 유지해야 할 때.
+- transport 선택을 Node, Bun, Cloudflare 호환 애플리케이션 경계 전반에서 명시적이고 이식 가능하게 유지해야 할 때. 기존 Deno 조립은 deprecated 이전 경로이며 새 배포 선택지가 아닙니다. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
 - incoming webhook을 기본 경로로 선호하되, 더 풍부한 REST 또는 bot 기반 연동은 커스텀 transport 계약으로 열어 두고 싶을 때.
 - 설정을 패키지 내부 `process.env` 접근이 아니라 DI 또는 명시적인 옵션으로 주입하고 싶을 때.
 
 ## 빠른 시작
+
+기존 앱에 넣는 모듈/서비스 fragment입니다. 예제 webhook URL을 실제 Discord incoming webhook으로 교체하고 `DeployNotifier`를 앱 module의 `providers`에 등록하세요. 앱 bootstrap과 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
 
 ### 모듈 등록
 

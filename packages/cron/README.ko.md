@@ -68,6 +68,8 @@ Dynamic registry task identity는 이제 첫 번째 `name` 인자만 사용합�
 
 ## 빠른 시작
 
+아래는 스케줄링 provider/module 등록 fragment입니다. 기존 앱의 모듈 그래프에 넣고 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)로 bootstrap해야 lifecycle에 따라 작업이 시작됩니다.
+
 `CronModule`을 등록하고 데코레이터를 사용하여 메서드를 스케줄링합니다.
 
 애플리케이션 모듈의 스케줄링 등록은 `CronModule.forRoot(...)`로 구성합니다.

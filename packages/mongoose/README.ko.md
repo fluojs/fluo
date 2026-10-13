@@ -48,6 +48,8 @@ Root `@fluojs/mongoose` wrapper는 ambient transaction context에 Node.js `node:
 
 ## 빠른 시작
 
+기존 앱에 넣는 module 등록 fragment이며 `mongodb://localhost:27017/test`에서 실행 중인 MongoDB가 필요합니다. Transaction을 사용하려면 replica set 등 MongoDB의 transaction 전제조건도 충족해야 합니다. 앱 bootstrap과 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 유지하세요.
+
 루트 모듈에 Mongoose 연결 인스턴스를 전달하여 `MongooseModule`을 등록합니다.
 
 ```typescript

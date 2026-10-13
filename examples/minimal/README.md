@@ -27,7 +27,7 @@ The package has no dev/start script. Its `src/main.ts` would start a network lis
 pnpm vitest run examples/minimal
 ```
 
-Use Node.js `>=24.0.0 <27` and the repository's standard decorator test configuration. Preserve metadata preparation before decorated declarations evaluate; do not enable legacy decorator flags to run this example. Its entrypoint passes numeric port `3000` directly and has no `PORT` parser or automatic Node signal registration.
+Use Node.js `>=24.11.0 <27` and the standard decorator test configuration for repository builds and tests. Runtime packages support `>=24.0.0 <27`. Preserve metadata preparation before decorated declarations evaluate; do not enable legacy decorator flags to run this example. Its entrypoint passes numeric port `3000` directly and has no `PORT` parser or automatic Node signal registration.
 
 ## project structure
 
@@ -55,7 +55,9 @@ fluo new my-app
 fluo new my-app --shape application --transport http --runtime node --platform fastify
 ```
 
-This example does not cover Express/raw Node.js/Bun/Deno/Cloudflare Workers application starters, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice starters, or the mixed single-package starter. Those contracts are documented in `../../packages/cli/README.md`, `../../docs/reference/fluo-new-support-matrix.md`, and `../../docs/reference/toolchain-contract-matrix.md`.
+This example does not cover Express/raw Node.js/Bun/Cloudflare Workers application starters, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice starters, or the mixed single-package starter. Those contracts are documented in `../../packages/cli/README.md`, `../../docs/reference/fluo-new-support-matrix.md`, and `../../docs/reference/toolchain-contract-matrix.md`.
+
+The existing Deno starter is deprecated and retained during migration only. See the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
 
 ## related docs
 
