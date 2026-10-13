@@ -10,7 +10,7 @@
     "algorithm": "SHA-256 of JSON.stringify(sorted path-to-byte-SHA256 object); receipt itself excluded to avoid a self hash",
     "files": {
       "packages/platform-fastify/src/native-route-work.test.ts": "f043b0691a3a55598e6fc8bd89f5a6537ef2b45d45817e5abb48e5eb9219ff89",
-      "tooling/benchmarks/http-comparison/issue3941-report.md": "28b54a0284b48deacd1d10898603153c098ff507d6a23a46aca133c08d93ddf2",
+      "tooling/benchmarks/http-comparison/issue3941-report.md": "9b42228c5ea618c12bba3f76e98c2f2299ba6617c08d6c83349b086da806476e",
       "tooling/benchmarks/http-comparison/results/issue3941/.gitignore": "ce9150eb76e7545193898d2f4f218eeaa78821b4a61461f681eb221424c905e3",
       "tooling/benchmarks/http-comparison/results/issue3941/collector.ts": "ed72a546f66011903f15dac354746bb392d6550e785dad05c14b1116aea4991d",
       "tooling/benchmarks/http-comparison/results/issue3941/dependencies.ts": "3c4383a6e8f03ceb939cfb306781376af3513020c6b9e66043762f4f9527ba03",
@@ -26,15 +26,29 @@
       "tooling/benchmarks/http-comparison/src/fluo/server.ts": "1539f070b98234bd7633256fbb4911ce6cc24b5fa75f9ac8dda61fb810e662b2",
       "tooling/benchmarks/http-comparison/src/issue3941.ts": "5239bf597e28551f2e1241c0eed899980aff11bbc9a89112b50d1e618343340c",
       "tooling/benchmarks/http-comparison/src/traffic.ts": "a256ed2f892d7c9c0ad4cbd6f2b23fae3f64dc5882fc5d76de159447987699a8",
-      "tooling/benchmarks/http-comparison/tests/issue3941.test.mts": "53cf0bea330899aa657f426ba38eef2324e7866a524a7272387ea06e0a8db0c7",
+      "tooling/benchmarks/http-comparison/tests/issue3941.test.mts": "2af8d84bcbf21907f4792b7c9d95f03bc16c569b259119b40043ff01f7f88595",
       "tooling/benchmarks/http-comparison/tests/traffic-utf8.test.mts": "7dc5c812ba9316403a65faef6fd8916d642946d748982f9ccdc3862da7b2aa41",
       "tooling/release/verify-release-readiness.d.mts": "83e1d92e2646886c197ae566aa939ab0d4400056a734695fd0cf01154408d632",
       "tooling/release/verify-release-readiness.mjs": "131e134dfd0254b80cbc995d7ceadefaff1a7a6bd9b5cdcba4ef8b0b8f9bd5b1",
       "tooling/release/verify-release-readiness.test.ts": "66c6c72e55e2d38ed2d612c533425b7f8341ffbb3c900b4ebb22eca8976c7702"
     },
-    "sha256": "8555de7cbf72a282a0eff33553c80c5be32a2b4e48262f6a02fc59e5575a93c0"
+    "sha256": "9c4a10ae2b6d66403aea2996afd3e1a9a910b1137a75d86c032d4025b5e5403c"
   },
   "checks": [
+    {
+      "commands": [
+        "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace test"
+      ],
+      "cwd": "/Users/ayden/Documents/fluo/.worktrees/issue-3941",
+      "log": "results/issue3941/checks/shared-dist-setup-green.log",
+      "passed": 491,
+      "failed": 0,
+      "skipped": 1,
+      "durationMs": 93156.403375,
+      "status": "passed",
+      "exitCode": 0,
+      "sha256": "cfef88d0f860f358c8fa6fa2506271681eb792902895fe8010167b8d0ca10428"
+    },
     {
       "commands": [
         "node --import tsx --test tests/issue3941.test.mts tests/traffic-utf8.test.mts"
@@ -118,7 +132,7 @@
   },
   "cleanCheckoutPrerequisites": {
     "manualPrivateDistRequired": false,
-    "entry": "Harness before hook builds 19 selected workspace projects in the dependency closure and compiles the actual entry into a unique temporary module directory with own dependency link; cleanup is automatic.",
+    "entry": "Workspace package builds are an explicit pre-suite prerequisite. The test hook compiles only the private entry into a unique temporary directory and asserts that the prepared shared core artifact retains its file identity/metadata.",
     "generator": "Identity test builds its own unique temporary esbuild bundle; never reads or overwrites the preserved original generator/load-client.mjs.",
     "installs": "Existing frozen installed environment; no new install performed in this finalization."
   },
@@ -179,5 +193,21 @@
   "parentNext": [
     "new exact-head prepared reviews",
     "CI"
-  ]
+  ],
+  "sharedDistFix": {
+    "cause": "New test before hook rebuilt shared workspace packages during parallel imports; directly observed persistence dist removal. Earlier missing-prerequisite classification was incomplete.",
+    "red": {
+      "path": "results/issue3941/checks/shared-dist-setup-red.log",
+      "sha256": "cb243e1f49dbfe990173520fc51b3f383b2d02aaa99f767cc2b5dc9b814fdadf",
+      "exitCode": 1,
+      "failed": 1
+    },
+    "quality": {
+      "path": "results/issue3941/checks/shared-dist-setup-quality.log",
+      "sha256": "c576134cfd3293d78e76f6875af0ac7b1fb95699a1cb855d171e6b5dddae6636",
+      "exitCode": 0
+    },
+    "diagnostics": 0,
+    "performanceArtifactsChanged": false
+  }
 }

@@ -101,20 +101,42 @@ review와 CI는 부모가 담당합니다.
 
 ## Final focused checks / 최종 focused 검증
 
-The final self-preparing harness passed **51 tests**, zero failures/skips,
+The earlier self-preparing harness passed **51 tests**, zero failures/skips,
 exit 0 (`checks/final-harness-20261013.log`, runner duration 13961.952708ms).
-The entry fixture builds its required package dependency closure and compiles
-the actual Fastify server into a unique temporary module directory before
-startup. The generator identity test builds its own temporary esbuild bundle.
+Its workspace-build hook was subsequently found to delete shared package dist
+while other test files imported it. The corrected hook requires workspace
+packages to be built before the parallel suite and compiles only the private
+Fastify entry into a unique temporary module directory.
+The generator identity test builds its own temporary esbuild bundle.
 Neither reads a manually prepared private benchmark dist/bundle, replaces a
 real-listener assertion, nor overwrites the frozen measurement build or generator.
 
-최종 harness는 **51개 테스트**, 실패/skip 0, exit 0으로 통과했습니다. Entry fixture는
-필요한 package dependency closure와 실제 Fastify server를 먼저 build하고 고유한
-temporary module 디렉터리에서 시작합니다. Generator identity 테스트도 자신의
+앞선 harness는 **51개 테스트**, 실패/skip 0, exit 0이었지만, 이후 workspace build
+hook이 다른 test file의 import 중 공유 dist를 삭제하는 충돌을 확인했습니다.
+수정된 hook은 병렬 suite 실행 전에 workspace package가 준비되어 있어야 하며,
+private Fastify entry만 고유한 temporary module 디렉터리에서 build합니다.
+Generator identity 테스트도 자신의
 temporary bundle을 직접 build합니다. 수동으로 만든 private benchmark dist/bundle에
 의존하지 않으며, real-listener assertion을 유지하고 frozen 측정 build/generator를
 덮어쓰지 않습니다.
+
+The new regression compares the prepared shared artifact's file identity and
+modification metadata before and after private entry setup. Restoring the old
+workspace build gives a deterministic assertion-level RED (one failure,
+`checks/shared-dist-setup-red.log`). Removing it gives one full isolated suite
+GREEN: **491 passed, zero failed, one existing Linux-only skip**
+(`checks/shared-dist-setup-green.log`). Strict affected types, scoped lint,
+diagnostics and diff checks pass (`checks/shared-dist-setup-quality.log`).
+The earlier failed full-suite logs and actual dist deletion events are retained.
+Only test setup and evidence changed after measurement; the 120-arm FAIL
+and every original performance artifact remain unchanged.
+
+새 회귀는 private entry 준비 전후 공유 artifact의 파일 identity와 수정 metadata를
+비교합니다. 이전 workspace build를 복원하면 assertion-level RED 1건이 발생하고,
+제거 후 실제 full isolated suite는 **491 pass / 0 fail / 기존 Linux-only skip 1**
+로 통과했습니다. 관련 strict types·lint·진단·diff 검사도 통과했습니다.
+앞선 실패와 실제 dist 삭제 event는 보존했습니다. 측정 이후 test setup과 근거만
+변경했으며, 120-arm FAIL과 모든 성능 원본은 그대로 유지합니다.
 
 Fastify metadata/adapter, shared Node request and HTTP dispatch/context, and
 release focused regressions passed **35 files / 568 tests**, exit 0

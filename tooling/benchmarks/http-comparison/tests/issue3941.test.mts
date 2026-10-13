@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -22,20 +22,27 @@ const identities = () => ({
 const pair = (left = 100, right = 100) => ({ left, right });
 
 const entryDirectory = await mkdtemp(join(tmpdir(), 'issue3941-entry-'));
+const sharedPackageEntry = join(WORKSPACE_ROOT, 'packages/core/dist/index.js');
+const sharedPackageBefore = await stat(sharedPackageEntry);
 after(() => rm(entryDirectory, { recursive: true, force: true }));
 before(async () => {
-  // A checkout with installed dependencies must not need manually built private dist.
+  // Workspace packages are prepared before the parallel suite; build only this private entry here.
   const execute = promisify(execFile);
-  const build = await execute('pnpm', ['--filter', '@fluojs/platform-fastify...',
-    '--filter', '@fluojs/core...', '--filter', '@fluojs/validation...', 'build'],
-    { cwd: WORKSPACE_ROOT, timeout: 180_000, maxBuffer: 4 * 1024 * 1024 });
-  process.stdout.write(build.stdout);
   await execute('pnpm', ['exec', 'tsc', 'src/fluo/server.ts', '--target', 'ES2022',
     '--module', 'ESNext', '--moduleResolution', 'Bundler', '--strict', '--skipLibCheck',
     '--outDir', entryDirectory], { cwd: new URL('../', import.meta.url), timeout: 60_000 });
   await writeFile(join(entryDirectory, 'package.json'), JSON.stringify({ type: 'module' }));
   await symlink(new URL('../node_modules', import.meta.url).pathname, join(entryDirectory, 'node_modules'), 'dir');
 }, { timeout: 240_000 });
+
+test('benchmark entry setup: preserves the prepared shared package artifact', async () => {
+  const afterBuild = await stat(sharedPackageEntry);
+
+  assert.deepEqual(
+    [afterBuild.dev, afterBuild.ino, afterBuild.size, afterBuild.mtimeMs, afterBuild.ctimeMs],
+    [sharedPackageBefore.dev, sharedPackageBefore.ino, sharedPackageBefore.size, sharedPackageBefore.mtimeMs, sharedPackageBefore.ctimeMs],
+  );
+});
 
 for (const host of [undefined, '0.0.0.0']) {
   test(`benchmark entry startup: bind host ${host ?? 'unset'} -> preserves adapter option and actual listener`, { timeout: 15_000 }, async () => {
