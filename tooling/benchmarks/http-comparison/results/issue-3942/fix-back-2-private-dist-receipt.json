@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "issue": 3942,
+  "lane_id": "http-performance-3939-3943-20261013-1a832301",
+  "previous_head_sha": "8c6e8ee59bb48cc044df4ecebe07276d9af4d13f",
+  "preflight_sha256": "2db06833eb72bb88b7943ccc7bc8a234c9a95c0c9e6e226111cb50eceef20b1b",
+  "pr": {
+    "number": 3983,
+    "url": "https://github.com/fluojs/fluo/pull/3983",
+    "head_branch": "issue-3942"
+  },
+  "blocker_signature": "tooling/benchmarks/http-comparison/tests/issue-3942.test.mts:clean-checkout-private-dist-missing:build-owned-fixtures-before-tests",
+  "ci_failure": {
+    "run": 38388495138,
+    "attempt": 1,
+    "job": 115267790517,
+    "task": "static",
+    "head_sha": "8c6e8ee59bb48cc044df4ecebe07276d9af4d13f",
+    "tree_sha": "62ee9889df00a8848fab8f522f1a72c033d11687",
+    "command": "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace test",
+    "exit_code": 1,
+    "passed": 465,
+    "failed": 7,
+    "reason": "Missing issue-owned generator bundle, private dist manifest directory and five fixture server entries.",
+    "artifact_directory": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/ci-3983-static-artifact",
+    "receipt": "static.json",
+    "raw_log": "static-11.log",
+    "raw_log_sha256": "e5d8ee30eda1aae205a17e464c3b5611cc43e7af4c07e86704135918fb3d3eec"
+  },
+  "setup": {
+    "file": "tooling/benchmarks/http-comparison/tests/issue-3942.test.mts",
+    "source_sha256": "5c2000f7ec8019ac6fefc120b294b0fd22b61db74c5c883bf5261228c01f7f0c",
+    "hook": "before",
+    "command": "pnpm exec tsx src/issue-3942/build.ts",
+    "timeout_ms": 60000,
+    "builds_once_before_tests": true,
+    "build_script_changed": false,
+    "shared_scripts_or_ci_changed": false,
+    "real_fixture_and_generator_tests_preserved": true,
+    "adjacent_prerequisites": "RESULTS exists from tracked receipt/policy files; linked package builds remain an existing CI/environment prerequisite. No other manual-only prerequisite was found in the issue suite."
+  },
+  "checks": [
+    {
+      "kind": "RED",
+      "head_sha": "8c6e8ee59bb48cc044df4ecebe07276d9af4d13f",
+      "private_dist_absent": true,
+      "command": "node --import tsx --test tests/issue-3942.test.mts",
+      "cwd": "tooling/benchmarks/http-comparison",
+      "exit_code": 1,
+      "passed": 20,
+      "failed": 7,
+      "duration_ms": 1619.502125,
+      "reason": "Same generator ENOENT, manifest ENOENT and five fixture MODULE_NOT_FOUND failures as CI.",
+      "log": "results/issue-3942/fix-back-2-private-dist-red.log",
+      "sha256": "ec71c127b3c2d313226b0e12283c1a50726334f52c361424a7c11969068db645"
+    },
+    {
+      "kind": "GREEN",
+      "private_dist_absent_before_command": true,
+      "manual_build_before_command": false,
+      "command": "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace test",
+      "cwd": ".",
+      "runs": 1,
+      "exit_code": 0,
+      "collected": 472,
+      "passed": 471,
+      "failed": 0,
+      "skipped": 1,
+      "existing_skip": "processTreeSample: Linux fractional CPU counter -> preserves kernel resolution",
+      "duration_ms": 93498.811875,
+      "log": "results/issue-3942/fix-back-2-private-dist-green.log",
+      "sha256": "9e74b69f31aec1d01b585bc689af5bb3930eeeef7fef8e50e7240b40da9d45e0"
+    },
+    {
+      "kind": "affected-types",
+      "command": "pnpm exec tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --esModuleInterop src/issue-3942/*.ts tests/issue-3942.test.mts",
+      "cwd": "tooling/benchmarks/http-comparison",
+      "exit_code": 0
+    },
+    {
+      "kind": "scoped-lint",
+      "command": "pnpm exec biome lint tooling/benchmarks/http-comparison/src/issue-3942 tooling/benchmarks/http-comparison/tests/issue-3942.test.mts",
+      "exit_code": 0,
+      "checked_source_files": 7,
+      "mts_tests_ignored_by_existing_biome_configuration": true
+    },
+    {
+      "kind": "LSP",
+      "file": "tooling/benchmarks/http-comparison/tests/issue-3942.test.mts",
+      "diagnostics": 0
+    },
+    {
+      "kind": "diff-check",
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "types_lint_log": {
+    "path": "results/issue-3942/fix-back-2-private-dist-types-lint.log",
+    "sha256": "a9d59f8c8a5c8d59f0d027d0cdaa69b51746af552d682c24df15413e06cde222"
+  },
+  "preservation": {
+    "original_result_files_checked": 125,
+    "original_result_hash_mismatches": 0,
+    "private_dist_backup": "results/issue-3942/fix-back-2-disposable-private-dist-backup/issue-3942",
+    "backed_up_private_dist_files": 12,
+    "backup_hash_mismatches": 0,
+    "backup_disposable": true,
+    "backup_retained_without_cleanup": true,
+    "raw_measurement_originals_modified": false,
+    "headroom_raw_sha256": "04119d92dbcf59b7b5f5e8fee5b11893d7633ffe2c2dbb4ea5ae03a3799812b9",
+    "frozen_plan_sha256": "6bba0c95c9192bcf23bc1c20f005e31780ad28640e34c54eec3e4617611a0aed"
+  },
+  "retained_performance_verdict": "INCONCLUSIVE",
+  "performance_rerun": false,
+  "full_local_ci": "not-run",
+  "full_workspace_build_or_install": "not-run",
+  "remote_writes": false,
+  "parent_notification": "All local tests/builds finished; Fastify may reserve hosts. Sent to Execute HTTP Performance Lane before report/commit.",
+  "release_rationale": "Only internal benchmark test setup and report/receipt changed; no published package behavior, API or contents changed, so CONTRIBUTING.md does not require a Changeset.",
+  "exact_new_head_reviews_and_github_ci": "parent-owned; not claimed passed"
+}

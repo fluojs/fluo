@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { test } from 'node:test';
+import { before, test } from 'node:test';
 import { promisify } from 'node:util';
 import { FIXTURES } from '../src/issue-3942/fixtures.js';
 import { EvidenceJournal } from '../src/evidence.js';
@@ -12,7 +12,11 @@ import { evaluate, headroomGate, interval, type Metrics, POLICY } from '../src/i
 import { assertFrozen, frozenPlan, localBinding, parseHosts } from '../src/issue-3942/manifest.js';
 import { sha256 } from '../src/profile-report.js';
 import { WORKSPACE_ROOT } from '../src/provenance.js';
-import { WDIR } from '../src/targets.js';
+import { runCommand, WDIR } from '../src/targets.js';
+
+before(async () => {
+  await runCommand('pnpm', ['exec', 'tsx', 'src/issue-3942/build.ts']);
+}, { timeout: 60_000 });
 
 const metrics: Metrics = { throughput: 1_000, cpuPerRequest: 0.001, p95: 2, p99: 3, rss: 100_000_000 };
 const pairs = Array.from({ length: 8 }, () => ({ a: metrics, b: metrics }));

@@ -92,6 +92,42 @@ entry와 linked build 변경을 각각 거부하고 journal의 실패 증거 보
 Raw RED/GREEN 및 affected types/lint 증거는
 `results/issue-3942/fix-back-1-build-drift-*`에 별도로 보존합니다.
 
+### Clean-checkout CI fix-back / clean checkout CI fix-back
+
+PR #3983 CI run `38388495138`, attempt 1, static job `115267790517`
+failed on head `8c6e8ee59bb48cc044df4ecebe07276d9af4d13f`: the isolated
+benchmark command returned exit 1 with 465 passes and seven failures.
+The compiled generator, frozen manifest and all five fixture listeners required
+absent `dist/issue-3942` artifacts. Earlier manual measurement preparation had
+provided those bytes locally; the test suite had not established its prerequisite.
+The parent preserves the original `static.json` and `static-11.log` in
+`ci-3983-static-artifact` under the lane verification directory.
+
+기존 private dist는 `results/issue-3942/fix-back-2-disposable-private-dist-backup/`
+에 이동하여 12개 파일의 byte를 보존했습니다. 산출물이 없는 원래 head에서
+issue 테스트는 동일한 일곱 누락으로 20 pass / 7 fail, exit 1을 재현했습니다.
+테스트의 `before` hook은 기존 issue-owned `build.ts`를 한 번 실행하고
+완료를 기다린 뒤 실제 generator·manifest·listener 검증을 시작합니다.
+인접 build-drift 테스트의 결과 디렉터리는 기존 tracked receipt/policy 파일로
+존재하며, 다른 manual-only 선행조건은 발견하지 못했습니다.
+
+From the same absent-private-dist state, the actual CI command
+`pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace test`
+passed once: 471 passes, zero failures, one existing Linux-only CPU-counter
+skip on macOS, exit 0, 93.498811875 seconds. The five real listeners and
+generator tests remain intact. Linked package builds remain the existing
+CI/environment prerequisite; this setup builds only issue-owned private entries.
+Affected strict types, scoped source lint, LSP diagnostics and diff check passed.
+The existing Biome configuration excludes `.mts` tests; their types and behavior
+were checked by TypeScript, LSP and the real test command.
+
+별도 receipt: `results/issue-3942/fix-back-2-private-dist-receipt.json`.
+Raw RED/GREEN 및 types/lint 로그는 같은 디렉터리의
+`fix-back-2-private-dist-*.log`에 보존했습니다. 기존 원본 125개와 backup
+12개의 hash 불일치는 0개입니다. 모든 tests/builds 종료를 부모에게 알렸습니다.
+성능 재실행, full local CI, production 변경, threshold 변경 및 remote write는
+없으며 기존 INCONCLUSIVE 판정과 이전 실패 증거를 그대로 보존합니다.
+
 ### Local finalization and limits / 로컬 최종화와 한계
 
 Bounded machine evidence: `results/issue-3942/finalization-receipt.json`.
