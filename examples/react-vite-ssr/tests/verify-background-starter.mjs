@@ -105,25 +105,37 @@ process.on('SIGTERM', onTerm); process.on('SIGINT', onInt);
 async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedRejection = false, expectedExit = 1) {
   if (cancelled) throw new Error(`${label} cancelled by ${cancelled}; no command started.`);
   const capture = createCommandEvidence(evidenceRoot, `${label}-${attempt}`, { executable, args, env }, { cwd });
-  const owned = spawnOwnedCommand(executable, args, {
-    cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  let owned;
+  try {
+    owned = spawnOwnedCommand(executable, args, {
+      cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    capture.finish({ exitCode: null, signal: null, closed: false, error });
+    throw error;
+  }
   const { child } = owned;
   activeChildren.add(owned);
   const started = performance.now();
   capture.attach(child);
   let outcome;
+  let commandError;
+  const onError = (error) => {
+    commandError ??= error;
+    owned.stop();
+  };
   try {
-    outcome = await new Promise((done, fail) => {
-      child.once('error', fail); child.once('close', (exit, signal) => done({ exit, signal }));
+    outcome = await new Promise((done) => {
+      child.on('error', onError); child.once('close', (exit, signal) => done({ exit, signal }));
     });
   } finally {
+    child.off('error', onError);
     activeChildren.delete(owned);
   }
   const { exit, signal } = outcome;
   if (signal !== null || exit === null) cancelled ??= signal ?? 'unknown termination';
   if (owned.forced) cancelled ??= 'forced descendant termination';
-  const evidence = capture.finish({ exitCode: exit, signal, closed: true, cancelled: cancelled !== null, forced: owned.forced });
+  const evidence = capture.finish({ exitCode: exit, signal, closed: true, cancelled: cancelled !== null, forced: owned.forced, error: commandError });
   const log = evidence.log.path;
   const diagnostics = readFileSync(log, 'utf8');
   commands.push({ label, command: [executable, ...args], cwd, env, exit,
@@ -132,6 +144,7 @@ async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedReje
       browserReport: env.PLAYWRIGHT_JSON_OUTPUT_NAME, browserReportSha256: sha(env.PLAYWRIGHT_JSON_OUTPUT_NAME),
       browserReportBytes: statSync(env.PLAYWRIGHT_JSON_OUTPUT_NAME).size,
     } : {}) });
+  if (commandError) throw commandError;
   if (cancelled || signal !== null || exit === null
     || (expectedRejection ? exit !== expectedExit || !expectedRejection.test(diagnostics) : exit !== 0)) {
     throw new Error(`${label} unexpected exit ${exit}, signal ${signal}, cancellation ${cancelled}; complete raw log: ${log}`);

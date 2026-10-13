@@ -38,20 +38,32 @@ export function createCommandEvidence(owner, label, command, options, emit = (te
     let offset = 0;
     while (offset < chunk.length) offset += writeSync(descriptor, chunk, offset);
   };
+  const subscriptions = [];
   return {
     attach(child) {
-      for (const name of ['stdout', 'stderr']) child[name].on('data', (chunk) => {
-        write(descriptors[name], chunk);
-        write(descriptors.log, chunk);
-      });
+      for (const name of ['stdout', 'stderr']) {
+        const stream = child[name];
+        const onData = (chunk) => {
+          write(descriptors[name], chunk);
+          write(descriptors.log, chunk);
+        };
+        stream.on('data', onData);
+        subscriptions.push({ stream, onData });
+      }
     },
     finish(outcome) {
+      for (const { stream, onData } of subscriptions) stream.off('data', onData);
       for (const descriptor of Object.values(descriptors)) closeSync(descriptor);
       const receipt = {
         version: 1, complete: true, executable: command.executable, args: command.args,
         cwd: resolve(options.cwd ?? process.cwd()), env: command.env ?? {},
         exit_code: outcome.exitCode, signal: outcome.signal, closed: outcome.closed,
         cancelled: outcome.cancelled === true, forced: outcome.forced === true,
+        ...(outcome.error ? { error: {
+          name: outcome.error.name, message: outcome.error.message, code: outcome.error.code,
+          errno: outcome.error.errno, syscall: outcome.error.syscall, path: outcome.error.path,
+          spawnargs: outcome.error.spawnargs,
+        } } : {}),
         duration_ms: performance.now() - started,
         ...Object.fromEntries(Object.entries(paths).map(([name, path]) => [name, reference(path)])),
       };
