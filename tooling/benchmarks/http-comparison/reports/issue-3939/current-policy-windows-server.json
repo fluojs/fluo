@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "status": "AWAITING_LEAD_MEASUREMENT",
+  "stageInput": {
+    "version": 1,
+    "lane_id": "http-performance-3939-3943-20261013-1a832301",
+    "issue_number": 3939,
+    "issue_url": "https://github.com/fluojs/fluo/issues/3939",
+    "issue_title": "[HTTP Performance][Node.js] 비압축 응답의 문자열→Buffer 변환 비용 검증 및 최적화",
+    "base_branch": "main",
+    "branch": "issue-3939",
+    "worktree": ".worktrees/issue-3939",
+    "starting_head_sha": "ce70426f3bf29430c4eb941f8e94baaf8f78d364",
+    "preflight_sha256": "8855a286fe8d4a07003f4dbc10a31a3943af70abe0d6fdcb138bf78538364648",
+    "mode": "implement",
+    "existing_pr": null,
+    "blockers": [],
+    "fix_back_attempt": null
+  },
+  "hostRoles": {
+    "measuredFluoServer": "Windows desktop WSL2",
+    "independentHttpLoadGenerator": "Mac",
+    "identityFreezeOwner": "lead",
+    "identityFreezeLocation": "Windows measurement worktree",
+    "identityStatus": "REQUIRES_FRESH_ROLE_CORRECT_FREEZE"
+  },
+  "numericalDesign": {
+    "module": "src/issue-3939/plan.ts",
+    "export": "DESIGN",
+    "digestExport": "DESIGN_SHA256"
+  },
+  "fixtures": {
+    "module": "src/issue-3939/fixtures.ts",
+    "manifestExport": "FIXTURE_MANIFEST"
+  },
+  "historicalMacServerHeadroom": {
+    "classification": "REJECTED_ENVIRONMENT_DIAGNOSIS",
+    "retainedRecords": 12,
+    "plannedRecords": 132,
+    "firstConditionThroughputIncreasePercent": [57, 128],
+    "windowsServerPerformanceEvidence": false,
+    "optimizationEvidence": false,
+    "historicalArtifacts": "PRESERVED"
+  }
+}

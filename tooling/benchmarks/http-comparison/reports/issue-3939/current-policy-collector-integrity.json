@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "status": "AWAITING_LEAD_MEASUREMENT",
+  "previousPolicy": "current-policy-windows-server.json",
+  "preflight_sha256": "59bd0578c5701d29210ee000812732034981284b578d0b4abee296d89c9ad6ba",
+  "lane_id": "http-performance-3939-3943-20261013-1a832301",
+  "issue_number": 3939,
+  "branch": "issue-3939",
+  "worktree": ".worktrees/issue-3939",
+  "starting_head_sha": "ce70426f3bf29430c4eb941f8e94baaf8f78d364",
+  "mode": "implement",
+  "hostRoles": {
+    "measuredFluoServer": "Windows desktop WSL2",
+    "independentHttpLoadGenerator": "Mac"
+  },
+  "design": "src/issue-3939/plan.ts#DESIGN",
+  "fixtures": "src/issue-3939/fixtures.ts#FIXTURE_MANIFEST",
+  "rawFormat": "issue-3939-raw-shards-v1",
+  "historicalEvidence": "PRESERVED_NOT_RECLASSIFIED",
+  "unresolvedWindowsScalingFailures": [
+    { "fixture": "json-small", "configuration": "equivalent", "meanThroughputIncreasePercent": 13.2 },
+    { "fixture": "utf8-small", "configuration": "default", "meanThroughputIncreasePercent": 9.84 }
+  ],
+  "rerunAuthority": "PARENT_ADJUDICATION_ONLY"
+}
