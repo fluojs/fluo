@@ -750,8 +750,8 @@ describe('advanced runtime branching source excerpts', () => {
   const excerpts: readonly RuntimeSourceExcerpt[] = [
     {
       sourcePath: 'packages/runtime/src/bootstrap.ts',
-      startLine: 1648,
-      endLine: 1672,
+      startLine: 532,
+      endLine: 556,
       fenceLanguage: 'typescript',
     },
     {

@@ -132,6 +132,10 @@ describe('NestJS runtime lifecycle migration documentation', () => {
       'packages/runtime/src/bootstrap.ts',
       "function isBeforeApplicationShutdown(value: unknown): boolean {\n  return hasMethod(value, 'beforeApplicationShutdown');\n}",
     ],
+    [
+      'packages/runtime/src/internal/lifecycle.ts',
+      "function isBeforeApplicationShutdown(value: unknown): boolean {\n  return hasMethod(value, 'beforeApplicationShutdown');\n}",
+    ],
   ] as const)('rejects beforeApplicationShutdown additions to %s', (relativePath, unsupportedHookSource) => {
     // Given
     const readWithUnsupportedRuntimeHook = (requestedPath: string): string =>
@@ -154,7 +158,15 @@ describe('NestJS runtime lifecycle migration documentation', () => {
       "function isOnApplicationDraining(value: unknown): boolean {\n  return hasMethod(value, 'onApplicationDraining');\n}",
     ],
     [
+      'packages/runtime/src/internal/lifecycle.ts',
+      "function isOnApplicationDraining(value: unknown): boolean {\n  return hasMethod(value, 'onApplicationDraining');\n}",
+    ],
+    [
       'packages/runtime/src/bootstrap.ts',
+      'async function runApplicationDrainingHook(instance: { onApplicationDraining(): Promise<void> }) {\n  await instance.onApplicationDraining();\n}',
+    ],
+    [
+      'packages/runtime/src/internal/lifecycle.ts',
       'async function runApplicationDrainingHook(instance: { onApplicationDraining(): Promise<void> }) {\n  await instance.onApplicationDraining();\n}',
     ],
   ] as const)('rejects a fifth lifecycle hook added to %s', (relativePath, fifthHookSource) => {
@@ -214,32 +226,37 @@ describe('NestJS runtime lifecycle migration documentation', () => {
     expect(runGovernanceGuard).toThrow(expectedError);
   });
 
-  it.each([
-    [
-      'template-literal probe',
-      'function isBeforeApplicationShutdown(value: unknown): boolean {\n  return hasMethod(value, `beforeApplicationShutdown`);\n}',
-    ],
-    [
-      'element-access invocation',
-      "async function runBeforeApplicationShutdown(instance: Record<string, () => Promise<void>>) {\n  await instance['beforeApplicationShutdown']();\n}",
-    ],
-    [
-      'parenthesized receiver invocation',
-      'async function runBeforeApplicationShutdown(instance: { beforeApplicationShutdown(): Promise<void> }) {\n  await (instance).beforeApplicationShutdown();\n}',
-    ],
-    [
-      'asserted receiver invocation',
-      'async function runBeforeApplicationShutdown(instance: unknown) {\n  await (instance as { beforeApplicationShutdown(): Promise<void> }).beforeApplicationShutdown();\n}',
-    ],
-  ] as const)('rejects a lifecycle bootstrap %s', (_caseName, bypassSource) => {
-    // Given
-    const readWithBypass = (requestedPath: string): string =>
-      requestedPath === 'packages/runtime/src/bootstrap.ts' ? `${read(requestedPath)}\n${bypassSource}` : read(requestedPath);
+  describe.each([
+    'packages/runtime/src/bootstrap.ts',
+    'packages/runtime/src/internal/lifecycle.ts',
+  ])('runtime lifecycle owner %s', (relativePath) => {
+    it.each([
+      [
+        'template-literal probe',
+        'function isBeforeApplicationShutdown(value: unknown): boolean {\n  return hasMethod(value, `beforeApplicationShutdown`);\n}',
+      ],
+      [
+        'element-access invocation',
+        "async function runBeforeApplicationShutdown(instance: Record<string, () => Promise<void>>) {\n  await instance['beforeApplicationShutdown']();\n}",
+      ],
+      [
+        'parenthesized receiver invocation',
+        'async function runBeforeApplicationShutdown(instance: { beforeApplicationShutdown(): Promise<void> }) {\n  await (instance).beforeApplicationShutdown();\n}',
+      ],
+      [
+        'asserted receiver invocation',
+        'async function runBeforeApplicationShutdown(instance: unknown) {\n  await (instance as { beforeApplicationShutdown(): Promise<void> }).beforeApplicationShutdown();\n}',
+      ],
+    ] as const)('rejects a lifecycle bootstrap %s', (_caseName, bypassSource) => {
+      // Given
+      const readWithBypass = (requestedPath: string): string =>
+        requestedPath === relativePath ? `${read(requestedPath)}\n${bypassSource}` : read(requestedPath);
 
-    // When
-    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithBypass);
+      // When
+      const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithBypass);
 
-    // Then
-    expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);
+      // Then
+      expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);
+    });
   });
 });

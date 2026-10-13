@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { FluoFactory, bootstrapModule } from './bootstrap.js';
 import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
-import { defineRuntimeModuleMetadata } from './internal/core-metadata.js';
+import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from './internal/core-metadata.js';
 import { clearModuleGraphCompileCacheForTesting, getModuleGraphCompileCacheSizeForTesting } from './module-graph.js';
 import type { PlatformComponent, PlatformState } from './platform-contract.js';
 import { HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION } from './tokens.js';
@@ -931,6 +931,47 @@ describe('FluoFactory.createApplicationContext', () => {
 
     await context.close();
   });
+
+  it.each(['application', 'context'] as const)(
+    'keeps inherited factory scope and alias resolution independent from diagnostics in %s',
+    async (kind) => {
+      class ResolverBase {}
+      class InheritedResolver extends ResolverBase {}
+      defineRuntimeClassDiMetadata(ResolverBase, { scope: 'transient', inject: ['not-inherited-by-factory'] });
+      const events: string[] = [];
+      const transientFactory = vi.fn(() => ({ id: Symbol('transient') }));
+      const singletonFactory = vi.fn(() => ({
+        onModuleInit() { events.push('init'); },
+        onModuleDestroy() { events.push('destroy'); },
+      }));
+      class RootModule {}
+      defineRuntimeModuleMetadata(RootModule, {
+        providers: [
+          { provide: 'transient', useFactory: transientFactory, resolverClass: InheritedResolver },
+          { provide: 'alias', useExisting: 'transient' },
+          { provide: 'singleton', useFactory: singletonFactory, resolverClass: InheritedResolver, scope: 'singleton', inject: [] },
+        ],
+      });
+      const shell = kind === 'application'
+        ? await FluoFactory.create(RootModule)
+        : await FluoFactory.createApplicationContext(RootModule);
+
+      try {
+        const first = await shell.get('alias');
+        const second = await shell.get('alias');
+        const singleton = await shell.get('singleton');
+
+        expect(first).not.toBe(second);
+        expect(transientFactory).toHaveBeenCalledTimes(2);
+        expect(await shell.get('singleton')).toBe(singleton);
+        expect(singletonFactory).toHaveBeenCalledTimes(1);
+        expect(events).toEqual(['init']);
+      } finally {
+        await shell.close();
+      }
+      expect(events).toEqual(['init', 'destroy']);
+    },
+  );
 
   it('memoizes ApplicationContext.get() for singleton tokens', async () => {
     class AppService {}

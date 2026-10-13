@@ -1,9 +1,10 @@
 import type { Token } from '@fluojs/core';
-import type { Provider, Scope } from '@fluojs/di';
+import type { Provider } from '@fluojs/di';
 import type { HandlerDescriptor } from '@fluojs/http/portable';
 
 import { type BootstrapTimingDiagnostics, createRuntimeDiagnosticsGraph } from '../health/diagnostics.js';
 import { getRuntimeClassDiMetadata, type RuntimeInjectionToken } from '../internal/core-metadata.js';
+import { providerScope, providerShape } from '../internal/provider-policy.js';
 import { providerToken } from '../module-graph.js';
 import {
   createRuntimeRouteInspection,
@@ -72,45 +73,6 @@ function labelModule(moduleType: ModuleType): string {
   return moduleType.name || '<anonymous-module>';
 }
 
-function providerShape(provider: Provider): string {
-  if (typeof provider === 'function') {
-    return 'class';
-  }
-
-  if ('useFactory' in provider) {
-    return 'factory';
-  }
-
-  if ('useValue' in provider) {
-    return 'value';
-  }
-
-  if ('useExisting' in provider) {
-    return 'existing';
-  }
-
-  return 'class';
-}
-
-function providerScope(provider: Provider): Scope {
-  if (typeof provider === 'function') {
-    return getRuntimeClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useValue' in provider || 'useExisting' in provider) {
-    return 'singleton';
-  }
-
-  if ('useFactory' in provider) {
-    return provider.scope ?? (provider.resolverClass ? getRuntimeClassDiMetadata(provider.resolverClass)?.scope : undefined) ?? 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    return provider.scope ?? getRuntimeClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
-  }
-
-  return 'singleton';
-}
 
 function providerDependencies(provider: Provider): RuntimeInjectionToken[] {
   if (typeof provider === 'function') {

@@ -34,7 +34,7 @@ const runtimeRequirements = [
     ],
   ],
   [
-    'packages/runtime/src/bootstrap.ts',
+    'packages/runtime/src/internal/lifecycle.ts',
     [
       "hasMethod(value, 'onModuleInit')",
       "hasMethod(value, 'onApplicationBootstrap')",
@@ -192,45 +192,50 @@ function enforceLifecycleTypeAllowlist(relativePath, content) {
   assertExactNames({ relativePath, kind: 'LifecycleHooks union', actualNames: lifecycleUnionNames, allowedNames: lifecycleInterfaceNames });
 }
 
-function enforceLifecycleBootstrapAllowlist(relativePath, content) {
-  const sourceFile = parseRuntimeSource(relativePath, content);
+function enforceLifecycleBootstrapAllowlist(sources) {
   const probedMethodNames = new Set();
   const invokedMethodNames = new Set();
 
-  function visit(node) {
-    if (ts.isCallExpression(node)) {
-      const probeName = staticName(node.arguments[1]);
-      if (
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === 'hasMethod' &&
-        probeName &&
-        lifecycleMethodNamePattern.test(probeName)
-      ) {
-        probedMethodNames.add(probeName);
-      }
-      const receiver =
-        ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
-          ? unwrapExpression(node.expression.expression)
-          : undefined;
-      const invokedName = ts.isPropertyAccessExpression(node.expression)
-        ? node.expression.name.text
-        : ts.isElementAccessExpression(node.expression)
-          ? staticName(node.expression.argumentExpression)
-          : undefined;
-      if (
-        receiver &&
-        ts.isIdentifier(receiver) &&
-        receiver.text === 'instance' &&
-        invokedName &&
-        lifecycleMethodNamePattern.test(invokedName)
-      ) {
-        invokedMethodNames.add(invokedName);
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(sourceFile);
+  for (const [relativePath, content] of sources) {
+    const sourceFile = parseRuntimeSource(relativePath, content);
 
+    function visit(node) {
+      if (ts.isCallExpression(node)) {
+        const probeName = staticName(node.arguments[1]);
+        if (
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === 'hasMethod' &&
+          probeName &&
+          lifecycleMethodNamePattern.test(probeName)
+        ) {
+          probedMethodNames.add(probeName);
+        }
+        const receiver =
+          ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
+            ? unwrapExpression(node.expression.expression)
+            : undefined;
+        const invokedName = ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name.text
+          : ts.isElementAccessExpression(node.expression)
+            ? staticName(node.expression.argumentExpression)
+            : undefined;
+        if (
+          receiver &&
+          ts.isIdentifier(receiver) &&
+          receiver.text === 'instance' &&
+          invokedName &&
+          lifecycleMethodNamePattern.test(invokedName)
+        ) {
+          invokedMethodNames.add(invokedName);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+
+  }
+
+  const relativePath = sources.map(([sourcePath]) => sourcePath).join(', ');
   assertExactNames({ relativePath, kind: 'method probes', actualNames: probedMethodNames, allowedNames: lifecycleMethodNames });
   assertExactNames({ relativePath, kind: 'method invocations', actualNames: invokedMethodNames, allowedNames: lifecycleMethodNames });
 }
@@ -251,10 +256,12 @@ export function enforceRuntimeLifecycleNestjsMigrationDocs(
     if (relativePath === 'packages/runtime/src/types.ts') {
       enforceLifecycleTypeAllowlist(relativePath, content);
     }
-    if (relativePath === 'packages/runtime/src/bootstrap.ts') {
-      enforceLifecycleBootstrapAllowlist(relativePath, content);
-    }
   }
+
+  enforceLifecycleBootstrapAllowlist([
+    ['packages/runtime/src/bootstrap.ts', readText('packages/runtime/src/bootstrap.ts')],
+    ['packages/runtime/src/internal/lifecycle.ts', readText('packages/runtime/src/internal/lifecycle.ts')],
+  ]);
 
   for (const [relativePath, requiredMarkers] of documentationRequirements) {
     const content = readText(relativePath);
