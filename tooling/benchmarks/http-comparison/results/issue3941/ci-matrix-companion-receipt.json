@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "issue": 3941,
+  "preflightSha256": "19a8d4f11edfd6e0676c7e5e9c0fb44da70a43f67eeece2edfabede7c5414839",
+  "previousHead": "9be314429ad83d14c72de5d369dbe0918475b8f3",
+  "ci": {
+    "run": 38427663169,
+    "job": 115403684171,
+    "command": "pnpm vitest run --project tooling --shard=1/2 --maxWorkers=1",
+    "failed": 1,
+    "passed": 1257
+  },
+  "rootCause": "Second stale apps command inventory in local-release-dry-run-matrix.test.ts; same approved no-suite change. Original expectation preserved in CI and RED logs.",
+  "change": "Omit only absent apps command; retain six remaining commands and release notes isolation, explicitly assert apps is not applicable for CLI and Studio.",
+  "red": {
+    "failed": 1,
+    "passed": 7,
+    "exitCode": 1,
+    "log": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/ci-3941-matrix-red.log"
+  },
+  "green": {
+    "command": "pnpm exec vitest run tooling/release tooling/governance/release-readiness-ci.test.ts --project tooling --maxWorkers=1",
+    "files": 12,
+    "passed": 210,
+    "failed": 0,
+    "exitCode": 0,
+    "log": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/ci-3941-release-boundary-green.log"
+  },
+  "quality": {
+    "lint": 0,
+    "lspDiagnostics": 0,
+    "diffCheck": 0
+  },
+  "historicalReceipts": "Earlier source/contract receipts remain historical, not current-head evidence."
+}

@@ -177,7 +177,6 @@ function expectWorkflowPreflightWasLocal(dependencies: ReturnType<typeof createD
     ['pnpm', ['build']],
     ['pnpm', ['typecheck']],
     ['pnpm', ['vitest', 'run', '--project', 'packages', '--maxWorkers=1']],
-    ['pnpm', ['vitest', 'run', '--project', 'apps', '--maxWorkers=1']],
     ['pnpm', ['vitest', 'run', '--project', 'examples', '--maxWorkers=1']],
     ['pnpm', ['vitest', 'run', '--project', 'tooling', '--maxWorkers=1']],
     ['pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']],
@@ -200,6 +199,8 @@ describe('local release dry-run matrix', () => {
     expect(cliResult.checks).toEqual(expect.arrayContaining([expect.objectContaining({ label: 'Single-package release package notes', pass: true })]));
     expect(studioResult.checks).toEqual(expect.arrayContaining([expect.objectContaining({ label: 'Single-package release package notes', pass: true })]));
     expect(dependencies.isPublishedVersion).toHaveBeenCalledWith('@fluojs/cli', betaVersion);
+    expect(cliResult.verification.notApplicable.map(({ project }) => project)).toEqual(['apps']);
+    expect(studioResult.verification.notApplicable.map(({ project }) => project)).toEqual(['apps']);
     expectWorkflowPreflightWasLocal(dependencies);
   });
 
