@@ -1,3 +1,4 @@
+import { StringDecoder } from 'node:string_decoder';
 import autocannon, { type Result } from 'autocannon';
 
 export interface ScenarioRequest {
@@ -108,6 +109,36 @@ export function shoot(options: TrafficOptions, label: string): Promise<Measureme
       ...(options.amount === undefined ? {} : { amount: options.amount }),
       pipelining: 1,
       bailout: 1,
+      setupClient(client) {
+        // Pinned autocannon 7.15 calls setupClient before connecting. Correct
+        // only this client's queue: never mutate installed modules/prototypes.
+        const queue: unknown = Reflect.get(client, 'pipelinedRequests');
+        if (typeof queue !== 'object' || queue === null) throw new Error('Missing autocannon response queue');
+        const peek: unknown = Reflect.get(queue, 'peek');
+        const terminate: unknown = Reflect.get(queue, 'terminateRequest');
+        if (typeof peek !== 'function' || typeof terminate !== 'function') throw new Error('Unsupported autocannon response queue');
+        const decoders = new WeakMap<object, StringDecoder>();
+        Reflect.set(queue, 'addBody', (bytes: Buffer) => {
+          const pending: unknown = Reflect.apply(peek, queue, []);
+          if (typeof pending !== 'object' || pending === null) return;
+          const decoder = decoders.get(pending) ?? new StringDecoder('utf8');
+          decoders.set(pending, decoder);
+          const body: unknown = Reflect.get(pending, 'body');
+          if (typeof body !== 'string') throw new Error('Unsupported autocannon body accumulator');
+          Reflect.set(pending, 'body', body + decoder.write(bytes));
+        });
+        Reflect.set(queue, 'terminateRequest', () => {
+          const pending: unknown = Reflect.apply(peek, queue, []);
+          if (typeof pending === 'object' && pending !== null) {
+            const decoder = decoders.get(pending);
+            if (decoder) {
+              Reflect.set(pending, 'body', String(Reflect.get(pending, 'body')) + decoder.end());
+              decoders.delete(pending);
+            }
+          }
+          return Reflect.apply(terminate, queue, []);
+        });
+      },
       ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
       // Each connection cycles its own immutable request list. onResponse is
       // attached to the actual queued request (autocannon 7.15), unlike the
