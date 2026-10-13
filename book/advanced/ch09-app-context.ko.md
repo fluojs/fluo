@@ -439,7 +439,7 @@ createApplicationContext(rootModule)
 
 application shell의 constructor는 context baseline 위에 무엇이 추가되는지 직접 보여 줍니다. 같은 `container`, `modules`, `rootModule`을 받지만, dispatcher와 adapter 상태가 함께 들어옵니다.
 
-`path:packages/runtime/src/internal/application.ts:23-58`
+`path:packages/runtime/src/internal/application.ts:23-60`
 
 ```typescript
 export class FluoApplication implements Application {
@@ -459,6 +459,7 @@ export class FluoApplication implements Application {
 
   readonly container: Container;
   readonly modules: CompiledModule[];
+  private readonly adapter: HttpApplicationAdapter;
   private readonly runtimeCleanup: RuntimeCleanupCallback[];
 
   constructor(
@@ -474,6 +475,7 @@ export class FluoApplication implements Application {
   ) {
     this.container = resources.container;
     this.modules = resources.modules;
+    this.adapter = httpRuntime.adapter;
     this.runtimeCleanup = resources.runtimeCleanup;
     this.lifecycleInstances = resources.lifecycleInstances;
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -494,7 +496,7 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 `ready()`는 transport bind가 아니라 platform readiness gate입니다. adapter로 요청을 받기 전에 critical component 상태를 확인하는 단계로 분리되어 있습니다.
 
-`path:packages/runtime/src/internal/application.ts:86-92`
+`path:packages/runtime/src/internal/application.ts:88-94`
 
 ```typescript
   async ready(): Promise<void> {
@@ -512,7 +514,7 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 그 다음 `listen()`이 adapter 정책을 적용합니다. adapter 없는 application bootstrap은 허용되지만, adapter 없이 listen하는 것은 이 guard에서 막힙니다.
 
-`path:packages/runtime/src/internal/application.ts:173-249`
+`path:packages/runtime/src/internal/application.ts:175-251`
 
 ```typescript
   async listen(): Promise<void> {
@@ -552,7 +554,7 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
   private async startListening(): Promise<void> {
     await this.ready();
     try {
-      await this.httpRuntime.adapter.listen(this.dispatcher);
+      await this.adapter.listen(this.dispatcher);
     } catch (error: unknown) {
       try {
         this.logger.error('Failed to start the HTTP adapter.', error, 'FluoApplication');
@@ -568,7 +570,7 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
     this.applicationState = 'ready';
     this.logger.log('fluo application successfully started.', 'FluoApplication');
-    const target = this.httpRuntime.adapter.getListenTarget?.();
+    const target = this.adapter.getListenTarget?.();
     if (target) {
       this.logger.log(formatHttpAdapterListenMessage(target), 'FluoFactory');
     }

@@ -299,7 +299,7 @@ describe('legacy Book runtime source consumers', () => {
   ])('keeps Chapter 9 runtime source excerpts byte-aligned with their owners in %s', (relativePath) => {
     const content = read(relativePath);
     const contextMarker = 'path:packages/runtime/src/internal/application-context.ts:14-54';
-    const listenMarker = 'path:packages/runtime/src/internal/application.ts:173-249';
+    const listenMarker = 'path:packages/runtime/src/internal/application.ts:175-251';
     const contextGet = sourceExample(content, contextMarker);
     const applicationListen = sourceExample(content, listenMarker);
 
@@ -316,9 +316,9 @@ describe('legacy Book runtime source consumers', () => {
       ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:398-428'],
       ['packages/runtime/src/internal/lifecycle.ts', 'path:packages/runtime/src/internal/lifecycle.ts:280-290'],
       ['packages/runtime/src/internal/lifecycle.ts', 'path:packages/runtime/src/internal/lifecycle.ts:257-270'],
-      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:23-58'],
-      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:86-92'],
-      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:173-249'],
+      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:23-60'],
+      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:88-94'],
+      ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:175-251'],
       ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:498-518'],
       ['packages/runtime/src/internal/runtime-resources.ts', 'path:packages/runtime/src/internal/runtime-resources.ts:151-178'],
       ['packages/runtime/src/internal/runtime-resources.ts', 'path:packages/runtime/src/internal/runtime-resources.ts:180-195'],

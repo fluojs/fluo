@@ -37,6 +37,7 @@ export class FluoApplication implements Application {
 
   readonly container: Container;
   readonly modules: CompiledModule[];
+  private readonly adapter: HttpApplicationAdapter;
   private readonly runtimeCleanup: RuntimeCleanupCallback[];
 
   constructor(
@@ -52,6 +53,7 @@ export class FluoApplication implements Application {
   ) {
     this.container = resources.container;
     this.modules = resources.modules;
+    this.adapter = httpRuntime.adapter;
     this.runtimeCleanup = resources.runtimeCleanup;
     this.lifecycleInstances = resources.lifecycleInstances;
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -207,7 +209,7 @@ export class FluoApplication implements Application {
   private async startListening(): Promise<void> {
     await this.ready();
     try {
-      await this.httpRuntime.adapter.listen(this.dispatcher);
+      await this.adapter.listen(this.dispatcher);
     } catch (error: unknown) {
       try {
         this.logger.error('Failed to start the HTTP adapter.', error, 'FluoApplication');
@@ -223,7 +225,7 @@ export class FluoApplication implements Application {
 
     this.applicationState = 'ready';
     this.logger.log('fluo application successfully started.', 'FluoApplication');
-    const target = this.httpRuntime.adapter.getListenTarget?.();
+    const target = this.adapter.getListenTarget?.();
     if (target) {
       this.logger.log(formatHttpAdapterListenMessage(target), 'FluoFactory');
     }
@@ -304,7 +306,7 @@ export class FluoApplication implements Application {
 
       try {
         await closeRuntimeResources({
-          adapter: this.httpRuntime.adapter,
+          adapter: this.adapter,
           container: this.container,
           lifecycleInstances: this.lifecycleInstances,
           modules: this.modules,

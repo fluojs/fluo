@@ -439,7 +439,7 @@ That is why the context API is especially useful for advanced tooling. You get t
 
 The application shell constructor shows directly what is added on top of the context baseline. It receives the same `container`, `modules`, and `rootModule`, but dispatcher and adapter state come with them.
 
-`path:packages/runtime/src/internal/application.ts:23-58`
+`path:packages/runtime/src/internal/application.ts:23-60`
 
 ```typescript
 export class FluoApplication implements Application {
@@ -459,6 +459,7 @@ export class FluoApplication implements Application {
 
   readonly container: Container;
   readonly modules: CompiledModule[];
+  private readonly adapter: HttpApplicationAdapter;
   private readonly runtimeCleanup: RuntimeCleanupCallback[];
 
   constructor(
@@ -474,6 +475,7 @@ export class FluoApplication implements Application {
   ) {
     this.container = resources.container;
     this.modules = resources.modules;
+    this.adapter = httpRuntime.adapter;
     this.runtimeCleanup = resources.runtimeCleanup;
     this.lifecycleInstances = resources.lifecycleInstances;
     installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
@@ -494,7 +496,7 @@ The first contract to inspect is `ready()` in `path:packages/runtime/src/interna
 
 `ready()` is not a transport bind. It is a platform readiness gate, separated as the step that checks critical component state before the adapter starts receiving requests.
 
-`path:packages/runtime/src/internal/application.ts:86-92`
+`path:packages/runtime/src/internal/application.ts:88-94`
 
 ```typescript
   async ready(): Promise<void> {
@@ -512,7 +514,7 @@ So in Fluo, readiness is not synonymous with "the server socket has been bound."
 
 Then `listen()` applies the adapter policy. Adapterless application bootstrap is allowed, but listening without an adapter is blocked by this guard.
 
-`path:packages/runtime/src/internal/application.ts:173-249`
+`path:packages/runtime/src/internal/application.ts:175-251`
 
 ```typescript
   async listen(): Promise<void> {
@@ -552,7 +554,7 @@ Then `listen()` applies the adapter policy. Adapterless application bootstrap is
   private async startListening(): Promise<void> {
     await this.ready();
     try {
-      await this.httpRuntime.adapter.listen(this.dispatcher);
+      await this.adapter.listen(this.dispatcher);
     } catch (error: unknown) {
       try {
         this.logger.error('Failed to start the HTTP adapter.', error, 'FluoApplication');
@@ -568,7 +570,7 @@ Then `listen()` applies the adapter policy. Adapterless application bootstrap is
 
     this.applicationState = 'ready';
     this.logger.log('fluo application successfully started.', 'FluoApplication');
-    const target = this.httpRuntime.adapter.getListenTarget?.();
+    const target = this.adapter.getListenTarget?.();
     if (target) {
       this.logger.log(formatHttpAdapterListenMessage(target), 'FluoFactory');
     }
