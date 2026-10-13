@@ -121,13 +121,18 @@ export const summarizeTransitions = (prev, next) => {
 		throw new TypeError('next snapshot must be an array.');
 	}
 	const prevByIssue = new Map(
-		(Array.isArray(prev) ? prev : []).map((row) => [row.issue, row.decision.action]),
+		(Array.isArray(prev) ? prev : []).map((row) => [row.issue, row.decision]),
 	);
 	const changes = [];
 	for (const row of next) {
-		const from = prevByIssue.get(row.issue) ?? null;
+		const previous = prevByIssue.get(row.issue);
+		const from = previous?.action ?? null;
 		const to = row.decision.action;
 		if (from !== to) changes.push({ issue: row.issue, from, to });
+		else if (to === 'wait-generated-integration' &&
+			JSON.stringify(previous.siblings) !== JSON.stringify(row.decision.siblings)) {
+			changes.push({ issue: row.issue, from, to, reason: 'coordination-targets-changed' });
+		}
 	}
 	const settled = next.every((row) =>
 		['done', 'blocked'].includes(row.decision.action),
@@ -210,6 +215,12 @@ export const decideNext = (lane, obs) => {
 	//    before review, so reviewers see the final head.
 	if (obs.publicPackagesTouched === true && obs.changesetPresent !== true) {
 		return { action: 'fix-back', reason: 'changeset-missing', head: obs.headSha };
+	}
+
+	// Integration evidence is distinct from full local CI. Upstream movement
+	// alone does not request it; the CLI observes incorporated generated inputs.
+	if (obs.generatedIntegrationRequired?.length && !obs.generatedIntegration) {
+		return { action: 'fix-back', reason: 'generated-integration-evidence-missing', head: obs.headSha };
 	}
 
 	// 5. Recompute the selective gate from exact-head, exact-policy evidence.

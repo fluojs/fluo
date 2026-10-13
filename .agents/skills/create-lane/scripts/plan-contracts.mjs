@@ -1,3 +1,5 @@
+import { assertPredictedConflicts } from '../../../workflow-contracts/contracts.mjs';
+
 const safeIdentifier = /^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const sha256 = /^[a-f0-9]{64}$/u;
 const planKeys = [
@@ -96,10 +98,15 @@ const hasCanonicalDependencies = (graph, issues) => {
 };
 
 export const planIsCanonical = (plan, artifact) => {
+  try {
+    assertPredictedConflicts(plan?.predicted_conflicts, plan?.confirmed_issues ?? []);
+  } catch {
+    return false;
+  }
   const handoffIssues = releaseHandoffIssues(plan?.release_handoffs);
   if (
     !isRecord(plan) ||
-    !hasExactKeys(plan, planKeys) ||
+    !hasExactKeys(plan, [...planKeys, ...(Object.hasOwn(plan, 'predicted_conflicts') ? ['predicted_conflicts'] : [])]) ||
     plan.version !== 2 ||
     typeof plan.lane_id !== 'string' ||
     !safeIdentifier.test(plan.lane_id) ||
@@ -205,5 +212,6 @@ export const readyLedger = (
     retry_count: 0,
   })),
   dependency_graph: plan.dependency_graph,
+  ...(Object.hasOwn(plan, 'predicted_conflicts') ? { predicted_conflicts: plan.predicted_conflicts } : {}),
   root_main_sync: { status: 'not-started', sha: null },
 });

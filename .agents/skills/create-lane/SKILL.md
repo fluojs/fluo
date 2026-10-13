@@ -113,6 +113,21 @@ resolution handled the live conflict cleanly, so the value is in the executor
 expecting `resolve-conflict` rather than being surprised by it. Do not
 restructure chains around a hint.
 
+For generated consumers, construct hints before calculating plan and receipt
+bindings using `scripts/generated-conflicts.mjs`: call
+`generatedConsumerGraph(repositoryRoot)` and
+`withGeneratedConflicts(plan, liveIssueObservations, graph)`. Observations contain
+`{ issue, title, body }` for the confirmed issues. The default consumer is
+`examples/react-vite-ssr/src/generated/react-pages.ts`; its actual typegen command,
+compiler source/config graph and generator sources determine input evidence.
+References to files or directories in that graph identify affected issues.
+Keep `generated.inputs`, live `issue_evidence` and their recomputed digest in the
+plan and `predicted_conflicts` ledger field. They bind all three receipts and
+survive v4 import; do not store them in a detached sidecar or add dependency
+edges just because issues share that consumer. Plain non-generated hints retain
+`{ surface, issues, note? }`; unknown fields, unsafe paths, duplicate/nonmember
+issues and substituted evidence are rejected.
+
 Persist the existing `confirmed-issues`, `suggested-additions`, and `lane-plan`
 receipt identities as plan/source-bound machine evidence. The first and third
 normal receipts are derived from validated state; the second records the sole
