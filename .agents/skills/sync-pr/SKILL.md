@@ -27,6 +27,17 @@ including receipt revalidation failures, still require fix-back. Report omission
 as not run, never PASS; never invent a local CI receipt to obtain publication.
 Full exact-head GitHub CI remains required before merge.
 Confirm the worktree is clean, branch/head match, and no writer remains active.
+The fresh plan also authenticates lead-admitted common baseline evidence for
+explicitly related issues. `still-failing` returns canonical fix-back;
+`different-source-or-conditions` and `insufficient-evidence` block preparation,
+including missing or altered admitted artifacts. Only verified `fixed` bytes
+retain the normal publication decision; source comparison is not a test PASS.
+No known record or unrelated main advance requires integrating main.
+Apply a verified companion only inside accepted preflight and ownership scope;
+expansion returns to preflight. Retain the pinned base and existing identity.
+A companion changes the head, so affected focused checks and new selected
+exact-head reviews are required before publication to the same PR, followed
+by full new-head canonical GitHub CI and the existing merge gates.
 
 ## Action
 
