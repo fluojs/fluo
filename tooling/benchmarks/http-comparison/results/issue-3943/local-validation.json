@@ -1,0 +1,144 @@
+{
+  "issue": 3943,
+  "preflightSha256": "5e8dd98a9aec84100429508100d0e438413ff9cca99dad0c4742d185c363b887",
+  "kind": "pre-commit source checks; final canonical exact-head receipts are captured by lead after commit",
+  "topology": {
+    "issue": 3943,
+    "verdict": "PASS",
+    "verificationKind": "source-and-finite-correctness",
+    "runtime": "v24.20.0",
+    "physicalFixtureHost": "darwin",
+    "correctnessOnly": true,
+    "frozenTimingRun": false,
+    "wsl2IndependentMacDeployment": false,
+    "commitCreated": false,
+    "checks": [
+      {
+        "name": "private-topology-harness",
+        "command": "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace exec node --import tsx --test tests/issue-3943.test.mts",
+        "exitCode": 0,
+        "tests": 13,
+        "pass": 13,
+        "fail": 0,
+        "skip": 0,
+        "elapsedSeconds": 8,
+        "log": "harness-final-green.log"
+      },
+      {
+        "name": "released-workerd-suite",
+        "command": "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace exec node --import tsx --test tests/workerd.test.mts",
+        "exitCode": 0,
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "skip": 0,
+        "elapsedSeconds": 2,
+        "log": "workerd-released.log"
+      },
+      {
+        "name": "released-full-benchmark-suite",
+        "command": "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace test",
+        "exitCode": 0,
+        "tests": 454,
+        "pass": 453,
+        "fail": 0,
+        "skip": 1,
+        "skipEvidence": "tests/resources.test.mts:109-111: skip: process.platform !== 'linux'",
+        "elapsedSeconds": 92,
+        "log": "benchmark-full-released.log"
+      },
+      {
+        "name": "isolated-typecheck",
+        "command": "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck",
+        "exitCode": 0,
+        "log": "typecheck-final.log"
+      },
+      {
+        "name": "scoped-lint",
+        "exitCode": 0,
+        "sourceFiles": 10,
+        "testFiles": 1,
+        "warnings": 0,
+        "log": "lint-hashes-final.log"
+      }
+    ],
+    "suiteExecutionOrder": [
+      "private-topology-harness",
+      "released-workerd-suite",
+      "released-full-benchmark-suite"
+    ],
+    "comparisonRemovalProofs": [
+      {
+        "comparison": "frozen LAN transport environment tuple",
+        "redLog": "transport-removed-red.log",
+        "greenLog": "transport-restored-green.log",
+        "redExitCode": 1,
+        "greenExitCode": 0
+      },
+      {
+        "comparison": "actual generator host identity",
+        "redLog": "generator-host-removed-red.log",
+        "greenLog": "generator-host-restored-green.log",
+        "redExitCode": 1,
+        "greenExitCode": 0
+      },
+      {
+        "comparison": "before executable/entry/declared-installed-lock snapshot",
+        "redLog": "generator-before-removed-red.log",
+        "greenLog": "generator-before-restored-green.log",
+        "redExitCode": 1,
+        "greenExitCode": 0
+      },
+      {
+        "comparison": "after executable/entry/declared-installed-lock snapshot",
+        "redLog": "generator-after-removed-red.log",
+        "greenLog": "generator-after-restored-green.log",
+        "redExitCode": 1,
+        "greenExitCode": 0
+      },
+      {
+        "comparison": "actual request/body checksum",
+        "redLog": "generator-request-body-removed-red.log",
+        "greenLog": "harness-final-green.log",
+        "redExitCode": 1,
+        "greenExitCode": 0
+      }
+    ],
+    "redFailure": "AssertionError [ERR_ASSERTION]: Missing expected exception.",
+    "actualWireProof": {
+      "method": "POST",
+      "path": "/payload",
+      "body": "{\"value\":\"actual-wire-body\"}",
+      "amount": 1,
+      "statusMismatches": 0,
+      "beforeAfterArtifactsMatch": true,
+      "sameLengthFileTamperingRejected": [
+        "entry",
+        "declaredLock",
+        "installedLock"
+      ],
+      "executableBeforeAfterDigestDriftRejected": true,
+      "responseBodyMismatchRejected": true,
+      "rawStdoutAndStderrPreserved": true
+    },
+    "temporarySourceMutationsRestored": {
+      "src/issue-3943/transport.ts": "f97eb7b335e9f3a411aa73f2f91a11792688dd2bdc18dfaac15d16a3cc9aded4",
+      "src/issue-3943/generator-identity.ts": "afb983d3f8711a475282e9b607cd7dc5b2f9c18949765ed578f17e92c5c37288"
+    },
+    "remainingValidationBlockers": []
+  },
+  "windows": {
+    "rootInstallAndBuildExitCode": 0,
+    "bundleDryRunExitCode": 0,
+    "realLanCorrectness": [
+      "stage-minimal",
+      "json-command-local"
+    ],
+    "frozenArtifacts": 3866,
+    "frozenSha256": "617899c1a4dbcc07c60b334177c7eae822596be003e25939eb7d3e9c3503408b"
+  },
+  "publicRuntimeChanged": false,
+  "changeset": "Not applicable: package tests and private benchmark only",
+  "fullLocalCi": "not run",
+  "lspErrors": 0
+}

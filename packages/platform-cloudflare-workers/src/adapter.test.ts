@@ -608,6 +608,68 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     await adapter.close();
   });
 
+  it('fetch: overlapping requests -> preserves env, context, body, metadata and abort isolation', async () => {
+    const adapter = CloudflareWorkerHttpApplicationAdapter.create({ rawBody: true });
+    const entered = [createDeferred<FrameworkRequest>(), createDeferred<FrameworkRequest>()];
+    const release = [createDeferred<void>(), createDeferred<void>()];
+    const environments = [{ key: 'first' }, { key: 'second' }];
+    const lifecycles: Array<Promise<unknown>> = [];
+    const contexts = environments.map(() => ({
+      waitUntil: (promise: Promise<unknown>) => { lifecycles.push(promise); },
+    }));
+    const aborts = [new AbortController(), new AbortController()];
+    const bodies = ['{"value":"first"}', '{"value":"second"}'];
+    await adapter.listen({
+      async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+        const index = request.path === '/first' ? 0 : 1;
+        entered[index].resolve(request);
+        await release[index].promise;
+        response.setStatus(201 + index);
+        response.setHeader('x-owner', environments[index].key);
+        await response.send(request.body);
+      },
+    });
+
+    const responses = bodies.map((body, index) => adapter.fetch(new Request(
+      `https://worker.test/${environments[index].key}?owner=${environments[index].key}`,
+      {
+        body, method: 'POST', signal: aborts[index].signal,
+        headers: { 'content-type': 'application/json', 'x-owner': environments[index].key },
+      },
+    ), environments[index], contexts[index]));
+    try {
+      const requests = await Promise.all(entered.map((event) => event.promise));
+      for (const [index, request] of requests.entries()) {
+        expect(request.cloudflare?.env).toBe(environments[index]);
+        expect(request.cloudflare?.executionContext).toBe(contexts[index]);
+        expect(request.body).toEqual({ value: environments[index].key });
+        expect(new TextDecoder().decode(request.rawBody)).toBe(bodies[index]);
+        expect(request.headers['x-owner']).toBe(environments[index].key);
+        expect(request.query.owner).toBe(environments[index].key);
+      }
+      expect(requests[0]).not.toBe(requests[1]);
+      expect(requests[0].signal).not.toBe(requests[1].signal);
+      const aborted = createDeferred<void>();
+      requests[0].signal?.addEventListener('abort', () => aborted.resolve(), { once: true });
+      aborts[0].abort();
+      await aborted.promise;
+      expect(requests[1].signal?.aborted).toBe(false);
+
+      release[1].resolve();
+      const second = await responses[1];
+      expect(second.status).toBe(202);
+      expect(second.headers.get('x-owner')).toBe('second');
+      await expect(second.json()).resolves.toEqual({ value: 'second' });
+      release[0].resolve();
+      await responses[0];
+      await Promise.all(lifecycles);
+    } finally {
+      release.forEach((event) => { event.resolve(); });
+      await Promise.allSettled(responses);
+      await adapter.close();
+    }
+  }, 5_000);
+
   it('keeps waitUntil and close drains open until streaming response bodies finish', async () => {
     const adapter = CloudflareWorkerHttpApplicationAdapter.create();
     const waitUntilPromises: Array<Promise<unknown>> = [];
@@ -1147,6 +1209,53 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       await entrypoint.close();
     }
   });
+
+  it('ready: overlapping failed bootstrap -> shares failure then retries retained configuration', async () => {
+    const entered = createDeferred<void>();
+    const release = createDeferred<void>();
+    const configured: Array<{ prefix: string }> = [];
+    let attempts = 0;
+    const failure = new Error('shared bootstrap failure');
+    class StartupProbe {
+      async onApplicationBootstrap() {
+        attempts += 1;
+        if (attempts === 1) {
+          entered.resolve();
+          await release.promise;
+          throw failure;
+        }
+      }
+    }
+    class AppModule {}
+    defineModule(AppModule, { providers: [StartupProbe] });
+    const host = CloudflareWorkerApplicationHost.create<{ prefix: string }>({
+      fromEnv: (env) => {
+        configured.push(env);
+        return { rootModule: AppModule, options: { globalPrefix: env.prefix } };
+      },
+    });
+    const firstEnvironment = { prefix: '/first' };
+    const first = host.ready(firstEnvironment);
+    const firstFailure = expect(first).rejects.toBe(failure);
+    try {
+      await entered.promise;
+      const second = host.ready({ prefix: '/second' });
+      const secondFailure = expect(second).rejects.toBe(failure);
+
+      release.resolve();
+      await Promise.all([firstFailure, secondFailure]);
+
+      expect(attempts).toBe(1);
+      const generation = await host.ready({ prefix: '/retry' });
+      expect(generation.adapter).toBeInstanceOf(CloudflareWorkerHttpApplicationAdapter);
+      expect(attempts).toBe(2);
+      expect(configured).toEqual([firstEnvironment]);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([first, firstFailure]);
+      await host.close();
+    }
+  }, 5_000);
 
   it('does not reopen a lazy Worker entrypoint while close is draining the current application', async () => {
     let bootstrapCount = 0;

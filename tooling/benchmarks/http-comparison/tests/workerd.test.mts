@@ -4,9 +4,34 @@ import { once } from 'node:events';
 import { readFile, writeFile } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { buildTarget, startTargets, stopTargets, TARGETS, waitForTarget } from '../src/targets';
+import { buildTarget, startTargets, stopTargets, TARGETS, targetLaunch, waitForTarget } from '../src/targets';
 import { authenticateTimingIdentity, prepareTimingIdentity } from '../src/timing-identity';
-import { observeWorkerd, WorkerdFailure } from '../src/workerd';
+import { observeWorkerd, workerdConfig, WorkerdFailure } from '../src/workerd';
+
+test('workerd bind: explicit IPv4 -> HTTP follows override while inspector stays loopback', () => {
+  const target = TARGETS.find((item) => item.name === 'fluo-workers');
+  assert.ok(target);
+  const previous = process.env.BENCH_BIND_HOST;
+  try {
+    delete process.env.BENCH_BIND_HOST;
+    assert.match(workerdConfig(target, 'stage-minimal', 'default').text, /address = "127\.0\.0\.1:0"/);
+    for (const host of ['0.0.0.0', '192.0.2.10']) {
+      process.env.BENCH_BIND_HOST = host;
+      const config = workerdConfig(target, 'stage-minimal', 'default');
+      const launch = targetLaunch(target, 'stage-minimal', { inspectorPort: 35211 });
+      assert.ok(config.text.includes(`address = "${host}:0"`));
+      assert.ok(launch.args.includes(`--socket-addr=http=${host}:${target.port}`));
+      assert.ok(launch.args.includes('--inspector-addr=127.0.0.1:35211'));
+    }
+    for (const host of ['', 'localhost', '127.0.0.1"; injected', '999.0.0.1']) {
+      process.env.BENCH_BIND_HOST = host;
+      assert.throws(() => workerdConfig(target, 'stage-minimal', 'default'), WorkerdFailure);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.BENCH_BIND_HOST;
+    else process.env.BENCH_BIND_HOST = previous;
+  }
+});
 
 function fixture(inspectorPort?: number) {
   const child = new ChildProcess();
@@ -109,7 +134,10 @@ test('workerd timing identity: real serving HTTP -> authenticates and rejects wr
     await writeFile(prepared.worker.path, `${prepared.worker.text}\n// changed config\n`);
     await assert.rejects(authenticateTimingIdentity(prepared, stdout, pid, target.port));
     await writeFile(prepared.worker.path, prepared.worker.text);
-    await writeFile(prepared.entry, Buffer.concat([bundle, Buffer.from('\n// changed bundle\n')]));
+    const changed = Buffer.from(bundle);
+    changed[changed.length - 1] ^= 1;
+    assert.equal(changed.length, bundle.length);
+    await writeFile(prepared.entry, changed);
     await assert.rejects(authenticateTimingIdentity(prepared, stdout, pid, target.port));
   } finally {
     await writeFile(prepared.entry, bundle);
