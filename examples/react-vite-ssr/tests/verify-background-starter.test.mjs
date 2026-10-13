@@ -118,7 +118,7 @@ async function descendantLifecycle(t, signal, mode) {
     }
     import { createCommandRunner } from ${JSON.stringify(harness)};
     const commands = [];
-    const { run, dispose } = createCommandRunner(${JSON.stringify(output)}, commands);
+    const { run, dispose } = createCommandRunner(${JSON.stringify(join(output, 'inner'))}, commands);
     const results = await Promise.allSettled(${JSON.stringify(scripts)}.map((script, i) =>
       run('inner-' + i, ['-e', script], process.cwd(), {}, process.execPath)));
     dispose();
@@ -139,7 +139,7 @@ async function descendantLifecycle(t, signal, mode) {
     const { createCommandRunner } = await import(${JSON.stringify(harness)});
     const listeners = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
     const commands = [];
-    const { run, dispose } = createCommandRunner(${JSON.stringify(output)}, commands);
+    const { run, dispose } = createCommandRunner(${JSON.stringify(join(output, 'outer'))}, commands);
     let cancellations = 0;
     let repeated;
     const repetition = new Promise((done) => { repeated = done; });
@@ -218,6 +218,23 @@ async function exercise(t, options) {
   mkdirSync(root, { recursive: true });
   const output = mkdtempSync(join(root, 'process-'));
   const driver = `
+    import cp from 'node:child_process';
+    import { syncBuiltinESMExports } from 'node:module';
+    const spawn = cp.spawn;
+    cp.spawn = (...args) => {
+      const child = spawn(...args);
+      let stdout = '';
+      let ready = false;
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk;
+        if (!ready && stdout.includes('READY\\n')) {
+          ready = true;
+          process.send('ready');
+        }
+      });
+      return child;
+    };
+    syncBuiltinESMExports();
     import { once } from 'node:events';
     import { createCommandRunner, authoringRejections } from ${JSON.stringify(harness)};
     const options = ${JSON.stringify(options)};
@@ -257,17 +274,9 @@ async function exercise(t, options) {
     });
     controller.signal.addEventListener('abort', () => reject(new Error('Process result timeout')), { once: true });
   });
-  let stdout = '';
   let stderr = '';
-  let signalled = false;
   child.stderr.on('data', (chunk) => { stderr += chunk; });
-  child.stdout.on('data', (chunk) => {
-    stdout += chunk;
-    if (options.cancel && !options.before && !options.between && !signalled && stdout.includes('READY\n')) {
-      signalled = true;
-      child.kill(options.cancel);
-    }
-  });
+  child.stdout.resume();
 
   const observed = await result;
   const [exit, signal] = await closed;
@@ -355,6 +364,25 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
         require('node:net').createServer().listen(0, () => emit('ready'));
       `;
       const driver = `
+        import cp from 'node:child_process';
+        import { syncBuiltinESMExports } from 'node:module';
+        const spawn = cp.spawn;
+        cp.spawn = (...args) => {
+          const child = spawn(...args);
+          let pending = '';
+          child.stdout.on('data', (chunk) => {
+            pending += chunk;
+            const lines = pending.split('\\n');
+            pending = lines.pop();
+            for (const line of lines) {
+              if (line.startsWith('CHILD_EVENT ')) {
+                process.send({ event: JSON.parse(line.slice('CHILD_EVENT '.length)) });
+              }
+            }
+          });
+          return child;
+        };
+        syncBuiltinESMExports();
         import { createCommandRunner, authoringRejections } from ${JSON.stringify(harness)};
         const commands = [];
         const { run, dispose } = createCommandRunner(${JSON.stringify(output)}, commands);
@@ -382,7 +410,16 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
       // Subscribe to both terminal outcomes before releasing either process.
       const observed = new Promise((resolve, reject) => {
         child.on('message', (message) => {
-          if (message === 'first-complete') {
+          if (message.event) {
+            const event = message.event;
+            events.push(event);
+            if (event.state !== 'ready') return;
+            pids.set(event.id, event.pid);
+            if (pids.size === 2) {
+              if (firstExit === null) child.kill(signal);
+              else process.kill(pids.get('first'), 'SIGUSR2');
+            }
+          } else if (message === 'first-complete') {
             if (firstExit !== null) child.kill(signal);
           } else resolve(message);
         });
@@ -398,25 +435,9 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
         }
         child.kill('SIGKILL');
       });
-      let pending = '';
       let stderr = '';
       child.stderr.on('data', (chunk) => { stderr += chunk; });
-      child.stdout.on('data', (chunk) => {
-        pending += chunk;
-        const lines = pending.split('\n');
-        pending = lines.pop();
-        for (const line of lines) {
-          if (!line.startsWith('CHILD_EVENT ')) continue;
-          const event = JSON.parse(line.slice('CHILD_EVENT '.length));
-          events.push(event);
-          if (event.state !== 'ready') continue;
-          pids.set(event.id, event.pid);
-          if (pids.size === 2) {
-            if (firstExit === null) child.kill(signal);
-            else process.kill(pids.get('first'), 'SIGUSR2');
-          }
-        }
-      });
+      child.stdout.resume();
 
       const [result, [exit, exitSignal]] = await outcome;
 
