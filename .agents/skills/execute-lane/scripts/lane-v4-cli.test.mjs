@@ -104,10 +104,9 @@ socket.on('data', () => {
     && event.data.run.attempt === 2 && event.data.complete === true && event.data.conclusion === 'success'));
   assert.ok(events.some((event) => event.data.job?.conclusion === 'failure'));
 });
-const fixture = (t, isolatedOrchestrator = false) => {
-  const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();
-  mkdirSync(directory, { recursive: true });
-  const root = realpathSync(mkdtempSync(join(directory, 'fluo-lane-v4-')));
+const fixture = (t, isolatedOrchestrator = false, parent = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir()) => {
+  mkdirSync(parent, { recursive: true });
+  const root = realpathSync(mkdtempSync(join(parent, 'fluo-lane-v4-')));
   if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
   const bin = join(root, 'bin');
   mkdirSync(bin);
@@ -281,6 +280,174 @@ if (args[0] === 'pr' && args[1] === 'view') {
   };
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog, env };
 };
+
+const baselineFixture = (t) => {
+  const f = fixture(t, false, new URL('../../../../.omo/verification/retro-followups-3977-3978-20261013/issue-3978/fixtures/', import.meta.url).pathname);
+  f.set('preflight', f.preflight());
+  f.implement();
+  f.commit('tests/baseline.mjs', `import { readFileSync } from 'node:fs';
+if (readFileSync('docs/guide.md', 'utf8') !== 'fixed\\n') {
+  process.stderr.write('confirmed docs baseline mismatch\\n'); process.exitCode = 1;
+} else process.stdout.write('baseline passed\\n');
+`);
+  f.commit('tests/conditions.json', '{"runtime":"node"}\n');
+  const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  const snapshot = (cwd, path) => ({ path, sha256: hash(readFileSync(join(cwd, path))) });
+  const failureHead = f.git(f.worktree, 'rev-parse', 'HEAD');
+  const companion = join(f.root, '.omo/companion');
+  f.git(f.root, 'worktree', 'add', '-b', 'companion', companion, failureHead);
+  writeFileSync(join(companion, 'docs/guide.md'), 'fixed\n');
+  f.git(companion, 'add', 'docs/guide.md');
+  f.git(companion, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture companion');
+  const proof = (cwd, label) => {
+    const head = f.git(cwd, 'rev-parse', 'HEAD');
+    const command = 'node tests/baseline.mjs';
+    const sources = [snapshot(cwd, 'docs/guide.md')];
+    const conditions = [snapshot(cwd, 'tests/conditions.json')];
+    const test_source = snapshot(cwd, 'tests/baseline.mjs');
+    const check = spawnSync(process.execPath, ['tests/baseline.mjs'], { cwd, encoding: 'utf8', timeout: 10_000 });
+    assert.equal(check.error, undefined);
+    const log = `${check.stdout}${check.stderr}`;
+    const logPath = `.omo/${label}.log`;
+    writeFileSync(join(f.root, logPath), log);
+    const receipt = { version: 1, head, command, completed: true, signal: check.signal,
+      status: check.status === 0 ? 'passed' : 'failed', exit_code: check.status,
+      log_sha256: hash(log), source_sha256: hash(JSON.stringify({ sources, conditions, test_source })) };
+    const receiptPath = `.omo/${label}.json`;
+    writeFileSync(join(f.root, receiptPath), JSON.stringify(receipt));
+    return { head, command, sources, conditions, test_source,
+      log: snapshot(f.root, logPath), receipt: snapshot(f.root, receiptPath) };
+  };
+  const failure = proof(f.worktree, 'failure');
+  const fixed = proof(companion, 'companion');
+  const record = { version: 1, id: 'docs-baseline', issues: [42], failure, companion: fixed,
+    adjudication: { authority: 'lead', cause: 'confirmed-common-baseline',
+      failure_head: failure.head, companion_head: fixed.head, reason: 'Reproduced same assertion; companion preserves the test and conditions.' } };
+  return { ...f, record, companion, hash };
+};
+
+test('CLI publication: admitted same baseline source -> fix-back before create-pr', (t) => {
+  const f = baselineFixture(t);
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  f.set('known-baseline', f.record);
+
+  const { decision } = f.plan();
+
+  assert.equal(decision.action, 'fix-back');
+  assert.equal(decision.reason, 'known-baseline-still-failing');
+});
+
+test('CLI baseline admission: invalid proof -> persisted lane bytes unchanged', (t) => {
+  const f = baselineFixture(t);
+  const before = readFileSync(f.lanePath, 'utf8');
+  for (const patch of [
+    record => { record.adjudication.cause = 'UNKNOWN'; },
+    record => { record.failure.log.sha256 = '0'.repeat(64); },
+    record => { record.companion.head = record.failure.head; },
+    record => { record.issues = [42, 99]; },
+  ]) {
+    const record = structuredClone(f.record);
+    patch(record);
+
+    f.set('known-baseline', record, undefined, false);
+
+    assert.equal(readFileSync(f.lanePath, 'utf8'), before);
+  }
+});
+
+test('CLI publication: fixed source and unrelated main without record -> normal create-pr', (t) => {
+  const f = baselineFixture(t);
+  const pinnedBase = f.plan().obs.baseSha;
+  writeFileSync(join(f.root, 'unrelated.txt'), 'independent upstream change\n');
+  f.git(f.root, 'add', 'unrelated.txt');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture unrelated upstream');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  let review = f.review();
+  f.set('review', review, review.head_sha);
+
+  assert.equal(f.plan().decision.action, 'create-pr');
+  assert.equal(f.plan().obs.baseSha, pinnedBase);
+  assert.deepEqual(f.plan().obs.knownBaselines, []);
+  f.set('known-baseline', f.record);
+  f.git(f.worktree, '-c', 'commit.gpgsign=false', 'merge', '--no-ff', 'companion', '-m', 'fixture fixed source');
+  review = f.review();
+  f.set('review', review, review.head_sha);
+  assert.equal(f.plan().obs.knownBaselines[0].status, 'fixed');
+  assert.equal(f.plan().decision.action, 'create-pr');
+});
+
+test('CLI publication: companion integration -> pinned scope, fresh review, same PR and fresh CI', (t) => {
+  const f = baselineFixture(t);
+  f.set('known-baseline', f.record);
+  const oldReview = f.review();
+  f.set('review', oldReview, oldReview.head_sha);
+  f.set('local-checks', f.verify(), oldReview.head_sha);
+  assert.equal(f.plan().obs.localChecks.status, 'passed');
+  f.state.pr = { number: 71, state: 'OPEN', headRefOid: '0'.repeat(40),
+    mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }] };
+  f.update();
+  assert.equal(f.plan().decision.reason, 'known-baseline-still-failing');
+  const pinnedBase = f.plan().obs.baseSha;
+  // A real Git integration changes HEAD while preserving issue identity.
+  f.git(f.worktree, '-c', 'commit.gpgsign=false', 'merge', '--no-ff', 'companion', '-m', 'fixture companion integration');
+
+  const integrated = f.plan();
+
+  assert.equal(integrated.obs.baseSha, pinnedBase);
+  assert.deepEqual(integrated.obs.changedFiles, ['docs/guide.md', 'tests/baseline.mjs', 'tests/conditions.json']);
+  assert.equal(integrated.obs.review, null);
+  assert.equal(integrated.obs.localChecks, null);
+  assert.equal(integrated.obs.knownBaselines[0].status, 'fixed');
+  assert.equal(integrated.decision.action, 'review');
+  const check = spawnSync(process.execPath, ['tests/baseline.mjs'], { cwd: f.worktree, encoding: 'utf8', timeout: 10_000 });
+  assert.equal(check.status, 0, check.stderr);
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  assert.equal(f.plan().decision.action, 'push');
+  assert.equal(f.plan().decision.pr, 71);
+  f.state.pr.headRefOid = review.head_sha;
+  f.state.pr.statusCheckRollup = [{ status: 'IN_PROGRESS' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-ci');
+  f.state.pr.statusCheckRollup = [{ conclusion: 'FAILURE' }];
+  f.update();
+  assert.equal(f.plan().decision.reason, 'ci-failing');
+  f.state.pr.statusCheckRollup = [{ conclusion: 'SUCCESS' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'request-merge-approval');
+  f.cli('approve-merge', f.common);
+  assert.equal(f.plan().decision.action, 'merge');
+});
+
+test('CLI publication: unrelated main, unconfirmed sibling and changed conditions -> preserve narrow decisions', (t) => {
+  const f = baselineFixture(t);
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  assert.equal(f.plan().decision.action, 'create-pr');
+  const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
+  lane.issues['43'] = { ...structuredClone(lane.issues['42']), issue: 43, branch: 'issue-43', facts: {} };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  f.set('known-baseline', f.record);
+  assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['43'].facts['known-baseline'], undefined);
+  writeFileSync(join(f.root, 'unrelated.txt'), 'main advance\n');
+  f.git(f.root, 'add', 'unrelated.txt');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture unrelated main');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  assert.equal(f.plan().decision.reason, 'known-baseline-still-failing');
+  f.commit('tests/conditions.json', '{"runtime":"different"}\n');
+  const newReview = f.review();
+  f.set('review', newReview, newReview.head_sha);
+
+  const changed = f.plan();
+
+  assert.equal(changed.obs.knownBaselines[0].status, 'different-source-or-conditions');
+  assert.equal(changed.decision.action, 'blocked');
+  rmSync(join(f.root, f.record.failure.log.path));
+  const missing = f.plan();
+  assert.equal(missing.obs.knownBaselines[0].status, 'insufficient-evidence');
+  assert.equal(missing.decision.action, 'blocked');
+});
 
 for (const file of ['docs/guide.md', '.github/workflows/ci.yml']) {
   test(`CLI: forced full receipt admission and revalidation for ${file}`, (t) => {

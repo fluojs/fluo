@@ -55,6 +55,7 @@ import {
 	validateReviewFact,
 } from "../../review-head/scripts/contracts.mjs";
 import { coordinateGeneratedIntegration, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
+import { observeKnownBaseline, validateKnownBaseline } from "./known-baseline.mjs";
 import {
 	applyChildResult,
 	decideNext,
@@ -669,6 +670,10 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		unmetDependencies,
 		generatedIntegrationRequired,
 		generatedIntegration,
+		knownBaselines: (entry.facts?.["known-baseline"]?.value ?? []).map((record) =>
+			observeKnownBaseline(root, record, {
+				issue, head: headSha, members: Object.keys(lane.issues).map(Number),
+			})),
 	};
 };
 
@@ -1009,11 +1014,11 @@ const main = () => {
 	if (command === "set-fact") {
 		const kind = arg(args, "--kind");
 		if (
-			!["preflight", "local-checks", "local-ci-waiver", "review"]
+			!["preflight", "local-checks", "local-ci-waiver", "review", "known-baseline"]
 				.includes(kind)
 		) {
 			throw new TypeError(
-				"kind must be preflight, local-checks, local-ci-waiver or review",
+				"kind must be preflight, local-checks, local-ci-waiver, review or known-baseline",
 			);
 		}
 		const value = JSON.parse(arg(args, "--value"));
@@ -1021,7 +1026,22 @@ const main = () => {
 			recordRetroEvent(root, lane.lane_id, issue, "review", value);
 		}
 		entry.facts ??= {};
-		if (kind === "preflight") {
+		if (kind === "known-baseline") {
+			const authenticated = validateKnownBaseline(root, value, Object.keys(lane.issues).map(Number));
+			if (!authenticated.issues.includes(issue)) {
+				throw new TypeError("known-baseline must include the addressed issue");
+			}
+			// Registration is explicitly scoped to the lead-confirmed targets,
+			// not every branch and not the current implementation head.
+			for (const target of authenticated.issues) {
+				const targetEntry = issueEntry(lane, target);
+				targetEntry.facts ??= {};
+				const previous = targetEntry.facts[kind]?.value ?? [];
+				targetEntry.facts[kind] = {
+					value: [...previous.filter(record => record.id !== authenticated.id), authenticated],
+				};
+			}
+		} else if (kind === "preflight") {
 			validatePreflight(value);
 			const previousObs = observeIssue(root, lane, issue);
 			const obs = observeIssue(root, lane, issue, value.base_sha);
