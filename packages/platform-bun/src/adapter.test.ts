@@ -1,13 +1,12 @@
-import { type BunTestApplicationOptions, createBunTestApplication, startBunTestApplication } from './test-support/application.js';
 import { readFileSync } from 'node:fs';
 import { All, Controller, createAccessLogObserver, createCorrelationMiddleware, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { FetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { WebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
 import { BunHttpApplicationAdapter, type BunServeOptions, type BunServerLike, type BunServerWebSocket, type BunWebSocketBinding, createBunFetchHandler } from './adapter.js';
 import { createBunShutdownSignalRegistration } from './shutdown.js';
+import { type BunTestApplicationOptions, createBunTestApplication, startBunTestApplication } from './test-support/application.js';
 
 type MockBunServer = BunServerLike & {
   fetch(request: Request): Promise<Response | undefined>;
@@ -1099,6 +1098,53 @@ describe('@fluojs/platform-bun', () => {
           status: 404,
         },
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('isolates native handoff metadata and query when the same raw Bun Request is reused', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/reuse-native')
+    class ReuseController {
+      @Get('/:id')
+      read(_input: undefined, context: RequestContext) {
+        const snapshot = {
+          id: context.request.params.id,
+          query: structuredClone(context.request.query),
+          header: context.request.headers['x-reuse'],
+          cookie: context.request.cookies.session,
+        };
+        // Deliberate JavaScript writes probe alias isolation beyond the readonly public map types.
+        expect(Reflect.set(context.request.params, 'id', 'mutated')).toBe(true);
+        expect(Reflect.set(context.request.query, 'tag', 'mutated')).toBe(true);
+        expect(context.request.params.id).toBe('mutated');
+        expect(context.request.query.tag).toBe('mutated');
+        context.request.method = 'POST';
+        context.request.path = '/mutated';
+        return snapshot;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ReuseController] });
+    const app = await startBunTestApplication(AppModule, { hostname: '127.0.0.1', port: 4320 });
+    const raw = new Request('http://127.0.0.1:4320/reuse-native/item-7?tag=one&tag=two&plus=hello+world&bad=%E0%A4%A', {
+      headers: { 'x-reuse': 'first', cookie: 'session=first' },
+    });
+
+    try {
+      const first = await mockBun.lastServer?.fetch(raw);
+      raw.headers.set('x-reuse', 'second');
+      raw.headers.set('cookie', 'session=second');
+      const second = await mockBun.lastServer?.fetch(raw);
+
+      expect(first?.status).toBe(200);
+      expect(second?.status).toBe(200);
+      const query = { tag: ['one', 'two'], plus: 'hello world', bad: '\uFFFD%A' };
+      await expect(first?.json()).resolves.toEqual({ id: 'item-7', query, header: 'first', cookie: 'first' });
+      await expect(second?.json()).resolves.toEqual({ id: 'item-7', query, header: 'second', cookie: 'second' });
     } finally {
       await app.close();
     }

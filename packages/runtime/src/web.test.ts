@@ -42,6 +42,36 @@ function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T
 }
 
 describe('dispatchWebRequest', () => {
+  it('keeps metadata and lazy query snapshots independent when the same raw Request is wrapped again', async () => {
+    const factory = createWebRequestResponseFactory();
+    const raw = new Request('https://runtime.test/items/a%2Fb?tag=one&tag=two&empty=&flag&plus=hello+world&bad=%E0%A4%A', {
+      headers: { 'x-snapshot': 'first', cookie: 'session=first' },
+    });
+    const first = await factory.createRequest(raw, raw.signal);
+    raw.headers.set('x-snapshot', 'second');
+    raw.headers.set('cookie', 'session=second');
+    first.path = '/rewritten';
+    first.method = 'POST';
+    // Deliberate JavaScript writes must take effect before the second wrapper can prove isolation.
+    expect(Reflect.set(first.params, 'id', 'changed')).toBe(true);
+    expect(Reflect.set(first.query, 'tag', 'changed')).toBe(true);
+    expect(first.params.id).toBe('changed');
+    expect(first.query.tag).toBe('changed');
+
+    const second = await factory.createRequest(raw, raw.signal);
+
+    expect(first.headers['x-snapshot']).toBe('first');
+    expect(first.cookies.session).toBe('first');
+    expect(second.headers['x-snapshot']).toBe('second');
+    expect(second.cookies.session).toBe('second');
+    expect(second.method).toBe('GET');
+    expect(second.path).toBe('/items/a%2Fb');
+    expect(second.params).toEqual({});
+    expect(second.query).toEqual({
+      tag: ['one', 'two'], empty: '', flag: '', plus: 'hello world', bad: '\uFFFD%A',
+    });
+  });
+
   it('applies initial security headers while preserving the native JSON response body', async () => {
     @Controller('/header-cost')
     class HeaderCostController {
