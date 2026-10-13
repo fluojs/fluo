@@ -59,10 +59,10 @@ it('accepts the CI build-reuse option through the real readiness CLI', () => {
 
     // Then
     expect(result.status, result.stderr).toBe(0);
+    // The real catalog has no apps suite; all other verification commands remain required.
     expect(readFileSync(trace, 'utf8').trim().split('\n').map((line) => JSON.parse(line))).toEqual([
       ['typecheck'],
       ['vitest', 'run', '--project', 'packages', '--maxWorkers=1'],
-      ['vitest', 'run', '--project', 'apps', '--maxWorkers=1'],
       ['vitest', 'run', '--project', 'examples', '--maxWorkers=1'],
       ['vitest', 'run', '--project', 'tooling', '--maxWorkers=1'],
       ['--dir', 'packages/cli', 'sandbox:matrix'],

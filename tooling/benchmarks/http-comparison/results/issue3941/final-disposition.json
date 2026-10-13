@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "issue": 3941,
+  "preflightSha256": "b60b5ea4ddd154a0b233f328ef4ef88df584e9cddaef036e9e05c217fc5bece5",
+  "status": "FINITE_PREREQUISITE_FAILED",
+  "aaNumericVerdict": "FAIL",
+  "calibration": "NOT_ESTABLISHED",
+  "performanceVerdict": "INCONCLUSIVE",
+  "collectorExitCode": 1,
+  "summary": {
+    "samples": 120,
+    "completedRequests": 23255005,
+    "firstStart": "2026-10-13T12:09:06.714Z",
+    "lastFinish": "2026-10-13T14:31:08.718Z",
+    "spanSeconds": 8522.004,
+    "rawHashesVerified": 120,
+    "trafficFailures": 0,
+    "invalidAttempts": 0,
+    "failedConditions": 11,
+    "totalConditions": 12
+  },
+  "planSha256": "0e121b649e58fb8d644889bc771514c9c33b30d34edc6d5d77a8c4420252a360",
+  "cohort": "results/issue3941/0e121b649e58fb8d644889bc771514c9c33b30d34edc6d5d77a8c4420252a360",
+  "authoritativeVerdict": {
+    "path": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/aa-3941-windows-03-verdict.json",
+    "sha256": "acb457051428bc9c6473d52b4ac49c81a34a8d900f0a7774015c2f4eee5544c8"
+  },
+  "archive": {
+    "path": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/aa-3941-windows-03.tar.gz",
+    "sha256": "2e14c5dad95d7a26df9cf42850de73c2f9f026f9765d7de6f8a2483b5764ae07"
+  },
+  "conditions": [
+    {
+      "condition": "read-search-local/default/1",
+      "failedMetrics": [
+        "cpu"
+      ]
+    },
+    {
+      "condition": "read-search-local/default/64",
+      "failedMetrics": [
+        "throughput",
+        "cpu",
+        "p99",
+        "rss"
+      ]
+    },
+    {
+      "condition": "read-search-local/equivalent/1",
+      "failedMetrics": []
+    },
+    {
+      "condition": "read-search-local/equivalent/64",
+      "failedMetrics": [
+        "throughput",
+        "cpu",
+        "p99",
+        "rss"
+      ]
+    },
+    {
+      "condition": "json-command-local/default/1",
+      "failedMetrics": [
+        "throughput",
+        "cpu"
+      ]
+    },
+    {
+      "condition": "json-command-local/default/64",
+      "failedMetrics": [
+        "throughput",
+        "cpu",
+        "rss"
+      ]
+    },
+    {
+      "condition": "json-command-local/equivalent/1",
+      "failedMetrics": [
+        "p95",
+        "p99"
+      ]
+    },
+    {
+      "condition": "json-command-local/equivalent/64",
+      "failedMetrics": [
+        "throughput",
+        "cpu"
+      ]
+    },
+    {
+      "condition": "rest-route-mix-local/default/1",
+      "failedMetrics": [
+        "throughput",
+        "p99"
+      ]
+    },
+    {
+      "condition": "rest-route-mix-local/default/64",
+      "failedMetrics": [
+        "throughput",
+        "cpu",
+        "rss"
+      ]
+    },
+    {
+      "condition": "rest-route-mix-local/equivalent/1",
+      "failedMetrics": [
+        "throughput",
+        "cpu",
+        "p99"
+      ]
+    },
+    {
+      "condition": "rest-route-mix-local/equivalent/64",
+      "failedMetrics": [
+        "throughput",
+        "cpu",
+        "p95",
+        "p99",
+        "rss"
+      ]
+    }
+  ],
+  "observedNoiseEnvelope": {
+    "value": 0.18258651748921934,
+    "calibrated": false,
+    "usableToRelaxGates": false
+  },
+  "leadVerification": {
+    "rawHashesVerified": 120,
+    "serverAndGeneratorIdentitiesIndependentlyChecked": true
+  },
+  "historicalIncidents": [
+    {
+      "kind": "windows-bind-failure",
+      "connectionErrors": 30,
+      "responses": 0,
+      "listener": "127.0.0.1:33910",
+      "calibrationEvidence": false
+    },
+    {
+      "kind": "tee-wrapper-failure",
+      "passingTests": 40,
+      "wrapperExitCode": 1,
+      "reason": "tee log directory absent",
+      "calibrationEvidence": false
+    },
+    {
+      "kind": "runtime-format-protocol-failure",
+      "cohort": "77a0a537c3e8365ac1b4735adbb42101de6ab9d9e36ff40cd93c41de5d924145",
+      "completedArms": 1,
+      "plannedArms": 120,
+      "resumed": false,
+      "calibrationEvidence": false
+    }
+  ],
+  "stoppedBefore": [
+    "headroom",
+    "profiles",
+    "candidate",
+    "BEFORE/AFTER"
+  ],
+  "extraRepeats": 0,
+  "thresholdChanges": 0,
+  "productionRuntimeChanges": false,
+  "publicApiChanges": false,
+  "release": {
+    "changesetRequired": false,
+    "reason": "Only tests and private benchmark/release tooling; no published runtime/API/package-content/release-metadata change.",
+    "originalFullRelease": {
+      "path": "results/issue3941/checks/governance.log",
+      "sha256": "3157c358972772428d995cf0b5de85677f0a57ebec2f734c174add41535c64b5",
+      "exitCode": 1
+    },
+    "fullReleaseRerun": "NOT_RUN",
+    "fullLocalCi": "NOT_RUN"
+  },
+  "parentOwns": [
+    "new exact-head prepared reviews",
+    "CI"
+  ]
+}

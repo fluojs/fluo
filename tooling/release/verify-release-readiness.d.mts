@@ -6,7 +6,22 @@ export type ReleaseReadinessCheck = {
   pass: boolean;
 };
 
+export type ReleaseReadinessContext = {
+  readonly root?: string;
+  readonly baseSha?: string;
+  readonly changedFiles?: readonly string[];
+};
+
+export type ReleaseReadinessCommandReceipt = {
+  readonly commands: readonly string[];
+  readonly notApplicable: readonly {
+    readonly project: 'apps';
+    readonly reason: string;
+  }[];
+};
+
 export type ReleaseReadinessDependencies = {
+  readonly verificationContext?: ReleaseReadinessContext;
   workspacePackageManifests?: () => Array<{
     manifest: Record<string, unknown> & { name: string };
     packageJsonPath: string;
@@ -25,6 +40,7 @@ export type ReleaseReadinessDependencies = {
 
 export type ReleaseReadinessResult = {
   checks: ReleaseReadinessCheck[];
+  readonly verification: ReleaseReadinessCommandReceipt;
   writeDrafts: boolean;
   writeSummary: boolean;
 };
@@ -75,4 +91,11 @@ export function runReleaseCommand(
 export function runCanonicalReleaseReadinessVerificationCommands(
   runCommand: (command: string, args: readonly string[]) => void,
   skipBuild: boolean,
-): void;
+  context?: ReleaseReadinessContext,
+): ReleaseReadinessCommandReceipt;
+
+export function buildSummary(
+  checks: readonly ReleaseReadinessCheck[],
+  sideEffectMode?: 'none' | 'drafts' | 'summary',
+  verification?: ReleaseReadinessCommandReceipt,
+): { readonly summary: string; readonly summaryKo: string };

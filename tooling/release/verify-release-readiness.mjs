@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readTestCatalog } from '../ci/test-catalog.mjs';
 import { expandPublicPackageDependencyImpact } from './dependency-impact.mjs';
 import { packageChangelogContractViolation } from './package-changelog.mjs';
 import { buildGitHubReleaseNotes } from './prepare-github-release.mjs';
@@ -13,14 +14,6 @@ const summaryPath = join(scriptDirectory, 'release-readiness-summary.md');
 const summaryKoPath = join(scriptDirectory, 'release-readiness-summary.ko.md');
 const changelogPath = join(repoRoot, 'CHANGELOG.md');
 const releaseReadinessVitestProjects = ['packages', 'apps', 'examples', 'tooling'];
-const releaseReadinessVerificationCommands = [
-  '`pnpm build`',
-  '`pnpm typecheck`',
-  ...releaseReadinessVitestProjects.map((projectName) => `\`pnpm vitest run --project ${projectName} --maxWorkers=1\``),
-  '`pnpm --dir packages/cli sandbox:matrix`',
-  '`pnpm verify:platform-consistency-governance`',
-  '`pnpm verify:release-readiness`',
-];
 const toolingReleaseMetadataPackages = ['@fluojs/cli', '@fluojs/studio', '@fluojs/testing', '@fluojs/vite'];
 const foundationReleaseMetadataPackages = ['@fluojs/config', '@fluojs/core', '@fluojs/di', '@fluojs/i18n', '@fluojs/runtime'];
 const persistenceReleaseMetadataPackages = ['@fluojs/drizzle', '@fluojs/mongoose', '@fluojs/prisma'];
@@ -197,18 +190,39 @@ function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
-export function runCanonicalReleaseReadinessVerificationCommands(runCommand, skipBuild) {
+export function runCanonicalReleaseReadinessVerificationCommands(runCommand, skipBuild, context = {}) {
+  const root = context.root ?? repoRoot;
+  const baseSha = context.baseSha ?? 'HEAD';
+  let changedFiles = context.changedFiles;
+  if (changedFiles === undefined) {
+    const args = ['diff', '--name-only', '-z', baseSha, '--'];
+    const changes = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    if (changes.error) throw new ReleaseCommandError('spawn', 'git', args, root, changes);
+    if (changes.signal) throw new ReleaseCommandError('signal', 'git', args, root, changes);
+    if (changes.status !== 0) throw new ReleaseCommandError('exit', 'git', args, root, changes);
+    changedFiles = changes.stdout.split('\0').filter(Boolean);
+  }
+  const catalog = readTestCatalog(root, changedFiles, { baseSha });
+  const notApplicable = catalog.apps.length === 0
+    ? [{ project: 'apps', reason: 'no-suite: apps has no matching test files in target checkout' }] : [];
+  const commands = [];
+  const execute = (command, args) => {
+    runCommand(command, args);
+    commands.push(`${command} ${args.join(' ')}`);
+  };
   // CI may reuse a successful full build from an earlier step on the same checkout.
   if (!skipBuild) {
-    runCommand('pnpm', ['build']);
+    execute('pnpm', ['build']);
   }
-  runCommand('pnpm', ['typecheck']);
+  execute('pnpm', ['typecheck']);
 
   for (const projectName of releaseReadinessVitestProjects) {
-    runCommand('pnpm', ['vitest', 'run', '--project', projectName, '--maxWorkers=1']);
+    if (projectName === 'apps' && catalog.apps.length === 0) continue;
+    execute('pnpm', ['vitest', 'run', '--project', projectName, '--maxWorkers=1']);
   }
 
-  runCommand('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);
+  execute('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);
+  return { commands, notApplicable };
 }
 
 function packageRelativePath(packageName) {
@@ -784,7 +798,7 @@ function verifySinglePackageReleasePreflight(checks, options, packageManifests, 
   );
 }
 
-export function buildSummary(checks, sideEffectMode = 'none') {
+export function buildSummary(checks, sideEffectMode = 'none', verification = { commands: [], notApplicable: [] }) {
   const sideEffects =
     sideEffectMode === 'drafts'
       ? '- Side effects: `CHANGELOG.md`, `tooling/release/release-readiness-summary.md`, and `tooling/release/release-readiness-summary.ko.md` updated'
@@ -804,7 +818,8 @@ export function buildSummary(checks, sideEffectMode = 'none') {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    `- Commands executed: ${releaseReadinessVerificationCommands.join(', ')}`,
+    `- Commands executed: ${verification.commands.map((command) => `\`${command}\``).join(', ')}`,
+    ...verification.notApplicable.map(({ project, reason }) => `- Not applicable: ${project} (${reason})`),
     sideEffects,
   ].join('\n');
   const summaryKo = [
@@ -814,7 +829,8 @@ export function buildSummary(checks, sideEffectMode = 'none') {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    `- 실행한 명령: ${releaseReadinessVerificationCommands.join(', ')}`,
+    `- 실행한 명령: ${verification.commands.map((command) => `\`${command}\``).join(', ')}`,
+    ...verification.notApplicable.map(({ project, reason }) => `- 적용하지 않은 항목: ${project} (${reason})`),
     sideEffectsKo,
   ].join('\n');
 
@@ -826,7 +842,7 @@ function writeSummary(checks, sideEffectMode, dependencies = {}) {
   const outputDirectory = dependencies.outputDirectory ?? scriptDirectory;
   const { summaryPath: nextSummaryPath, summaryKoPath: nextSummaryKoPath } = resolveSummaryOutputPaths(outputDirectory);
   createDirectory(outputDirectory, { recursive: true });
-  const { summary, summaryKo } = buildSummary(checks, sideEffectMode);
+  const { summary, summaryKo } = buildSummary(checks, sideEffectMode, dependencies.verification);
   writeFile(nextSummaryPath, `${summary}\n`, 'utf8');
   writeFile(nextSummaryKoPath, `${summaryKo}\n`, 'utf8');
 }
@@ -894,11 +910,12 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     mkdirSync: createDirectory = mkdirSync,
     readFileSync: readFile = readFileSync,
     writeFileSync: writeFile = writeFileSync,
+    verificationContext,
   } = dependencies;
   const checks = [];
   const packageManifests = listWorkspacePackageManifests();
 
-  runCanonicalReleaseReadinessVerificationCommands(runCommand, skipBuild);
+  const verification = runCanonicalReleaseReadinessVerificationCommands(runCommand, skipBuild, verificationContext);
 
   const quickStart = readText('docs/getting-started/quick-start.md');
   const contributing = readText('CONTRIBUTING.md');
@@ -1090,16 +1107,17 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
 
   if (writeDrafts) {
     upsertReleaseCandidateDraft({ existsSync: pathExists, readFileSync: readFile, writeFileSync: writeFile });
-    writeSummary(checks, 'drafts', { mkdirSync: createDirectory, outputDirectory: scriptDirectory, writeFileSync: writeFile });
+    writeSummary(checks, 'drafts', { mkdirSync: createDirectory, outputDirectory: scriptDirectory, verification, writeFileSync: writeFile });
   } else if (shouldWriteSummary) {
     writeSummary(checks, 'summary', {
       mkdirSync: createDirectory,
       outputDirectory: summaryOutputDirectory,
+      verification,
       writeFileSync: writeFile,
     });
   }
 
-  return { checks, writeDrafts, writeSummary: shouldWriteSummary };
+  return { checks, verification, writeDrafts, writeSummary: shouldWriteSummary };
 }
 
 export function main(argv = process.argv.slice(2)) {

@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "issue": 3941,
+  "stage": "issue-implement",
+  "preflightSha256": "b60b5ea4ddd154a0b233f328ef4ef88df584e9cddaef036e9e05c217fc5bece5",
+  "branch": "issue-3941",
+  "worktree": ".worktrees/issue-3941",
+  "startingHead": "ce70426f3bf29430c4eb941f8e94baaf8f78d364",
+  "sourceBinding": {
+    "algorithm": "SHA-256 of JSON.stringify(sorted path-to-byte-SHA256 object); receipt itself excluded to avoid a self hash",
+    "files": {
+      "packages/platform-fastify/src/native-route-work.test.ts": "f043b0691a3a55598e6fc8bd89f5a6537ef2b45d45817e5abb48e5eb9219ff89",
+      "tooling/benchmarks/http-comparison/issue3941-report.md": "9b42228c5ea618c12bba3f76e98c2f2299ba6617c08d6c83349b086da806476e",
+      "tooling/benchmarks/http-comparison/results/issue3941/.gitignore": "ce9150eb76e7545193898d2f4f218eeaa78821b4a61461f681eb221424c905e3",
+      "tooling/benchmarks/http-comparison/results/issue3941/collector.ts": "ed72a546f66011903f15dac354746bb392d6550e785dad05c14b1116aea4991d",
+      "tooling/benchmarks/http-comparison/results/issue3941/dependencies.ts": "3c4383a6e8f03ceb939cfb306781376af3513020c6b9e66043762f4f9527ba03",
+      "tooling/benchmarks/http-comparison/results/issue3941/final-disposition.json": "25bb492e852f7dd2abfae9cc4eb90827cc72cbc111207723713747c5c9096614",
+      "tooling/benchmarks/http-comparison/results/issue3941/frozen-policy-collector-integrity-before-bind-host.json": "47800dce7aeea9d5ad2256e99f6b6015ddeda0756d0c0ef49f7fb25969d9276a",
+      "tooling/benchmarks/http-comparison/results/issue3941/frozen-policy-collector-integrity.json": "e5778e37c4a4905a4e78c5c42328f90c5d9a925f972b89644c84c5ffb036025c",
+      "tooling/benchmarks/http-comparison/results/issue3941/frozen-policy-declarations.json": "1fb013348ca7e450fbdf1db65bff3df74d753de45c0e07813a592212919bc718",
+      "tooling/benchmarks/http-comparison/results/issue3941/frozen-policy-reconciled.json": "1fdf7b5ac65ed97ff0223f4fca51f5aaae1587d37eea3eaea22fc93d900ec747",
+      "tooling/benchmarks/http-comparison/results/issue3941/frozen-policy-windows-server.json": "57a1c9658d962e1d613b9e0ff92daf7091d8133147eb3c3c7526980abbac588c",
+      "tooling/benchmarks/http-comparison/results/issue3941/frozen-policy.json": "d22ec08d7e24310a40c4d967523444023a87f39c1ceab770359b7cea3d3bde49",
+      "tooling/benchmarks/http-comparison/results/issue3941/generator.ts": "2578f864bee73dac16b240d827c400a0c71dc0979b035693b878ca742f8da9f9",
+      "tooling/benchmarks/http-comparison/results/issue3941/tsconfig.checks.json": "927ff892445e0090c6aa4bac661f387c0a4295dbb9b80cabddd110a3a218a9a2",
+      "tooling/benchmarks/http-comparison/src/fluo/server.ts": "1539f070b98234bd7633256fbb4911ce6cc24b5fa75f9ac8dda61fb810e662b2",
+      "tooling/benchmarks/http-comparison/src/issue3941.ts": "5239bf597e28551f2e1241c0eed899980aff11bbc9a89112b50d1e618343340c",
+      "tooling/benchmarks/http-comparison/src/traffic.ts": "a256ed2f892d7c9c0ad4cbd6f2b23fae3f64dc5882fc5d76de159447987699a8",
+      "tooling/benchmarks/http-comparison/tests/issue3941.test.mts": "2af8d84bcbf21907f4792b7c9d95f03bc16c569b259119b40043ff01f7f88595",
+      "tooling/benchmarks/http-comparison/tests/traffic-utf8.test.mts": "7dc5c812ba9316403a65faef6fd8916d642946d748982f9ccdc3862da7b2aa41",
+      "tooling/release/verify-release-readiness.d.mts": "83e1d92e2646886c197ae566aa939ab0d4400056a734695fd0cf01154408d632",
+      "tooling/release/verify-release-readiness.mjs": "131e134dfd0254b80cbc995d7ceadefaff1a7a6bd9b5cdcba4ef8b0b8f9bd5b1",
+      "tooling/release/verify-release-readiness.test.ts": "66c6c72e55e2d38ed2d612c533425b7f8341ffbb3c900b4ebb22eca8976c7702"
+    },
+    "sha256": "9c4a10ae2b6d66403aea2996afd3e1a9a910b1137a75d86c032d4025b5e5403c"
+  },
+  "checks": [
+    {
+      "commands": [
+        "pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace test"
+      ],
+      "cwd": "/Users/ayden/Documents/fluo/.worktrees/issue-3941",
+      "log": "results/issue3941/checks/shared-dist-setup-green.log",
+      "passed": 491,
+      "failed": 0,
+      "skipped": 1,
+      "durationMs": 93156.403375,
+      "status": "passed",
+      "exitCode": 0,
+      "sha256": "cfef88d0f860f358c8fa6fa2506271681eb792902895fe8010167b8d0ca10428"
+    },
+    {
+      "commands": [
+        "node --import tsx --test tests/issue3941.test.mts tests/traffic-utf8.test.mts"
+      ],
+      "cwd": "/Users/ayden/Documents/fluo/.worktrees/issue-3941/tooling/benchmarks/http-comparison",
+      "log": "results/issue3941/checks/final-harness-20261013.log",
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0,
+      "durationMs": 13961.952708,
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "94e3e4e86bfb77352a82767f09740d284ec0c87812db587a2d490c4f635936e3"
+    },
+    {
+      "commands": [
+        "pnpm exec vitest run packages/platform-fastify/src/native-route-work.test.ts packages/platform-fastify/src/adapter.test.ts packages/platform-nodejs/src/node/internal-node-request.test.ts packages/http/src/dispatch/ packages/http/src/context/ tooling/release/verify-release-readiness.test.ts --maxWorkers=2"
+      ],
+      "cwd": "/Users/ayden/Documents/fluo/.worktrees/issue-3941",
+      "log": "results/issue3941/checks/final-regressions-20261013.log",
+      "passed": 568,
+      "files": 35,
+      "durationSeconds": 29.45,
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "cbaf79e566e4f70e872f67f5de871c4b34417e8e3f102e09932047531db22941"
+    },
+    {
+      "commands": [
+        "pnpm --filter @fluojs/platform-fastify typecheck",
+        "pnpm exec tsc -p tsconfig.tools.json --noEmit",
+        "pnpm --dir tooling/benchmarks/http-comparison exec tsc --noEmit -p tsconfig.json",
+        "pnpm verify:platform-consistency-governance"
+      ],
+      "cwd": "/Users/ayden/Documents/fluo/.worktrees/issue-3941",
+      "log": "results/issue3941/checks/final-types-governance-20261013.log",
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "6caeed3ebd18463dcd3fd0176650092007ce1be2654f5a823f6ee1525aa92bd5"
+    },
+    {
+      "commands": [
+        "pnpm exec biome lint packages/platform-fastify/src/native-route-work.test.ts tooling/release/verify-release-readiness.mjs tooling/release/verify-release-readiness.test.ts tooling/benchmarks/http-comparison/src/issue3941.ts tooling/benchmarks/http-comparison/src/traffic.ts tooling/benchmarks/http-comparison/src/fluo/server.ts tooling/benchmarks/http-comparison/results/issue3941/collector.ts tooling/benchmarks/http-comparison/results/issue3941/dependencies.ts tooling/benchmarks/http-comparison/results/issue3941/generator.ts",
+        "pnpm exec biome lint --config-path tooling/benchmarks/http-comparison/tests/fixtures/paired-ab-biome.json tooling/benchmarks/http-comparison/tests/issue3941.test.mts tooling/benchmarks/http-comparison/tests/traffic-utf8.test.mts",
+        "git diff --check"
+      ],
+      "cwd": "/Users/ayden/Documents/fluo/.worktrees/issue-3941",
+      "log": "results/issue3941/checks/final-lint-20261013.log",
+      "checkedFiles": 8,
+      "ignoredOwnedFilesCheckedSeparately": true,
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "8c5ae5c6b097f70e1e9d79d4943070396993ddde3d8fbff383ba442f3ccb660a"
+    },
+    {
+      "commands": [
+        "pnpm exec biome lint --vcs-enabled=false --error-on-warnings tooling/benchmarks/http-comparison/results/issue3941/collector.ts tooling/benchmarks/http-comparison/results/issue3941/dependencies.ts tooling/benchmarks/http-comparison/results/issue3941/generator.ts",
+        "pnpm exec biome lint --error-on-warnings --config-path tooling/benchmarks/http-comparison/tests/fixtures/paired-ab-biome.json tooling/release/verify-release-readiness.d.mts"
+      ],
+      "cwd": "/Users/ayden/Documents/fluo/.worktrees/issue-3941",
+      "log": "results/issue3941/checks/final-ignored-lint-20261013.log",
+      "checkedFiles": 4,
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "c7c86a4af366a13238e0bb465a9760b65e518872343be4c584a1a4ee092c696e"
+    },
+    {
+      "commands": [
+        "pnpm exec tsc --noEmit -p results/issue3941/tsconfig.checks.json"
+      ],
+      "cwd": "/Users/ayden/Documents/fluo/.worktrees/issue-3941/tooling/benchmarks/http-comparison",
+      "log": "results/issue3941/checks/final-owned-types-20261013.log",
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "diagnostics": {
+    "changedCode": "empty",
+    "issueOwnedTypeConfig": "empty"
+  },
+  "cleanCheckoutPrerequisites": {
+    "manualPrivateDistRequired": false,
+    "entry": "Workspace package builds are an explicit pre-suite prerequisite. The test hook compiles only the private entry into a unique temporary directory and asserts that the prepared shared core artifact retains its file identity/metadata.",
+    "generator": "Identity test builds its own unique temporary esbuild bundle; never reads or overwrites the preserved original generator/load-client.mjs.",
+    "installs": "Existing frozen installed environment; no new install performed in this finalization."
+  },
+  "releaseProbe": {
+    "mode": "real-checkout catalog/command-plan probe only; emitted verification subprocesses not executed",
+    "catalogCounts": {
+      "packages": 640,
+      "apps": 0,
+      "examples": 16,
+      "tooling": 189
+    },
+    "emittedCommands": [
+      "pnpm build",
+      "pnpm typecheck",
+      "pnpm vitest run --project packages --maxWorkers=1",
+      "pnpm vitest run --project examples --maxWorkers=1",
+      "pnpm vitest run --project tooling --maxWorkers=1",
+      "pnpm --dir packages/cli sandbox:matrix"
+    ],
+    "notApplicable": [
+      {
+        "project": "apps",
+        "reason": "no-suite: apps has no matching test files in target checkout"
+      }
+    ]
+  },
+  "scope": {
+    "matchesAcceptedPreflight": true,
+    "productionOptimization": false,
+    "publicApiChanges": false,
+    "inheritedTrafficSha256": "a256ed2f892d7c9c0ad4cbd6f2b23fae3f64dc5882fc5d76de159447987699a8",
+    "inheritedUtf8TestSha256": "7dc5c812ba9316403a65faef6fd8916d642946d748982f9ccdc3862da7b2aa41",
+    "releaseNoSuiteCompanionRetained": true,
+    "issueOwnedIgnoreAndTypeConfig": "Required local evidence preservation and authored companion checks; both within results/issue3941/"
+  },
+  "preservedOriginals": {
+    "files": 550,
+    "allByteHashesUnchanged": true,
+    "inventorySha256": "e20ddc248dc5be2bd2727a9873ea958d93fa537c888c3e20ddd25b0f71fd9346",
+    "rawMatricesLogsDistCacheStaged": false,
+    "completedCohort": "0e121b649e58fb8d644889bc771514c9c33b30d34edc6d5d77a8c4420252a360",
+    "incompleteProtocolCohort": "77a0a537c3e8365ac1b4735adbb42101de6ab9d9e36ff40cd93c41de5d924145",
+    "originalFullReleaseSha256": "3157c358972772428d995cf0b5de85677f0a57ebec2f734c174add41535c64b5"
+  },
+  "notRun": [
+    "full local CI",
+    "full release rerun",
+    "fresh performance",
+    "headroom",
+    "profiles",
+    "candidate",
+    "BEFORE/AFTER",
+    "remote writes",
+    "reviews",
+    "CI"
+  ],
+  "releaseRationale": "Only tests and private benchmark/release tooling; no published runtime/API/package-content/release-metadata change.",
+  "parentNext": [
+    "new exact-head prepared reviews",
+    "CI"
+  ],
+  "sharedDistFix": {
+    "cause": "New test before hook rebuilt shared workspace packages during parallel imports; directly observed persistence dist removal. Earlier missing-prerequisite classification was incomplete.",
+    "red": {
+      "path": "results/issue3941/checks/shared-dist-setup-red.log",
+      "sha256": "cb243e1f49dbfe990173520fc51b3f383b2d02aaa99f767cc2b5dc9b814fdadf",
+      "exitCode": 1,
+      "failed": 1
+    },
+    "quality": {
+      "path": "results/issue3941/checks/shared-dist-setup-quality.log",
+      "sha256": "c576134cfd3293d78e76f6875af0ac7b1fb95699a1cb855d171e6b5dddae6636",
+      "exitCode": 0
+    },
+    "diagnostics": 0,
+    "performanceArtifactsChanged": false
+  }
+}

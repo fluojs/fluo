@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "issue": 3941,
+  "preflightSha256": "50118fbaaeb4b952c42ca8a83e985a134b2c404ad1e234ac9c876f601a12e338",
+  "previousHead": "24ec806a727e412ca11923bc1a165b732139a31e",
+  "ci": {
+    "pr": 3984,
+    "run": 38427663169,
+    "job": 115403684123,
+    "command": "pnpm vitest run --project tooling --shard=2/2 --maxWorkers=1",
+    "result": "1 failed, 2132 passed, 1 skipped",
+    "failure": "Real CLI expected apps command although approved canonical catalog classified apps as no-suite."
+  },
+  "change": "Update stale exact expected command inventory in tooling/governance/release-readiness-ci.test.ts; preserve all five remaining commands and skip-build/workflow assertions. Existing release runner tests retain future apps suite and coverage-loss behavior.",
+  "red": {
+    "command": "pnpm exec vitest run tooling/governance/release-readiness-ci.test.ts --project tooling --maxWorkers=1",
+    "exitCode": 1,
+    "failed": 1,
+    "passed": 1,
+    "log": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/ci-3941-companion-red.log"
+  },
+  "green": {
+    "command": "pnpm exec vitest run tooling/governance/release-readiness-ci.test.ts tooling/release/verify-release-readiness.test.ts --project tooling --maxWorkers=1",
+    "exitCode": 0,
+    "passed": 58,
+    "failed": 0,
+    "log": "/Users/ayden/Documents/fluo/.omo/verification/http-performance-3939-3943-20261013-1a832301/ci-3941-companion-green.log"
+  },
+  "quality": {
+    "lint": 0,
+    "lspDiagnostics": 0,
+    "diffCheck": 0
+  },
+  "performance": "Unchanged retained A/A FAIL; no runtime adoption",
+  "priorReceipts": "local-checks.json is historical evidence at the prior source/contract; canonical new-head parent receipts supersede it."
+}
