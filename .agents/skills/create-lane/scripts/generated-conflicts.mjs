@@ -84,5 +84,5 @@ export const withGeneratedConflicts = (plan, observations, graph) => {
   const generated = deriveGeneratedConflicts(observations, graph);
   const hints = [...(plan.predicted_conflicts ?? []).filter((hint) => hint.surface !== graph.surface), ...generated];
   assertPredictedConflicts(hints, plan.confirmed_issues);
-  return { ...plan, ...(hints.length ? { predicted_conflicts: hints } : {}) };
+  return { ...plan, predicted_conflicts: hints };
 };

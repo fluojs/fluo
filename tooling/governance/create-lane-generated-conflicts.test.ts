@@ -34,6 +34,60 @@ const withHint = { ...plan, predicted_conflicts: [hint] };
 const ledger = () => readyLedger(withHint, artifact, '.omo/search-issue/artifacts/generated-fixture.json');
 
 describe('create-lane generated conflicts', () => {
+  it.each([0, 1])(
+    'producer: valid old hint and %i current consumers -> stale hint removed through digest ledger and init',
+    (consumerCount) => {
+      const graph = { surface: hint.surface, command: 'node generator.mjs --check',
+        inputs: [{ path: 'packages/react/src/typegen.ts', sha256: 'a'.repeat(64) }] };
+      const previous = withGeneratedConflicts(plan, [42, 43].map((issue) => ({
+        issue, title: 'Consumer change', body: 'packages/react/src/typegen.ts',
+      })), graph);
+      expect(planIsCanonical(previous, artifact)).toBe(true);
+      const observations = [42, 43].map((issue, index) => ({
+        issue, title: 'Updated same-member issue',
+        body: index < consumerCount ? 'packages/react/src/typegen.ts' : '.github/workflows/ci.yml',
+      }));
+      const approval = { gate: 'lane-plan', approval_id: `approval-${plan.lane_id}-lane-plan`,
+        approved: true, release_handoff_attestations: [] };
+
+      const updated = withGeneratedConflicts(previous, observations, graph);
+
+      expect(updated.predicted_conflicts ?? []).toEqual([]);
+      expect(planIsCanonical(updated, artifact)).toBe(true);
+      expect(approvalBinding(approval, artifact, updated)).not.toBe(approvalBinding(approval, artifact, previous));
+      const value = readyLedger(updated, artifact, '.omo/search-issue/artifacts/generated-fixture.json');
+      expect(value.predicted_conflicts ?? []).toEqual([]);
+      expect(() => assertLaneSourceBinding(value, artifact)).not.toThrow();
+      expect(() => validateLedger('fixture', value)).not.toThrow();
+      expect(laneV2ToInitSpecs(value).predictedConflicts ?? []).toEqual([]);
+      expect(previous.predicted_conflicts).toHaveLength(1);
+    },
+  );
+
+  it.each([0, 1])(
+    'producer: %i current consumers and unrelated hint -> only stale consumer hint removed',
+    (consumerCount) => {
+      const graph = { surface: hint.surface, command: 'node generator.mjs --check',
+        inputs: [{ path: 'packages/react/src/typegen.ts', sha256: 'a'.repeat(64) }] };
+      const unrelated = { surface: 'tooling/governance/lane-ledger-schema.mjs', issues: [42, 43] };
+      const previous = withGeneratedConflicts({ ...plan, predicted_conflicts: [unrelated] },
+        [42, 43].map((issue) => ({ issue, title: 'Consumer change', body: 'packages/react/src/typegen.ts' })), graph);
+      expect(planIsCanonical(previous, artifact)).toBe(true);
+
+      const updated = withGeneratedConflicts(previous, [42, 43].map((issue, index) => ({
+        issue, title: 'Updated same-member issue',
+        body: index < consumerCount ? 'packages/react/src/typegen.ts' : '.github/workflows/ci.yml',
+      })), graph);
+
+      expect(updated.predicted_conflicts).toEqual([unrelated]);
+      const value = readyLedger(updated, artifact, '.omo/search-issue/artifacts/generated-fixture.json');
+      expect(() => assertLaneSourceBinding(value, artifact)).not.toThrow();
+      expect(() => validateLedger('fixture', value)).not.toThrow();
+      expect(laneV2ToInitSpecs(value).predictedConflicts).toEqual([unrelated]);
+      expect(previous.predicted_conflicts).toHaveLength(2);
+    },
+  );
+
   it('planIsCanonical: supported hint -> accepted without dependency edges', () => {
     expect(planIsCanonical(withHint, artifact)).toBe(true);
   });
