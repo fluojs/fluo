@@ -6,7 +6,7 @@
 
 이 예제들은 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 공통 공개 프레임워크 API로 보여주지만 동일한 scaffold나 bootstrap 정책을 사용하지는 않습니다. 예제는 `repository-example` workspace이며 생성 애플리케이션은 registry 의존성과 자신의 CLI lifecycle script를 사용합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
 
-Deno starter는 기존 사용자 이전을 위해 남아 있는 deprecated 경로입니다. 새 프로젝트에는 선택하지 말고 [Deno 이전 가이드](../docs/getting-started/migrate-from-deno.ko.md)를 확인하세요.
+v2 HTTP starter 매트릭스의 역사적 플랫폼 목록은 Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers입니다. 이 목록은 현재 first-class 지원이나 새 프로젝트 추천 목록이 아닙니다. Deno starter는 기존 사용자 이전을 위해 남아 있는 deprecated 경로입니다. 새 프로젝트에는 선택하지 말고 [Deno 이전 가이드](../docs/getting-started/migrate-from-deno.ko.md)를 확인하세요.
 
 ## 현재 공식 예제
 

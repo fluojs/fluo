@@ -9,6 +9,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { relative, resolve } from "node:path";
+import { summarizeIntegrationMeasurements } from "../../execute-lane/scripts/generated-integration.mjs";
 
 const kinds = new Set([
 	"stage",
@@ -18,6 +19,7 @@ const kinds = new Set([
 	"incident",
 	"gap",
 	"merge",
+	"observation",
 ]);
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const digest = (value) =>
@@ -336,6 +338,8 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 			b.failures - a.failures || a.job.localeCompare(b.job)
 		),
 		totalElapsedMs: null,
+		integrationMeasurements: summarizeIntegrationMeasurements(events,
+			Object.fromEntries(snapshots.map(({ issue, obs }) => [issue, obs.headSha ?? obs.pr?.headSha]))),
 		limitations: [
 			"Recorded timestamps are observation times, not execution start/end times.",
 			"Attempt counters can reset; distinct observations are not a total execution count.",

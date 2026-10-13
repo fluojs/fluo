@@ -6,7 +6,7 @@ Choose an official repository example to run or test the capability you need. To
 
 These examples cover the HTTP side of the published `fluo new` v2 matrix through shared public framework APIs, not identical scaffolds or bootstrap policies. They are `repository-example` workspaces; generated applications use registry dependencies and their own CLI lifecycle scripts. The other first-class starter contracts are the runnable application starter variants for Express, raw Node.js HTTP, Bun, and Cloudflare Workers; the runnable microservice starter paths (TCP by default, plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC); and the mixed single-package path (Fastify HTTP app + attached TCP microservice).
 
-The Deno starter remains a deprecated path for existing users during migration. Do not choose it for new projects; follow the [Deno migration guide](../docs/getting-started/migrate-from-deno.md).
+The historical platform inventory of the v2 HTTP starter matrix includes Express, raw Node.js HTTP, Bun, Deno, and Cloudflare Workers. This inventory is not the current first-class support or new-project recommendation list. The Deno starter remains a deprecated path for existing users during migration. Do not choose it for new projects; follow the [Deno migration guide](../docs/getting-started/migrate-from-deno.md).
 
 ## current official examples
 
