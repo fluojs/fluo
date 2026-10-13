@@ -137,7 +137,7 @@ test('packed command evidence: fresh root and real stdout/stderr -> retained com
   const stderr = `${'E'.repeat(60_000)}PACKED_STDERR_TAIL\n`;
 
   const diagnostics = await runner.run('large', ['-e',
-    `process.stdout.write(${JSON.stringify(stdout)}); process.stderr.write(${JSON.stringify(stderr)});`],
+    `process.stdout.write('O'.repeat(60_000) + 'PACKED_STDOUT_TAIL\\n'); process.stderr.write('E'.repeat(60_000) + 'PACKED_STDERR_TAIL\\n');`],
   parent, { PACKED_CASE: 'large' }, process.execPath);
 
   assert.equal(commands.length, 1);
@@ -166,14 +166,15 @@ for (const mode of ['success', 'failure', 'cancellation']) {
           const written = () => {
             if (--pending === 0) process.send('ready');
           };
-          process.stdout.write(${JSON.stringify(expected.stdout)}, written);
-          process.stderr.write(${JSON.stringify(expected.stderr)}, written);
+          process.stdout.write('O'.repeat(70_000) + 'STDOUT_TAIL\\n', written);
+          process.stderr.write('E'.repeat(70_000) + 'STDERR_TAIL\\n', written);
         ` : `
-          process.stdout.write(${JSON.stringify(expected.stdout)});
-          process.stderr.write(${JSON.stringify(expected.stderr)});
+          process.stdout.write('O'.repeat(70_000) + 'STDOUT_TAIL\\n');
+          process.stderr.write('E'.repeat(70_000) + 'STDERR_TAIL\\n');
           process.exitCode = ${mode === 'failure' ? 7 : 0};
         `}
       `] };
+    assert.ok(Buffer.byteLength(command.args[1]) < 4096, 'large output must be generated in the child, not embedded in argv');
     let terminal = '';
     const completed = runBrowserOwnedCommand(command, { cwd: parent, env: { ...process.env, ...command.env } }, {
       signal: controller.signal, evidence: { root, label: 'large', emit: (text) => { terminal += text; } },
