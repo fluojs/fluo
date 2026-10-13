@@ -88,9 +88,82 @@
     "results/issue-3940/generator.mts": "a6506467a01cd77938143eb59dbb7824b26260cda9943853dccd255849105d5f",
     "results/issue-3940/storage.mts": "1b9b5a2d704286587a6027338aafbf59dec905447aa3146b092661621a0049f4"
   },
-  "unchangedPackageTestSha256": {
+  "historicalPackageTestSha256": {
     "packages/platform-bun/src/adapter.test.ts": "b578f9cd13c7595f0df2f3dde192cfed74b48e083a64d2c7b98060cfd0a7ca8d",
     "packages/runtime/src/web.test.ts": "19c59e3a0e26183d3073cbbe840ec9e3b77565b07a2e13c2c24a5bd7eaeaf90d"
+  },
+  "packageReadonlyFix": {
+    "previousHead": "51cf879686e1f5d833c6d8994ebc29718eed8778",
+    "failure": {
+      "command": "pnpm --filter @fluojs/platform-bun typecheck && pnpm --filter @fluojs/runtime typecheck",
+      "exitCode": 2,
+      "errors": [
+        "adapter.test.ts(1119,9): TS2542 readonly params map",
+        "adapter.test.ts(1120,9): TS2542 readonly query map"
+      ],
+      "runtimeTypecheckNotReached": true,
+      "adjudication": ".omo/verification/http-performance-3939-3943-20261013-1a832301/adjudication-3940-test-typecheck.json",
+      "adjudicationSha256": "e048082c9c8350b9e98baaf65f22ff4fa61bcdda6c518c1b204a7f6ea560518e",
+      "stdout": ".omo/verification/http-performance-3939-3943-20261013-1a832301/prepared-3940-51cf8796-3.stdout.log",
+      "stdoutSha256": "adf4804eed08b441dc7123d49d112fb782f9d5a28c360a39f17f236a1db13f8b",
+      "failedReceipt": ".omo/verification/http-performance-3939-3943-20261013-1a832301/prepared-3940-51cf8796-3.receipt.json",
+      "preserved": true,
+      "implementationAcceptedAtFailedHead": false,
+      "missingCoverage": "The earlier benchmark typecheck and passing suites did not replace package-owner typechecks."
+    },
+    "change": "Preserve actual Bun dispatch and raw Request reuse. Exercise intentional JavaScript Reflect.set mutation beyond readonly public maps; assert write success and actual changed values in both Bun and adjacent runtime isolation tests. No casts, suppressions or weakened assertions.",
+    "packageTestSha256": {
+      "packages/platform-bun/src/adapter.test.ts": "06f2b9e596e694ad22e406961ccd691ae58525de70f03702d05f2a573cedb2db",
+      "packages/runtime/src/web.test.ts": "d3fff349f0709cedc523ea52d1b79c7ce1e200977e6ff5a6ec9676a491db4968"
+    },
+    "checks": [
+      {
+        "command": "pnpm --filter @fluojs/platform-bun typecheck",
+        "exitCode": 0,
+        "log": "readonly-fix-bun-typecheck-20261013.log",
+        "logSha256": "9e92ec6b35d179f4c5c642ad4356cd7033529c3b174808f15dec97a2602e6ceb"
+      },
+      {
+        "command": "pnpm --filter @fluojs/runtime typecheck",
+        "exitCode": 0,
+        "log": "readonly-fix-runtime-typecheck-20261013.log",
+        "logSha256": "68548f6bc23b272ab194d1b67563000765e63f183dddfac0ba1bb1c3b874eb28"
+      },
+      {
+        "command": "pnpm --filter @fluojs/platform-bun exec vitest run -c vitest.config.ts src/adapter.test.ts",
+        "exitCode": 0,
+        "passed": 75,
+        "failed": 0,
+        "log": "readonly-fix-bun-suite-20261013.log",
+        "logSha256": "2b02727e933b63cc25836863806c112ae0836d36e15c76ab97c93c7e821028d5"
+      },
+      {
+        "command": "pnpm --filter @fluojs/runtime exec vitest run -c vitest.config.ts src/web.test.ts",
+        "exitCode": 0,
+        "passed": 33,
+        "failed": 0,
+        "log": "readonly-fix-runtime-suite-20261013.log",
+        "logSha256": "ec1a0564ea9da27d1ea65c7be9264e1fbbfd7ecf54760a7822702300f0e1e1de"
+      },
+      {
+        "command": "pnpm exec biome check --error-on-warnings packages/platform-bun/src/adapter.test.ts packages/runtime/src/web.test.ts",
+        "exitCode": 0,
+        "log": "readonly-fix-package-lint-20261013.log",
+        "logSha256": "70bfdd2a5aa0109524128332ce28a8150cad3d5667634b8da363f38938865a29"
+      },
+      {
+        "check": "LSP diagnostics",
+        "files": [
+          "packages/platform-bun/src/adapter.test.ts",
+          "packages/runtime/src/web.test.ts"
+        ],
+        "diagnostics": []
+      }
+    ],
+    "canonicalPostcommitReceipts": "Parent reruns; these focused local checks are not canonical prepared receipts.",
+    "productionSourceChanged": false,
+    "performanceMeasurements": 0,
+    "remoteActions": []
   },
   "changedTest": {
     "path": "tests/issue-3940.test.mts",

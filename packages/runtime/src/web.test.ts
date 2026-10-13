@@ -52,8 +52,11 @@ describe('dispatchWebRequest', () => {
     raw.headers.set('cookie', 'session=second');
     first.path = '/rewritten';
     first.method = 'POST';
-    first.params.id = 'changed';
-    first.query.tag = 'changed';
+    // Deliberate JavaScript writes must take effect before the second wrapper can prove isolation.
+    expect(Reflect.set(first.params, 'id', 'changed')).toBe(true);
+    expect(Reflect.set(first.query, 'tag', 'changed')).toBe(true);
+    expect(first.params.id).toBe('changed');
+    expect(first.query.tag).toBe('changed');
 
     const second = await factory.createRequest(raw, raw.signal);
 

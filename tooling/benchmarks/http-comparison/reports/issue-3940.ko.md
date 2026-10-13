@@ -82,9 +82,25 @@ byte-identical, source/storage/test LSP diagnostics 없음, git diff --check 통
 과거 38-pass/typecheck/lint/bundle receipt는 보존합니다. Harness,
 plan/gates/generator/storage 및 공유 collector는 당시 source hash 그대로이며,
 변경된 issue 테스트는 이번 GREEN으로 다시 검증했습니다.
-상속 `traffic.ts`/`traffic-utf8.test.mts`와 두 package 테스트 hash는 유지합니다.
+상속 `traffic.ts`/`traffic-utf8.test.mts` hash는 유지합니다. 이전 package 테스트
+hash는 과거 신원으로 보존하며 readonly 경계 수정에는 새 hash를 기록합니다.
 이전 focused Vitest 266-pass, adapter 75-pass, 6 canonical Bun workload
 correctness-only probe 기록은 새 성능 PASS가 아닙니다.
+
+Parent의 HEAD `51cf879686e1f5d833c6d8994ebc29718eed8778` package 검증은 exit 2로
+실패했습니다. `adapter.test.ts(1119,9)`와 `(1120,9)`에서 readonly params/query
+map 쓰기에 TS2542가 발생했습니다. 이전 benchmark typecheck와 통과한 suite는
+누락된 package-owner typecheck를 대신하지 못했으며 구현은 승인되지 않았습니다.
+실패한 `prepared-3940-51cf8796-3.receipt.json`, stdout/stderr와
+`adjudication-3940-test-typecheck.json`은 parent verification root에 그대로 보존합니다.
+
+Bun dispatch 회귀와 인접 runtime wrapper 테스트는 이제 명시적인 JavaScript
+`Reflect.set` 쓰기의 성공 여부와 변경된 실제 값을 단언한 뒤 raw Request 재사용의
+격리를 검증합니다. Cast, suppression, assertion 삭제나 격리 시나리오 축소는 없습니다.
+Bun/runtime package typecheck는 모두 exit 0이며 관련 adapter/Web suite는 각각
+**75/75**, **33/33** 통과했습니다. 변경 package 테스트 lint와 LSP diagnostics도
+clean입니다. 별도 `readonly-fix-*-20261013.log`와 source/log hash를 bounded receipt에
+기록합니다. 이는 로컬 검증이며 parent가 canonical postcommit receipt를 다시 실행합니다.
 
 과거 전체 benchmark suite는 **458 passed, 2 failed, 1 skipped**, exit 1입니다.
 수정하지 않은 `tests/paired-ab.test.mts:193`와 `tests/paired-node.test.mts:381`의

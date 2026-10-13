@@ -1116,8 +1116,11 @@ describe('@fluojs/platform-bun', () => {
           header: context.request.headers['x-reuse'],
           cookie: context.request.cookies.session,
         };
-        context.request.params.id = 'mutated';
-        context.request.query.tag = 'mutated';
+        // Deliberate JavaScript writes probe alias isolation beyond the readonly public map types.
+        expect(Reflect.set(context.request.params, 'id', 'mutated')).toBe(true);
+        expect(Reflect.set(context.request.query, 'tag', 'mutated')).toBe(true);
+        expect(context.request.params.id).toBe('mutated');
+        expect(context.request.query.tag).toBe('mutated');
         context.request.method = 'POST';
         context.request.path = '/mutated';
         return snapshot;

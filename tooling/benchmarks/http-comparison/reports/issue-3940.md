@@ -81,9 +81,26 @@ byte-identical output. Source/storage/test LSP diagnostics were empty and git di
 Preserve the historical 38-pass/typecheck/lint/bundle receipt. Harness,
 plan/gates/generator/storage and the shared collector retain their recorded source
 hashes; the changed issue test is revalidated by the new GREEN run.
-Inherited `traffic.ts`/`traffic-utf8.test.mts` hashes and both package test hashes remain.
+Inherited `traffic.ts`/`traffic-utf8.test.mts` hashes remain. The previous package test
+hashes are retained as historical identities; the readonly-boundary fix has new hashes.
 Earlier focused Vitest 266-pass, adapter 75-pass and six canonical Bun workload
 correctness-only probe records are not a new performance PASS.
+
+The parent's exact-head package check at `51cf879686e1f5d833c6d8994ebc29718eed8778`
+failed with exit 2: `adapter.test.ts(1119,9)` and `(1120,9)` TS2542 for writes
+to readonly params/query maps. Earlier benchmark typecheck and passing suites
+did not cover the missing package-owner typecheck; that implementation was not accepted.
+The failed `prepared-3940-51cf8796-3.receipt.json`, its stdout/stderr and
+`adjudication-3940-test-typecheck.json` remain intact under the parent verification root.
+
+The Bun dispatch regression and adjacent runtime wrapper test now use explicit
+JavaScript `Reflect.set` writes, assert each write succeeds and verify the mutated
+value before testing raw Request reuse. No cast, suppression, removed assertion
+or reduced isolation scenario is used. Bun/runtime package typechecks both exit 0;
+the relevant adapter and Web suites pass **75/75** and **33/33** respectively.
+Changed package test lint and LSP diagnostics are clean. Separate `readonly-fix-*-20261013.log`
+files and their source/log hashes are recorded in the bounded receipt.
+These are local checks; the parent reruns canonical postcommit receipts.
 
 The historical full benchmark suite had **458 passed, 2 failed, 1 skipped**, exit 1.
 Retain finite child JSON ENOENT failures in unchanged `tests/paired-ab.test.mts:193`
