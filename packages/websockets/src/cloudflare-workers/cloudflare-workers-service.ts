@@ -22,6 +22,7 @@ import {
   resolveGatewayInstance,
   resolveSupportedFetchStyleRealtimeCapability,
   runGatewayHandlers,
+  WebSocketRoomIndex,
 } from '../internal/shared.js';
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type { WebSocketGatewayDescriptor, WebSocketRoomService, WebSocketUpgradeRejection } from '../types.js';
@@ -105,10 +106,9 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
   private isShuttingDown = false;
   private readonly pendingUpgradeOperations = new Set<Promise<void>>();
   private pendingUpgradeReservations = 0;
-  private readonly roomSockets = new Map<string, Set<string>>();
+  private readonly roomIndex = new WebSocketRoomIndex();
   private shutdownPromise: Promise<void> | undefined;
   private readonly socketRegistry = new Map<string, CloudflareWorkerWebSocket>();
-  private readonly socketRooms = new Map<string, Set<string>>();
   private readonly socketStates = new Map<string, ConnectionHandlerState>();
 
   constructor(
@@ -789,9 +789,8 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
 
     this.pendingUpgradeReservations = 0;
     this.socketRegistry.clear();
-    this.socketRooms.clear();
+    this.roomIndex.clear();
     this.socketStates.clear();
-    this.roomSockets.clear();
   }
 
   private trackPendingUpgradeOperation<TArgs extends unknown[], TResult>(
@@ -944,40 +943,15 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
       return;
     }
 
-    let rooms = this.socketRooms.get(socketId);
-
-    if (!rooms) {
-      rooms = new Set<string>();
-      this.socketRooms.set(socketId, rooms);
-    }
-
-    rooms.add(room);
-
-    let sockets = this.roomSockets.get(room);
-    if (!sockets) {
-      sockets = new Set<string>();
-      this.roomSockets.set(room, sockets);
-    }
-
-    sockets.add(socketId);
+    this.roomIndex.join(socketId, room);
   }
 
   leaveRoom(socketId: string, room: string): void {
-    const rooms = this.socketRooms.get(socketId);
-    rooms?.delete(room);
-    if (rooms && rooms.size === 0) {
-      this.socketRooms.delete(socketId);
-    }
-
-    const sockets = this.roomSockets.get(room);
-    sockets?.delete(socketId);
-    if (sockets && sockets.size === 0) {
-      this.roomSockets.delete(room);
-    }
+    this.roomIndex.leave(socketId, room);
   }
 
   broadcastToRoom(room: string, event: string, data: unknown): void {
-    const socketIds = this.roomSockets.get(room);
+    const socketIds = this.roomIndex.getSockets(room);
 
     if (!socketIds) {
       return;
@@ -1011,13 +985,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
   }
 
   getRooms(socketId: string): ReadonlySet<string> {
-    const rooms = this.socketRooms.get(socketId);
-
-    if (!rooms) {
-      return new Set<string>();
-    }
-
-    return new Set<string>(rooms);
+    return this.roomIndex.getRooms(socketId);
   }
 
   private closeSocketAfterTerminalFailure(
@@ -1069,18 +1037,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
       this.socketStates.delete(socketId);
     }
 
-    const rooms = this.socketRooms.get(socketId);
-    if (rooms) {
-      for (const room of rooms) {
-        const sockets = this.roomSockets.get(room);
-        sockets?.delete(socketId);
-        if (sockets && sockets.size === 0) {
-          this.roomSockets.delete(room);
-        }
-      }
-
-      this.socketRooms.delete(socketId);
-    }
+    this.roomIndex.removeSocket(socketId);
   }
 }
 
