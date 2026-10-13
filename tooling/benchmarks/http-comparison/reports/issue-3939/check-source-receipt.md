@@ -117,3 +117,68 @@ performance PASS, benefit, closure, or readiness judgment is made.
 The external archive remains the local file named in `evidence-receipt.md`,
 SHA-256 `c586b566d86ac0c258c8fa5c164e11e5c3a55f3fbdbb9654d47a90dc227aae62`;
 it is not a public download. All raw/manifest/index/verdict originals remain intact.
+
+## Hash guard fix-back / hash guard 보강
+
+2026-10-13 fix-back attempt 1은 starting HEAD
+`9ceb42dc34c9851a055b8017ae8c606be4df6ca8`에서 지정된 code blocker만
+보강합니다. 위 source/check 대조는 이전 구현의 역사적 기록입니다.
+이번 테스트 hash는
+`9b9256881f6f261151ef7c641553c4e873cdf04a7837b3a6d61f5507cffb3f98`이며,
+과거 preparation/Windows test hash 일치를 새 테스트에 적용하지 않습니다.
+원본 reference와 byte length를 유지하고 valid JSON의 throughput average를
+`500`에서 `501`로 변조합니다. 실제 `evaluateRawIndex` ->
+`readRawRecords` -> `readRawShard` 경로에서 `ExperimentInputFailure`와
+정확한 `Tampered raw shard bytes or hash` 오류를 단언합니다.
+
+Fix-back attempt 1 changes only the supplied hash-guard coverage blocker from
+the starting head above. Previous source/check bindings remain historical.
+The new regression retains the original reference and byte length, changes
+valid JSON throughput from 500 to 501, and asserts the precise typed hash
+failure through the real evaluator and shard reader. Historical preparation
+and Windows test hashes do not authenticate this new test.
+
+SHA-256 비교 `|| sha256(bytes) !== reference.sha256`만 임시 제거한 RED는
+exit 1, 1 failed, `Missing expected rejection`입니다. 길이·path·JSON·평가
+검사는 그대로였으므로 다른 guard의 실패를 hash 검증으로 오인하지 않습니다.
+복원 후 `storage.ts`는 byte-for-byte 원본과 일치하며 SHA-256은
+`c6f8e937e63317a63da28816b1209652845e73fd56ce6bc2654451df4c80e151`입니다.
+Focused harness는 단일 실행에서 49 passed, 0 failed, 0 skipped, exit 0이며,
+`pnpm typecheck` exit 0, changed-test LSP diagnostics 0입니다.
+
+Removing only the SHA-256 comparison produced assertion-level RED: one failure,
+exit 1, missing expected rejection. Restoring it reproduced the original
+storage bytes. The focused harness passed once with 49 tests and no failures or
+skips; benchmark typecheck passed and the changed test has no LSP diagnostics.
+
+Commands run from `tooling/benchmarks/http-comparison`:
+
+```sh
+node --import tsx --test --test-name-pattern='equal-byte-length valid JSON tamper' tests/issue-3939.test.mts
+node --import tsx --test tests/traffic-utf8.test.mts tests/issue-3939.test.mts
+pnpm typecheck
+```
+
+Unique raw logs below are relative to `results/issue-3939/` and remain ignored:
+
+| Check | Log | SHA-256 |
+| --- | --- | --- |
+| RED: hash comparison removed | `hash-guard-fix-back-20261013-c9fee003-07a2-47e8-ae08-1ac468e34ece-red.log` | `4e70832d313670dbe54b9776aca92d48e06edb96483ee2a41650ee7fa13963dc` |
+| GREEN: original guard restored | `hash-guard-fix-back-20261013-c9fee003-07a2-47e8-ae08-1ac468e34ece-green.log` | `17fc9eb20b779971aae070728b7ea34cfbfc80951bf8c866ad6f925c47a81e49` |
+| Typecheck | `hash-guard-fix-back-20261013-c9fee003-07a2-47e8-ae08-1ac468e34ece-typecheck.log` | `041fde050af445dcb3376f15ba6c31d19191c8d2b1de3afee3d73d092bcb5d8c` |
+
+커밋 후 같은 root의
+`hash-guard-fix-back-20261013-c9fee003-07a2-47e8-ae08-1ac468e34ece-receipt.json`에
+새 HEAD, 이 문서·테스트·storage·로그 hash와 unchanged preflight를 연결합니다.
+측정은 재실행하지 않았으며 132 records, headroom `NOT_ESTABLISHED`,
+performance `INCONCLUSIVE`를 유지합니다. 측정 판정 원본 hash
+`824f5fbce13e9e473bc769c739d7e321e776b97bb76eab03b964318edb72cf20`도
+변경 없습니다. 모든 기존 raw·실패·receipt를 보존합니다.
+
+The post-commit receipt binds the new HEAD to this report, test, restored
+storage, logs and unchanged preflight. No new measurements ran; the existing
+132-record measurement verdict and its hash remain unchanged. This test-only
+private tooling fix needs no Changeset under `CONTRIBUTING.md`.
+Full local CI and remote actions were not run. All three selected axes
+(contract/code/verification) require fresh reviews on the new head; no old
+review PASS is carried forward. These reviews belong to the parent lane.

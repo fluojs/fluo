@@ -12,7 +12,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { FIXTURE_MANIFEST, FIXTURES, ResponseModule, fixtureRequest } from '../src/issue-3939/fixtures';
 import { assertGenerator } from '../src/issue-3939/experiment';
 import { deriveMetrics, evaluateAA, evaluateAAIncrementally } from '../src/issue-3939/analysis';
-import { assertFrozenDesign, DESIGN, DESIGN_SHA256, evaluatePairs, parseHostIdentities } from '../src/issue-3939/plan';
+import { assertFrozenDesign, DESIGN, DESIGN_SHA256, evaluatePairs, ExperimentInputFailure, parseHostIdentities } from '../src/issue-3939/plan';
 import { evaluateRawIndex, readRawRecords, readRawShard, writeRawShard } from '../src/issue-3939/storage';
 
 const hash = '1'.repeat(64);
@@ -189,6 +189,32 @@ test('raw shards: next record tampered after iterator starts -> detects original
   const action = iterator.next();
 
   await assert.rejects(action, /Tampered raw shard/);
+});
+
+test('raw shards: equal-byte-length valid JSON tamper -> evaluator rejects original hash', async () => {
+  const directory = await mkdtemp(fileURLToPath(new URL('../results/issue-3939/shard-equal-length-', import.meta.url)));
+  const raw = calibrationFixture();
+  const records = raw.records.map((record, ordinal) => writeRawShard(directory, `record-${ordinal}.json`, record));
+  const path = join(directory, 'raw.json');
+  await writeFile(path, JSON.stringify({ ...raw, kind: 'issue-3939-raw-shards-v1', issue: 3939, designSha256: DESIGN_SHA256, records }));
+  const original = raw.records[0];
+  const tampered = { ...original, value: [{ ...original.value[0], result: {
+    ...original.value[0].result, requests: { ...original.value[0].result.requests, average: 501 },
+  } }] };
+  const tamperedBytes = JSON.stringify(tampered);
+  assert.deepEqual(JSON.parse(tamperedBytes), tampered);
+  assert.equal(Buffer.byteLength(tamperedBytes), records[0].bytes);
+  assert.notEqual(createHash('sha256').update(tamperedBytes).digest('hex'), records[0].sha256);
+  await chmod(join(directory, records[0].path), 0o644);
+  await writeFile(join(directory, records[0].path), tamperedBytes);
+
+  const action = evaluateRawIndex(path, hash, hash);
+
+  await assert.rejects(action, (error: unknown) => {
+    assert.ok(error instanceof ExperimentInputFailure);
+    assert.equal(error.message, 'Tampered raw shard bytes or hash');
+    return true;
+  });
 });
 
 test('raw shards: outside-root relative reference -> rejects original path', async () => {
