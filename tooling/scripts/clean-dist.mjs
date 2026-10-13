@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,26 +40,68 @@ function wait(deadline, directory) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
 }
 
+function gateOwners(gate) {
+  const owners = [];
+  for (const token of readdirSync(gate)) {
+    const path = join(gate, token);
+    if (token.endsWith('.pending')) {
+      const pid = Number(token.match(/^([1-9][0-9]*)-/u)?.[1]);
+      if (Number.isSafeInteger(pid) && !alive(pid)) rmSync(path, { force: true });
+      continue;
+    }
+    if (!token.endsWith('.json')) continue;
+    let owner;
+    try {
+      owner = JSON.parse(readFileSync(path, 'utf8'));
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (!Number.isSafeInteger(owner.pid) || owner.pid < 1) {
+      throw new Error(`Invalid workspace artifact gate owner at ${path}.`);
+    }
+    if (!alive(owner.pid)) {
+      // Each new owner has a unique path. A late recoverer can remove only the
+      // dead owner's entry, never a replacement owner's entry or gate directory.
+      rmSync(path, { force: true });
+      continue;
+    }
+    const ticket = token === 'owner.json' ? 0 : owner.ticket;
+    if (ticket !== null && (!Number.isSafeInteger(ticket) || ticket < 0)) {
+      throw new Error(`Invalid workspace artifact gate ticket at ${path}.`);
+    }
+    owners.push({ token, ticket });
+  }
+  return owners;
+}
+
 function guarded(directory, callback, deadline = performance.now() + timeoutMs) {
   const gate = join(directory, 'gate');
-  while (true) {
-    try {
-      mkdirSync(gate);
-      writeFileSync(join(gate, 'owner.json'), JSON.stringify({ pid: process.pid }));
-      break;
-    } catch (error) {
-      if (error?.code !== 'EEXIST') throw error;
-      if (stale(join(gate, 'owner.json'))) {
-        rmSync(gate, { recursive: true, force: true });
-        continue;
-      }
+  mkdirSync(gate, { recursive: true });
+  const token = `${process.pid}-${randomUUID()}.json`;
+  const path = join(gate, token);
+  const pending = `${path}.pending`;
+  const publish = (ticket) => {
+    writeFileSync(pending, JSON.stringify({ pid: process.pid, ticket }));
+    renameSync(pending, path);
+  };
+  try {
+    gateOwners(gate);
+    // A per-artifact bakery queue makes selection visible before choosing a
+    // ticket. Atomic replacement keeps even staged/empty writes private.
+    publish(null);
+    const ticket = 1 + Math.max(0, ...gateOwners(gate).map((owner) => owner.ticket ?? 0));
+    publish(ticket);
+    while (gateOwners(gate).some((owner) => owner.token !== token && (
+      owner.ticket === null || owner.ticket < ticket
+      || (owner.ticket === ticket && owner.token < token)
+    ))) {
       wait(deadline, gate);
     }
-  }
-  try {
     return callback();
   } finally {
-    rmSync(gate, { recursive: true, force: true });
+    rmSync(pending, { force: true });
+    rmSync(path, { force: true });
   }
 }
 

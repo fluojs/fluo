@@ -1,5 +1,6 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { EventEmitter, once } from 'node:events';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -86,6 +87,188 @@ function artifactProcess(source: string, directory: string, environment: NodeJS.
     },
   };
 }
+
+function gateFixture() {
+  const fixture = artifactWorkspace();
+  expect(runWorkspaceBuildClosure('@test/app', fixture.root, { packageManager: fixture.manager }).status).toBe(0);
+  const artifact = join(realpathSync(fixture.directory), 'dist');
+  const key = createHash('sha256').update(artifact).digest('hex');
+  const lockDirectory = join(realpathSync(fixture.root), '.omo/workspace-artifact-locks', key);
+  const gate = join(lockDirectory, 'gate');
+  const barriers = Object.fromEntries(['publication', 'recovery-a', 'recovery-b', 'lease'].map((name) => {
+    const path = join(fixture.root, `${name}.fifo`);
+    expect(spawnSync('mkfifo', [path]).status).toBe(0);
+    return [name, path];
+  }));
+  return { ...fixture, artifact, lockDirectory, gate, barriers };
+}
+
+function gateProcess(
+  fixture: ReturnType<typeof gateFixture>,
+  mode: 'reader' | 'writer',
+  barriers: Readonly<{ publication?: string; recovery?: string; lease?: string }>,
+) {
+  return artifactProcess(`
+    const fs = (await import('node:fs')).default;
+    const { syncBuiltinESMExports } = await import('node:module');
+    const gate = ${JSON.stringify(fixture.gate)};
+    const directory = ${JSON.stringify(fixture.lockDirectory)};
+    const barriers = ${JSON.stringify(barriers)};
+    const read = fs.readFileSync;
+    const write = fs.writeFileSync;
+    const remove = fs.rmSync;
+    let publicationPaused = false, recoveryPaused = false, leasePaused = false;
+    fs.writeFileSync = (path, value, ...args) => {
+      const name = String(path);
+      if (barriers.publication && !publicationPaused
+        && (name === gate + '/owner.json' || (name.startsWith(gate + '/') && name.endsWith('.pending')))) {
+        publicationPaused = true;
+        write(path, '');
+        process.send('publication-paused');
+        read(barriers.publication);
+      }
+      if (barriers.lease && !leasePaused && name.startsWith(directory + '/')
+        && !name.startsWith(gate + '/') && name.endsWith('.json')) {
+        leasePaused = true;
+        process.send('lease-paused');
+        read(barriers.lease);
+      }
+      return write(path, value, ...args);
+    };
+    fs.rmSync = (path, ...args) => {
+      if (barriers.recovery && !recoveryPaused
+        && (String(path) === gate || String(path) === gate + '/owner.json')) {
+        recoveryPaused = true;
+        process.send('recovery-paused');
+        read(barriers.recovery);
+      }
+      return remove(path, ...args);
+    };
+    syncBuiltinESMExports();
+    const clean = await import(${JSON.stringify(new URL('./clean-dist.mjs', import.meta.url).href)});
+    const lease = clean.acquireWorkspaceArtifactLeases([${JSON.stringify(fixture.artifact)}], ${JSON.stringify(mode)});
+    const release = once(process, 'message');
+    process.send('leased');
+    await release;
+    lease.release();
+  `, fixture.root);
+}
+
+async function releaseGateBarrier(path: string) {
+  const writer = spawn(process.execPath, ['--eval', `require('node:fs').writeFileSync(${JSON.stringify(path)}, 'release')`]);
+  const closed = once(writer, 'close', { signal: AbortSignal.timeout(10_000) });
+  expect((await closed)[0]).toBe(0);
+}
+
+describe('workspace artifact gate ownership', () => {
+  it('gate: partial owner publication -> does not admit a reader beside a paused writer', async () => {
+    const fixture = gateFixture();
+    const a = gateProcess(fixture, 'reader', { publication: fixture.barriers.publication });
+    const b = gateProcess(fixture, 'writer', { lease: fixture.barriers.lease });
+    const publication = a.event('publication-paused');
+    const writerPaused = b.event('lease-paused');
+    const readerState = Promise.race([
+      a.event('blocked').then(() => 'blocked'),
+      a.event('leased').then(() => 'leased'),
+    ]);
+    const aLeased = a.event('leased');
+    const bLeased = b.event('leased');
+    try {
+      a.child.send('start');
+      await publication;
+      b.child.send('start');
+      await writerPaused;
+      await releaseGateBarrier(fixture.barriers.publication);
+      const state = await readerState;
+      await releaseGateBarrier(fixture.barriers.lease);
+      await bLeased;
+
+      expect(state, 'The partial gate owner entered the reader callback while the writer callback was paused.').toBe('blocked');
+      b.child.send('release');
+      expect((await b.closed)[0]).toBe(0);
+      await aLeased;
+      expect(declarationDiagnostics(fixture.directory)).toEqual([]);
+      a.child.send('release');
+      expect((await a.closed)[0]).toBe(0);
+    } finally {
+      a.stop();
+      b.stop();
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('gate: two dead owner recoverers -> the later remover cannot steal the replacement owner', async () => {
+    const fixture = gateFixture();
+    mkdirSync(fixture.gate, { recursive: true });
+    writeFileSync(join(fixture.gate, 'owner.json'), JSON.stringify({ pid: 999_999 }));
+    const a = gateProcess(fixture, 'reader', {
+      recovery: fixture.barriers['recovery-a'], lease: fixture.barriers.lease,
+    });
+    const b = gateProcess(fixture, 'writer', { recovery: fixture.barriers['recovery-b'] });
+    const aRecovery = a.event('recovery-paused');
+    const bRecovery = b.event('recovery-paused');
+    const readerPaused = a.event('lease-paused');
+    const writerState = Promise.race([
+      b.event('blocked').then(() => 'blocked'),
+      b.event('leased').then(() => 'leased'),
+    ]);
+    const aLeased = a.event('leased');
+    const bLeased = b.event('leased');
+    try {
+      a.child.send('start');
+      await aRecovery;
+      b.child.send('start');
+      await bRecovery;
+      await releaseGateBarrier(fixture.barriers['recovery-a']);
+      await readerPaused;
+      await releaseGateBarrier(fixture.barriers['recovery-b']);
+      const state = await writerState;
+      await releaseGateBarrier(fixture.barriers.lease);
+      await aLeased;
+
+      expect(state, 'A stale recovery removed the live replacement gate and admitted a second owner.').toBe('blocked');
+      expect(declarationDiagnostics(fixture.directory)).toEqual([]);
+      a.child.send('release');
+      expect((await a.closed)[0]).toBe(0);
+      await bLeased;
+      b.child.send('release');
+      expect((await b.closed)[0]).toBe(0);
+    } finally {
+      a.stop();
+      b.stop();
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('gate: killed callback owner -> a queued writer recovers only the dead entry', async () => {
+    const fixture = gateFixture();
+    const a = gateProcess(fixture, 'reader', { lease: fixture.barriers.lease });
+    const b = gateProcess(fixture, 'writer', {});
+    const readerPaused = a.event('lease-paused');
+    const writerBlocked = b.event('blocked');
+    const writerLeased = b.event('leased');
+    try {
+      a.child.send('start');
+      await readerPaused;
+      b.child.send('start');
+      await writerBlocked;
+      a.stop();
+      expect((await a.closed)[1]).toBe('SIGKILL');
+      await writerLeased;
+      b.child.send('release');
+      expect((await b.closed)[0]).toBe(0);
+
+      expect(readdirSync(fixture.gate)).toEqual([]);
+      withWorkspaceArtifactSnapshot(['@test/app'], fixture.root, () => {
+        expect(declarationDiagnostics(fixture.directory)).toEqual([]);
+      });
+    } finally {
+      a.stop();
+      b.stop();
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('workspace artifact consumption', () => {
   it('clean-dist: active declaration reader -> consumes intact output before writer resumes', async () => {
