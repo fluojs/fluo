@@ -1092,7 +1092,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 after(() => { if (captureCheckout) rmSync(captureCheckout, { recursive: true, force: true }); });
 
-async function captureDeploymentRestoration(t, mode) {
+async function captureDeploymentRestoration(t, mode, restoreSignal = null) {
   if (!captureCheckout) {
     captureCheckout = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-capture-checkout-')));
     execFileSync('git', ['clone', '--quiet', '--shared', '--no-hardlinks',
@@ -1109,10 +1109,12 @@ async function captureDeploymentRestoration(t, mode) {
   const driver = `
     import cp from 'node:child_process';
     import fs from 'node:fs';
+    import { once } from 'node:events';
     import { registerHooks, syncBuiltinESMExports } from 'node:module';
     import { pathToFileURL } from 'node:url';
     import path from 'node:path';
     const mode = ${JSON.stringify(mode)};
+    const restoreSignal = ${JSON.stringify(restoreSignal)};
     const output = ${JSON.stringify(output)};
     const target = pathToFileURL(${JSON.stringify(target)}).href;
     const preparationTarget = new URL('./browser-preparation.mjs', target).href;
@@ -1131,13 +1133,16 @@ async function captureDeploymentRestoration(t, mode) {
     const originalSpawn = cp.spawn;
     const reports = ${JSON.stringify(reports)};
     let builds = 0;
+    let restoreCancellationInjected = false;
     cp.spawn = (_executable, args, options) => {
       const browser = Object.keys(reports).find((id) =>
         options.env.PLAYWRIGHT_JSON_OUTPUT_NAME === path.join(output, id + '-report.json')
         || id === 'reliability-browser' && args.includes('test:reliability'));
       let script = 'console.log("SUCCESS");';
+      let restoring = false;
       if (args.includes('build') || args.includes('build:reliability')) {
         builds++;
+        restoring = builds === (['failure', 'cancellation'].includes(mode) ? 3 : 5);
         const form = options.env.REACT_VITE_FORM_TEST_SERVER === '1';
         const example = ${JSON.stringify(join(captureCheckout, 'examples/react-vite-ssr'))};
         script = \`
@@ -1154,6 +1159,14 @@ async function captureDeploymentRestoration(t, mode) {
           console.log('BUILD_COMPLETE');
         \`;
         if (mode === 'restore-failure' && builds === 5) script = 'console.error("RESTORE_FAILED"); process.exit(9);';
+        if (restoring && restoreSignal) {
+          script = script.replace('process.exit(9);', '');
+          script += \`
+            const server = require('node:net').createServer();
+            process.on('SIGUSR1', () => server.close(() => process.exit(\${mode === 'restore-failure' ? 9 : 0})));
+            server.listen(0, '127.0.0.1', () => console.log('RESTORE_READY'));
+          \`;
+        }
       }
       if (browser) {
         const reportPath = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME ?? options.env.FLUO_RELIABILITY_REPORT;
@@ -1163,6 +1176,18 @@ async function captureDeploymentRestoration(t, mode) {
           'process.on("SIGTERM",()=>process.exit(0));process.on("message",()=>{});console.log("CANCEL_READY");';
       }
       const child = originalSpawn(process.execPath, ['-e', script], options);
+      if (restoring && restoreSignal) {
+        let stdout = '';
+        child.stdout.on('data', chunk => {
+          stdout += chunk;
+          if (!restoreCancellationInjected && stdout.includes('RESTORE_READY')) {
+            restoreCancellationInjected = true;
+            const received = once(process, restoreSignal);
+            process.kill(process.pid, restoreSignal);
+            received.then(() => child.kill('SIGUSR1'));
+          }
+        });
+      }
       if (browser === 'fault-browser' && mode === 'cancellation') {
         let stdout = '';
         child.stdout.on('data', chunk => {
@@ -1176,7 +1201,8 @@ async function captureDeploymentRestoration(t, mode) {
     const { captureDomain } = await import(target);
     let error;
     try { await captureDomain('tooling', output); } catch (failure) { error = failure.message; }
-    process.send({ error, receipt: JSON.parse(originalRead(path.join(output,'tooling-receipt.json'),'utf8')) });
+    process.send({ error, restoreCancellationInjected,
+      receipt: JSON.parse(originalRead(path.join(output,'tooling-receipt.json'),'utf8')) });
     process.disconnect();
   `;
   const child = spawn(process.execPath, ['--input-type=module', '-e', driver],
@@ -1197,6 +1223,13 @@ async function captureDeploymentRestoration(t, mode) {
   assert.equal(result.receipt.restoration.closed, true);
   assert.equal(result.receipt.restoration.head, result.receipt.head);
   assert.equal(result.receipt.restoration.descendantCleanup, 'owned-group-close');
+  if (restoreSignal) {
+    assert.equal(result.restoreCancellationInjected, true);
+    assert.equal(result.receipt.cancellation, mode === 'cancellation' ? 'SIGINT' : restoreSignal);
+    assert.equal(result.receipt.status, 'failed');
+    if (mode === 'failure') assert.equal(result.receipt.failure.kind, 'product-execution');
+    if (mode === 'cancellation') assert.equal(result.receipt.failure.kind, 'cancellation');
+  }
   if (mode === 'restore-failure') {
     assert.equal(result.receipt.restoration.status, 'failed');
     assert.equal(result.receipt.restoration.exitCode, 9);
@@ -1205,12 +1238,14 @@ async function captureDeploymentRestoration(t, mode) {
     assert.equal(result.receipt.restoration.status, 'passed', result.error);
     assert.equal(result.receipt.restoration.preparation.suite, 'ordinary');
     assert.equal(result.receipt.restoration.env.REACT_VITE_FORM_TEST_SERVER, '0');
-    if (mode === 'success') {
+    if (mode === 'success' && !restoreSignal) {
       assert.equal(result.receipt.status, 'domain-evidence-complete', result.error);
       assert.equal(result.error, undefined);
     } else {
       assert.equal(result.receipt.status, 'failed');
-      assert.match(result.error, mode === 'failure' ? /fault-browser \(7\)/u : /cancelled by SIGINT/u);
+      assert.match(result.error, mode === 'failure' ? /fault-browser \(7\)/u
+        : new RegExp(`cancelled by ${mode === 'cancellation' ? 'SIGINT' : restoreSignal}`));
+      if (mode === 'success') assert.equal(result.receipt.failure.kind, 'cancellation');
     }
   }
 }
@@ -1218,6 +1253,13 @@ async function captureDeploymentRestoration(t, mode) {
 for (const mode of ['success', 'failure', 'cancellation', 'restore-failure']) {
   test(`capture deployment: ${mode} -> observes command close and records normal deployment restoration`,
     (t) => captureDeploymentRestoration(t, mode));
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  for (const mode of ['success', 'failure', 'cancellation', 'restore-failure']) {
+    test(`capture deployment: restoration ${signal} after ${mode} -> finishes restore and retains cancellation`,
+      (t) => captureDeploymentRestoration(t, mode, signal));
+  }
 }
 
 async function captureCancellation(t, signal, phase) {

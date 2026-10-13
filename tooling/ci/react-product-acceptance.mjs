@@ -518,7 +518,6 @@ export async function captureDomain(domain, outputDirectory) {
     receipt.failure = { kind: error.kind ?? (cancelled ? 'cancellation' : 'product-execution'), error: error.message };
     throw error;
   } finally {
-    receipt.cancellation = cancelled;
     if (deploymentTouched) {
       const command = { id: 'deployment-restore', executable: 'pnpm',
         args: [...exampleFilter, 'build'],
@@ -550,11 +549,17 @@ export async function captureDomain(domain, outputDirectory) {
     } else {
       receipt.restoration = { status: 'not-needed', reason: 'No deployment build was started' };
     }
+    receipt.cancellation = cancelled;
+    if (cancelled) {
+      receipt.status = 'failed';
+      receipt.failure ??= { kind: 'cancellation', error: `Product capture cancelled by ${cancelled}` };
+    }
     process.off('SIGTERM', onTerm); process.off('SIGINT', onInt);
     inventory(output);
     save();
   }
   requireValue(receipt.restoration.status !== 'failed', `Normal deployment restoration failed; ${receiptFile}`);
+  requireValue(!cancelled, `Product capture cancelled by ${cancelled}; ${receiptFile}`);
   try {
     if (domain !== 'soak') domainEvidence(output, receipt, source.head, source.tree);
   } catch (error) {
