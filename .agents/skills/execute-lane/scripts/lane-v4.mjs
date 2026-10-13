@@ -249,6 +249,22 @@ export const decideNext = (lane, obs) => {
 	if (obs.localChecks?.status === 'failed' && isCurrentLocalCheck(obs.localChecks, obs.headSha, binding)) {
 		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
 	}
+	// Only publication preparation consumes lead-confirmed sibling failures.
+	// A byte comparison is not a new PASS and never runs or integrates code.
+	if (!obs.pr || obs.pr.headSha !== obs.headSha) {
+		const baselines = obs.knownBaselines ?? [];
+		const uncertain = baselines.filter(record => record.head !== obs.headSha
+			|| !['still-failing', 'fixed'].includes(record.status));
+		if (uncertain.length) {
+			return { action: 'blocked', reason: 'known-baseline-applicability-unresolved',
+				head: obs.headSha, baselines: uncertain };
+		}
+		const failing = baselines.filter(record => record.status === 'still-failing');
+		if (failing.length) {
+			return { action: 'fix-back', reason: 'known-baseline-still-failing',
+				head: obs.headSha, baselines: failing };
+		}
+	}
 	// 7. Remote lifecycle. GitHub state is authoritative.
 	if (!obs.pr) {
 		return { action: 'create-pr', head: obs.headSha };

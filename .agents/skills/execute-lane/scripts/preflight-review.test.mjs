@@ -40,6 +40,35 @@ const passedCheck = (obs = observation()) => ({
   receiptPath: '.omo/verification/pass.json', receiptSha256: 'd'.repeat(64),
 });
 
+test('publication: confirmed same baseline at reviewed head -> canonical fix-back', () => {
+  const obs = observation();
+  obs.review = reviewed(obs);
+  obs.knownBaselines = [{ id: 'docs-baseline', status: 'still-failing',
+    head: obs.headSha, companionHead: 'f'.repeat(40), evidence: 'authenticated source and completed checks' }];
+
+  const decision = decideNext(lane, obs);
+
+  assert.equal(decision.action, 'fix-back');
+  assert.equal(decision.reason, 'known-baseline-still-failing');
+});
+
+test('publication baseline: fixed, absent and unresolved proof -> preserve or block exact-head gates', () => {
+  const obs = observation();
+  obs.review = reviewed(obs);
+  for (const knownBaselines of [[], [{ id: 'baseline', head, status: 'fixed' }]]) {
+    assert.equal(decideNext(lane, { ...obs, knownBaselines }).action, 'create-pr');
+  }
+  for (const status of ['different-source-or-conditions', 'insufficient-evidence']) {
+    const knownBaselines = [{ id: 'baseline', head, status }];
+    assert.equal(decideNext(lane, { ...obs, knownBaselines }).action, 'blocked');
+  }
+  assert.equal(decideNext(lane, { ...obs, knownBaselines: [{ id: 'baseline', head: base, status: 'fixed' }] }).action, 'blocked');
+  const knownBaselines = [{ id: 'baseline', head, status: 'still-failing' }];
+  assert.equal(decideNext(lane, { ...obs, knownBaselines, review: null }).action, 'review');
+  const newHead = 'e'.repeat(40);
+  assert.equal(decideNext(lane, { ...obs, headSha: newHead, knownBaselines }).action, 'review');
+});
+
 for (const [name, files, axes] of [
   ['docs', ['docs/guide.md', 'README.ko.md'], ['contract']],
   ['test', ['packages/http/src/a.test.ts', 'tests/fixture.json'], ['code', 'verification']],
