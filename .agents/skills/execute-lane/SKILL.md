@@ -96,6 +96,36 @@ machine-consumed Markdown can govern execution. Implementers cannot reduce
 review scope. Aggregate exactly the effective axes; never fabricate PASS for
 an omitted axis or mix heads/contracts. Record complete reviewer envelopes.
 
+### Workflow input preparation
+
+`scripts/workflow-preparation.mjs` is the runnable preparation entry, not
+another orchestrator. Before the preflight child, run its `preflight` mode and
+pass the authenticated source-footprint sidecar into that stage. After the
+existing engine returns `review`, materialize the exact-head checkout and run
+its `review` mode with fresh observations, complete authored diff and the
+accepted focused-evidence inventory. The schemas and artifact references live
+in `../issue-preflight/SKILL.md` and `../review-head/SKILL.md`; executable
+validation lives in the preparation source. Reuse the accepted contract and
+canonical `obs.preflightPolicy`; do not alter engine actions or ledgers.
+
+Only `status:"prepared"` supplies a dispatch payload. Pass its identical
+`common` input to all returned reviewer axes in one background wave.
+`kind:"input-preparation"` is an input block, not a reviewer BLOCK or an
+implementation fix-back. Correct missing/stale evidence or re-open preflight
+for real scope expansion. Independent issue worktrees and their review waves
+remain parallel.
+
+For browser reproduction use the existing
+`node tooling/ci/react-product-acceptance.mjs capture tooling <absolute-new-output>`
+entry. CI and local capture consume the same `productDomainPlan`, package-local
+runner/config and prepared normal/form entries. Preserve seed/actions, evidence
+paths, original suite coverage, assertions, retries and timeouts. Subscribe
+through the host monitor with `persistent:true` until command close, descendant
+cleanup and normal deployment restoration. Repository code declares this host
+observer requirement; it does not modify workstation monitor defaults.
+Observer timeout is missing observation, never a test verdict. Retain failed
+and cancelled receipts and restoration results as well as successful ones.
+
 ## Decision loop and recovery
 
 1. Run `plan` (or `plan-all`) using fresh observations.

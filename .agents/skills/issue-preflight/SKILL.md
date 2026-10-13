@@ -17,6 +17,28 @@ Read `CONTRIBUTING.md`, `docs/contracts/behavioral-contract-policy.md`, affected
 package README pairs, implementation seams, and existing regression tests.
 Inspect current local changes on a resumed issue before defining its scope.
 
+Before the preflight child starts, prepare its source-footprint sidecar with
+`../execute-lane/scripts/workflow-preparation.mjs preflight <input.json>`.
+The exact input is `{version:1, stage:"preflight", root:<absolute checkout>,
+footprint:<source footprint>}`. Attach the returned `footprint` to the actual
+child input and retain it for review preparation; do not add fields to the
+accepted version 1 preflight artifact or mutate a lane ledger here.
+
+The footprint binds `version:1`, `issue`, fresh `issue_sha256`, pinned
+`base_sha`, and `categories`. Every category (`direct_callers`,
+`reflective_integration`, `governance`, `book`, `en_ko_owners`, `context`,
+`generated_consumers`, `existing_tests`) contains exactly
+`{affected:boolean, reason:string, sources:[{path,sha256}], searches:string[]}`.
+Sources are complete files from the pinned commit; the executable preparation
+authenticates their bytes with Git. Record actual queries and inspected paths,
+including Reflect.get/property consumers, source guards, Book excerpts,
+EN/KO owners and CONTEXT, generated sourceFingerprint/consumers, and existing
+tests. An affected category requires a source; an unaffected category still
+requires an investigation and a concrete selection rationale. No category
+implicitly mandates editing all candidates. The child consumes this footprint
+when choosing scope, companion files and checks, and reports any missing
+investigation as an input-preparation block before fixing the contract.
+
 ## Fix the contract
 
 Produce an explicit scope, non-goals, contract source references, acceptance

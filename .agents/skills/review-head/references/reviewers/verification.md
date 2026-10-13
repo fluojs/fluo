@@ -91,6 +91,14 @@ Authenticate rather than trust:
 
 ## Same-head and authority rules
 
+Consume the lead's prepared `common` input, including authenticated authored
+diff, pinned verification base, current merge base, footprint and focused
+receipts. Missing preparation is an input gap for the lead, not a product
+defect or permission to review base-state files. Check complete command
+inventory and raw streams. An observer timeout does not establish runner
+failure; browser evidence must retain real close, descendant cleanup and
+normal deployment restoration, including failure/cancellation paths.
+
 Review only the supplied 40-character head SHA. For `local-pre-pr`, require
 captured focused test output against that head. For `remote-pr`, inspect
 available checks attached to that head and stop if the observed PR head differs.
