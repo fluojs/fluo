@@ -150,6 +150,48 @@ Do not poll from the coordinator or create a child merely to wait.
 
 ## Retrospective capture and lane completion
 
+### Generated consumer integration coordination
+
+`plan`, `plan-all` and `watch` share fresh lane-wide observations. For an actual
+`CONFLICTING` PR at the local head, a generated-consumer hint can defer integration
+with `wait-generated-integration` while a related sibling is independently ready
+to merge. The decision lists exact sibling heads and PRs. Finish those merges,
+then observe again before resolving the conflict once. A missing/stale review,
+pending/failing CI, unknown mergeability or missing merge authority does not make
+a sibling ready. Readiness loss, a completed merge or restart releases/recomputes
+the wait; no persisted dependency or waiting lock is created. Implementation
+remains parallel. Hints and unrelated main advancement never force integration.
+An already reviewed mergeable head with CI running remains `wait-ci`.
+
+The accepted base stays pinned and must remain an ancestor of both current issue
+head and observed base; scope remains current merge-base-to-head. Incorporating
+changed generated inputs requires new-head integration evidence, not base-SHA
+freshness. Record `resolve-conflict` with current `head_sha` and
+`generated_integration: { head, outputs, checks }`. Each output binds its surface,
+canonical read-only generation command, exit code, expected-path and artifact
+digests, and explicit `normalizeSourceFingerprint` choice. Expected files and
+focused/browser raw-log receipts live in the issue worktree's disposable
+`.omo/generated-integration/` harness. Admission executes authoritative
+generation checking and verifies whole-file byte equality, normalizing only
+sourceFingerprint values when required. Every focused/browser receipt binds the
+new head and raw log digest. Missing, stale or tampered evidence fails closed.
+All selected exact-head reviews and full exact-head GitHub CI must then run again;
+old-head PASS, CI or patch-equivalence claims do not carry forward.
+
+For measurements, `record --result-json` accepts optional `measurements` work
+units with `{ runId, attempt, stage, head, clock, elapsedMs, scope }`. Stages are
+`integration`, `focused`, `browser`, `review:contract`, `review:code`,
+`review:verification`, or `ci`; scope is `stage-execution`. Measure actual work
+with a monotonic clock, retain unique run/attempt identities, and use
+`clock: simulation` only for event fixtures. Unknown durations are null, not zero.
+Planning/watch observations separately retain process identity and monotonic
+observation times. The retrospective reader computes head-specific stage counts,
+superseded validation heads and separate dependency/coordination observed waits;
+a restart without an observed wait end remains unknown. Neither `recordedAt`
+nor simulation timing proves elapsed execution or a CI budget. Compare identical
+initial state, changes, merge/CI schedule, final source and gate coverage, and
+report worse or inconclusive outcomes without reducing checks, retries or timeouts.
+
 Read `../retrospective-lane/SKILL.md` when starting or resuming execution. The lead
 retains individual reviewer responses before aggregation/adjudication and
 unsuccessful implementer returns before retry using `retro-record`. Keep task,

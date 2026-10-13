@@ -37,6 +37,55 @@ const fail = (path, reason) => {
   throw new WorkflowContractError(path, reason);
 };
 
+export const isRepositoryFile = (path) =>
+  typeof path === 'string' && /^(?:\.[A-Za-z][A-Za-z0-9_-]*|[A-Za-z0-9][A-Za-z0-9_.-]*)(?:\/[A-Za-z0-9_.-]+)*$/u.test(path) &&
+  path.split('/').every((part) => part !== '.' && part !== '..' && !part.endsWith('.lock'));
+
+export const generatedHintDigest = (hint) =>
+  createHash('sha256').update(JSON.stringify(
+    { surface: hint.surface, issues: hint.issues, ...hint.generated, sha256: undefined },
+    (_key, value) => isRecord(value)
+      ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]]))
+      : value,
+  )).digest('hex');
+
+/** Hints bind planning evidence, never dependency or merge authority. */
+export const assertPredictedConflicts = (hints, members) => {
+  if (hints === undefined) return;
+  const exact = (record, required, optional = []) =>
+    isRecord(record) && required.every((key) => Object.hasOwn(record, key)) &&
+    Object.keys(record).every((key) => required.includes(key) || optional.includes(key));
+  const issueArray = (issues) => Array.isArray(issues) &&
+    issues.length >= 2 && new Set(issues).size === issues.length &&
+    issues.every((issue) => Number.isSafeInteger(issue) && members.includes(issue));
+  const reject = () => fail('predicted_conflicts', 'invalid or substituted conflict hint evidence');
+  if (!Array.isArray(hints)) reject();
+  const surfaces = new Set();
+  for (const hint of hints) {
+    if (!exact(hint, ['surface', 'issues'], ['note', 'generated']) ||
+      !isRepositoryFile(hint.surface) || !issueArray(hint.issues) ||
+      (Object.hasOwn(hint, 'note') && (typeof hint.note !== 'string' || !hint.note.trim())) ||
+      surfaces.has(hint.surface)) reject();
+    surfaces.add(hint.surface);
+    if (!Object.hasOwn(hint, 'generated')) continue;
+    const evidence = hint.generated;
+    if (!exact(evidence, ['command', 'inputs', 'issue_evidence', 'sha256']) ||
+      typeof evidence.command !== 'string' || !evidence.command.trim() ||
+      !Array.isArray(evidence.inputs) || evidence.inputs.length === 0 ||
+      evidence.inputs.some((input) => !exact(input, ['path', 'sha256']) ||
+        !isRepositoryFile(input.path) || input.path === hint.surface ||
+        !/^[a-f0-9]{64}$/u.test(input.sha256 ?? '')) ||
+      new Set(evidence.inputs.map((input) => input.path)).size !== evidence.inputs.length ||
+      !Array.isArray(evidence.issue_evidence) || evidence.issue_evidence.length !== hint.issues.length ||
+      evidence.issue_evidence.some((item, index) => !exact(item, ['issue', 'title', 'body', 'paths']) ||
+        item.issue !== hint.issues[index] || typeof item.title !== 'string' || typeof item.body !== 'string' ||
+        !Array.isArray(item.paths) || item.paths.length === 0 ||
+        new Set(item.paths).size !== item.paths.length ||
+        item.paths.some((path) => !evidence.inputs.some((input) => input.path === path) && path !== hint.surface)) ||
+      evidence.sha256 !== generatedHintDigest(hint)) reject();
+  }
+};
+
 export const payloadDigest = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -70,6 +119,7 @@ const assertSafeBranch = (branch) => {
 };
 
 const assertLaneLedgerSemantics = (value) => {
+  assertPredictedConflicts(value.predicted_conflicts, value.confirmed_issues);
   if (value.run_id !== value.lane_id) {
     fail('lane-ledger-v2', 'run_id and lane_id must match');
   }

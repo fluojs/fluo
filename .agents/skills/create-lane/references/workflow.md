@@ -77,6 +77,17 @@ self-consistent forged receipt.
 
 ## Validation and publication
 
+Before receipt binding, derive generated-consumer planning evidence through
+`scripts/generated-conflicts.mjs` (relative to the owning skill): read the actual
+consumer with `generatedConsumerGraph(root)`, then call
+`withGeneratedConflicts(plan, liveIssueObservations, graph)`. This is a read-only
+compiler/config and generator-source graph scan, not artifact regeneration.
+The resulting optional `predicted_conflicts` field is part of the immutable plan,
+all receipt digests and the ready ledger. Shared inputs remain hints, not edges.
+`planIsCanonical`, both workflow/governance validators and v4 import validate
+the same evidence and exact optional keys. Legacy plans without hints keep their
+original meaning.
+
 For generated intake, publish the immutable artifact first. An artifact
 collision preserves the existing file and returns `artifact_collision`. A
 later cancellation or lane collision retains the artifact as the recovery
