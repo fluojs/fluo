@@ -1150,9 +1150,13 @@ async function captureDeploymentRestoration(t, mode, restoreSignal = null) {
           const write = (p, b) => { const f=path.join(\${JSON.stringify(example)}, p); fs.mkdirSync(path.dirname(f),{recursive:true}); fs.writeFileSync(f,b); };
           write('dist/client/client.js', 'export {};');
           write('dist/client/server.js', 'export {};');
+          write('dist/client/product.js', 'export {};');
+          write('dist/client/admin.js', 'export {};');
           write('dist/client/.vite/manifest.json', JSON.stringify({
             'src/entry-client.ts': {isEntry:true,file:'client.js'},
-            'src/entry-server.ts': {isEntry:true,file:'server.js'}
+            'src/entry-server.ts': {isEntry:true,file:'server.js'},
+            'src/navigation-product.ts': {file:'product.js'},
+            'src/navigation-admin.ts': {file:'admin.js'}
           }));
           write(\${JSON.stringify(form ? 'dist/form-server/main.js' : 'dist/server/main.js')},
             \${JSON.stringify(form ? 'new FormControl();' : 'process.env.REACT_SSR_DELIVERY_PROBE;')});

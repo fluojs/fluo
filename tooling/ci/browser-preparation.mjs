@@ -72,11 +72,35 @@ export function prepareBrowserCommand(root, command) {
   let manifest;
   try { manifest = JSON.parse(read('dist/client/.vite/manifest.json')); }
   catch (error) { throw new BrowserPreparationError(`${command.id}: invalid client manifest: ${error.message}`); }
+  requireInput(manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest),
+    `${command.id}: invalid client manifest object`);
   requireInput(manifest['src/entry-client.ts']?.isEntry === true
     && manifest['src/entry-server.ts']?.isEntry === true, `${command.id}: missing client manifest entries`);
   for (const entry of Object.values(manifest)) {
-    requireInput(entry && typeof entry.file === 'string', `${command.id}: invalid manifest file`);
+    requireInput(entry && !Array.isArray(entry) && typeof entry.file === 'string', `${command.id}: invalid manifest file`);
+    for (const field of ['name', 'src']) {
+      requireInput(entry[field] === undefined || typeof entry[field] === 'string',
+        `${command.id}: invalid manifest ${field}`);
+    }
+    for (const field of ['isEntry', 'isDynamicEntry']) {
+      requireInput(entry[field] === undefined || typeof entry[field] === 'boolean',
+        `${command.id}: invalid manifest ${field}`);
+    }
+    for (const field of ['imports', 'css', 'assets']) {
+      requireInput(entry[field] === undefined || (Array.isArray(entry[field])
+        && entry[field].every((value) => typeof value === 'string')),
+      `${command.id}: invalid manifest ${field}`);
+    }
     read(`dist/client/${entry.file}`);
+    for (const file of [...(entry.css ?? []), ...(entry.assets ?? [])]) read(`dist/client/${file}`);
+    for (const imported of entry.imports ?? []) {
+      requireInput(Object.hasOwn(manifest, imported), `${command.id}: missing manifest import ${imported}`);
+    }
+  }
+  for (const module of ['src/navigation-product.ts', 'src/navigation-admin.ts']) {
+    requireInput(Object.entries(manifest).some(([key, entry]) =>
+      key === module || entry.src === module || entry.name === module || entry.file === module),
+    `${command.id}: missing navigation mapping ${module}`);
   }
   const normal = read('dist/server/main.js');
   requireInput(!normal.toString().includes('new FormControl(')

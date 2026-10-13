@@ -28,13 +28,32 @@ function preparedFixture(t, id = 'fault-browser') {
   write('dist/form-server/main.js', 'const control = new FormControl();\n');
   write('dist/client/client.js', 'export {};\n');
   write('dist/client/server.js', 'export {};\n');
+  write('dist/client/product.js', 'export {};\n');
+  write('dist/client/admin.js', 'export {};\n');
   write('dist/client/.vite/manifest.json', {
     'src/entry-client.ts': { isEntry: true, file: 'client.js' },
     'src/entry-server.ts': { isEntry: true, file: 'server.js' },
+    'src/navigation-product.ts': { file: 'product.js' },
+    'src/navigation-admin.ts': { file: 'admin.js' },
   });
   const command = structuredClone(productDomainPlan('tooling', '/fixture').find((entry) => entry.id === id));
   command.args[command.args.indexOf('--config') + 1] = join(root, 'tooling/ci/browser-playwright.config.mjs');
   return { root, command, write };
+}
+
+for (const module of ['src/navigation-product.ts', 'src/navigation-admin.ts']) {
+  test(`browser preparation: missing ${module} -> input error before spawn`, (t) => {
+    const value = preparedFixture(t);
+    const manifest = JSON.parse(readFileSync(join(value.root, 'examples/react-vite-ssr/dist/client/.vite/manifest.json')));
+    delete manifest[module];
+    value.write('dist/client/.vite/manifest.json', manifest);
+
+    assert.throws(() => prepareBrowserCommand(value.root, value.command), (error) => {
+      assert.equal(error.kind, 'input-preparation');
+      assert.ok(error.message.includes(module));
+      return true;
+    });
+  });
 }
 
 test('browser preparation: two server entries -> retains normal subprocess and form webserver identities', (t) => {
@@ -67,6 +86,8 @@ for (const [name, mutate, expected] of [
   ['form-entry-absent', (v) => rmSync(join(v.root, 'examples/react-vite-ssr/dist/form-server/main.js')), /missing artifact dist\/form-server/u],
   ['manifest-entry-absent', (v) => v.write('dist/client/.vite/manifest.json', {}), /missing client manifest entries/u],
   ['manifest-truncated', (v) => v.write('dist/client/.vite/manifest.json', '{'), /invalid client manifest/u],
+  ['manifest-null', (v) => v.write('dist/client/.vite/manifest.json', 'null'), /invalid client manifest object/u],
+  ['manifest-array', (v) => v.write('dist/client/.vite/manifest.json', []), /invalid client manifest object/u],
   ['manifest-asset-absent', (v) => rmSync(join(v.root, 'examples/react-vite-ssr/dist/client/client.js')), /missing artifact dist\/client\/client.js/u],
   ['runner-absent', (v) => v.write('package.json', { scripts: {} }), /package-local runner changed/u],
   ['report-mismatch', (v) => { v.command.env.PLAYWRIGHT_JSON_OUTPUT_NAME = '/other/report.json'; }, /report path mismatch/u],
@@ -79,6 +100,34 @@ for (const [name, mutate, expected] of [
     assert.throws(() => prepareBrowserCommand(value.root, value.command), expected);
   });
 }
+
+for (const [field, invalid] of [['src', 1], ['name', false], ['imports', 'chunk.js'],
+  ['css', [1]], ['assets', null], ['isDynamicEntry', 'true']]) {
+  test(`browser preparation: malformed manifest ${field} -> input error`, (t) => {
+    const value = preparedFixture(t);
+    const manifest = JSON.parse(readFileSync(join(value.root, 'examples/react-vite-ssr/dist/client/.vite/manifest.json')));
+    manifest['src/navigation-product.ts'][field] = invalid;
+    value.write('dist/client/.vite/manifest.json', manifest);
+
+    assert.throws(() => prepareBrowserCommand(value.root, value.command), (error) => {
+      assert.equal(error.kind, 'input-preparation');
+      assert.ok(error.message.includes(field));
+      return true;
+    });
+  });
+}
+
+test('browser preparation: navigation source aliases -> accepted runtime mappings', (t) => {
+  const value = preparedFixture(t);
+  const manifest = JSON.parse(readFileSync(join(value.root, 'examples/react-vite-ssr/dist/client/.vite/manifest.json')));
+  for (const [key, module] of [['product', 'src/navigation-product.ts'], ['admin', 'src/navigation-admin.ts']]) {
+    manifest[key] = { ...manifest[module], src: module };
+    delete manifest[module];
+  }
+  value.write('dist/client/.vite/manifest.json', manifest);
+
+  assert.doesNotThrow(() => prepareBrowserCommand(value.root, value.command));
+});
 
 test('observer preparation: default lifetime -> input block rather than test-failed receipt', () => {
   assert.throws(() => assertBrowserObservation({ persistent: false, timeout_ms: 300000, completion: 'command-close' }),
