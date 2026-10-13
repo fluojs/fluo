@@ -5,6 +5,7 @@ import type { ClientFormStore } from './form-store.js';
 import type { ReactNavigationDecision, ReactNavigationGuardOptions, ReactNavigationIntent } from './navigation-guard.js';
 import { connectClientNavigationHistory } from './history.js';
 import type { ReactNavigationLoadResult } from './navigation-payload.js';
+import { createClientPrefetchStore } from './prefetch.js';
 import {
   createNavigationSnapshot,
   createSnapshotFromHref,
@@ -117,13 +118,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     readonly type: DocumentNavigationType;
     readonly fromPrefetch: boolean;
   } | null = null;
-  const cached = new Map<string, { readonly result: Extract<ReactNavigationLoadResult, { ok: true }>; readonly expiresAt: number }>();
-  const prefetched = new Map<string, {
-    readonly controller: AbortController;
-    readonly owners: Set<object>;
-    readonly promise: Promise<ReactNavigationLoadResult>;
-    adopted: boolean;
-  }>();
+  const prefetches = createClientPrefetchStore(() => environment, () => sessionGeneration);
   let generation = 0;
   let guardOptions: (() => ReactNavigationGuardOptions) | null = null;
   let navigationDecision: ReactNavigationDecision | null = null;
@@ -285,30 +280,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     old?.controller.abort();
   };
 
-  const prefetchKey = (destination: URL): string | undefined => {
-    if (environment?.prefetchScope === undefined || environment.prefetch === undefined) {
-      return undefined;
-    }
-    const current = new URL(environment.currentHref());
-    if (!isHttpProtocol(destination.protocol) || destination.origin !== current.origin
-      || destination.pathname === current.pathname && destination.search === current.search) {
-      return undefined;
-    }
-    return `${sessionGeneration}:${environment.prefetchScope}\0${destination.origin}${destination.pathname}${destination.search}\0v2`;
-  };
-
-  const discardPrefetches = (except?: string): void => {
-    for (const [key, entry] of prefetched) {
-      if (key !== except) {
-        prefetched.delete(key);
-        entry.controller.abort();
-      }
-    }
-  };
-
   const invalidate = (): void => {
-    cached.clear();
-    discardPrefetches();
+    prefetches.invalidate();
     const hadUnsettledNavigation = pending !== null || failed !== null;
     const browser = environment;
     const activatedIndex = browser?.historyIndex?.();
@@ -381,7 +354,6 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     const oldPending = pending;
     const oldSettle = settleRefresh;
     const oldPolicy = sessionPolicyController;
-    const oldPrefetch = [...prefetched.values()];
     const oldLeases = [...sessionLeases];
     const oldForms = new Set([...forms.values(), ...continuations]);
     const savedOrigin = origin?.getSnapshot().mutation?.status === 'saved' ? origin : undefined;
@@ -396,8 +368,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     deferredBack = false;
     restoringIndex = null;
     invalidatedTraversal = false;
-    prefetched.clear();
-    cached.clear();
+    const oldPrefetch = prefetches.detach();
     sessionLeases.clear();
     forms.clear();
     continuations.clear();
@@ -421,7 +392,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     oldSettle?.({ status: 'cancelled' });
     oldPolicy?.abort();
     oldPending?.controller.abort();
-    for (const entry of oldPrefetch) entry.controller.abort();
+    for (const controller of oldPrefetch) controller.abort();
     for (const lease of oldLeases) lease.abort();
     for (const form of oldForms) form.revoke(savedOrigins.has(form));
     if (savedOrigin === undefined) sessionPolicyOrigin = origin;
@@ -722,25 +693,12 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       return;
     }
 
-    const key = fromPrefetch ? prefetchKey(destination) : undefined;
-    const activePrefetch = key === undefined ? undefined : prefetched.get(key);
-    let adopted: Parameters<typeof loadAndCommit>[3];
-    if (activePrefetch !== undefined) {
-      activePrefetch.adopted = true;
-      adopted = activePrefetch;
-    } else if (key !== undefined) {
-      const entry = cached.get(key);
-      if (entry !== undefined) {
-        cached.delete(key);
-        if (Date.now() < entry.expiresAt) {
-          adopted = entry;
-        }
-      }
-    }
+    const key = fromPrefetch ? prefetches.keyFor(destination) : undefined;
+    const adopted = prefetches.adopt(key);
     cancelPending();
     cancelForms();
     failed = null;
-    discardPrefetches(key);
+    prefetches.discard(key);
     publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('navigating', type, destinationUrl)));
     const active = new URL(browser.currentHref());
     if (destination.pathname === active.pathname && destination.search === active.search) {
@@ -788,7 +746,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       cancelPending();
       deferredRefresh = false;
       deferredNavigation = null;
-      discardPrefetches();
+      prefetches.discard();
       const deferBack = restoringIndex !== null;
       deferredBack = deferBack;
       publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('navigating', 'back')));
@@ -844,7 +802,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       failed = null;
       deferredBack = false;
       deferredNavigation = null;
-      discardPrefetches();
+      prefetches.discard();
       if (unapprovedTraversal && restoringIndex === null
         && (activatedIndex === null || activatedIndex === undefined || browser.go === undefined)) {
         browser.replace(browser.currentHref());
@@ -978,8 +936,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         }
       }
       cancelPending();
-      cached.clear();
-      discardPrefetches();
+      prefetches.invalidate();
       if (browser.load === undefined || browser.pushState === undefined || browser.replaceState === undefined) {
         return Promise.resolve({ status: 'error', failure: {
           destination: destination.pathname, reason: 'unavailable', type: followUp === 'refresh' ? 'refresh' : 'push',
@@ -1002,8 +959,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     },
     invalidateBackground() {
       backgroundRevision++;
-      cached.clear();
-      discardPrefetches();
+      prefetches.invalidate();
       // A write never cancels a newer user navigation, only our own stale approval.
       const old = backgroundApproval;
       backgroundApproval = null;
@@ -1099,71 +1055,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       if (barrierActive || environment === null || !this.canHandleLink(href)) {
         return Promise.resolve();
       }
-      const destination = new URL(href, environment.currentHref());
-      const key = prefetchKey(destination);
-      if (key === undefined || environment.prefetch === undefined) {
-        return Promise.resolve();
-      }
-      const completed = cached.get(key);
-      if (completed !== undefined) {
-        cached.delete(key);
-        if (Date.now() < completed.expiresAt) {
-          cached.set(key, completed);
-          return Promise.resolve();
-        }
-      }
-      const ongoing = prefetched.get(key);
-      if (ongoing !== undefined) {
-        ongoing.owners.add(owner);
-        return ongoing.promise.then(() => {}, () => {});
-      }
-      if (prefetched.size >= 4) {
-        return Promise.resolve();
-      }
-      const controller = new AbortController();
-      const cancelled = new Promise<ReactNavigationLoadResult>((resolve) => {
-        controller.signal.addEventListener('abort', () => resolve({ ok: false, reason: 'cancelled' }), { once: true });
-      });
-      const entry = {
-        controller,
-        owners: new Set([owner]),
-        promise: Promise.race([environment.prefetch(destination.href, controller.signal), cancelled]),
-        adopted: false,
-      };
-      prefetched.set(key, entry);
-      return entry.promise.then((result) => {
-        if (prefetched.get(key) !== entry) {
-          return;
-        }
-        prefetched.delete(key);
-        if (!entry.adopted && !controller.signal.aborted && result.ok
-          && result.prefetchExpiresAt !== undefined && Date.now() < result.prefetchExpiresAt) {
-          cached.delete(key);
-          cached.set(key, { result, expiresAt: result.prefetchExpiresAt });
-          if (cached.size > 32) {
-            cached.delete(cached.keys().next().value ?? '');
-          }
-        }
-      }, () => {
-        if (prefetched.get(key) === entry) {
-          prefetched.delete(key);
-        }
-      });
+      return prefetches.prefetch(new URL(href, environment.currentHref()), owner);
     },
     cancelPrefetch(href: string | URL, owner: object): void {
       if (environment === null || !this.canHandleLink(href)) {
         return;
       }
-      const key = prefetchKey(new URL(href, environment.currentHref()));
-      const entry = key === undefined ? undefined : prefetched.get(key);
-      if (entry === undefined || entry.adopted) {
-        return;
-      }
-      entry.owners.delete(owner);
-      if (entry.owners.size === 0 && key !== undefined) {
-        prefetched.delete(key);
-        entry.controller.abort();
-      }
+      prefetches.cancel(new URL(href, environment.currentHref()), owner);
     },
     navigatePrefetchedLink(href: string | URL): void {
       navigateDocument(href, 'push', true);
@@ -1210,7 +1108,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
           cancelForms();
           cancelPending();
           failed = null;
-          discardPrefetches();
+          prefetches.discard();
         },
         createSnapshotForHref,
         getSnapshot: () => snapshot,

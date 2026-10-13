@@ -354,6 +354,59 @@ describe('@fluojs/react/client', () => {
     expect(store.getSnapshot().params).toEqual({ sku: 'sku-84' });
   });
 
+  it('keeps shared prefetch alive until its last owner leaves', async () => {
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    let signal: AbortSignal | undefined;
+    const prefetch = vi.fn((_href: string, nextSignal: AbortSignal) => {
+      signal = nextSignal;
+      return new Promise<ReactNavigationLoadResult>(() => {});
+    });
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch });
+    const first = {};
+    const second = {};
+    const hovering = store.prefetch('/products/sku-84#details', first);
+    const visible = store.prefetch('/products/sku-84#reviews', second);
+
+    store.cancelPrefetch('/products/sku-84#details', first);
+
+    expect(signal?.aborted).toBe(false);
+    expect(prefetch).toHaveBeenCalledOnce();
+    store.cancelPrefetch('/products/sku-84#reviews', second);
+    await Promise.all([hovering, visible]);
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it('detaches a cancelled prefetch before its abort listener requests the same key', async () => {
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const first = {};
+    const replacement = {};
+    let replacementWork: Promise<void> | undefined;
+    const signals: AbortSignal[] = [];
+    const prefetch = vi.fn((_href: string, signal: AbortSignal) => {
+      signals.push(signal);
+      if (signals.length === 1) {
+        signal.addEventListener('abort', () => {
+          replacementWork = store.prefetch('/products/sku-84', replacement);
+        }, { once: true });
+      }
+      return new Promise<ReactNavigationLoadResult>(() => {});
+    });
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch });
+    const original = store.prefetch('/products/sku-84', first);
+
+    store.cancelPrefetch('/products/sku-84', first);
+    await original;
+
+    expect(prefetch).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    store.cancelPrefetch('/products/sku-84', replacement);
+    await replacementWork;
+    expect(signals[1]?.aborted).toBe(true);
+  });
+
   it('evicts the least recently used entry when the cache reaches 32 pages', async () => {
     // Given: one provider has completed 32 distinct public representations.
     const browser = createEnvironment();
