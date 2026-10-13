@@ -1,0 +1,8 @@
+# Preserve original evidence locally; publish only authored stage companions.
+*
+!.gitignore
+!*.ts
+!frozen-policy*.json
+!final-disposition.json
+!local-checks.json
+!tsconfig.checks.json

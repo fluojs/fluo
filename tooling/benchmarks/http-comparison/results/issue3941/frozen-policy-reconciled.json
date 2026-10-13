@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "issue": 3941,
+  "target": "fluo-fastify",
+  "pairs": 5,
+  "preflightSha256": "1c0e1566be250575946087e0f379d2600dca15f28e3f99d29b498def2ad4ceab",
+  "workloads": ["read-search-local", "json-command-local", "rest-route-mix-local"],
+  "configurations": ["default", "equivalent"],
+  "connections": [1, 64],
+  "warmupSeconds": 10,
+  "measurementSeconds": 40,
+  "freshProcessPerSample": true,
+  "aaCv": 0.03,
+  "aaThroughputCpuDrift": 0.03,
+  "aaLatencyRssDrift": 0.05,
+  "headroom": {
+    "workers": [1, 4],
+    "connections": 64,
+    "repeats": 3,
+    "warmupSeconds": 3,
+    "measurementSeconds": 10,
+    "meanScaling": 0.03,
+    "eachRepeatScaling": 0.05
+  },
+  "profiles": {
+    "modes": ["cpu", "allocation"],
+    "connections": 64,
+    "repeats": 1,
+    "warmupSeconds": 10,
+    "captureSeconds": 40,
+    "controlSeconds": 40
+  },
+  "primary": "read-search-local/equivalent/64",
+  "minimumGain": 0.03,
+  "comparison": {
+    "measurements": 120,
+    "pairsPerCondition": 5,
+    "order": ["BEFORE/AFTER", "AFTER/BEFORE", "BEFORE/AFTER", "AFTER/BEFORE", "BEFORE/AFTER"]
+  },
+  "regression": {"throughput": 0.03, "cpu": 0.03, "p95": 0.05, "p99": 0.05, "rss": 0.05},
+  "interval": {
+    "method": "paired-mean-relative-change-percentile-bootstrap",
+    "confidence": 0.95,
+    "seed": 3941,
+    "resamples": 10000
+  },
+  "automaticAdditionalRepeats": 0,
+  "outlierDeletionAllowed": false,
+  "maximumCandidates": 1,
+  "candidateSelection": "only-after-lead-calibration-and-real-request-profiles",
+  "diagnosticCounters": "separate-from-ordinary-timing; native-hit/full/fallback/declined/headers-getter",
+  "adoption": "primary gain > max(minimumGain, calibrated noise envelope), lower CI > 0; every regression upper CI within budget; all behavioral gates pass"
+}

@@ -1,10 +1,135 @@
-import { describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ReleaseCommandError,
+  buildSummary,
   runCanonicalReleaseReadinessVerificationCommands,
   runReleaseCommand,
   runReleaseReadinessVerification,
 } from './verify-release-readiness.mjs';
+
+const releaseFixtures: string[] = [];
+afterEach(() => {
+  for (const root of releaseFixtures.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function releaseCheckout(baseApps = false) {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-release-3941-'));
+  releaseFixtures.push(root);
+  const put = (path: string, source = 'import { test } from "vitest"; test("fixture", () => {});') => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), source);
+  };
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  put('tooling/ci/local-verification-manifest.json', readFileSync(new URL('../ci/local-verification-manifest.json', import.meta.url), 'utf8'));
+  for (const path of ['packages/core/value.test.ts', 'examples/minimal/value.test.ts', 'tooling/release/value.test.ts']) put(path);
+  if (baseApps) put('apps/docs/value.test.ts');
+  git('init', '-q');
+  git('add', '.');
+  const baseSha = git('write-tree'); // A real base tree; no fixture or worktree commit.
+  return { root, baseSha, put };
+}
+
+describe('release readiness catalog selection', () => {
+  it('canonical commands: absent apps -> retains build/typecheck and every non-apps command', () => {
+    const context = releaseCheckout();
+    const calls: string[] = [];
+
+    const receipt = runCanonicalReleaseReadinessVerificationCommands((command, args) => calls.push(`${command} ${args.join(' ')}`), false, context);
+
+    expect(calls).toEqual([
+      'pnpm build', 'pnpm typecheck',
+      'pnpm vitest run --project packages --maxWorkers=1',
+      'pnpm vitest run --project examples --maxWorkers=1',
+      'pnpm vitest run --project tooling --maxWorkers=1',
+      'pnpm --dir packages/cli sandbox:matrix',
+    ]);
+    expect(receipt).toEqual({
+      commands: calls,
+      notApplicable: [{ project: 'apps', reason: 'no-suite: apps has no matching test files in target checkout' }],
+    });
+  });
+
+  it('canonical commands: future real apps suite -> selects apps automatically', () => {
+    const context = releaseCheckout();
+    context.put('apps/docs/value.test.ts');
+    const calls: string[] = [];
+
+    const receipt = runCanonicalReleaseReadinessVerificationCommands((command, args) => calls.push(`${command} ${args.join(' ')}`), false, context);
+
+    expect(calls).toContain('pnpm vitest run --project apps --maxWorkers=1');
+    expect(receipt.notApplicable).toEqual([]);
+  });
+
+  it('canonical commands: excluded artifacts and non-test source -> keep apps no-suite', () => {
+    const context = releaseCheckout();
+    for (const path of ['apps/docs/.next/ignored.test.ts', 'apps/docs/node_modules/ignored.test.ts', 'apps/docs/value.ts', 'apps/docs/value.spec.ts']) context.put(path);
+    const calls: string[] = [];
+
+    const receipt = runCanonicalReleaseReadinessVerificationCommands((command, args) => calls.push(`${command} ${args.join(' ')}`), false, context);
+
+    expect(calls).not.toContain('pnpm vitest run --project apps --maxWorkers=1');
+    expect(receipt.notApplicable).toHaveLength(1);
+  });
+
+  it('canonical commands: selected apps failure -> propagates original command failure', () => {
+    const context = releaseCheckout();
+    context.put('apps/docs/value.test.ts');
+    const calls: string[] = [];
+    const execute = (command: string, args: readonly string[]) => {
+      calls.push(`${command} ${args.join(' ')}`);
+      runReleaseCommand(command, args, {
+        cwd: context.root, spawn: () => ({ status: args.includes('apps') ? 23 : 0, stderr: 'selected failure', stdout: '' }),
+        writeOutput: () => {},
+      });
+    };
+
+    expect(() => runCanonicalReleaseReadinessVerificationCommands(execute, false, context)).toThrow(ReleaseCommandError);
+    expect(calls.at(-1)).toBe('pnpm vitest run --project apps --maxWorkers=1');
+    expect(calls).toHaveLength(4);
+  });
+
+  it.each(['delete', 'excluded-rename', 'owner-rename'])('canonical commands: %s of base apps test -> rejects coverage loss before commands', (operation) => {
+    const context = releaseCheckout(true);
+    const source = join(context.root, 'apps/docs/value.test.ts');
+    if (operation === 'delete') rmSync(source);
+    else {
+      const destination = operation === 'excluded-rename' ? 'apps/docs/value.ts' : 'apps/other/value.test.ts';
+      mkdirSync(dirname(join(context.root, destination)), { recursive: true });
+      renameSync(source, join(context.root, destination));
+    }
+    const run = vi.fn();
+
+    expect(() => runCanonicalReleaseReadinessVerificationCommands(run, false, context)).toThrow(/coverage-loss/);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('canonical commands: deleted base suite without changed-file hint -> preserves base inventory guard', () => {
+    const context = releaseCheckout(true);
+    rmSync(join(context.root, 'apps/docs/value.test.ts'));
+    const run = vi.fn();
+
+    expect(() => runCanonicalReleaseReadinessVerificationCommands(run, false, { ...context, changedFiles: [] })).toThrow(/coverage-loss: apps suite existed at the base source/);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('canonical summary: absent apps and reused build -> renders only executed machine commands', () => {
+    const context = releaseCheckout();
+    const receipt = runCanonicalReleaseReadinessVerificationCommands(() => {}, true, context);
+
+    const summaries = buildSummary([], 'none', receipt);
+
+    for (const summary of [summaries.summary, summaries.summaryKo]) {
+      const shippedCommands = [...summary.matchAll(/`(pnpm (?:build|typecheck|vitest run[^`]*|--dir packages\/cli sandbox:matrix))`/g)].map((match) => match[1]);
+      expect(shippedCommands).toEqual(receipt.commands);
+    }
+    expect(receipt.commands).not.toContain('pnpm build');
+    expect(receipt.commands).not.toContain('pnpm vitest run --project apps --maxWorkers=1');
+  });
+});
 
 describe('release readiness subprocess diagnostics', () => {
   it.each([
@@ -93,6 +218,8 @@ type WorkspacePackageManifestRecord = {
 };
 
 function createDependencies() {
+  const verificationContext = releaseCheckout();
+  verificationContext.put('apps/docs/value.test.ts');
   const changelog = `# Changelog
 
 ## [Unreleased]
@@ -151,6 +278,7 @@ function createDependencies() {
   ]);
 
   return {
+    verificationContext,
     isReleaseTagExisting: vi.fn(() => false),
     isPublishedVersion: vi.fn(() => false),
     run: vi.fn(),
@@ -340,7 +468,11 @@ describe('runReleaseReadinessVerification', () => {
 
     // Then
     expect(dependencies.run.mock.calls).toEqual(fullDependencies.run.mock.calls.slice(1));
-    expect(result).toEqual(fullResult);
+    expect(result.checks).toEqual(fullResult.checks);
+    expect(result.verification.commands).toEqual(fullResult.verification.commands.slice(1));
+    expect(result.verification.notApplicable).toEqual(fullResult.verification.notApplicable);
+    expect(result.writeDrafts).toBe(fullResult.writeDrafts);
+    expect(result.writeSummary).toBe(fullResult.writeSummary);
     expect(dependencies.writeFileSync).not.toHaveBeenCalled();
   });
 
