@@ -32,6 +32,8 @@ pnpm add @fluojs/openapi
 
 ## Quick Start
 
+This HTTP example declares the controller, module, and listener together. Also install the directly imported `@fluojs/core`, `@fluojs/http`, `@fluojs/runtime`, and `@fluojs/platform-nodejs` as application dependencies and apply the decorator configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md).
+
 Register the `OpenApiModule` and pass `sources`, prebuilt `descriptors`, or both so the document builder knows which HTTP handlers to include. When both inputs are provided, they are merged.
 
 ```typescript

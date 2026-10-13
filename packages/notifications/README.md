@@ -34,6 +34,8 @@ npm install @fluojs/notifications
 
 ## Quick Start
 
+These channel/module/service fragments belong in an existing app. The example `emailChannel` only logs to the console; it does not send mail. Replace it with a real channel and register `WelcomeService` in the application module's `providers`. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for startup and decorator configuration.
+
 ### 1. Register the foundation module
 
 Register notifications with `NotificationsModule.forRoot(...)` or `NotificationsModule.forRootAsync(...)` by passing explicit `NotificationChannel` values in `channels`.

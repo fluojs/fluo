@@ -36,7 +36,7 @@ npm install @fluojs/di
 
 ## 빠른 시작
 
-컨테이너는 등록된 provider를 기준으로 토큰을 인스턴스로 해석합니다.
+컨테이너는 등록된 provider를 기준으로 토큰을 인스턴스로 해석합니다. 아래는 필요한 class를 모두 선언한 standalone container 예제입니다. `@fluojs/core`도 직접 설치하고 [decorator 설정](../../docs/architecture/decorators-and-metadata.ko.md)을 적용하세요. Container를 생성한 caller가 `finally`에서 dispose합니다.
 
 ```ts
 import { Container } from '@fluojs/di';
@@ -62,7 +62,13 @@ class UserService {
 const container = new Container();
 container.register(Logger, UserService);
 
-const service = await container.resolve(UserService);
+try {
+  const service = await container.resolve(UserService);
+  const result = await service.getStatus();
+  console.log(result); // { status: 'active' }
+} finally {
+  await container.dispose();
+}
 ```
 
 ## 주요 기능

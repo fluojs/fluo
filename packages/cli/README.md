@@ -9,28 +9,6 @@ The canonical CLI for fluo — bootstrap new applications, generate components a
 
 ## Canonical command vocabulary
 
-The same `react-vite-ssr` starter includes `/catalog/session` sign-in and an
-authenticated list/search/detail/create/update/delete companion at
-`/catalog/session/products`, using the existing HTTP/typegen/`Link`/`useForm`
-composition. Private process-local products are separate from the unchanged
-public catalog/editor-cookie demos. These demo sessions are not production auth
-or durable storage. The [product acceptance guide](../../docs/guides/react-product-acceptance.md)
-distinguishes shipped code, actual packed dev/production receipts and lead-owned
-final gates. Original numeric FAIL/INCONCLUSIVE remains disclosed diagnostics;
-quality/correctness/stability/cleanup still block. The lane soak is one hour,
-scheduled default two hours, and physical devices are deferred to #3906, not PASS.
-
-`fluo new my-react-app --starter react-vite-ssr` also ships the same native
-`useForm` background interaction at `/catalog/background`: real GET search and
-widget reads, stable-id queue POSTs and fresh current-page approval. `pnpm dev`
-and production `build`/`start` use one existing provider, HTTP DTO/auth/CSRF and
-native fallback. App-owned queue/persistence/idempotency remain application code.
-The generated `tests/background-interactions.spec.ts` uses listener
-started/release/cleaned barriers when the explicit
-`FLUO_REACT_FORM_TEST_SERVER=1` test entry is selected; normal startup installs
-no fault routes. Existing projects should follow the
-[form migration](../../docs/getting-started/migrate-react-progressive-forms.md).
-
 - Scaffold with `fluo new`; `create` remains a compatibility alias.
 - Preview any supported write command with `--dry-run`. It preserves that command's own plan payload and performs no writes, dependency installation, git initialization, or CLI update check.
 - Use `fluo doctor` for read-only diagnostics. `info` is a compatibility alias; `analyze` is a separate project summary; none installs or self-updates. `fluo upgrade` reports latest CLI state and migration guidance, but is not read-only: in an interactive TTY with a newer version it may offer, then after explicit approval run, the package-manager global CLI install. Other interactive non-preview commands may offer the same approved self-update. `--dry-run` previews and help/version paths skip update checking.
@@ -169,7 +147,7 @@ fluo new my-node-app --shape application --transport http --runtime node --platf
 
 The raw Node starter creates its adapter with `NodeHttpApplicationAdapter.create(options)`, then calls `FluoFactory.create(AppModule, { adapter })` and `app.listen()`. The host owns `app.close()` and explicit signal registration/cleanup. Follow the [Node adapter creation migration](../../docs/getting-started/migrate-node-adapter-create.md) when moving from run-helper middleware/logger/signal defaults. Existing projects are not rewritten.
 
-The application matrix also includes runtime-native Bun, Deno, and Cloudflare Workers starters with runtime-specific entrypoints, scripts, and dependency sets:
+The application matrix also includes runtime-native Bun and Cloudflare Workers starters with runtime-specific entrypoints, scripts, and dependency sets. The Deno command below is retained to describe the deprecated migration path; do not use it for new projects:
 
 ```bash
 fluo new my-bun-app --shape application --transport http --runtime bun --platform bun
@@ -684,6 +662,10 @@ Programmatic entry points preserve caller process ownership. `runCli(...)`, `run
 
 
 ## React starter session composition
+
+`fluo new my-react-app --starter react-vite-ssr` creates a React app with SSR/hydration and Vite development tooling. Sign-in at `/catalog/session`, authenticated CRUD at `/catalog/session/products`, and native `useForm` operations at `/catalog/background` demonstrate HTTP/typegen/`Link`/`useForm` composition. Queue, persistence, and idempotency belong to the application; demo sessions and process-local products are not production authentication or durable storage.
+
+Actual execution receipts and correctness/stability/cleanup requirements, original numeric FAIL/INCONCLUSIVE, the one-hour acceptance soak and scheduled two-hour default, and physical-device deferral (#3906, not PASS) are recorded in the [product acceptance guide](../../docs/guides/react-product-acceptance.md). Numeric verdicts are disclosed nonblocking diagnostics; evidence quality failures and Fluo measured/warmup errors still block acceptance. Generated `tests/background-interactions.spec.ts` listener started/release/cleaned barriers are enabled only in the `FLUO_REACT_FORM_TEST_SERVER=1` test entry; normal startup installs no fault routes. Existing applications should follow the [form migration](../../docs/getting-started/migrate-react-progressive-forms.md).
 
 The generated React Vite starter's `/catalog/session` fixture uses ordinary
 HTTP-origin/CSRF-protected login/logout/permissions handlers and the existing

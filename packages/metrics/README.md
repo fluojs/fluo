@@ -32,6 +32,8 @@ pnpm add @fluojs/metrics
 
 ## Quick Start
 
+This module registration fragment belongs in an existing HTTP app. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for the server entrypoint and decorator configuration. Protect `/metrics` separately at the deployment boundary as described below.
+
 ```ts
 import { MetricsModule } from '@fluojs/metrics';
 import { Module } from '@fluojs/core';

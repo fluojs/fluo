@@ -68,6 +68,8 @@ Dynamic registry task identity now comes exclusively from the first `name` argum
 
 ## Quick Start
 
+This scheduling provider/module registration fragment belongs in an existing application graph. Bootstrap through [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) to start tasks through the lifecycle.
+
 Register the `CronModule` and use decorators to schedule your methods.
 
 Use `CronModule.forRoot(...)` to register scheduling for an application module.

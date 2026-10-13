@@ -33,6 +33,8 @@ Use this package when you need advanced real-time features like rooms, namespace
 
 ## Quick Start
 
+This gateway/module fragment belongs in an existing app. The module alone does not open a listener. Start the application with a supported Node or Bun adapter and follow the runtime support and binding contracts below. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) explains decorators and application startup.
+
 ```typescript
 import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@fluojs/socket.io';
 import { WebSocketGateway, OnMessage } from '@fluojs/websockets';

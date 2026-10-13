@@ -1,10 +1,6 @@
 # fluo 문서 허브
 
-Deno 지원은 Deprecated입니다. 기존 사용자와 신규 runtime을 선택하는 사용자는 [Deno 이전 가이드](./getting-started/migrate-from-deno.ko.md)부터 확인하세요.
-
-이 디렉터리는 fluo의 거버넌스 적용 저장소 문서를 담고 있습니다. 공식 웹사이트 소스는 이제 `apps/docs`에 있으며, Fumadocs를 사용해 영문 전용 문서 표면을 제공합니다.
-
-Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Book은 같은 계약에서 파생된 사람 중심의 제품 서사입니다. [문서 권위 정책](./contracts/documentation-authority.ko.md)은 원본 책임, 간결한 Markdown 계약 필드, 충돌 처리와 변경 순서를 정의합니다. 패키지 README는 이 계층에서 패키지 API를 위임받은 원본입니다. 설치·공개 import·필수 사용법·기본값·보장 요약을 유지하고 공통 계약으로 연결하며, API 본문을 `docs/`에 복제하지 않습니다.
+작업에 맞는 API·지원 범위·동작 계약을 찾는 문서 지도입니다. 처음 앱을 실행하려면 [빠른 시작](../README.ko.md#빠른-시작), 제품을 만들며 배우려면 [Book](../book/README.ko.md)에서 시작하세요. 웹사이트 문서는 영문으로 제공하고, 저장소 문서는 EN/KO를 함께 유지합니다.
 
 ## 읽기 경로 선택
 
@@ -20,7 +16,13 @@ Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Boo
 
 색인은 문서 권위·부트스트랩·라이프사이클의 담당 EN/KO 문서와 소스·테스트 경로를 연결하는 작은 pilot 참조 색인입니다. 계약 본문을 대체하지 않으며 43개 패키지 전체 coverage나 문서 의미·동작 정확성의 증명이 아닙니다. 아직 색인에 없는 계약은 아래 원본 책임 표와 패키지 선택기로 찾으세요.
 
+Deno 지원은 Deprecated입니다. 기존 Deno 앱을 옮기려면 [Deno 이전 가이드](./getting-started/migrate-from-deno.ko.md)를, 새 앱의 호스트를 선택하려면 [런타임 지원 표](./reference/package-surface.ko.md)를 확인하세요.
+
 ## 원본 책임
+
+이 디렉터리는 fluo의 거버넌스 적용 저장소 문서를 담고 있습니다. 공식 웹사이트 소스는 이제 `apps/docs`에 있으며, Fumadocs를 사용해 영문 전용 문서 표면을 제공합니다.
+
+Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Book은 같은 계약에서 파생된 사람 중심의 제품 서사입니다. [문서 권위 정책](./contracts/documentation-authority.ko.md)은 원본 책임, 간결한 Markdown 계약 필드, 충돌 처리와 변경 순서를 정의합니다. 패키지 README는 이 계층에서 패키지 API를 위임받은 원본입니다. 설치·공개 import·필수 사용법·기본값·보장 요약을 유지하고 공통 계약으로 연결하며, API 본문을 `docs/`에 복제하지 않습니다.
 
 | 주제 | 관리하는 원본 | 다른 문서의 역할 |
 | --- | --- | --- |
@@ -41,7 +43,7 @@ Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Boo
 
 - 앱: `apps/docs`
 - 콘텐츠: `apps/docs/content/docs`
-- 영어/한국어 parity 검사: `pnpm docs:sync-check`
+- 영문 전용 웹사이트 파일 검사: `pnpm docs:sync-check`
 - 전체 문서 검증: `pnpm verify:docs`
 
 ## 정식 저장소 문서

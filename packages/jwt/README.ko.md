@@ -33,6 +33,8 @@ npm install @fluojs/jwt
 
 ## 빠른 시작
 
+아래는 등록과 service 사용 fragment입니다. 앱 module graph에 등록하고 예제 secret을 애플리케이션 소유 signing key로 교체하세요. Sign/verify 블록의 `jwt`는 등록된 `JwtService`를 주입받은 인스턴스입니다. 앱 bootstrap과 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
+
 ### 모듈 등록
 
 서명 키와 정책을 사용하여 JWT 모듈을 설정합니다.

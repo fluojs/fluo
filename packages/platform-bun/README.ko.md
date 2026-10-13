@@ -22,7 +22,7 @@
 npm install @fluojs/platform-bun
 ```
 
-이 패키지는 Bun에서 실행하는 것을 전제로 합니다. 배포 manifest는 npm 메타데이터가 Bun 런타임 계약과 어긋나지 않도록 의도적으로 `engines.node`를 선언하지 않으며, 저장소의 Node.js 20+ 요구사항은 메인테이너용 빌드/테스트 툴체인에만 적용됩니다.
+이 패키지는 Bun에서 실행하는 것을 전제로 합니다. 배포 manifest는 npm 메타데이터가 Bun 런타임 계약과 어긋나지 않도록 의도적으로 `engines.node`를 선언하지 않으며, 저장소의 Node.js `>=24.11.0 <27` 요구사항은 메인테이너용 빌드/테스트 툴체인에만 적용됩니다.
 
 ## 사용 시점
 
@@ -31,6 +31,8 @@ fluo 애플리케이션을 [Bun](https://bun.sh/) 런타임에서 실행할 때 
 애플리케이션 종료 중에는 websocket upgrade 시도를 포함한 모든 새 유입을 `503` shutdown 응답으로 중단하고, realtime binding 평가부터 HTTP 응답 또는 upgrade 결과까지 수락된 작업을 drain하기 전에 `server.stop(stopActiveConnections)`를 시작합니다. bounded timeout은 caller-facing `close()` promise만 reject합니다. 수락된 작업과 adapter state는 underlying drain이 끝날 때까지 유지됩니다. 따라서 timeout이 추가 teardown을 강제하지 않습니다. 시그널 기반 종료가 `forceExitTimeoutMs`를 넘기거나 실패하면 fluo는 그 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 Bun 또는 주변 호스트에 맡깁니다.
 
 ## 빠른 시작
+
+아래는 애플리케이션이 이미 선언한 `./app.module`의 `AppModule`을 사용하는 entrypoint fragment입니다. 해당 모듈 파일, 직접 import하는 `@fluojs/runtime` dependency와 standard decorator 설정이 필요합니다. 모듈 작성과 시작 순서는 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
 
 ```typescript
 import { BunHttpApplicationAdapter, createBunShutdownSignalRegistration } from '@fluojs/platform-bun';

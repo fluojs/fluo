@@ -53,6 +53,8 @@ npm install @fluojs/cache-manager @fluojs/redis ioredis
 
 ## 빠른 시작
 
+기존 HTTP 앱에 추가하는 controller/module fragment입니다. `AppModule`을 시작하는 entrypoint와 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따르세요. 애플리케이션 레벨 예제의 `fetchUserProfile`은 소비자가 구현하는 조회 함수입니다.
+
 ### HTTP 응답 캐싱
 
 `CacheModule`을 등록하고 컨트롤러에 `CacheInterceptor`를 사용합니다.

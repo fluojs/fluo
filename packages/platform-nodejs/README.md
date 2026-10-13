@@ -44,6 +44,8 @@ Use this package when you want to run a fluo application directly on the Node.js
 
 ## Quick Start
 
+This entrypoint fragment uses `AppModule` from the application-owned `./app.module`. It requires that module file, the directly imported `@fluojs/runtime` dependency, and standard decorator configuration. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for module authoring and startup order.
+
 ```typescript
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';

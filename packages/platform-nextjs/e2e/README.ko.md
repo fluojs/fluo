@@ -3,7 +3,7 @@
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 이 fixture는 현재 checkout의 배포 파일과 공개 export만 사용합니다.
-새로 publish한 package의 검증이 아닙니다. Node.js `>=24.0.0 <27`,
+새로 publish한 package의 검증이 아닙니다. Node.js `>=24.11.0 <27`(Babel 8 compiler toolchain 하한),
 독립적으로 설치한 worktree dependencies와 affected dependency closure build가
 필요합니다. 저장소 root에서 실행하세요.
 

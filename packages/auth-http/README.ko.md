@@ -12,6 +12,8 @@ pnpm add @fluojs/auth-http @fluojs/jwt
 
 ## Public imports and registration
 
+기존 Fluo HTTP 앱에 추가하는 등록 fragment입니다. 앱에서 직접 import하는 `@fluojs/core`도 dependency로 선언하고, 실제 signing secret을 제공하세요. 앱 시작과 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
+
 ```ts
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';

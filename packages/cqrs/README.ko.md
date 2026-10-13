@@ -36,6 +36,8 @@ npm install @fluojs/cqrs
 
 ## 빠른 시작
 
+아래는 Command/Handler/provider 등록 fragment이며 서버 entrypoint는 포함하지 않습니다. 기존 앱의 모듈 그래프에 등록하고 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)의 decorator·시작 설정을 유지하세요.
+
 `CqrsModule`을 등록하고 첫 번째 Command와 Handler를 정의합니다.
 
 `CqrsModule.forRoot(...)`를 사용해 CQRS 버스와 핸들러 탐색을 구성합니다.

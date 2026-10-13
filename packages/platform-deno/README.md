@@ -26,7 +26,7 @@ The [Deno announcement](https://deno.com/blog/cloudflare) says the team will end
 deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
 ```
 
-This package is intended to run on Deno. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Deno runtime contract; the repository's Node.js 20+ requirement only applies to the maintainer build/test toolchain.
+This package is intended to run on Deno. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Deno runtime contract; the repository's Node.js `>=24.11.0 <27` requirement only applies to the maintainer build/test toolchain.
 
 ## When to Use
 
@@ -37,6 +37,8 @@ During application shutdown, the adapter stops new ingress and gives active HTTP
 Factory registers `createDenoShutdownSignalRegistration()` after listen when supplied as `shutdownRegistration`, and removes those SIGINT/SIGTERM listeners when close begins.
 
 ## Quick Start
+
+This entrypoint fragment uses `AppModule` from the application-owned `./app.module`. It requires that module file, the directly imported `@fluojs/runtime` dependency, and standard decorator configuration. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for module authoring and startup order.
 
 ```typescript
 import {

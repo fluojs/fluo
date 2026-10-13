@@ -34,6 +34,8 @@ npm install @fluojs/event-bus ioredis
 
 ## 빠른 시작
 
+아래 두 블록은 같은 앱에서 조합하는 event/handler/module fragment입니다. 파일을 나누면 두 번째 파일에서 `UserSignedUpEvent`와 `NotificationService`를 import하세요. 앱 bootstrap과 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 유지합니다.
+
 ### 1. 이벤트 및 핸들러 정의
 
 이벤트 클래스를 정의하고, 핸들러 메서드에 `@OnEvent` 데코레이터를 사용합니다.
@@ -136,7 +138,7 @@ async function requireReactions(eventBus: EventBusService, event: object): Promi
 }
 ```
 
-이 정책도 구성되지 않은 필수 핸들러의 존재를 증명하지는 못합니다. 필요한 로컬 핸들러의 등록을 애플리케이션 테스트로 검증하고, 원격 처리 완료가 필요하면 별도 acknowledgement 계약을 설계하세요. [메시징 가이드의 두 소비자 예제](../../apps/docs/content/docs/guides/messaging-workflows.ko.mdx)는 인증이 이미 성공한 뒤 token record ID만 담는 last-used bookkeeping에는 기존 best-effort `publish`를, 결과가 필요한 반응에는 명시적 검사를 사용하는 차이를 보여 줍니다.
+이 정책도 구성되지 않은 필수 핸들러의 존재를 증명하지는 못합니다. 필요한 로컬 핸들러의 등록을 애플리케이션 테스트로 검증하고, 원격 처리 완료가 필요하면 별도 acknowledgement 계약을 설계하세요. [메시징 가이드의 두 소비자 예제(영문)](../../apps/docs/content/docs/guides/messaging-workflows.mdx)는 인증이 이미 성공한 뒤 token record ID만 담는 last-used bookkeeping에는 기존 best-effort `publish`를, 결과가 필요한 반응에는 명시적 검사를 사용하는 차이를 보여 줍니다.
 
 `publish`가 보고하는 handler/transport 실패 로그는 안전한 target/status 메시지만 유지하며 raw handler/transport error 인자를 logger에 전달하지 않습니다. 이는 raw error와 handler 반환값을 제외한 결과 계약과 같습니다. 핸들러나 adapter가 직접 쓰는 애플리케이션 로그는 애플리케이션 책임이며, 기존 `publish`와 inbound delivery의 로그까지 정제하는 전역 정책이 아닙니다.
 

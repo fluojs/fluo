@@ -24,7 +24,7 @@ Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전�
 npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript
 ```
 
-`@babel/core` `>=7.26.0`, `@babel/plugin-proposal-decorators` `>=7.28.0`, `@babel/preset-typescript` `>=7.27.0`, `vite` `>=6.2.0`은 peer dependency입니다. `fluoDecoratorsPlugin()`이 Vite transform 시점에 Babel을 로드하고 Babel decorator plugin과 TypeScript preset을 해석하며, 누락된 peer dependency를 Vite `transform` hook의 진단으로 보고하기 때문입니다.
+`@babel/core` `>=8.0.0`, `@babel/plugin-proposal-decorators` `>=8.0.0`, `@babel/preset-typescript` `>=8.0.0`, `vite` `>=6.2.0`은 peer dependency입니다. `fluoDecoratorsPlugin()`이 Vite transform 시점에 Babel을 로드하고 Babel decorator plugin과 TypeScript preset을 해석하며, 누락된 peer dependency를 Vite `transform` hook의 진단으로 보고하기 때문입니다.
 
 ## 사용 시점
 
@@ -43,6 +43,8 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 배포된 peer 범위는 `vite >=6.2.0`을 유지합니다. 패키지 suite는 워크스페이스에 고정된 Vite 8.2.2 Rolldown/Oxc pipeline에서 실행됩니다. Integration gate는 plugin이 normal-stage transform보다 먼저 실행되고 field-decorator binding metadata를 보존하는지 검증하며, `enforce: 'pre'`를 회귀시키면 실패합니다. Vite 8을 선택하는 consumer는 Vite 자체 Node.js engine 범위도 충족해야 합니다.
 
 ## 빠른 시작
+
+아래는 `vite.config.ts` 구성 fragment입니다. `src/main.ts` entrypoint와 앱 소스는 별도로 작성하거나 CLI로 생성해야 합니다. 이 설정만으로 앱 module이나 listener를 만들지 않습니다.
 
 ```ts
 import { fluoDecoratorsPlugin } from '@fluojs/vite';

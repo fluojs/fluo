@@ -2,20 +2,9 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo를 위한 HTTP-first 풀스택 React application framework이며 package root는
-런타임 중립입니다. 공식 조립은 streamed SSR/hydration, 승인 navigation, progressive
-form, 독립 background 작업 및 session 철회를 제공합니다.
-[풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)과
-[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)는 해당
-shipped capability, 실제 current-head 실행 및 lead-owned 최종 제품 gate를 구분합니다.
-[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)는
-`/catalog/session/products` authenticated CRUD, jukebox lifetime, packed
-authoring/dev/production과 machine-consumed receipt를 연결합니다. Demo session과
-process-local private product는 production authentication이나 durable storage가 아닙니다.
-최종 #3879의 원래 수치 FAIL/INCONCLUSIVE는 공개된 비차단 diagnostics이며,
-증거 품질/correctness/stability/cleanup 및 Fluo error 0은 계속 필수입니다.
-이번 lane은 완료된 1시간 soak를 요구하고 scheduled 2시간 default를 유지하며,
-physical mobile/tablet은 PASS 없이 #3906으로 명시적으로 분리합니다.
+fluo를 위한 HTTP-first 풀스택 React application framework입니다. HTTP route와 DI module 위에서 React page를 만들고 streamed SSR/hydration, 승인 navigation, progressive form, 독립 background 작업 및 session 철회를 조합합니다. Package root는 런타임 중립이며, 첫 앱은 아래 [Zero-to-First-Page Workflow](#zero-to-first-page-workflow)의 공식 CLI starter로 시작하세요.
+
+공통 보장과 소유권은 [풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)이 규정합니다. 지원하지 않는 기능과 검증 한계는 [현재 제한 사항](#현재-제한-사항)을 확인하세요.
 
 Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요. React는 `0.x`의 `minor` 릴리스를 유지하며 `1.0`으로 승격하지 않습니다.
 
@@ -53,10 +42,7 @@ Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전�
 
 ## 설치
 
-이 패키지는 초기 `0.1.0` 릴리스를 완료했으며 더 이상 `0.0.0` bootstrap placeholder를 사용하지
-않습니다. 이후 버전은 commit된 Changeset으로 기록하고 canonical release workflow를 통해서만 게시합니다.
-
-패키지가 게시되면 React와 React DOM을 peer로 함께 설치합니다.
+React와 React DOM을 peer로 함께 설치합니다. 두 peer의 지원 범위와 실행 환경은 아래 [런타임 및 피어 계약](#런타임-및-피어-계약)을 따르세요.
 
 ```bash
 npm install @fluojs/react react react-dom
@@ -71,6 +57,8 @@ controller 및 `GET` route metadata 위의 React facade이므로 request DTO bin
 guards, interceptors, headers, route validation, matching, dispatch는 계속 HTTP runtime contract를 사용합니다.
 
 ## Zero-to-First-Page Workflow
+
+이 명령은 저장소 example이 아니라 registry dependency를 설치하는 generated app을 만듭니다. Node.js `>=24.11.0 <27`, pnpm과 설치된 [`@fluojs/cli`](../cli/README.ko.md#설치)가 필요합니다. 생성된 디렉터리에서 실행하세요.
 
 첫 page를 편집하기 전에 모든 stable seam을 직접 조립하지 않고 streamed SSR, hydration, Vite asset을
 사용하려면 공식 generated composition으로 시작하세요.
@@ -1481,6 +1469,8 @@ Stable package root는 계속 RSC-free입니다. 현재 정책은 graduation을 
 stable subpath를 추가하지 않고 deprecation window도 시작하지 않습니다.
 
 ## 현재 제한 사항
+
+공식 starter의 demo session과 process-local private product는 production authentication이나 durable storage가 아닙니다. [제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)는 원래 수치 FAIL/INCONCLUSIVE, 필수 correctness/stability/cleanup, 1시간 수용 soak와 scheduled 2시간 default를 구분합니다. 원래 수치 판정은 공개된 비차단 diagnostics이며, 증거 품질 실패와 Fluo measured/warmup error는 계속 차단 조건입니다. Physical mobile/tablet 검증은 #3906으로 유보되었으며 PASS가 아닙니다. [장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)와 실제 receipt를 확인하세요. Shipped code나 이 README만으로 현재 checkout의 제품 수용 통과를 판단할 수 없습니다.
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 

@@ -24,7 +24,7 @@ Preparing for the coordinated Node 24 release? Follow the [consumer migration gu
 npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript
 ```
 
-`@babel/core` `>=7.26.0`, `@babel/plugin-proposal-decorators` `>=7.28.0`, `@babel/preset-typescript` `>=7.27.0`, and `vite` `>=6.2.0` are peer dependencies because `fluoDecoratorsPlugin()` loads Babel, resolves the Babel decorator plugin and TypeScript preset, and reports missing peer dependencies from the Vite `transform` hook when Vite transforms source files.
+`@babel/core` `>=8.0.0`, `@babel/plugin-proposal-decorators` `>=8.0.0`, `@babel/preset-typescript` `>=8.0.0`, and `vite` `>=6.2.0` are peer dependencies because `fluoDecoratorsPlugin()` loads Babel, resolves the Babel decorator plugin and TypeScript preset, and reports missing peer dependencies from the Vite `transform` hook when Vite transforms source files.
 
 ## When to Use
 
@@ -43,6 +43,8 @@ The package root is safe to import before Babel is installed or resolved: import
 The published peer range remains `vite >=6.2.0`. The package suite runs under the workspace-pinned Vite 8.2.2 Rolldown/Oxc pipeline. Its integration gate verifies the plugin runs before normal-stage transforms and preserves field-decorator binding metadata; regressing `enforce: 'pre'` makes the gate fail. Consumers selecting Vite 8 must also satisfy Vite's own Node.js engine range.
 
 ## Quick Start
+
+This is a `vite.config.ts` configuration fragment. Author `src/main.ts` and the application source separately or generate them with the CLI. This configuration alone does not create an application module or listener.
 
 ```ts
 import { fluoDecoratorsPlugin } from '@fluojs/vite';

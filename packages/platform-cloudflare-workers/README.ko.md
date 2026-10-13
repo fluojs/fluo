@@ -22,7 +22,7 @@
 npm install @fluojs/platform-cloudflare-workers
 ```
 
-이 패키지는 Cloudflare Workers에서 실행하는 것을 전제로 합니다. 배포 manifest는 npm 메타데이터가 Workers 런타임 계약과 어긋나지 않도록 의도적으로 `engines.node`를 선언하지 않으며, 저장소의 Node.js 20+ 요구사항은 메인테이너용 빌드/테스트 툴체인에만 적용됩니다.
+이 패키지는 Cloudflare Workers에서 실행하는 것을 전제로 합니다. 배포 manifest는 npm 메타데이터가 Workers 런타임 계약과 어긋나지 않도록 의도적으로 `engines.node`를 선언하지 않으며, 저장소의 Node.js `>=24.11.0 <27` 요구사항은 메인테이너용 빌드/테스트 툴체인에만 적용됩니다.
 
 ## 사용 시점
 
@@ -33,6 +33,8 @@ fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)
 애플리케이션 종료 중에는 즉시 새 ingress 수락을 중단하고, 활성 HTTP 핸들러가 정리될 수 있도록 최대 10초의 bounded drain window를 제공합니다. 이 시간을 넘기면 `close()`는 무기한 대기하지 않고 timeout 오류로 종료됩니다. 해당 drain이 아직 진행 중일 때 동시에 `listen()`을 호출하면 Worker를 다시 열지 않고 `Cloudflare Workers adapter cannot listen while shutdown is still draining.` 오류로 reject됩니다. 닫힌 뒤에는 어댑터가 명시적으로 다시 `listen()`될 때까지 후속 HTTP 및 WebSocket upgrade request가 동일한 JSON `503` shutdown response를 받습니다. Lazy host는 timed-out close가 아직 drain 중인 동안 shutdown response를 계속 반환하지만, underlying close가 나중에 settle되면 해당 임시 gate를 해제하여 이후 request가 새 Worker application을 bootstrap할 수 있게 합니다.
 
 ## 빠른 시작
+
+아래는 기존 Workers 프로젝트에 넣는 entrypoint fragment입니다. 애플리케이션 소유 `./app.module`의 `AppModule`, `@fluojs/runtime` dependency, decorator build 설정과 Worker 배포 설정이 필요합니다. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)의 module 구성과 아래 host 소유권 계약을 유지하세요.
 
 ### 직접 애플리케이션 생성
 먼저 concrete adapter를 생성한 뒤 `FluoFactory.create`가 애플리케이션 생성을

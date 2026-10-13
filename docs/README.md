@@ -1,10 +1,6 @@
 # fluo Docs Hub
 
-Deno support is Deprecated. Existing users and new runtime selection should start with the [Deno migration guide](./getting-started/migrate-from-deno.md).
-
-This directory contains governed repository documentation for fluo. The official website source now lives in `apps/docs` and uses Fumadocs to publish an English-only documentation surface.
-
-Docs is the normative framework contract layer for AI; the Book is the human product narrative derived from those same contracts. The [documentation authority policy](./contracts/documentation-authority.md) defines ownership, concise Markdown contract fields, conflict resolution, and change order. Package READMEs are delegated package API owners within this layer. They retain installation, public imports, essential usage, defaults, and guarantee summaries and link shared contracts without duplicating API bodies into `docs/`.
+Use this map to find APIs, support boundaries, and behavioral contracts for your task. Start with the [quick start](../README.md#quick-start) to run your first app, or the [Book](../book/README.md) to learn by building a product. Website documentation is English-only; repository documentation is maintained in English and Korean.
 
 ## Choose a reading path
 
@@ -20,7 +16,13 @@ Docs is the normative framework contract layer for AI; the Book is the human pro
 
 The index is a small pilot reference index linking documentation authority, bootstrap, and lifecycle topics to their owning EN/KO documents and source/test paths. It does not replace contract text or establish full 43-package coverage or semantic/behavioral correctness. For contracts not yet indexed, use the ownership table and package chooser below.
 
+Deno support is Deprecated. Use the [Deno migration guide](./getting-started/migrate-from-deno.md) to move an existing Deno app, or the [runtime support matrix](./reference/package-surface.md) to choose a host for a new app.
+
 ## Source ownership
+
+This directory contains governed repository documentation for fluo. The official website source now lives in `apps/docs` and uses Fumadocs to publish an English-only documentation surface.
+
+Docs is the normative framework contract layer for AI; the Book is the human product narrative derived from those same contracts. The [documentation authority policy](./contracts/documentation-authority.md) defines ownership, concise Markdown contract fields, conflict resolution, and change order. Package READMEs are delegated package API owners within this layer. They retain installation, public imports, essential usage, defaults, and guarantee summaries and link shared contracts without duplicating API bodies into `docs/`.
 
 | Subject | Maintained source | Other surfaces |
 | --- | --- | --- |
@@ -41,7 +43,7 @@ Determine whether a discrepancy is a documentation error or an implementation re
 
 - App: `apps/docs`
 - Content: `apps/docs/content/docs`
-- English/Korean parity check: `pnpm docs:sync-check`
+- English-only website file check: `pnpm docs:sync-check`
 - Full docs verification: `pnpm verify:docs`
 
 ## Canonical repository docs

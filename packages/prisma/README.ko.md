@@ -44,6 +44,8 @@ pnpm add @prisma/client
 
 ## 빠른 시작
 
+기존 앱에 넣는 module 등록 fragment입니다. 애플리케이션의 Prisma schema와 datasource를 구성하고 해당 schema로 client를 생성한 뒤 사용하세요. 실제 DB 연결과 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)의 decorator·시작 설정이 필요합니다.
+
 루트 모듈에 `PrismaClient` 인스턴스를 전달하여 `PrismaModule`을 등록합니다.
 
 ```typescript

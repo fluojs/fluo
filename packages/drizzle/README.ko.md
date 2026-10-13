@@ -70,6 +70,8 @@ Deno, Cloudflare Workers와 그 밖의 검증되지 않은 비 Node host는 이 
 
 ## 빠른 시작
 
+PostgreSQL용 module 등록 fragment입니다. 실행 중인 PostgreSQL과 `DATABASE_URL`, `pg`, `@fluojs/config`가 필요합니다. 앱 entrypoint와 decorator 설정은 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 유지하세요.
+
 ```ts
 import { ConfigModule, ConfigService } from '@fluojs/config';
 import { Module } from '@fluojs/core';

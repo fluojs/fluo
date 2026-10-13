@@ -2,23 +2,44 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-This directory contains the official runnable example applications for fluo. Start with the [three-volume Book](../book/README.md) for the complete product and pattern learning path. The [short FluoBlog exercise](../apps/docs/content/docs/tutorial/index.mdx) and its [complete checkpoints](./fluo-blog/README.md) are companions for the initial HTTP/DI path. Other examples are independent capability references, not later chapters of that project. If you are an AI tool or need contract references, start from `../docs/CONTEXT.md`.
+Choose an official repository example to run or test the capability you need. To create a new application, use the [root quick start](../README.md#quick-start). Start with the [three-volume Book](../book/README.md) for the complete product and pattern learning path. The [short FluoBlog exercise](../apps/docs/content/docs/tutorial/index.mdx) and its [complete checkpoints](./fluo-blog/README.md) are companions for the initial HTTP/DI path. Other examples are independent capability references, not later chapters of that project. If you are an AI tool or need contract references, start from `../docs/CONTEXT.md`.
 
-These examples cover the HTTP side of the published `fluo new` v2 matrix through shared public framework APIs, not identical scaffolds or bootstrap policies. They are `repository-example` workspaces; generated applications use registry dependencies and their own CLI lifecycle scripts. The other first-class starter contracts are the runnable application starter variants for Express, raw Node.js HTTP, Bun, Deno, and Cloudflare Workers; the runnable microservice starter paths (TCP by default, plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC); and the mixed single-package path (Fastify HTTP app + attached TCP microservice).
+These examples cover the HTTP side of the published `fluo new` v2 matrix through shared public framework APIs, not identical scaffolds or bootstrap policies. They are `repository-example` workspaces; generated applications use registry dependencies and their own CLI lifecycle scripts. The other first-class starter contracts are the runnable application starter variants for Express, raw Node.js HTTP, Bun, and Cloudflare Workers; the runnable microservice starter paths (TCP by default, plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC); and the mixed single-package path (Fastify HTTP app + attached TCP microservice).
+
+The Deno starter remains a deprecated path for existing users during migration. Do not choose it for new projects; follow the [Deno migration guide](../docs/getting-started/migrate-from-deno.md).
 
 ## current official examples
 
 - [`./fluo-blog/`](./fluo-blog/README.md) — cumulative tutorial checkpoints for posts, explicit DI, validation, errors, and tests
-- `./minimal/` — explicit low-level Fastify composition, not the default generated starter
-- `./realworld-api/` — a more realistic multi-module HTTP API with config, DTO validation, explicit DI, and CRUD
-- `./auth-jwt-passport/` — bearer-token auth example with JWT issuance and protected routes via passport core
-- `./ops-metrics-terminus/` — operations example centered on `/metrics`, `/health`, and `/ready`
-- `./openapi-multiple-documents/` — two OpenAPI JSON documents and Swagger UI pages on distinct routes
-- `./graphql/` — GraphQL module registration, resolver discovery, operation-scoped DataLoader, and SSE subscriptions
-- `./react-stable-ssr/` — stable `@fluojs/react` SSR MVP example with HTTP-owned routes, DTO-bound
+- [`./minimal/`](./minimal/README.md) — explicit low-level Fastify composition, not the default generated starter
+- [`./realworld-api/`](./realworld-api/README.md) — a more realistic multi-module HTTP API with config, DTO validation, explicit DI, and CRUD
+- [`./auth-jwt-passport/`](./auth-jwt-passport/README.md) — bearer-token auth example with JWT issuance and protected routes via passport core
+- [`./ops-metrics-terminus/`](./ops-metrics-terminus/README.md) — operations example centered on `/metrics`, `/health`, and `/ready`
+- [`./openapi-multiple-documents/`](./openapi-multiple-documents/README.md) — two OpenAPI JSON documents and Swagger UI pages on distinct routes
+- [`./graphql/`](./graphql/README.md) — GraphQL module registration, resolver discovery, operation-scoped DataLoader, and SSE subscriptions
+- [`./react-stable-ssr/`](./react-stable-ssr/README.md) — stable `@fluojs/react` SSR MVP example with HTTP-owned routes, DTO-bound
   params/search, lifecycle middleware, and explicit hydration assets
-- `./react-vite-ssr/` — Vite-backed React SSR example with manifest-fed assets, streamed Suspense,
+- [`./react-vite-ssr/`](./react-vite-ssr/README.md) — Vite-backed React SSR example with manifest-fed assets, streamed Suspense,
   hydration, HTTP-first client navigation, and a JavaScript-optional native form mutation
+
+## run examples from the repo root
+
+Prepare Node.js `>=24.11.0 <27` and the repository-pinned pnpm 10. These commands **run tests**, not development servers. Choose the test command for the example you need.
+
+```bash
+pnpm install
+pnpm vitest run examples/fluo-blog
+pnpm vitest run examples/minimal
+pnpm vitest run examples/realworld-api
+pnpm vitest run examples/auth-jwt-passport
+pnpm vitest run examples/ops-metrics-terminus
+pnpm vitest run examples/openapi-multiple-documents
+pnpm vitest run examples/graphql
+pnpm vitest run examples/react-stable-ssr
+pnpm vitest run examples/react-vite-ssr
+```
+
+To try an app in a browser or with `curl`, follow the build/start commands and expected results in [FluoBlog](./fluo-blog/README.md#run-inside-the-repository), [GraphQL](./graphql/README.md#how-to-run), or [React + Vite](./react-vite-ssr/README.md#run-from-the-repo-root). Run each example server separately.
 
 ## recommended reading order
 
@@ -63,21 +84,6 @@ For the other v2 starter contracts, see the CLI README for commands and the cont
 - `../docs/reference/toolchain-contract-matrix.md` — published starter contract matrix
 
 These examples are intentionally small enough to read in one sitting. They are not meant to replace package READMEs.
-
-## run examples from the repo root
-
-```bash
-pnpm install
-pnpm vitest run examples/fluo-blog
-pnpm vitest run examples/minimal
-pnpm vitest run examples/realworld-api
-pnpm vitest run examples/auth-jwt-passport
-pnpm vitest run examples/ops-metrics-terminus
-pnpm vitest run examples/openapi-multiple-documents
-pnpm vitest run examples/graphql
-pnpm vitest run examples/react-stable-ssr
-pnpm vitest run examples/react-vite-ssr
-```
 
 ## related docs
 

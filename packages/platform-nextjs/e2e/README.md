@@ -3,7 +3,7 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 This fixture uses only distribution files and public exports from the current
-checkout, not newly published packages. It requires Node.js `>=24.0.0 <27`,
+checkout, not newly published packages. It requires Node.js `>=24.11.0 <27` (the Babel 8 compiler toolchain floor),
 independently installed worktree dependencies, and the affected dependency
 closure build. Run from the repository root.
 

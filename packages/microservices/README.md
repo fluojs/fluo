@@ -42,6 +42,8 @@ The gRPC transport requires `@grpc/grpc-js@^1.14.4` and `@grpc/proto-loader@^0.8
 
 ## Quick Start
 
+This example declares the handler, module, and TCP listener. Also install the directly imported `@fluojs/core` and `@fluojs/runtime` and apply standard decorator configuration from [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md). This TCP example does not require an external broker.
+
 Define a message handler and bootstrap the microservice using the TCP transport.
 
 ```typescript

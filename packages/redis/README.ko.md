@@ -30,6 +30,8 @@ npm install @fluojs/redis ioredis
 
 ## 빠른 시작
 
+기존 앱에 넣는 모듈/서비스 fragment이며 `localhost:6379`에서 실행 중인 Redis가 필요합니다. `CacheRepository`를 앱 module의 `providers`에 등록하고 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)의 decorator·시작 설정을 유지하세요.
+
 ### 모듈 등록
 
 `RedisModule.forRoot(options)`는 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하는 지원되는 root entrypoint입니다.

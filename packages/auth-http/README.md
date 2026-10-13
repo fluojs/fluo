@@ -12,6 +12,8 @@ pnpm add @fluojs/auth-http @fluojs/jwt
 
 ## Public imports and registration
 
+This registration fragment extends an existing Fluo HTTP app. Declare the directly imported `@fluojs/core` as a dependency and provide a real signing secret. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for application startup and decorator configuration.
+
 ```ts
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';

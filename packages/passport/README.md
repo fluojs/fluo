@@ -33,6 +33,8 @@ npm install @fluojs/passport
 
 ## Quick Start
 
+These compatibility registration/controller fragments belong in an existing HTTP app. Use [`@fluojs/auth-http`](../auth-http/README.md) for new HTTP authentication registration. Applications retaining the path below must also install `@fluojs/jwt`, register `ProfileController` in the application module's `controllers`, and provide a real signing key.
+
 ### 1. Register Modules
 
 Use the built-in bearer JWT preset and register it with `PassportModule.forRoot(...)`.

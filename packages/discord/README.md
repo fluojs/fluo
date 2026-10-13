@@ -35,11 +35,13 @@ This package requires Node.js `>=24.0.0 <27` as its package-owned support contra
 ## When to Use
 
 - When you want one package that can send Discord messages directly and also plug into `@fluojs/notifications`.
-- When transport choice must stay explicit and portable across Node, Bun, Deno, and Cloudflare-compatible application boundaries.
+- When transport choice must stay explicit and portable across Node, Bun, and Cloudflare-compatible application boundaries. Existing Deno compositions are deprecated migration paths, not new deployment choices. Follow the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
 - When Discord delivery should prefer incoming webhooks while still allowing richer REST or bot-backed integrations through a custom transport contract.
 - When configuration must enter through DI or explicit options instead of `process.env` reads inside the package.
 
 ## Quick Start
+
+These module/service fragments belong in an existing app. Replace the example URL with a real Discord incoming webhook and register `DeployNotifier` in the application module's `providers`. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for startup and decorator configuration.
 
 ### Register the module
 

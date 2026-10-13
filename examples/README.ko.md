@@ -2,27 +2,48 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 디렉터리는 fluo의 공식 실행 예제를 모아 둔 곳입니다. 제품·패턴 중심의 전체 학습은 [3권 Book](../book/README.ko.md)에서 시작하세요. [짧은 FluoBlog 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [단계별 완성 코드](./fluo-blog/README.ko.md)는 초기 HTTP·DI 경로의 보조 자료입니다. 다른 예제는 독립적인 기능 참고자료이며 해당 프로젝트의 후속 장이 아닙니다. AI 도구이거나 계약 레퍼런스가 필요하다면 `../docs/CONTEXT.ko.md`를 출발점으로 삼으세요.
+필요한 기능을 골라 실행하거나 테스트할 수 있는 공식 저장소 예제입니다. 새 앱을 만들려면 [루트 빠른 시작](../README.ko.md#빠른-시작)을 사용하세요. 제품·패턴 중심의 전체 학습은 [3권 Book](../book/README.ko.md)에서 시작하세요. [짧은 FluoBlog 실습(영문)](../apps/docs/content/docs/tutorial/index.mdx)과 [단계별 완성 코드](./fluo-blog/README.ko.md)는 초기 HTTP·DI 경로의 보조 자료입니다. 다른 예제는 독립적인 기능 참고자료이며 해당 프로젝트의 후속 장이 아닙니다. AI 도구이거나 계약 레퍼런스가 필요하다면 `../docs/CONTEXT.ko.md`를 출발점으로 삼으세요.
 
-이 예제들은 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 공통 공개 프레임워크 API로 보여주지만 동일한 scaffold나 bootstrap 정책을 사용하지는 않습니다. 예제는 `repository-example` workspace이며 생성 애플리케이션은 registry 의존성과 자신의 CLI lifecycle script를 사용합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
+이 예제들은 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 공통 공개 프레임워크 API로 보여주지만 동일한 scaffold나 bootstrap 정책을 사용하지는 않습니다. 예제는 `repository-example` workspace이며 생성 애플리케이션은 registry 의존성과 자신의 CLI lifecycle script를 사용합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
+
+Deno starter는 기존 사용자 이전을 위해 남아 있는 deprecated 경로입니다. 새 프로젝트에는 선택하지 말고 [Deno 이전 가이드](../docs/getting-started/migrate-from-deno.ko.md)를 확인하세요.
 
 ## 현재 공식 예제
 
 - [`./fluo-blog/`](./fluo-blog/README.ko.md) — 게시글, 명시적 DI, 검증, 오류, 테스트를 위한 연속 튜토리얼의 단계별 코드
-- `./minimal/` — 기본 생성 스타터가 아닌 명시적 저수준 Fastify 조립
-- `./realworld-api/` — config, DTO validation, explicit DI, CRUD를 포함한 보다 현실적인 다중 모듈 HTTP API
-- `./auth-jwt-passport/` — JWT 발급과 passport core 기반 보호 라우트를 보여주는 bearer-token auth 예제
-- `./ops-metrics-terminus/` — `/metrics`, `/health`, `/ready`에 초점을 둔 운영 예제
-- `./openapi-multiple-documents/` — 서로 다른 라우트의 OpenAPI JSON 문서 두 개와 Swagger UI 페이지
-- `./graphql/` — GraphQL module registration, resolver discovery, operation 범위 DataLoader, SSE subscription
-- `./react-stable-ssr/` — HTTP-owned route, DTO-bound params/search, lifecycle middleware, 명시적인
+- [`./minimal/`](./minimal/README.ko.md) — 기본 생성 스타터가 아닌 명시적 저수준 Fastify 조립
+- [`./realworld-api/`](./realworld-api/README.ko.md) — config, DTO validation, explicit DI, CRUD를 포함한 보다 현실적인 다중 모듈 HTTP API
+- [`./auth-jwt-passport/`](./auth-jwt-passport/README.ko.md) — JWT 발급과 passport core 기반 보호 라우트를 보여주는 bearer-token auth 예제
+- [`./ops-metrics-terminus/`](./ops-metrics-terminus/README.ko.md) — `/metrics`, `/health`, `/ready`에 초점을 둔 운영 예제
+- [`./openapi-multiple-documents/`](./openapi-multiple-documents/README.ko.md) — 서로 다른 라우트의 OpenAPI JSON 문서 두 개와 Swagger UI 페이지
+- [`./graphql/`](./graphql/README.ko.md) — GraphQL module registration, resolver discovery, operation 범위 DataLoader, SSE subscription
+- [`./react-stable-ssr/`](./react-stable-ssr/README.ko.md) — HTTP-owned route, DTO-bound params/search, lifecycle middleware, 명시적인
   hydration asset을 포함한 안정 `@fluojs/react` SSR MVP 예제
-- `./react-vite-ssr/` — manifest-fed asset, streamed Suspense, hydration, HTTP-first client
+- [`./react-vite-ssr/`](./react-vite-ssr/README.ko.md) — manifest-fed asset, streamed Suspense, hydration, HTTP-first client
   navigation, JavaScript-optional native form mutation을 포함한 Vite-backed React SSR 예제
+
+## 레포 루트에서 실행하기
+
+Node.js `>=24.11.0 <27`과 저장소에 지정된 pnpm 10을 준비하세요. 아래 명령은 **테스트 실행**이며, 개발 서버를 시작하는 명령이 아닙니다. 필요한 예제 하나를 골라 실행할 수 있습니다.
+
+```bash
+pnpm install
+pnpm vitest run examples/fluo-blog
+pnpm vitest run examples/minimal
+pnpm vitest run examples/realworld-api
+pnpm vitest run examples/auth-jwt-passport
+pnpm vitest run examples/ops-metrics-terminus
+pnpm vitest run examples/openapi-multiple-documents
+pnpm vitest run examples/graphql
+pnpm vitest run examples/react-stable-ssr
+pnpm vitest run examples/react-vite-ssr
+```
+
+브라우저나 `curl`로 직접 확인하려면 [FluoBlog](./fluo-blog/README.ko.md#저장소-안에서-실행), [GraphQL](./graphql/README.ko.md#실행-방법), [React + Vite](./react-vite-ssr/README.ko.md#레포-루트에서-실행하기)의 빌드·시작 명령과 기대 결과를 따르세요. 각 예제의 서버는 개별적으로 실행합니다.
 
 ## 권장 읽기 순서
 
-전체 학습은 [Book](../book/README.ko.md)을 따르고, 초기 HTTP 동작을 빠르게 확인하려면 [FluoBlog 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)을 사용하세요. 아래 예제는 필요한 기능에 따라 독립적으로 고릅니다.
+전체 학습은 [Book](../book/README.ko.md)을 따르고, 초기 HTTP 동작을 빠르게 확인하려면 [FluoBlog 실습(영문)](../apps/docs/content/docs/tutorial/index.mdx)을 사용하세요. 아래 예제는 필요한 기능에 따라 독립적으로 고릅니다.
 
 1. `./minimal/README.ko.md` — 가장 작은 bootstrap과 request path
 2. `./realworld-api/README.ko.md` — 첫 실제 도메인 모듈과 DTO 경계
@@ -63,21 +84,6 @@
 - `../docs/reference/toolchain-contract-matrix.ko.md` — 공개 스타터 계약 매트릭스
 
 이 예제들은 한 번에 읽을 수 있을 정도로 작게 유지하는 것이 목적이며, 패키지 README를 대체하지는 않습니다.
-
-## 레포 루트에서 실행하기
-
-```bash
-pnpm install
-pnpm vitest run examples/fluo-blog
-pnpm vitest run examples/minimal
-pnpm vitest run examples/realworld-api
-pnpm vitest run examples/auth-jwt-passport
-pnpm vitest run examples/ops-metrics-terminus
-pnpm vitest run examples/openapi-multiple-documents
-pnpm vitest run examples/graphql
-pnpm vitest run examples/react-stable-ssr
-pnpm vitest run examples/react-vite-ssr
-```
 
 ## 관련 문서
 

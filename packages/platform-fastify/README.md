@@ -28,7 +28,7 @@ npm install @fluojs/platform-fastify
 
 ## Runtime Requirements
 
-`@fluojs/platform-fastify` is a Node.js HTTP adapter and declares `engines.node >=24.0.0 <27`. Run local development, CI, containers, and production hosts on a version in that exact range when this package owns the HTTP server so listener-level RFC `QUERY` requests reach Fastify wildcard fallback and fluo dispatch. Node versions below 24 and Node 27+ are excluded. Use `@fluojs/platform-bun`, `@fluojs/platform-deno`, or `@fluojs/platform-cloudflare-workers` for non-Node runtimes instead of importing this Node-specific adapter.
+`@fluojs/platform-fastify` is a Node.js HTTP adapter and declares `engines.node >=24.0.0 <27`. Run local development, CI, containers, and production hosts on a version in that exact range when this package owns the HTTP server so listener-level RFC `QUERY` requests reach Fastify wildcard fallback and fluo dispatch. Node versions below 24 and Node 27+ are excluded. Use `@fluojs/platform-bun` or `@fluojs/platform-cloudflare-workers` for non-Node runtimes instead of importing this Node-specific adapter. `@fluojs/platform-deno` is deprecated and retained only for existing-app migration. See the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
 
 The adapter owns a Fastify-backed Node `http` or `https` listener. Keep process-specific values such as ports, certificate material, and hostnames at the application boundary, then pass the final options into the adapter explicitly.
 

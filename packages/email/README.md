@@ -48,11 +48,13 @@ Node-specific SMTP delivery is available from the explicit `@fluojs/email/node` 
 ## When to Use
 
 - When you want one package that can send email directly and also plug into `@fluojs/notifications`.
-- When transport choice must stay explicit and portable across Node, Bun, Deno, and Cloudflare-compatible application boundaries.
+- When transport choice must stay explicit and portable across Node, Bun, and Cloudflare-compatible application boundaries. Existing Deno compositions are deprecated migration paths, not new deployment choices. Follow the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md).
 - When email transport resources must participate in application bootstrap/shutdown without the core package assuming a specific runtime.
 - When bulk notification delivery should enqueue email work through `@fluojs/queue` instead of blocking request paths.
 
 ## Quick Start
+
+These module/service fragments belong in an existing app. `ExampleTransport` illustrates the result shape but does not send mail. Replace it with a real transport for production and register `WelcomeService` in the application module's `providers`. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for startup and decorator configuration.
 
 ### Register the module
 

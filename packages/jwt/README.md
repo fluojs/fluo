@@ -33,6 +33,8 @@ npm install @fluojs/jwt
 
 ## Quick Start
 
+These are registration and service usage fragments. Register the module in the application graph and replace the example secret with an application-owned signing key. The sign/verify block uses `jwt`, an injected instance of the registered `JwtService`. Follow [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.md) for startup and decorator configuration.
+
 ### Register the Module
 
 Configure the JWT module with your signing keys and policy.

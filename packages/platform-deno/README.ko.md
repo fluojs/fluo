@@ -26,7 +26,7 @@
 deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
 ```
 
-이 패키지는 Deno에서 실행하는 것을 전제로 합니다. 배포 manifest는 npm 메타데이터가 Deno 런타임 계약과 어긋나지 않도록 의도적으로 `engines.node`를 선언하지 않으며, 저장소의 Node.js 20+ 요구사항은 메인테이너용 빌드/테스트 툴체인에만 적용됩니다.
+이 패키지는 Deno에서 실행하는 것을 전제로 합니다. 배포 manifest는 npm 메타데이터가 Deno 런타임 계약과 어긋나지 않도록 의도적으로 `engines.node`를 선언하지 않으며, 저장소의 Node.js `>=24.11.0 <27` 요구사항은 메인테이너용 빌드/테스트 툴체인에만 적용됩니다.
 
 ## 사용 시점
 
@@ -37,6 +37,8 @@ deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
 Factory에 `shutdownRegistration: createDenoShutdownSignalRegistration()`을 전달하면 listen 후 SIGINT/SIGTERM listener를 등록하고 close 진입 시 제거합니다.
 
 ## 빠른 시작
+
+아래는 애플리케이션이 이미 선언한 `./app.module`의 `AppModule`을 사용하는 entrypoint fragment입니다. 해당 모듈 파일, 직접 import하는 `@fluojs/runtime` dependency와 standard decorator 설정이 필요합니다. 모듈 작성과 시작 순서는 [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)을 따릅니다.
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';

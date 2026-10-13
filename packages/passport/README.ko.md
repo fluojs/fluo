@@ -33,6 +33,8 @@ npm install @fluojs/passport
 
 ## 빠른 시작
 
+기존 HTTP 앱에 넣는 compatibility 등록/controller fragment입니다. 새 HTTP 인증 등록은 [`@fluojs/auth-http`](../auth-http/README.ko.md)를 사용하세요. 아래 경로를 유지하는 앱은 `@fluojs/jwt`도 설치하고 `ProfileController`를 앱 module의 `controllers`에 등록하며 실제 signing key를 제공해야 합니다.
+
 ### 1. 모듈 등록
 
 내장 bearer JWT preset을 사용하고 `PassportModule.forRoot(...)`로 등록합니다.

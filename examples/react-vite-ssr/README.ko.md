@@ -1,61 +1,6 @@
 # react-vite-ssr example
 
-## Long-session source and verification
-
-Persistent shell은 `/admin/qr`, `/admin/songs`, `/catalog/background`를 동일 HTTP
-승인 navigation과 기존 `useForm` search/widget/queue 경로로 연결합니다.
-`tests/long-session.spec.ts`는 실제 MessageChannel ack, fault/recovery trace와
-quiescent checkpoint를 포함한 최소 1,000 measured seeded action을 준비합니다.
-명시적 test build는 `REACT_VITE_FORM_TEST_SERVER=1 pnpm build:reliability`이며
-`pnpm test:reliability`로 Chromium/Firefox/WebKit을 실행합니다. 기본 browser
-coverage는 long-session file, 특히 별도 2시간 soak를 제외합니다.
-
-Shipped source coverage와 current-head 실행 근거는 별개입니다.
-[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)에 exact
-command, 원시 heap/RSS의 한계, packaged dev/production, 별도 soak workflow와
-#3879 exact-head receipt consumer를 기록합니다. Physical mobile/tablet 검증은
-PASS 없이 #3906으로 명시적으로 분리하며 desktop viewport coverage로 통과할 수 없습니다.
-
-## Authenticated product companion
-
-`/catalog/session`에서 **Login A** 또는 **Login B** 다음
-**Authenticated products**로 이동합니다. `/catalog/session/products`는 guarded
-list/search/detail, native/enhanced create/update/delete, invalid/correct/save,
-logout/relogin 및 실제 process-local persistence를 연결합니다. Private product는
-변경하지 않은 public catalog나 public prefetch 결과에 들어가지 않습니다.
-HttpOnly demo identity/permission과 fixed-token CSRF이며 production authentication,
-durable/per-user storage가 아닙니다.
-
-[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)에 20행 matrix,
-sealed packed third-page/dev/production journey와 authentic receipt consumer를
-기록합니다. Code 존재는 제품 PASS가 아닙니다. 최종 #3879의 원래 수치
-FAIL/INCONCLUSIVE는 공개된 비차단 diagnostics이고 validity/quality/correctness/
-stability/cleanup 및 Fluo error 0은 계속 필수입니다. 변경된 seam이 동등하다고
-증명되지 않으면 완료된 fresh 1시간 trace가 필요하며 scheduled default는 2시간을
-유지합니다. Review, canonical waiver와 full GitHub CI는 lead-owned이고 이번 lane의
-full local CI는 금지됩니다.
-
-## Background interaction companion
-
-`/catalog/login` 다음 `/catalog/background`를 엽니다. 실제 song datasource에서 native
-GET 검색과 독립 enhanced search/widget 결과를 사용하고 stable song row마다 guarded
-queue POST를 보냅니다. acknowledgement는 URL/history/head를 바꾸지 않으며 confirmed
-write는 fresh current-page approval을 공유합니다. 취소는 server rollback이 아닙니다.
-queue rule, persistence, idempotency는 앱 소유입니다.
-[Form 계약](../../docs/contracts/react-progressive-forms.ko.md)을 보세요.
-
-결정적인 production 검증에는 `REACT_VITE_FORM_TEST_SERVER=1 pnpm build` 후
-`pnpm exec playwright test tests/background-interactions.spec.ts`를 실행합니다.
-명시적 test entry가 `FormControl` started/release/cleaned barrier를 확장하며 정상
-production startup에는 fault route가 없습니다. Packaged starter도 실제 `dev`와
-`build`/`start`에서 같은 fixture를 실행합니다. soak나 performance 측정은 아닙니다.
-
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
-
-Session acceptance는 session 설정 없는 plain provider children의
-`?legacySession=1`과 앱이 한 번의 fresh auth read를 선택하는 `?authRefresh=1`도
-검증합니다. 안전한 document exit과 configured GET/POST auth policy 소비를 증명하는
-예제 fixture 변형이며 별도 framework API가 아닙니다.
 
 Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/react` 애플리케이션입니다.
 두 번째 routing model을 만들지 않고 HTTP-owned page route, DTO-bound parameter, streamed React
@@ -87,6 +32,8 @@ document fallback을 유지하며 공식 starter는 network/5xx 및 복구 가�
 재검증하고 typed completion result를 반환합니다. 명시적 문서 reload에는
 `window.location.reload()`를 사용하세요.
 [소비자 migration](../../docs/getting-started/migrate-react-refresh.ko.md)을 참고하세요.
+
+[실행 방법](#레포-루트에서-실행하기) · [인증된 CRUD](#authenticated-product-companion) · [독립 작업](#background-interaction-companion) · [장시간 검증](#long-session-source-and-verification)
 
 ## 이 예제가 보여주는 것
 
@@ -198,6 +145,60 @@ release endpoint로 recommendations descendant를 제어합니다. 빌드된 rou
 stream을 시작할 수 없습니다. 테스트한 압축 경계는
 [Fastify streaming 레시피](../../packages/platform-fastify/README.ko.md#스트리밍-응답)에 있으며
 테스트하지 않은 cloud proxy에 대한 보장은 아닙니다.
+
+## Long-session source and verification
+
+Persistent shell은 `/admin/qr`, `/admin/songs`, `/catalog/background`를 동일 HTTP
+승인 navigation과 기존 `useForm` search/widget/queue 경로로 연결합니다.
+`tests/long-session.spec.ts`는 실제 MessageChannel ack, fault/recovery trace와
+quiescent checkpoint를 포함한 최소 1,000 measured seeded action을 준비합니다.
+명시적 test build는 `REACT_VITE_FORM_TEST_SERVER=1 pnpm build:reliability`이며
+`pnpm test:reliability`로 Chromium/Firefox/WebKit을 실행합니다. 기본 browser
+coverage는 long-session file, 특히 별도 2시간 soak를 제외합니다.
+
+Shipped source coverage와 current-head 실행 근거는 별개입니다.
+[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)에 exact
+command, 원시 heap/RSS의 한계, packaged dev/production, 별도 soak workflow와
+#3879 exact-head receipt consumer를 기록합니다. Physical mobile/tablet 검증은
+PASS 없이 #3906으로 명시적으로 분리하며 desktop viewport coverage로 통과할 수 없습니다.
+
+## Authenticated product companion
+
+`/catalog/session`에서 **Login A** 또는 **Login B** 다음
+**Authenticated products**로 이동합니다. `/catalog/session/products`는 guarded
+list/search/detail, native/enhanced create/update/delete, invalid/correct/save,
+logout/relogin 및 실제 process-local persistence를 연결합니다. Private product는
+변경하지 않은 public catalog나 public prefetch 결과에 들어가지 않습니다.
+HttpOnly demo identity/permission과 fixed-token CSRF이며 production authentication,
+durable/per-user storage가 아닙니다.
+
+[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)에 20행 matrix,
+sealed packed third-page/dev/production journey와 authentic receipt consumer를
+기록합니다. Code 존재는 제품 PASS가 아닙니다. 최종 #3879의 원래 수치
+FAIL/INCONCLUSIVE는 공개된 비차단 diagnostics이고 validity/quality/correctness/
+stability/cleanup 및 Fluo error 0은 계속 필수입니다. 변경된 seam이 동등하다고
+증명되지 않으면 완료된 fresh 1시간 trace가 필요하며 scheduled default는 2시간을
+유지합니다. 실행별 판정과 근거는 제품 수용 guide에서 확인하세요.
+
+Session acceptance는 session 설정 없는 plain provider children의
+`?legacySession=1`과 앱이 한 번의 fresh auth read를 선택하는 `?authRefresh=1`도
+검증합니다. 안전한 document exit과 configured GET/POST auth policy 소비를 증명하는
+예제 fixture 변형이며 별도 framework API가 아닙니다.
+
+## Background interaction companion
+
+`/catalog/login` 다음 `/catalog/background`를 엽니다. 실제 song datasource에서 native
+GET 검색과 독립 enhanced search/widget 결과를 사용하고 stable song row마다 guarded
+queue POST를 보냅니다. acknowledgement는 URL/history/head를 바꾸지 않으며 confirmed
+write는 fresh current-page approval을 공유합니다. 취소는 server rollback이 아닙니다.
+queue rule, persistence, idempotency는 앱 소유입니다.
+[Form 계약](../../docs/contracts/react-progressive-forms.ko.md)을 보세요.
+
+결정적인 production 검증에는 `REACT_VITE_FORM_TEST_SERVER=1 pnpm build` 후
+`pnpm exec playwright test tests/background-interactions.spec.ts`를 실행합니다.
+명시적 test entry가 `FormControl` started/release/cleaned barrier를 확장하며 정상
+production startup에는 fault route가 없습니다. Packaged starter도 실제 `dev`와
+`build`/`start`에서 같은 fixture를 실행합니다. soak나 performance 측정은 아닙니다.
 
 ## 협상된 destination workflow
 

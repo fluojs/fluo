@@ -34,22 +34,14 @@ npm install @fluojs/throttler
 
 ## 빠른 시작
 
+기존 HTTP 앱에 넣는 controller/module fragment입니다. [Application Bootstrap Protocol](../../docs/getting-started/bootstrap-paths.ko.md)의 decorator·entrypoint 설정을 유지하세요. 아래 module은 선언된 `AuthController`를 `controllers`에 등록합니다.
+
 `ThrottlerModule`을 등록하고, `@UseGuards(...)`로 `ThrottlerGuard`를 연결한 뒤, 라우트별 제한이 필요한 컨트롤러나 메서드에 `Throttle` 데코레이터를 적용합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import { ThrottlerGuard, ThrottlerModule, Throttle, SkipThrottle } from '@fluojs/throttler';
 import { Controller, Post, UseGuards } from '@fluojs/http';
-
-@Module({
-  imports: [
-    ThrottlerModule.forRoot({
-      ttl: 60,   // 60초
-      limit: 10, // 10회 요청
-    }),
-  ],
-})
-class AppModule {}
 
 @Controller('/auth')
 @UseGuards(ThrottlerGuard)
@@ -66,6 +58,17 @@ class AuthController {
     return { info: '...' };
   }
 }
+
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      ttl: 60,   // 60초
+      limit: 10, // 10회 요청
+    }),
+  ],
+  controllers: [AuthController],
+})
+class AppModule {}
 ```
 
 ## 공통 패턴

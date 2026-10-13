@@ -4,7 +4,7 @@
 
 Node.js 24, Fastify, pnpm으로 작은 게시물 API를 만듭니다. 명시적 모듈 등록,
 생성자 주입, DTO 검증, 요청 파이프라인 테스트를 배웁니다.
-[FluoBlog 튜토리얼](../../apps/docs/content/docs/tutorial/index.ko.mdx)은
+[FluoBlog 튜토리얼(영문)](../../apps/docs/content/docs/tutorial/index.mdx)은
 `00-start`에서 시작하며 과정 내내 이 앱을 직접 수정합니다.
 `01-first-route`, `02-dependency-injection`, `03-validation-errors`는
 수정하지 않는 비교·복구용 완성 스냅샷이며 학습 중 편집할 파일이 아닙니다.
@@ -86,8 +86,9 @@ import하여 소켓을 열지 않고 앱을 구성합니다. `src/main.ts`는 �
 
 ## 저장소 안에서 실행
 
-Node.js 24와 저장소 루트에 지정된 pnpm 버전을 사용합니다. 선언된 Node 지원
-범위는 `>=24.0.0 <27`입니다. 새로 clone한 저장소 루트에서 실행합니다.
+저장소의 빌드 도구를 위해 Node.js `>=24.11.0 <27`과 루트에 지정된 pnpm 버전을
+사용합니다. Runtime 패키지의 지원 범위 `>=24.0.0 <27`과 구분하세요. 새로 clone한
+저장소 루트에서 실행합니다.
 
 ```bash
 pnpm install --frozen-lockfile

@@ -37,7 +37,7 @@ Use this package when you need to:
 
 ## Quick Start
 
-The container resolves tokens into instances based on their registered providers.
+The container resolves tokens into instances based on their registered providers. This standalone container example declares every required class. Also install `@fluojs/core` directly and apply [decorator configuration](../../docs/architecture/decorators-and-metadata.md). The caller that creates the container disposes it in `finally`.
 
 ```typescript
 import { Container } from '@fluojs/di';
@@ -61,8 +61,13 @@ class UserService {
 const container = new Container();
 container.register(Logger, UserService);
 
-const service = await container.resolve(UserService);
-const result = await service.getStatus();
+try {
+  const service = await container.resolve(UserService);
+  const result = await service.getStatus();
+  console.log(result); // { status: 'active' }
+} finally {
+  await container.dispose();
+}
 ```
 
 ## Key Capabilities
