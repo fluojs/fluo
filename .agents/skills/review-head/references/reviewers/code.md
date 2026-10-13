@@ -85,6 +85,13 @@ own suite:
 
 ## Same-head and authority rules
 
+Consume the lead's prepared `common` input, including authenticated authored
+diff, pinned verification base, current merge base, footprint and focused
+receipts. Missing preparation is an input gap for the lead, not a product
+defect or permission to review base-state files. Trace selected direct and
+reflective consumers from the footprint; do not demand unrelated candidates
+without concrete evidence.
+
 Review only the supplied 40-character head SHA. In `local-pre-pr`, inspect the
 worktree commit against its captured base. In `remote-pr`, stop if the observed
 PR head differs. Read the supplied checkout and lead-captured git/GitHub evidence. Do

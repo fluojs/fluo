@@ -91,6 +91,12 @@ because the opposite call was made and overturned in a real review:
 
 ## Same-head and authority rules
 
+Consume the lead's prepared `common` input, including authenticated authored
+diff, pinned verification base, current merge base, footprint and focused
+receipts. Missing preparation is an input gap for the lead, not a product
+defect or permission to review base-state files. Source-footprint selection
+reasons distinguish required companions from investigated unrelated candidates.
+
 Review only the supplied 40-character head SHA. In `local-pre-pr`, compare the
 worktree head and base diff; a PR must not be required. In `remote-pr`, stop if
 the observed PR head differs. Read the supplied checkout and lead-captured

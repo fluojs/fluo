@@ -55,6 +55,43 @@ const commonCaseTitles = {
 };
 const exampleCaseTitles = {
   ...commonCaseTitles,
+  "client-delivery.spec.ts": [
+    'traces cold private-ordinary delivery and zero redundant initial approval',
+    'traces cold public-prefetch delivery and zero redundant initial approval',
+    'traces warm private-ordinary delivery and zero redundant initial approval',
+    'traces warm public-prefetch delivery and zero redundant initial approval',
+    'acknowledges warmed controls while real private approval is deferred'
+  ],
+  "form-retention.spec.ts": [
+    'retains native multiple-select submission values []',
+    'retains native multiple-select submission values [""]',
+    'retains native multiple-select submission values ["a","b"]',
+    'retains native multiple-select submission values ["a","a","b"]'
+  ],
+  "prefetch-boundaries.spec.ts": [
+    'denied prefetch never replaces credentialed navigation',
+    'rejects private prefetch and loads a fresh document destination',
+    'rejects set-cookie prefetch and loads a fresh document destination',
+    'rejects vary-cookie prefetch and loads a fresh document destination',
+    'invalidates anonymous entries when the application switches users',
+    'rejects anonymous auth prefetch and navigates with the active session',
+    'invalidates completed prefetch after an in-document mutation',
+    'leaves the default Link without speculative GETs',
+    'falls back to a document for redirect rather than caching a denial',
+    'falls back to a document for missing rather than caching a denial'
+  ],
+  "prefetch-limits.spec.ts": [
+    'skips a fifth opportunity while four real viewport GETs are pending',
+    'evicts the oldest completed entry after 33 distinct public prefetches',
+    'cancels a hover request on leave without committing or falling back'
+  ],
+  "prefetch.spec.ts": [
+    'consumes an anonymous hover-prefetched public destination once',
+    'refreshes a consumed public entry on revisit and history traversal',
+    'expires a completed entry before activation',
+    'deduplicates a completed viewport prefetch and a later hover',
+    'adopts an in-flight hover request when the anchor is clicked'
+  ],
   "deployment-transition.spec.ts": [
     'serves direct HTML, negotiated v2, guarded writes and missing assets through real HTTP',
     'retains A assets and shell on B mismatch, then explicitly updates to B',
@@ -207,6 +244,11 @@ const productionOnlyCases = [
 ];
 const browserFiles = {
   "ordinary-browser": [
+    'client-delivery.spec.ts',
+    'form-retention.spec.ts',
+    'prefetch-boundaries.spec.ts',
+    'prefetch-limits.spec.ts',
+    'prefetch.spec.ts',
     'deployment-transition.spec.ts',
     'navigation-failure.spec.ts',
     'production-hydration.spec.ts',
@@ -483,6 +525,32 @@ test('CI capture plans: existing domain commands -> fresh separate builds and no
     && command.env.FLUO_RELIABILITY_SOAK_MS === '3600000'), true);
 });
 
+test('CI capture preparation: fault and reliability builds -> preserve normal subprocess entry beside form entry', () => {
+  const plan = productDomainPlan('tooling', '/fixture');
+  const builds = plan.filter((command) => command.id.endsWith('-build'));
+
+  assert.equal(builds.some((command) => command.env.REACT_VITE_FORM_TEST_SERVER === '1'
+    && !command.args.includes('--outDir')), false, 'form builds must not overwrite dist/server/main.js');
+});
+
+test('CI capture preparation: background suites -> receive explicit evidence and seeded action inputs', () => {
+  const plan = productDomainPlan('tooling', '/fixture');
+  const selected = plan.filter((command) => ['fault-browser', 'reliability-browser'].includes(command.id));
+
+  for (const command of selected) {
+    assert.equal(typeof command.env.FLUO_BACKGROUND_EVIDENCE, 'string', `${command.id} missing background evidence`);
+    assert.equal(command.env.FLUO_RELIABILITY_SEED, '3886');
+    assert.equal(command.env.FLUO_RELIABILITY_ACTIONS, '1000');
+  }
+});
+
+test('CI browser coverage: original package-local matrix -> retains all 115 ordinary and 93 reliability cases', () => {
+  const ordinary = ['ordinary-browser', 'product-browser', 'fault-browser'];
+
+  assert.equal(ordinary.reduce((sum, id) => sum + browserReport(reportFixture(id), browserFiles[id], id), 0), 115);
+  assert.equal(browserReport(reportFixture('reliability-browser'), browserFiles['reliability-browser'], 'reliability-browser'), 93);
+});
+
 test('final product: absent lead review/waiver/remote evidence -> never final PASS', async (t) => {
   const value = fixture(t);
   value.receipt.stage = 'final';
@@ -655,6 +723,10 @@ function domainFixture(root, domain) {
   }
   return { version: 1, issue: 3879, head, source: { head, tree, clean: true }, inputDigests,
     runtime: { node: process.version, executable: process.execPath, platform: process.platform, arch: process.arch, pnpm: '10.4.1' },
+    restoration: domain === 'starters' ? { status: 'not-needed' } : {
+      status: 'passed', head, closed: true, exitCode: 0, signal: null,
+      preparation: { suite: 'ordinary' }, log: save('deployment-restore.log', 'fixture normal deployment restore\n'),
+    },
     status: 'domain-evidence-complete', domain, commands, checks, artifacts };
 }
 
@@ -918,8 +990,14 @@ async function descendantLifecycle(t, signal, mode) {
     const originalSpawn = cp.spawn;
     const target = pathToFileURL(${JSON.stringify(targetPath)}).href;
     const runnerTarget = new URL('../../examples/react-vite-ssr/tests/verify-background-starter.mjs', target).href;
-    registerHooks({ load(url, context, next) {
+    const preparationTarget = new URL('./browser-preparation.mjs', target).href;
+    registerHooks({ resolve(specifier, context, next) {
+      if (specifier === './browser-preparation.mjs' && context.parentURL === target) return { url: preparationTarget, shortCircuit: true };
+      return next(specifier, context);
+    }, load(url, context, next) {
       if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      if (url === preparationTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(
+        fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url)))}, 'utf8'), shortCircuit: true };
       if (url === runnerTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(
         process.env.FLUO_BACKGROUND_TEST_IMPLEMENTATION
           ?? fileURLToPath(new URL('../../examples/react-vite-ssr/tests/verify-background-starter.mjs', import.meta.url)))}, 'utf8'), shortCircuit: true };
@@ -998,7 +1076,7 @@ async function descendantLifecycle(t, signal, mode) {
   if (mode === 'nested-late' || mode === 'nested-forced') assert.equal(registered.size, 2);
   if (mode === 'nested-forced') assert.equal(result.receipt.commands[0].signal, 'SIGKILL');
   cpSync(captureOutput, join(output, 'capture'), { recursive: true });
-  assert.equal(result.starts, mode === 'normal' ? 3 : 1);
+  assert.equal(result.starts, mode === 'normal' ? 4 : 1);
   assert.equal(result.receipt.status, 'failed');
   assert.equal(result.receipt.commands[0].status, mode === 'normal' ? 'passed' : 'failed');
   if (mode === 'normal') assert.doesNotMatch(result.failure, /cancelled/u);
@@ -1013,6 +1091,134 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 after(() => { if (captureCheckout) rmSync(captureCheckout, { recursive: true, force: true }); });
+
+async function captureDeploymentRestoration(t, mode) {
+  if (!captureCheckout) {
+    captureCheckout = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-capture-checkout-')));
+    execFileSync('git', ['clone', '--quiet', '--shared', '--no-hardlinks',
+      fileURLToPath(new URL('../..', import.meta.url)), captureCheckout]);
+  }
+  mkdirSync(join(captureCheckout, '.omo/verification/issue-3879'), { recursive: true });
+  const output = mkdtempSync(join(captureCheckout, '.omo/verification/issue-3879/restore-'));
+  const target = join(captureCheckout, 'tooling/ci/react-product-acceptance.mjs');
+  const reports = Object.fromEntries(['ordinary-browser', 'product-browser', 'fault-browser', 'reliability-browser']
+    .map((id) => [id, reportFixture(id)]));
+  const implementation = fileURLToPath(new URL('./react-product-acceptance.mjs', import.meta.url));
+  const preparation = fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url));
+  const config = fileURLToPath(new URL('./browser-playwright.config.mjs', import.meta.url));
+  const driver = `
+    import cp from 'node:child_process';
+    import fs from 'node:fs';
+    import { registerHooks, syncBuiltinESMExports } from 'node:module';
+    import { pathToFileURL } from 'node:url';
+    import path from 'node:path';
+    const mode = ${JSON.stringify(mode)};
+    const output = ${JSON.stringify(output)};
+    const target = pathToFileURL(${JSON.stringify(target)}).href;
+    const preparationTarget = new URL('./browser-preparation.mjs', target).href;
+    registerHooks({ resolve(specifier, context, next) {
+      if (specifier === './browser-preparation.mjs' && context.parentURL === target)
+        return { url: preparationTarget, shortCircuit: true };
+      return next(specifier, context);
+    }, load(url, context, next) {
+      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      if (url === preparationTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(preparation)}, 'utf8'), shortCircuit: true };
+      return next(url, context);
+    } });
+    const originalRead = fs.readFileSync;
+    fs.readFileSync = (file, ...args) => String(file).endsWith('/tooling/ci/browser-playwright.config.mjs')
+      ? originalRead(${JSON.stringify(config)}, ...args) : originalRead(file, ...args);
+    const originalSpawn = cp.spawn;
+    const reports = ${JSON.stringify(reports)};
+    let builds = 0;
+    cp.spawn = (_executable, args, options) => {
+      const browser = Object.keys(reports).find((id) =>
+        options.env.PLAYWRIGHT_JSON_OUTPUT_NAME === path.join(output, id + '-report.json')
+        || id === 'reliability-browser' && args.includes('test:reliability'));
+      let script = 'console.log("SUCCESS");';
+      if (args.includes('build') || args.includes('build:reliability')) {
+        builds++;
+        const form = options.env.REACT_VITE_FORM_TEST_SERVER === '1';
+        const example = ${JSON.stringify(join(captureCheckout, 'examples/react-vite-ssr'))};
+        script = \`
+          const fs = require('node:fs'), path = require('node:path');
+          const write = (p, b) => { const f=path.join(\${JSON.stringify(example)}, p); fs.mkdirSync(path.dirname(f),{recursive:true}); fs.writeFileSync(f,b); };
+          write('dist/client/client.js', 'export {};');
+          write('dist/client/server.js', 'export {};');
+          write('dist/client/.vite/manifest.json', JSON.stringify({
+            'src/entry-client.ts': {isEntry:true,file:'client.js'},
+            'src/entry-server.ts': {isEntry:true,file:'server.js'}
+          }));
+          write(\${JSON.stringify(form ? 'dist/form-server/main.js' : 'dist/server/main.js')},
+            \${JSON.stringify(form ? 'new FormControl();' : 'process.env.REACT_SSR_DELIVERY_PROBE;')});
+          console.log('BUILD_COMPLETE');
+        \`;
+        if (mode === 'restore-failure' && builds === 5) script = 'console.error("RESTORE_FAILED"); process.exit(9);';
+      }
+      if (browser) {
+        const reportPath = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME ?? options.env.FLUO_RELIABILITY_REPORT;
+        script = 'require("node:fs").writeFileSync(' + JSON.stringify(reportPath) + ',' + JSON.stringify(JSON.stringify(reports[browser])) + ');console.log("BROWSER_COMPLETE");';
+        if (browser === 'fault-browser' && mode === 'failure') script += 'process.exit(7);';
+        if (browser === 'fault-browser' && mode === 'cancellation') script +=
+          'process.on("SIGTERM",()=>process.exit(0));process.on("message",()=>{});console.log("CANCEL_READY");';
+      }
+      const child = originalSpawn(process.execPath, ['-e', script], options);
+      if (browser === 'fault-browser' && mode === 'cancellation') {
+        let stdout = '';
+        child.stdout.on('data', chunk => {
+          stdout += chunk;
+          if (stdout.includes('CANCEL_READY')) process.kill(process.pid, 'SIGINT');
+        });
+      }
+      return child;
+    };
+    syncBuiltinESMExports();
+    const { captureDomain } = await import(target);
+    let error;
+    try { await captureDomain('tooling', output); } catch (failure) { error = failure.message; }
+    process.send({ error, receipt: JSON.parse(originalRead(path.join(output,'tooling-receipt.json'),'utf8')) });
+    process.disconnect();
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', driver],
+    { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  const timeout = AbortSignal.timeout(15_000);
+  const observed = once(child, 'message', { signal: timeout });
+  const closed = once(child, 'close', { signal: timeout });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => { stdout += chunk; });
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  t.after(() => child.kill('SIGKILL'));
+
+  const [[result], [exit, signal]] = await Promise.all([observed, closed]);
+
+  assert.equal(exit, 0, stderr);
+  assert.equal(signal, null, stdout);
+  assert.equal(result.receipt.restoration.closed, true);
+  assert.equal(result.receipt.restoration.head, result.receipt.head);
+  assert.equal(result.receipt.restoration.descendantCleanup, 'owned-group-close');
+  if (mode === 'restore-failure') {
+    assert.equal(result.receipt.restoration.status, 'failed');
+    assert.equal(result.receipt.restoration.exitCode, 9);
+    assert.match(result.error, /restoration failed/u);
+  } else {
+    assert.equal(result.receipt.restoration.status, 'passed', result.error);
+    assert.equal(result.receipt.restoration.preparation.suite, 'ordinary');
+    assert.equal(result.receipt.restoration.env.REACT_VITE_FORM_TEST_SERVER, '0');
+    if (mode === 'success') {
+      assert.equal(result.receipt.status, 'domain-evidence-complete', result.error);
+      assert.equal(result.error, undefined);
+    } else {
+      assert.equal(result.receipt.status, 'failed');
+      assert.match(result.error, mode === 'failure' ? /fault-browser \(7\)/u : /cancelled by SIGINT/u);
+    }
+  }
+}
+
+for (const mode of ['success', 'failure', 'cancellation', 'restore-failure']) {
+  test(`capture deployment: ${mode} -> observes command close and records normal deployment restoration`,
+    (t) => captureDeploymentRestoration(t, mode));
+}
 
 async function captureCancellation(t, signal, phase) {
   const implementation = process.env.FLUO_PRODUCT_TEST_IMPLEMENTATION
@@ -1040,8 +1246,14 @@ async function captureCancellation(t, signal, phase) {
     process.channel.ref();
     const target = pathToFileURL(${JSON.stringify(modulePath)}).href;
     const runnerTarget = new URL('../../examples/react-vite-ssr/tests/verify-background-starter.mjs', target).href;
-    registerHooks({ load(url, context, next) {
+    const preparationTarget = new URL('./browser-preparation.mjs', target).href;
+    registerHooks({ resolve(specifier, context, next) {
+      if (specifier === './browser-preparation.mjs' && context.parentURL === target) return { url: preparationTarget, shortCircuit: true };
+      return next(specifier, context);
+    }, load(url, context, next) {
       if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      if (url === preparationTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(
+        fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url)))}, 'utf8'), shortCircuit: true };
       if (url === runnerTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(
         process.env.FLUO_BACKGROUND_TEST_IMPLEMENTATION
           ?? fileURLToPath(new URL('../../examples/react-vite-ssr/tests/verify-background-starter.mjs', import.meta.url)))}, 'utf8'), shortCircuit: true };
@@ -1138,8 +1350,8 @@ async function captureCancellation(t, signal, phase) {
     const destination = mkdtempSync(join(resolve(process.env.FLUO_PRODUCT_TEST_EVIDENCE), `${signal}-${phase}-`));
     cpSync(output, destination, { recursive: true });
   }
-  assert.equal(observed.starts, phase === 'uncancelled' ? 3 : 1, stdout);
-  assert.equal(observed.receipt.commands.length, observed.starts);
+  assert.equal(observed.starts, phase === 'uncancelled' ? 4 : 1, stdout);
+  assert.equal(observed.receipt.commands.length, phase === 'uncancelled' ? 3 : 1);
   assert.equal(observed.receipt.commands[0].exitCode, 0);
   assert.equal(observed.receipt.status, 'failed');
   if (phase === 'uncancelled') assert.doesNotMatch(observed.failure, /cancelled/u);

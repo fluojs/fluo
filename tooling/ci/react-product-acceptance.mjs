@@ -1,16 +1,17 @@
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { createReadStream, createWriteStream, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { createInterface } from 'node:readline';
+import { createHash } from 'node:crypto';
+import { createReadStream, createWriteStream, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createInterface } from 'node:readline';
 import { finished } from 'node:stream/promises';
+import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { validateReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
 import { isValidLocalCiWaiver, localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
+import { validateReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
+import { authoringRejections } from '../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
 import { assertMethodConfig, hashObject } from '../benchmarks/react-app-comparison/src/fa-v2.mjs';
 import { environmentConfigIdentity, planMeasurements } from '../benchmarks/react-app-comparison/src/measure.mjs';
-import { authoringRejections, spawnOwnedCommand } from '../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
+import { browserObservationPolicy, prepareBrowserCommand, runBrowserOwnedCommand } from './browser-preparation.mjs';
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const requiredRows = Object.freeze([
@@ -25,7 +26,9 @@ const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const requireValue = (condition, message) => { if (!condition) throw new TypeError(message); };
 const exampleFilter = ['--filter', '@fluojs/example-react-vite-ssr'];
 const productionBrowser = ['tests/production-hydration.spec.ts', 'tests/navigation-failure.spec.ts',
-  'tests/deployment-transition.spec.ts', 'tests/ssr-delivery.spec.ts'];
+  'tests/deployment-transition.spec.ts', 'tests/ssr-delivery.spec.ts',
+  'tests/client-delivery.spec.ts', 'tests/form-retention.spec.ts', 'tests/prefetch-boundaries.spec.ts',
+  'tests/prefetch-limits.spec.ts', 'tests/prefetch.spec.ts'];
 const faultBrowser = ['tests/progressive-forms.spec.ts', 'tests/background-interactions.spec.ts',
   'tests/session-transition.spec.ts', 'tests/navigation-guard.spec.ts', 'tests/revalidation.spec.ts',
   'tests/product-faults.spec.ts'];
@@ -63,6 +66,43 @@ const commonCaseTitles = {
 };
 const exampleCaseTitles = {
   ...commonCaseTitles,
+  "client-delivery.spec.ts": [
+    'traces cold private-ordinary delivery and zero redundant initial approval',
+    'traces cold public-prefetch delivery and zero redundant initial approval',
+    'traces warm private-ordinary delivery and zero redundant initial approval',
+    'traces warm public-prefetch delivery and zero redundant initial approval',
+    'acknowledges warmed controls while real private approval is deferred'
+  ],
+  "form-retention.spec.ts": [
+    'retains native multiple-select submission values []',
+    'retains native multiple-select submission values [""]',
+    'retains native multiple-select submission values ["a","b"]',
+    'retains native multiple-select submission values ["a","a","b"]'
+  ],
+  "prefetch-boundaries.spec.ts": [
+    'denied prefetch never replaces credentialed navigation',
+    'rejects private prefetch and loads a fresh document destination',
+    'rejects set-cookie prefetch and loads a fresh document destination',
+    'rejects vary-cookie prefetch and loads a fresh document destination',
+    'invalidates anonymous entries when the application switches users',
+    'rejects anonymous auth prefetch and navigates with the active session',
+    'invalidates completed prefetch after an in-document mutation',
+    'leaves the default Link without speculative GETs',
+    'falls back to a document for redirect rather than caching a denial',
+    'falls back to a document for missing rather than caching a denial'
+  ],
+  "prefetch-limits.spec.ts": [
+    'skips a fifth opportunity while four real viewport GETs are pending',
+    'evicts the oldest completed entry after 33 distinct public prefetches',
+    'cancels a hover request on leave without committing or falling back'
+  ],
+  "prefetch.spec.ts": [
+    'consumes an anonymous hover-prefetched public destination once',
+    'refreshes a consumed public entry on revisit and history traversal',
+    'expires a completed entry before activation',
+    'deduplicates a completed viewport prefetch and a later hover',
+    'adopts an in-flight hover request when the anchor is clicked'
+  ],
   "deployment-transition.spec.ts": [
     'serves direct HTML, negotiated v2, guarded writes and missing assets through real HTTP',
     'retains A assets and shell on B mismatch, then explicitly updates to B',
@@ -215,6 +255,11 @@ const productionOnlyCases = [
 ];
 const browserFiles = {
   "ordinary-browser": [
+    'client-delivery.spec.ts',
+    'form-retention.spec.ts',
+    'prefetch-boundaries.spec.ts',
+    'prefetch-limits.spec.ts',
+    'prefetch.spec.ts',
     'deployment-transition.spec.ts',
     'navigation-failure.spec.ts',
     'production-hydration.spec.ts',
@@ -282,29 +327,43 @@ function requiredBrowserCases(surface) {
 
 
 export function productDomainPlan(domain, output) {
-  const browser = (id, files, env = {}) => ({
+  const browserConfig = resolve(sourceRoot, 'tooling/ci/browser-playwright.config.mjs');
+  const browserEnv = (id, suite) => ({
+    FLUO_BROWSER_SUITE: suite, FLUO_BROWSER_OUTPUT: resolve(output),
+    FLUO_BACKGROUND_EVIDENCE: resolve(output, `${id}-background`),
+    FLUO_RELIABILITY_SEED: '3886', FLUO_RELIABILITY_ACTIONS: '1000',
+    FLUO_RELIABILITY_OUTPUT: resolve(output, id),
+    FLUO_RELIABILITY_REPORT: resolve(output, `${id}-report.json`),
+  });
+  const browser = (id, files, suite = 'ordinary') => ({
     id, executable: 'pnpm', args: [...exampleFilter, 'exec', 'playwright', 'test', ...files, '--reporter=json',
-      `--output=${resolve(output, id)}`],
-    env: { ...env, PLAYWRIGHT_JSON_OUTPUT_NAME: resolve(output, `${id}-report.json`) },
+      '--config', browserConfig, `--output=${resolve(output, id)}`],
+    env: { ...browserEnv(id, suite), PLAYWRIGHT_JSON_OUTPUT_NAME: resolve(output, `${id}-report.json`) },
     browserReport: `${id}-report.json`,
   });
   const build = (id, reliability = false) => ({
     id, executable: 'pnpm', args: [...exampleFilter, reliability ? 'build:reliability' : 'build'],
-    env: id === 'ordinary-build' ? {} : { REACT_VITE_FORM_TEST_SERVER: '1' },
+    env: { REACT_VITE_FORM_TEST_SERVER: '0', REACT_VITE_BUILD_VARIANT: 'A' },
+  });
+  const formBuild = (id, reliability = false) => ({
+    id, executable: 'pnpm', args: [...exampleFilter, 'exec', 'vite', 'build',
+      ...(reliability ? ['--mode', 'reliability'] : []),
+      '--config', 'vite.server.config.ts', '--outDir', 'dist/form-server'],
+    env: { REACT_VITE_FORM_TEST_SERVER: '1' },
   });
   if (domain === 'tooling') return [
-    { id: 'source-http', executable: 'pnpm', args: ['vitest', 'run', 'examples/react-vite-ssr'], env: {} },
+    { id: 'source-http', executable: 'pnpm', args: ['vitest', 'run', 'examples/react-vite-ssr'],
+      env: { FLUO_BACKGROUND_EVIDENCE: resolve(output, 'source-http-background') } },
     { id: 'example-types', executable: 'pnpm', args: [...exampleFilter, 'typecheck'], env: {} },
     build('ordinary-build'),
     browser('ordinary-browser', productionBrowser),
     browser('product-browser', ['tests/product-acceptance.spec.ts']),
-    build('fault-build'),
-    browser('fault-browser', faultBrowser),
+    formBuild('fault-build'),
+    browser('fault-browser', faultBrowser, 'form'),
     build('reliability-build', true),
-    { id: 'reliability-browser', executable: 'pnpm', args: [...exampleFilter, 'test:reliability'],
-      env: { FLUO_RELIABILITY_SEED: '3886', FLUO_RELIABILITY_ACTIONS: '1000',
-        FLUO_RELIABILITY_OUTPUT: resolve(output, 'reliability-browser'),
-        FLUO_RELIABILITY_REPORT: resolve(output, 'reliability-browser-report.json') },
+    formBuild('reliability-form-build', true),
+    { id: 'reliability-browser', executable: 'pnpm', args: [...exampleFilter, 'test:reliability', '--config', browserConfig],
+      env: browserEnv('reliability-browser', 'reliability'),
       browserReport: 'reliability-browser-report.json' },
   ];
   if (domain === 'starters') return [
@@ -317,8 +376,9 @@ export function productDomainPlan(domain, output) {
   ];
   if (domain === 'soak') return [
     build('reliability-build', true),
-    { id: 'soak-browser', executable: 'pnpm', args: [...exampleFilter, 'test:reliability', '--project', 'chromium'],
-      env: { FLUO_RELIABILITY_SOAK: '1', FLUO_RELIABILITY_SOAK_PROFILE: 'lane-3886-one-hour',
+    formBuild('reliability-form-build', true),
+    { id: 'soak-browser', executable: 'pnpm', args: [...exampleFilter, 'test:reliability', '--config', browserConfig, '--project', 'chromium'],
+      env: { ...browserEnv('soak-browser', 'soak'), FLUO_RELIABILITY_SOAK: '1', FLUO_RELIABILITY_SOAK_PROFILE: 'lane-3886-one-hour',
         FLUO_RELIABILITY_SOAK_MS: '3600000', FLUO_RELIABILITY_SEED: '3886', FLUO_RELIABILITY_ACTIONS: '1000',
         FLUO_RELIABILITY_OUTPUT: resolve(output, 'soak-browser'),
         FLUO_RELIABILITY_REPORT: resolve(output, 'soak-browser-report.json') },
@@ -351,15 +411,24 @@ export async function captureDomain(domain, outputDirectory) {
     runtime: { node: process.version, executable: process.execPath, platform: process.platform, arch: process.arch,
       pnpm: execFileSync('pnpm', ['--version'], { cwd: sourceRoot, encoding: 'utf8',
         env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' } }).trim() },
+    observer: browserObservationPolicy,
     status: 'incomplete', commands: [], checks: [], artifacts: [] };
   const receiptFile = resolve(output, `${domain}-receipt.json`);
   const save = () => writeFileSync(receiptFile, `${JSON.stringify(receipt, null, 2)}\n`);
+  const inventory = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) inventory(path);
+      else if (entry.isFile() && path !== receiptFile) receipt.artifacts.push(reference(path));
+    }
+  };
   save();
   let cancelled = null;
-  let activeChild;
+  let deploymentTouched = false;
+  const cancellation = new AbortController();
   const terminate = (signal) => {
     cancelled ??= signal;
-    activeChild?.stop();
+    cancellation.abort(signal);
   };
   const onTerm = () => terminate('SIGTERM');
   const onInt = () => terminate('SIGINT');
@@ -367,36 +436,37 @@ export async function captureDomain(domain, outputDirectory) {
   try {
     for (const command of productDomainPlan(domain, output)) {
       requireValue(!cancelled, `Product capture cancelled by ${cancelled}; no command started`);
+      const preparation = command.browserReport ? prepareBrowserCommand(sourceRoot, command) : null;
+      if (command.id.endsWith('-build')) deploymentTouched = true;
       if (command.id === 'packed-product') mkdirSync(resolve(output, 'packed-product'), { recursive: true });
       const started = performance.now();
       const logPath = resolve(output, `${command.id}.log`);
       const log = createWriteStream(logPath);
       // Packed runners own nested command groups. Give their bounded cleanup
       // time to settle before escalating the outer capture group.
-      const owned = spawnOwnedCommand(command.executable, command.args, {
-        cwd: sourceRoot, env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...command.env },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }, 4_000);
-      const { child } = owned;
-      activeChild = owned;
-      for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
-        log.write(chunk); process.stdout.write(chunk);
-      });
       let outcome;
       try {
-        outcome = await new Promise((complete, reject) => {
-          child.once('error', reject); child.once('close', (exitCode, signal) => complete({ exitCode, signal }));
+        outcome = await runBrowserOwnedCommand(command, {
+          cwd: sourceRoot, env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...command.env },
+        }, {
+          signal: cancellation.signal,
+          onChild(child) {
+            for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
+              log.write(chunk); process.stdout.write(chunk);
+            });
+          },
         });
       } finally {
         log.end(); await finished(log);
-        activeChild = undefined;
       }
       const { exitCode, signal } = outcome;
       if (signal !== null || exitCode === null) cancelled ??= signal ?? 'unknown termination';
-      if (owned.forced) cancelled ??= 'forced descendant termination';
+      if (outcome.forced) cancelled ??= 'forced descendant termination';
       const observed = { id: command.id, head: source.head, status: !cancelled && exitCode === 0 ? 'passed' : 'failed',
         exitCode, signal, elapsedMs: performance.now() - started,
-        command: [command.executable, ...command.args].join(' '), env: command.env, log: reference(logPath) };
+        command: [command.executable, ...command.args].join(' '), env: command.env, log: reference(logPath),
+        close: true, descendantCleanup: 'owned-group-close', cancellation: cancelled,
+        ...(preparation ? { preparation } : {}) };
       receipt.commands.push(observed);
       save();
       requireValue(!cancelled, `Product capture cancelled by ${cancelled}; ${logPath}`);
@@ -441,23 +511,56 @@ export async function captureDomain(domain, outputDirectory) {
       requireValue(git('rev-parse', 'HEAD') === source.head && git('status', '--porcelain') === '',
         'Source changed during product domain execution');
     }
-    const inventory = (directory) => {
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        const path = resolve(directory, entry.name);
-        if (entry.isDirectory()) inventory(path);
-        else if (entry.isFile() && path !== receiptFile) receipt.artifacts.push(reference(path));
-      }
-    };
-    inventory(output);
     requireValue(!cancelled, `Product capture cancelled by ${cancelled}`);
     receipt.status = 'domain-evidence-complete';
+  } catch (error) {
+    receipt.status = 'failed';
+    receipt.failure = { kind: error.kind ?? (cancelled ? 'cancellation' : 'product-execution'), error: error.message };
+    throw error;
+  } finally {
+    receipt.cancellation = cancelled;
+    if (deploymentTouched) {
+      const command = { id: 'deployment-restore', executable: 'pnpm',
+        args: [...exampleFilter, 'build'],
+        env: { REACT_VITE_FORM_TEST_SERVER: '0', REACT_VITE_BUILD_VARIANT: 'A' } };
+      const logPath = resolve(output, 'deployment-restore.log');
+      const log = createWriteStream(logPath);
+      try {
+        const restored = await runBrowserOwnedCommand(command, {
+          cwd: sourceRoot, env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...command.env },
+        }, { onChild(child) {
+          for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
+            log.write(chunk); process.stdout.write(chunk);
+          });
+        } });
+        receipt.restoration = { ...restored, command: [command.executable, ...command.args].join(' '),
+          env: command.env, head: source.head };
+        requireValue(restored.status === 'passed', 'Normal deployment restore command failed');
+        // A browser preparation pass proves both normal entry and complete manifest.
+        const ordinary = productDomainPlan('tooling', output).find((entry) => entry.id === 'ordinary-browser');
+        receipt.restoration.preparation = prepareBrowserCommand(sourceRoot, ordinary);
+        receipt.restoration.status = 'passed';
+      } catch (error) {
+        receipt.restoration = { ...receipt.restoration, status: 'failed', error: error.message };
+        receipt.status = 'failed';
+      } finally {
+        log.end(); await finished(log);
+        receipt.restoration.log = reference(logPath);
+      }
+    } else {
+      receipt.restoration = { status: 'not-needed', reason: 'No deployment build was started' };
+    }
+    process.off('SIGTERM', onTerm); process.off('SIGINT', onInt);
+    inventory(output);
+    save();
+  }
+  requireValue(receipt.restoration.status !== 'failed', `Normal deployment restoration failed; ${receiptFile}`);
+  try {
     if (domain !== 'soak') domainEvidence(output, receipt, source.head, source.tree);
   } catch (error) {
     receipt.status = 'failed';
-    throw error;
-  } finally {
-    process.off('SIGTERM', onTerm); process.off('SIGINT', onInt);
     save();
+    throw error;
   }
   return receipt;
 }
@@ -615,6 +718,12 @@ function domainEvidence(root, domain, head, tree) {
     && domain.source?.head === head && domain.source.tree === tree && domain.source.clean === true
     && domain.status === 'domain-evidence-complete' && ['tooling', 'starters'].includes(domain.domain),
   'Unbound or incomplete CI journey receipt');
+  requireValue(domain.domain === 'starters' && domain.restoration?.status === 'not-needed'
+    || domain.restoration?.status === 'passed' && domain.restoration.head === head
+      && domain.restoration.closed === true && domain.restoration.exitCode === 0
+      && domain.restoration.signal === null && domain.restoration.preparation?.suite === 'ordinary',
+  'Missing successful normal deployment restoration');
+  if (domain.restoration?.status === 'passed') artifact(root, domain.restoration.log);
   const inputPaths = ['pnpm-lock.yaml', 'examples/react-vite-ssr/package.json',
     'examples/react-vite-ssr/vite.client.config.ts', 'examples/react-vite-ssr/vite.server.config.ts',
     'examples/react-vite-ssr/playwright.config.ts', 'examples/react-vite-ssr/playwright.reliability.config.ts',
