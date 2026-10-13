@@ -671,6 +671,43 @@ describe('@fluojs/platform-express', () => {
     expect(() => new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, Number.NaN)).toThrow(/shutdownTimeoutMs/i);
   });
 
+  it.each([-1, 65536, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'Express creation boundaries reject port %s before other invalid options',
+    (port) => {
+      const expected = new Error(`Invalid PORT value: ${String(port)}.`);
+
+      expect(() => ExpressHttpApplicationAdapter.create({ port, retryDelayMs: -1, maxBodySize: -1 })).toThrowError(expected);
+      expect(() => new ExpressHttpApplicationAdapter(port, undefined, -1, 20, undefined)).toThrowError(expected);
+    },
+  );
+
+  it.each([
+    { retryDelayMs: -1, retryLimit: -1, maxBodySize: -1, shutdownTimeoutMs: -1, first: 'retryDelayMs' },
+    { retryDelayMs: 0, retryLimit: -1, maxBodySize: -1, shutdownTimeoutMs: -1, first: 'retryLimit' },
+    { retryDelayMs: 0, retryLimit: 0, maxBodySize: -1, shutdownTimeoutMs: -1, first: 'maxBodySize' },
+    { retryDelayMs: 0, retryLimit: 0, maxBodySize: 0, shutdownTimeoutMs: -1, first: 'shutdownTimeoutMs' },
+  ])('Express creation boundaries preserve the first failure: $first', ({ first, ...options }) => {
+    const expected = new Error(`Invalid ${first} value: -1. Expected a non-negative integer.`);
+
+    expect(() => ExpressHttpApplicationAdapter.create(options)).toThrowError(expected);
+    expect(() => new ExpressHttpApplicationAdapter(
+      3000, undefined, options.retryDelayMs, options.retryLimit, undefined, undefined,
+      options.maxBodySize, false, options.shutdownTimeoutMs,
+    )).toThrowError(expected);
+  });
+
+  it.each([0, 65535])('Express create retains port %s with zero limits and an unsafe integer retry limit', async (port) => {
+    const adapter = ExpressHttpApplicationAdapter.create({
+      port, maxBodySize: 0, retryDelayMs: 0, retryLimit: 2 ** 53, shutdownTimeoutMs: 0,
+    });
+
+    try {
+      expect(adapter.getListenTarget().url).toBe(`http://localhost:${String(port)}`);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('runs native Express middleware before the fluo request pipeline when it calls next', async () => {
     const lifecycle: string[] = [];
     const nativeMiddleware: RequestHandler = (_request, response, next) => {
