@@ -23,29 +23,25 @@
 // local checks, not the issue/base-bound preflight.
 
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import {
-	applyChildResult,
-	decideNext,
-	isValidLocalCiWaiver,
-	localCheckBinding,
-	summarizeTransitions,
-	trackStalls,
-} from "./lane-v4.mjs";
+	buildVerificationPlan,
+	manifestPath,
+	readVerificationManifest,
+	receiptMatchesPlan,
+	validateReceipt,
+	validateReceiptEvidence,
+} from "../../../../tooling/ci/local-verification.mjs";
+import { collectIdentity } from "../../../../tooling/ci/verify-local.mjs";
+import { assertPredictedConflicts } from "../../../workflow-contracts/contracts.mjs";
 import {
 	evaluatePreflight,
 	issueDigest,
 	validatePreflight,
 } from "../../issue-preflight/scripts/contracts.mjs";
-import {
-	buildReviewFact,
-	validateReviewFact,
-} from "../../review-head/scripts/contracts.mjs";
-import { collectIdentity } from "../../../../tooling/ci/verify-local.mjs";
 import {
 	readRetroEvents,
 	recordCiSnapshot,
@@ -55,13 +51,18 @@ import {
 	retrospectiveRequest,
 } from "../../retrospective-lane/scripts/retro.mjs";
 import {
-	buildVerificationPlan,
-	manifestPath,
-	readVerificationManifest,
-	receiptMatchesPlan,
-	validateReceipt,
-	validateReceiptEvidence,
-} from "../../../../tooling/ci/local-verification.mjs";
+	buildReviewFact,
+	validateReviewFact,
+} from "../../review-head/scripts/contracts.mjs";
+import { coordinateGeneratedIntegration, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
+import {
+	applyChildResult,
+	decideNext,
+	isValidLocalCiWaiver,
+	localCheckBinding,
+	summarizeTransitions,
+	trackStalls,
+} from "./lane-v4.mjs";
 
 const arg = (args, flag, fallback) => {
 	const i = args.indexOf(flag);
@@ -380,6 +381,7 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		);
 	}
 	const members = new Set(issues);
+	assertPredictedConflicts(laneV2.predicted_conflicts, issues);
 	const graph = laneV2.dependency_graph ?? {};
 	const specs = issues.map((n) => {
 		const deps = (graph[String(n)] ?? []).map(Number);
@@ -399,6 +401,7 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		// The maintainer's lane-plan approval already covers merging every
 		// issue in this lane; import it so the merge gate does not re-ask.
 		mergeApproved: laneV2.authority_scope?.pr_merge === true,
+		...(Object.hasOwn(laneV2, "predicted_conflicts") ? { predictedConflicts: laneV2.predicted_conflicts } : {}),
 	};
 };
 
@@ -468,6 +471,24 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	const changedFiles = changed === null
 		? null
 		: changed.split("\0").filter(Boolean);
+	const generatedHints = (lane.predicted_conflicts ?? []).filter((hint) =>
+		hint.generated && hint.issues.includes(issue));
+	const incorporated = baseSha && mergeBase && baseSha !== mergeBase
+		? run(root, "git", ["diff", "--name-only", "--no-renames", "-z", `${baseSha}..${mergeBase}`], false)
+		: "";
+	const incorporatedFiles = (incorporated ?? "").split("\0").filter(Boolean);
+	const generatedIntegrationRequired = generatedHints.filter((hint) =>
+		incorporatedFiles.some((file) => file === hint.surface || hint.generated.inputs.some((input) => input.path === file)));
+	const generatedIntegration = (() => {
+		const fact = entry.facts?.["generated-integration"];
+		if (!fact || fact.head !== headSha || !worktreeExists) return null;
+		try {
+			return validateGeneratedIntegration(worktreePath,
+				{ head: headSha, hints: generatedIntegrationRequired, execute: false }, fact.value);
+		} catch {
+			return null;
+		}
+	})();
 	const publicPackagesTouched = (changedFiles ?? []).some(
 		isConsumerVisibleFile,
 	);
@@ -622,12 +643,20 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		reviewAcceptedAt,
 		pr,
 		unmetDependencies,
+		generatedIntegrationRequired,
+		generatedIntegration,
 	};
 };
 
 const main = () => {
 	const [command, ...args] = process.argv.slice(2);
 	const root = resolve(arg(args, "--root", "."));
+	const observationProcess = randomUUID();
+	const recordObservation = (laneId, row) => recordRetroEvent(root, laneId, row.issue, "observation", {
+		observationId: randomUUID(), processId: observationProcess, clock: "monotonic",
+		monotonicMs: performance.now(), head: row.obs.headSha, action: row.decision.action,
+		siblings: row.decision.siblings ?? [], surfaces: row.decision.surfaces ?? [],
+	});
 
 	if (command === "init") {
 		// Either translate a `$create-lane` v2 ledger, or take explicit --issue specs.
@@ -639,6 +668,7 @@ const main = () => {
 		let specs;
 		let ledgerRef = null;
 		let mergeApproved = false;
+		let predictedConflicts;
 		if (fromLaneV2 !== null) {
 			const raw = readFileSync(resolve(root, fromLaneV2), "utf8");
 			const translated = laneV2ToInitSpecs(JSON.parse(raw));
@@ -649,6 +679,7 @@ const main = () => {
 			specs = translated.specs;
 			ledgerRef = sourceLedgerRef(fromLaneV2, raw);
 			mergeApproved = translated.mergeApproved;
+			predictedConflicts = translated.predictedConflicts;
 		} else {
 			laneId = arg(args, "--lane-id");
 			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
@@ -680,6 +711,7 @@ const main = () => {
 			// Present only for --from-lane-v2 inits; a hand-built lane has no
 			// planning ledger to point at.
 			...(ledgerRef ? { source_ledger: ledgerRef } : {}),
+			...(predictedConflicts === undefined ? {} : { predicted_conflicts: predictedConflicts }),
 			issues: Object.fromEntries(
 				specs.map(({ n, deps }) => [String(n), {
 					issue: n,
@@ -705,24 +737,28 @@ const main = () => {
 	// facts/approvals recorded by concurrent operator commands are seen.
 	const snapshotAll = (withObservations = false) => {
 		const fresh = loadLane(lanePath);
-		return Object.keys(fresh.issues).map((key) => {
+		assertPredictedConflicts(fresh.predicted_conflicts, Object.keys(fresh.issues).map(Number));
+		const snapshots = Object.keys(fresh.issues).map((key) => {
 			const n = Number(key);
 			const obs = observeIssue(root, fresh, n);
 			const decision = decideNext(fresh.issues[key], obs);
 			return {
 				issue: n,
 				decision,
-				...(withObservations
-					? {
-						obs: {
+				obs: {
 							...obs,
 							attempts: fresh.issues[key].attempts,
 							facts: fresh.issues[key].facts,
 						},
-					}
-					: {}),
 			};
 		});
+		const coordinated = coordinateGeneratedIntegration(fresh, snapshots);
+		if (fresh.predicted_conflicts?.some((hint) => hint.generated) &&
+			["plan", "plan-all", "watch"].includes(command)) {
+			for (const row of coordinated) recordObservation(fresh.lane_id, row);
+		}
+		return coordinated.map(({ obs, ...row }) =>
+			({ ...row, ...(withObservations ? { obs } : {}) }));
 	};
 
 	if (["retro-plan", "retro-evidence", "retro-report"].includes(command)) {
@@ -795,7 +831,8 @@ const main = () => {
 					process.stdout.write(
 						`${new Date().toISOString()} issue ${c.issue}: ${
 							c.from ?? "(start)"
-						} -> ${c.to}\n`,
+						} -> ${c.to}${c.to === "wait-generated-integration"
+							? ` siblings=${JSON.stringify(next.find((item) => item.issue === c.issue).decision.siblings)}` : ""}\n`,
 					);
 				}
 				const tracked = trackStalls(stallCounts, next, stallAfter);
@@ -867,8 +904,7 @@ const main = () => {
 	}
 
 	if (command === "plan") {
-		const obs = observeIssue(root, lane, issue);
-		const decision = decideNext(entry, obs);
+		const { obs, decision } = snapshotAll(true).find((row) => row.issue === issue);
 		process.stdout.write(
 			`${JSON.stringify({ issue, decision, obs }, null, 2)}\n`,
 		);
@@ -877,7 +913,21 @@ const main = () => {
 	if (command === "record") {
 		const phase = arg(args, "--phase");
 		const result = JSON.parse(arg(args, "--result-json"));
+		const observed = observeIssue(root, lane, issue);
+		validateStageMeasurements(result?.measurements, observed.headSha);
 		const next = applyChildResult(entry, phase, result);
+		if (phase === "resolve-conflict" && result?.ok === true) {
+			const obs = observeIssue(root, lane, issue);
+			if (result.head_sha !== obs.headSha) throw new TypeError("Conflict result requires current head_sha");
+			if (obs.generatedIntegrationRequired.length) {
+				next.facts ??= {};
+				next.facts["generated-integration"] = {
+					head: obs.headSha,
+					value: validateGeneratedIntegration(obs.worktree,
+						{ head: obs.headSha, hints: obs.generatedIntegrationRequired, execute: true }, result.generated_integration),
+				};
+			}
+		}
 		if (phase === "verify-local" && result?.ok === false) {
 			const obs = observeIssue(root, lane, issue);
 			if (
@@ -913,6 +963,7 @@ const main = () => {
 		recordRetroEvent(root, lane.lane_id, issue, "stage", {
 			phase,
 			result,
+			head: observed.headSha,
 			attempts: next.attempts,
 		});
 		if (["merge", "fix-back"].includes(phase)) {

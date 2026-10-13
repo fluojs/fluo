@@ -5,10 +5,13 @@ import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
-import { createPreflight } from '../../issue-preflight/scripts/contracts.mjs';
-import { localCheckBinding } from './lane-v4.mjs';
 import { buildVerificationPlan, digest, readVerificationManifest } from '../../../../tooling/ci/local-verification.mjs';
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
+import { generatedHintDigest } from '../../../workflow-contracts/contracts.mjs';
+import { createPreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { readRetroEvents } from '../../retrospective-lane/scripts/retro.mjs';
+import { summarizeIntegrationMeasurements } from './generated-integration.mjs';
+import { localCheckBinding } from './lane-v4.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
 const fixture = (t, isolatedOrchestrator = false) => {
@@ -27,8 +30,9 @@ appendFileSync(process.env.GH_LOG, JSON.stringify(args) + '\\n');
 const state = JSON.parse(readFileSync(process.env.GH_STATE));
 if (state.unavailable) process.exit(1);
 if (args[0] === 'pr' && args[1] === 'view') {
-  if (!state.pr) process.exit(1);
-  process.stdout.write(JSON.stringify(state.pr));
+  const pr = Object.hasOwn(state.prs ?? {}, args[2]) ? state.prs[args[2]] : state.pr;
+  if (!pr) process.exit(1);
+  process.stdout.write(JSON.stringify(pr));
 } else if (args[0] === 'issue' && args[1] === 'view') {
   process.stdout.write(args.includes('--jq') ? state.issue.state : JSON.stringify(state.issue));
 } else { process.stderr.write('unexpected gh invocation'); process.exit(2); }
@@ -896,4 +900,212 @@ test('CLI: rename observes both old and new paths, including excluded source', (
   const result = f.plan();
   assert.deepEqual(result.obs.changedFiles, ['docs/guide.md', 'moved.md']);
   assert.equal(result.decision.reason, 'scope-expansion');
+});
+
+const generatedFixture = (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight({ scope: ['docs/', 'src/'], non_scope: [] }));
+  f.implement();
+  const ready = (issue) => {
+    const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
+    if (issue !== 42) {
+      lane.issues[String(issue)] = { issue, branch: `issue-${issue}`, depends_on: [],
+        approvals: { merge: true }, attempts: {}, blocker: null, facts: {} };
+      writeFileSync(f.lanePath, JSON.stringify(lane));
+      const worktree = join(f.root, `.worktrees/issue-${issue}`);
+      f.git(f.root, 'worktree', 'add', '-b', `issue-${issue}`, worktree, 'main');
+      writeFileSync(join(worktree, `docs/sibling-${issue}.md`), 'sibling\n');
+      f.git(worktree, 'add', '.');
+      f.git(worktree, '-c', 'commit.gpgsign=false', 'commit', '-m', `sibling ${issue}`);
+    }
+    const args = ['--lane', f.lanePath, '--issue', String(issue)];
+    const obs = JSON.parse(f.cli('plan', args).stdout).obs;
+    const preflight = createPreflight({ issue, issue_sha256: obs.issueSha256, base_sha: obs.baseSha,
+      scope: ['docs/', 'src/'], non_scope: [], acceptance: ['Retain generated consumer'],
+      validation: ['node --test'], predicted_files: ['src/generated.ts'] });
+    f.cli('set-fact', [...args, '--kind', 'preflight', '--value', JSON.stringify(preflight)]);
+    const current = JSON.parse(f.cli('plan', args).stdout).obs;
+    const review = { head_sha: current.headSha, preflight_sha256: current.preflightPolicy.sha256,
+      active_axes: current.preflightPolicy.active_axes,
+      reviews: current.preflightPolicy.active_axes.map((reviewer) => ({ reviewer,
+        reviewed_head_sha: current.headSha, preflight_sha256: current.preflightPolicy.sha256,
+        verdict_signal: 'PASS', blockers: [] })) };
+    f.cli('set-fact', [...args, '--kind', 'review', '--head', current.headSha, '--value', JSON.stringify(review)]);
+    const pr = { number: issue + 100, state: 'OPEN', headRefOid: current.headSha,
+      mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }] };
+    if (issue === 42) f.state.pr = pr;
+    else { f.state.prs ??= {}; f.state.prs[`issue-${issue}`] = pr; }
+    f.update();
+    f.cli('approve-merge', args);
+    return pr;
+  };
+  ready(42);
+  ready(43);
+  ready(44);
+  const hint = { surface: 'src/generated.ts', issues: [42, 43, 44],
+    generated: { command: `${process.execPath} generator.mjs --check`,
+      inputs: [{ path: 'docs/guide.md', sha256: 'a'.repeat(64) }],
+      issue_evidence: [42, 43, 44].map((issue) => ({ issue, title: 'Generated consumer', body: 'docs/guide.md', paths: ['docs/guide.md'] })), sha256: '' } };
+  hint.generated.sha256 = generatedHintDigest(hint);
+  const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
+  lane.predicted_conflicts = [hint];
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  f.state.pr.mergeable = 'CONFLICTING';
+  f.update();
+  return { ...f, hint, ready };
+};
+
+test('CLI generated coordination: successive ready merges -> one wait then release on fresh loss/restart', (t) => {
+  const f = generatedFixture(t);
+  const before = f.plan();
+  assert.equal(before.decision.action, 'wait-generated-integration');
+  assert.deepEqual(before.decision.siblings.map((item) => item.issue), [43, 44]);
+  assert.equal(JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision.action, 'wait-generated-integration');
+  assert.match(f.cli('watch', ['--lane', f.lanePath, '--once']).stdout, /-> wait-generated-integration/u);
+  f.state.prs['issue-43'].state = 'MERGED';
+  f.update();
+  assert.deepEqual(f.plan().decision.siblings.map((item) => item.issue), [44]);
+  f.state.prs['issue-44'].statusCheckRollup = [{ state: 'PENDING' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+  assert.match(f.cli('watch', ['--lane', f.lanePath, '--once']).stdout, /-> resolve-conflict/u);
+  f.state.prs['issue-44'].statusCheckRollup = [{ conclusion: 'FAILURE' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+});
+
+test('CLI generated coordination: stale head, unknown mergeability and absent authority -> sibling is not ready', (t) => {
+  const f = generatedFixture(t);
+  f.state.prs['issue-43'].headRefOid = 'f'.repeat(40);
+  f.state.prs['issue-44'].mergeable = 'UNKNOWN';
+  f.update();
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+  f.state.prs['issue-43'].headRefOid = f.git(f.root, 'rev-parse', 'issue-43');
+  const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
+  lane.issues['43'].approvals.merge = false;
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  f.update();
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+  lane.issues['43'].facts.review.head = 'f'.repeat(40);
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+});
+
+test('CLI generated coordination: hints, pending CI and unrelated main movement -> no forced integration', (t) => {
+  const f = generatedFixture(t);
+  f.state.pr.mergeable = 'MERGEABLE';
+  f.state.pr.statusCheckRollup = [{ state: 'PENDING' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-ci');
+  writeFileSync(join(f.root, 'unrelated.md'), 'upstream\n');
+  f.git(f.root, 'add', 'unrelated.md');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'unrelated main');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  assert.equal(f.plan().decision.action, 'wait-ci');
+  f.state.pr.statusCheckRollup = [{ conclusion: 'SUCCESS' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'merge');
+  const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
+  delete lane.predicted_conflicts;
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  f.state.pr.mergeable = 'CONFLICTING';
+  f.update();
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+});
+
+test('CLI measurements: actual record and fresh observations -> retrospective consumes scoped clock identity', (t) => {
+  const f = generatedFixture(t);
+  const head = f.plan().obs.headSha;
+  const measurement = { runId: 'fixture-run', attempt: 1, stage: 'focused', head,
+    clock: 'simulation', elapsedMs: 12, scope: 'stage-execution' };
+  const args = [...f.common, '--phase', 'review', '--result-json', JSON.stringify({ ok: true, measurements: [measurement] })];
+  f.cli('record', args);
+  f.cli('record', args);
+  const events = readRetroEvents(f.root, 'fixture');
+  const report = summarizeIntegrationMeasurements(events, { 42: head });
+  assert.equal(report.counts.focused, 1);
+  assert.equal(report.status, 'inconclusive');
+  assert.equal(report.simulation, true);
+  assert.equal(report.totalElapsedMs, null);
+  assert.ok(events.some((event) => event.kind === 'observation' && event.data.action === 'wait-generated-integration'));
+  f.cli('record', [...f.common, '--phase', 'review', '--result-json',
+    JSON.stringify({ ok: true, measurements: [{ ...measurement, head: 'f'.repeat(40) }] })], false);
+});
+
+test('CLI generated integration: real conflict and authoritative fixture generation -> new-head focused/browser/review/CI guards', (t) => {
+  const f = generatedFixture(t);
+  f.commit('src/generated.ts', 'old artifact\n');
+  const reviewed = f.review();
+  f.set('review', reviewed, reviewed.head_sha);
+  f.state.pr.headRefOid = reviewed.head_sha;
+  f.state.prs['issue-43'].state = 'MERGED';
+  f.state.prs['issue-44'].state = 'MERGED';
+  const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
+  lane.predicted_conflicts[0].generated.command = `${process.execPath} src/generator.mjs --check`;
+  lane.predicted_conflicts[0].generated.sha256 = generatedHintDigest(lane.predicted_conflicts[0]);
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  f.update();
+  mkdirSync(join(f.root, 'src'));
+  writeFileSync(join(f.root, 'src/generator.mjs'), `import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+const source=readFileSync('docs/guide.md','utf8');
+const output=JSON.stringify({sourceFingerprint:createHash('sha256').update(source).digest('hex'),source})+'\\n';
+if(process.argv.includes('--check')) {
+  if(readFileSync('src/generated.ts','utf8')!==output) process.exit(1);
+  process.stdout.write('UNCHANGED fixture generated consumer\\n');
+} else process.stdout.write(output);
+`);
+  writeFileSync(join(f.root, 'docs/guide.md'), 'upstream source\n');
+  writeFileSync(join(f.root, 'src/generated.ts'), 'upstream artifact\n');
+  f.git(f.root, 'add', 'src', 'docs/guide.md');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture generated upstream');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+  assert.throws(() => f.git(f.worktree, '-c', 'commit.gpgsign=false', 'merge', '--no-edit', 'origin/main'));
+  writeFileSync(join(f.worktree, 'docs/guide.md'), 'combined source\n');
+  const bytes = execFileSync(process.execPath, ['src/generator.mjs', '--stdout'], { cwd: f.worktree, encoding: 'utf8' });
+  writeFileSync(join(f.worktree, 'src/generated.ts'), bytes);
+  f.git(f.worktree, 'add', '.');
+  f.git(f.worktree, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture resolved generation');
+  const integrated = f.plan();
+  assert.equal(integrated.obs.baseSha, lane.issues['42'].facts.preflight.value.base_sha);
+  assert.equal(integrated.decision.reason, 'generated-integration-evidence-missing');
+  assert.equal(integrated.obs.review, null);
+  const directory = join(f.worktree, '.omo/generated-integration');
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, 'expected.ts'), bytes);
+  const log = 'Synthetic workflow fixture checks; not real browser or remote CI acceptance.\n';
+  writeFileSync(join(directory, 'check.log'), log);
+  const hash = (text) => createHash('sha256').update(text).digest('hex');
+  const receipt = { head: integrated.obs.headSha,
+    outputs: [{ surface: 'src/generated.ts', expectedPath: '.omo/generated-integration/expected.ts',
+      expectedSha256: hash(bytes), artifactSha256: hash(bytes),
+      command: lane.predicted_conflicts[0].generated.command, exitCode: 0, normalizeSourceFingerprint: false }],
+    checks: ['focused', 'browser'].map((kind) => ({ kind, head: integrated.obs.headSha,
+      command: `synthetic ${kind}`, exitCode: 0, logPath: '.omo/generated-integration/check.log', logSha256: hash(log) })) };
+  const record = (value, ok = true) => f.cli('record', [...f.common, '--phase', 'resolve-conflict',
+    '--result-json', JSON.stringify({ ok: true, head_sha: integrated.obs.headSha, generated_integration: value })], ok);
+  const incomplete = structuredClone(receipt);
+  incomplete.checks.pop();
+  record(incomplete, false);
+  assert.equal(f.plan().decision.reason, 'generated-integration-evidence-missing');
+  record(receipt);
+  assert.equal(f.plan().decision.action, 'review');
+  f.set('review', reviewed, reviewed.head_sha, false);
+  const freshReview = f.review();
+  f.set('review', freshReview, freshReview.head_sha);
+  assert.equal(f.plan().decision.action, 'push');
+  f.state.pr.headRefOid = integrated.obs.headSha;
+  f.state.pr.mergeable = 'MERGEABLE';
+  f.state.pr.statusCheckRollup = [{ state: 'PENDING' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-ci');
+  f.state.pr.statusCheckRollup = [{ conclusion: 'FAILURE' }];
+  f.update();
+  assert.equal(f.plan().decision.reason, 'ci-failing');
+  f.state.pr.statusCheckRollup = [{ conclusion: 'SUCCESS' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'merge');
+  f.commit('docs/guide.md', 'another source revision\n');
+  assert.equal(f.plan().decision.reason, 'generated-integration-evidence-missing');
 });
