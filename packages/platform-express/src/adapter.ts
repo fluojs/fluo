@@ -38,6 +38,7 @@ import {
   createNodeEarlyHintsCapability,
   createRequestSignal,
   normalizePrimaryContentType,
+  NodeHttpAdapterOptionPolicy,
   parseQueryParamsFromSearch,
   resolveRequestIdFromHeaders,
   snapshotSimpleQueryRecord,
@@ -153,15 +154,15 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     options: ExpressAdapterOptions = {},
   ): ExpressHttpApplicationAdapter {
     return new ExpressHttpApplicationAdapter(
-      resolvePort(options.port),
+      NodeHttpAdapterOptionPolicy.resolvePort(options.port),
       options.host,
-      resolveNonNegativeIntegerOption('retryDelayMs', options.retryDelayMs, 150),
-      resolveNonNegativeIntegerOption('retryLimit', options.retryLimit, 20),
+      NodeHttpAdapterOptionPolicy.resolveNonNegativeIntegerOption('retryDelayMs', options.retryDelayMs, 150),
+      NodeHttpAdapterOptionPolicy.resolveNonNegativeIntegerOption('retryLimit', options.retryLimit, 20),
       options.https,
       options.multipart,
-      resolveNonNegativeIntegerOption('maxBodySize', options.maxBodySize, DEFAULT_MAX_BODY_SIZE),
+      NodeHttpAdapterOptionPolicy.resolveNonNegativeIntegerOption('maxBodySize', options.maxBodySize, DEFAULT_MAX_BODY_SIZE),
       options.rawBody,
-      resolveNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS),
+      NodeHttpAdapterOptionPolicy.resolveNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS),
       options.nativeMiddleware,
     );
   }
@@ -195,11 +196,11 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
     nativeMiddleware: readonly ExpressNativeMiddleware[] = [],
   ) {
-    resolvePort(this.port);
-    resolveNonNegativeIntegerOption('retryDelayMs', this.retryDelayMs, 150);
-    resolveNonNegativeIntegerOption('retryLimit', this.retryLimit, 20);
-    resolveNonNegativeIntegerOption('maxBodySize', this.maxBodySize, DEFAULT_MAX_BODY_SIZE);
-    resolveNonNegativeIntegerOption('shutdownTimeoutMs', this.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+    NodeHttpAdapterOptionPolicy.resolvePort(this.port);
+    NodeHttpAdapterOptionPolicy.resolveNonNegativeIntegerOption('retryDelayMs', this.retryDelayMs, 150);
+    NodeHttpAdapterOptionPolicy.resolveNonNegativeIntegerOption('retryLimit', this.retryLimit, 20);
+    NodeHttpAdapterOptionPolicy.resolveNonNegativeIntegerOption('maxBodySize', this.maxBodySize, DEFAULT_MAX_BODY_SIZE);
+    NodeHttpAdapterOptionPolicy.resolveNonNegativeIntegerOption('shutdownTimeoutMs', this.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS);
     this.app = express();
 
     for (const middleware of nativeMiddleware) {
@@ -957,26 +958,6 @@ function isWildcardHost(host: string): boolean {
 
 function formatHostForAuthority(host: string): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
-}
-
-function resolvePort(value: number | undefined): number {
-  const port = value ?? 3000;
-
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`Invalid PORT value: ${String(value ?? 3000)}.`);
-  }
-
-  return port;
-}
-
-function resolveNonNegativeIntegerOption(name: string, value: number | undefined, defaultValue: number): number {
-  const resolved = value ?? defaultValue;
-
-  if (!Number.isInteger(resolved) || resolved < 0) {
-    throw new Error(`Invalid ${name} value: ${String(resolved)}. Expected a non-negative integer.`);
-  }
-
-  return resolved;
 }
 
 async function listenServer(input: ExpressListenServerInput): Promise<void> {

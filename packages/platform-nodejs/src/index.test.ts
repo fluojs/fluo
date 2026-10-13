@@ -481,6 +481,62 @@ describe('@fluojs/platform-nodejs', () => {
     );
   });
 
+  it.each([-1, 65536, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'Node create rejects port %s before other invalid options',
+    (port) => {
+      const options = { port, maxBodySize: -1, retryDelayMs: -1, http: {}, https: {} };
+
+      expect(() => NodeHttpApplicationAdapter.create(options)).toThrowError(
+        new Error(`Invalid PORT value: ${String(port)}.`),
+      );
+    },
+  );
+
+  it.each([
+    { options: { maxBodySize: -1, retryDelayMs: -1 }, message: 'Invalid maxBodySize value: -1. Expected a non-negative integer number of bytes.' },
+    { options: { retryDelayMs: -1, retryLimit: -1 }, message: 'Invalid retryDelayMs value: -1. Expected a non-negative integer.' },
+    { options: { retryLimit: -1, shutdownTimeoutMs: -1 }, message: 'Invalid retryLimit value: -1. Expected a non-negative integer.' },
+    { options: { shutdownTimeoutMs: -1 }, message: 'Invalid shutdownTimeoutMs value: -1. Expected a non-negative integer.' },
+  ])('Node create preserves the first failure: $message', ({ options, message }) => {
+    const conflictingOptions = { ...options, http: {}, https: {} };
+
+    expect(() => NodeHttpApplicationAdapter.create(conflictingOptions)).toThrowError(new Error(message));
+  });
+
+  it.each([
+    { name: 'retryDelayMs', args: [3000, undefined, null, 20, false, undefined] },
+    { name: 'retryLimit', args: [3000, undefined, 150, null, false, undefined] },
+    { name: 'shutdownTimeoutMs', args: [3000, undefined, 150, 20, false, undefined, undefined, 1024, false, null] },
+  ])('Node creation boundaries reject explicit null $name without applying defaults', ({ name, args }) => {
+    const expected = new Error(`Invalid ${name} value: null. Expected a non-negative integer.`);
+
+    expect(() => Reflect.apply(NodeHttpApplicationAdapter.create, NodeHttpApplicationAdapter, [{ [name]: null }])).toThrowError(expected);
+    expect(() => Reflect.construct(NodeHttpApplicationAdapter, args)).toThrowError(expected);
+  });
+
+  it('Node direct construction retains its unvalidated port and body limit boundary', async () => {
+    const adapter = new NodeHttpApplicationAdapter(-1, undefined, 0, 0, false, undefined, undefined, -1);
+
+    try {
+      expect(adapter.getListenTarget().url).toBe('http://localhost:-1');
+      expect(adapter.getServer().listening).toBe(false);
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it.each([0, 65535])('Node create retains port %s with zero lifecycle options and an unsafe integer retry limit', async (port) => {
+    const adapter = NodeHttpApplicationAdapter.create({
+      port, maxBodySize: 0, retryDelayMs: 0, retryLimit: 2 ** 53, shutdownTimeoutMs: 0,
+    });
+
+    try {
+      expect(adapter.getListenTarget().url).toBe(`http://localhost:${String(port)}`);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('passes plain HTTP construction options and rejects HTTPS pairing through the platform adapter', async () => {
     const adapter = NodeHttpApplicationAdapter.create({
       http: { maxHeaderSize: 32_768 },
