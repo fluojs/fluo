@@ -1,30 +1,18 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { acquireWorkspaceArtifactLeases } from './clean-dist.mjs';
+import { performance } from 'node:perf_hooks';
 
 const WORKSPACE_BUILD_LOCK_DIRECTORY = '.workspace-build-closure.lock';
 const WORKSPACE_BUILD_LOCK_METADATA_FILE = 'owner.json';
-const WORKSPACE_BUILD_LOCK_TIMEOUT_MS = 300_000;
-const WORKSPACE_BUILD_LOCK_POLL_MS = 50;
 const WORKSPACE_BUILD_LOCK_STALE_GRACE_MS = 5_000;
-
-function sleep(milliseconds) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-}
 
 function getWorkspaceBuildLockMetadataPath(lockDirectory) {
   return join(lockDirectory, WORKSPACE_BUILD_LOCK_METADATA_FILE);
-}
-
-function writeWorkspaceBuildLockMetadata(lockDirectory) {
-  writeFileSync(
-    getWorkspaceBuildLockMetadataPath(lockDirectory),
-    JSON.stringify({ pid: process.pid, startedAt: Date.now() }),
-    'utf8',
-  );
 }
 
 function isProcessAlive(pid) {
@@ -59,37 +47,6 @@ function shouldRecoverWorkspaceBuildLock(lockDirectory) {
     return ageMs >= WORKSPACE_BUILD_LOCK_STALE_GRACE_MS;
   } catch {
     return true;
-  }
-}
-
-function acquireWorkspaceBuildLock(rootDirectory) {
-  const lockDirectory = join(rootDirectory, WORKSPACE_BUILD_LOCK_DIRECTORY);
-  const deadline = Date.now() + WORKSPACE_BUILD_LOCK_TIMEOUT_MS;
-
-  while (true) {
-    try {
-      mkdirSync(lockDirectory);
-      writeWorkspaceBuildLockMetadata(lockDirectory);
-
-      return () => {
-        rmSync(lockDirectory, { force: true, recursive: true });
-      };
-    } catch (error) {
-      if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') {
-        throw error;
-      }
-
-      if (shouldRecoverWorkspaceBuildLock(lockDirectory)) {
-        rmSync(lockDirectory, { force: true, recursive: true });
-        continue;
-      }
-
-      if (Date.now() >= deadline) {
-        throw new Error(`Timed out waiting for workspace build lock at ${lockDirectory}.`);
-      }
-
-      sleep(WORKSPACE_BUILD_LOCK_POLL_MS);
-    }
   }
 }
 
@@ -251,12 +208,24 @@ export function resolveWorkspaceBuildOrder(targetPackageName, rootDirectory) {
 }
 
 export function runWorkspaceBuildClosure(targetPackageName, rootDirectory, options = {}) {
+  const deadline = options.timeoutMs === undefined ? undefined : performance.now() + options.timeoutMs;
   const packageManager = options.packageManager ?? detectPackageManager();
   const stdio = options.stdio ?? 'pipe';
   const order = resolveWorkspaceBuildOrder(targetPackageName, rootDirectory);
   const workspaceManifests = collectWorkspaceManifests(rootDirectory);
   const manifestByName = new Map(workspaceManifests.map((entry) => [entry.name, entry]));
-  const releaseLock = acquireWorkspaceBuildLock(rootDirectory);
+  // An old crashed closure may have left the former workspace-wide lock.
+  // Recover it without reintroducing global serialization for independent artifacts.
+  const oldLock = join(rootDirectory, WORKSPACE_BUILD_LOCK_DIRECTORY);
+  if (existsSync(oldLock) && shouldRecoverWorkspaceBuildLock(oldLock)) {
+    rmSync(oldLock, { force: true, recursive: true });
+  }
+  // Reserve only overlapping builders in a stable artifact order. Reader leases
+  // remain compatible until each package actually starts emitting its output.
+  const buildLease = acquireWorkspaceArtifactLeases(
+    order.map((name) => join(manifestByName.get(name).directory, 'dist')), 'builder', deadline,
+  );
+  const leases = [buildLease];
 
   let stdout = '';
   let stderr = '';
@@ -268,11 +237,15 @@ export function runWorkspaceBuildClosure(targetPackageName, rootDirectory, optio
         continue;
       }
 
+      const artifact = join(realpathSync(entry.directory), 'dist');
+      buildLease.activate(artifact);
       const args = packageManager.startsWith('npm') ? ['run', 'build'] : ['run', 'build'];
       const result = spawnSync(packageManager, args, {
         cwd: entry.directory,
         encoding: 'utf8',
         stdio,
+        env: buildLease.environment,
+        timeout: deadline === undefined ? undefined : Math.max(1, Math.ceil(deadline - performance.now())),
       });
 
       if (stdio === 'pipe') {
@@ -315,17 +288,51 @@ export function runWorkspaceBuildClosure(targetPackageName, rootDirectory, optio
           stdout: stdout.trim(),
         };
       }
+      // Keep the emitted declarations readable through later builds and packing,
+      // but do not keep a writer on artifacts this closure has finished writing.
+      buildLease.downgrade(artifact);
     }
 
-    return {
+    buildLease.downgrade();
+    const snapshotPackages = new Set(
+      (options.snapshotPackages ?? []).flatMap((name) => resolveWorkspaceBuildOrder(name, rootDirectory)),
+    );
+    leases.push(acquireWorkspaceArtifactLeases(
+      [...snapshotPackages].filter((name) => !order.includes(name))
+        .map((name) => join(manifestByName.get(name).directory, 'dist')),
+      'reader', deadline,
+    ));
+    const result = {
       order,
       packageManager,
       status: 0,
       stderr: stderr.trim(),
       stdout: stdout.trim(),
     };
+    if (options.consume?.(result) instanceof Promise) {
+      throw new TypeError('Workspace build consumption must be synchronous.');
+    }
+    return result;
   } finally {
-    releaseLock();
+    for (const lease of leases.reverse()) lease.release();
+  }
+}
+
+export function withWorkspaceArtifactSnapshot(packageNames, rootDirectory, consume) {
+  const names = new Set(packageNames.flatMap((name) => resolveWorkspaceBuildOrder(name, rootDirectory)));
+  const manifests = new Map(collectWorkspaceManifests(rootDirectory).map((entry) => [entry.name, entry]));
+  const lease = acquireWorkspaceArtifactLeases(
+    [...names].map((name) => join(manifests.get(name).directory, 'dist')),
+    'reader',
+  );
+  try {
+    const result = consume();
+    if (result instanceof Promise) return result.finally(lease.release);
+    lease.release();
+    return result;
+  } catch (error) {
+    lease.release();
+    throw error;
   }
 }
 
