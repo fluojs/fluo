@@ -1228,9 +1228,13 @@ async function captureCancellation(t, signal, phase) {
     execFileSync('git', ['clone', '--quiet', '--shared', '--no-hardlinks',
       fileURLToPath(new URL('../..', import.meta.url)), captureCheckout]);
   }
+  // Restoration fixtures build only disposable artifacts in this shared clone.
+  // Cancellation fixtures deliberately start cold, independent of test order.
+  rmSync(join(captureCheckout, 'examples/react-vite-ssr/dist'), { recursive: true, force: true });
   // The disposable checkout really is clean. Load the assigned implementation
   // in memory; never override git status or label the shared dirty tree clean.
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: captureCheckout, encoding: 'utf8' }), '');
+  rmSync(join(captureCheckout, 'examples/react-vite-ssr/dist'), { recursive: true, force: true });
   const evidenceRoot = join(captureCheckout, '.omo/verification/issue-3879');
   mkdirSync(evidenceRoot, { recursive: true });
   const output = mkdtempSync(join(evidenceRoot, 'cancellation-'));
