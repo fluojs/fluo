@@ -151,6 +151,40 @@ describe('narrowsStableNodeEngineRange', () => {
 
 describe('published Node engine manifest enforcement', () => {
   it.each([
+    ['unpublished major', '2.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', true],
+    ['old published major', '1.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
+    ['future major', '3.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
+    ['patch-only history', '2.0.0', '### Patch Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
+    ['nested major heading', '2.0.0', '#### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
+    ['body major marker', '2.0.0', 'Not a heading: ### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
+    ['duplicate major sections', '2.0.0\n\n## 2.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
+    ['missing migration', '2.0.0', '### Major Changes', 'Raise the minimum supported Node.js version.', false],
+    ['unsupported replacement', '2.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 21.', false],
+  ])('validates a post-major patch against %s evidence', (_fixture, version, heading, migration, accepted) => {
+    const directory = createChangesetDirectory();
+    const manifests = publishedGraphqlDependencies('>=22.2.0 <27', undefined, '1.1.0', '2.0.1');
+    const changelog = `# @fluojs/graphql\n\n## 2.0.1\n\n### Patch Changes\n\n- Security fix.\n\n## ${version}\n\n${heading}\n\n- Raise the minimum supported Node.js version.\n\n  ${migration}\n`;
+    const dependencies = {
+      ...manifests,
+      existsSync: (filePath: string) => filePath.endsWith('packages/graphql/CHANGELOG.md'),
+      readFileSync: (filePath: string) => filePath.endsWith('packages/graphql/CHANGELOG.md')
+        ? changelog
+        : manifests.readFileSync(filePath),
+    };
+
+    const verify = () => verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      dependencies,
+    );
+
+    if (accepted) {
+      expect(verify().checkedStableNodeEngineRangeNarrowings).toEqual([]);
+    } else {
+      expect(verify).toThrow(/stable Node engine range narrowings without a major changeset/u);
+    }
+  });
+
+  it.each([
     ['mixed comparator range', '>=20.0.0 <23.0.0', '>=21.0.0 <24.0.0'],
     ['mixed union range', '>=20.0.0 <21.0.0 || >=22.0.0 <23.0.0', '>=21.0.0 <24.0.0'],
   ])('rejects patch metadata when %s removes support while adding support', (_fixture, previousRange, nextRange) => {

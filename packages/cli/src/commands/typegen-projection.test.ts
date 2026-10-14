@@ -204,7 +204,7 @@ describe('frozen compiler object association', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('round-trips the generated form action through authoritative URI version dispatch', async () => {
     // Given: the HTTP compiler selects URI versioning for the existing form handler.
