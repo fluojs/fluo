@@ -11,6 +11,7 @@ overrides:
   brace-expansion@2.0.2: 2.1.4
   engine.io: 6.6.9
   fast-uri@3: 3.1.7
+  fastify: 5.12.7
   find-my-way: 9.7.0
   ip-address: 10.3.1
   js-yaml@3.14.2: 3.15.2
@@ -1059,8 +1060,8 @@ importers:
         specifier: workspace:^
         version: link:../runtime
       fastify:
-        specifier: ^5.12.3
-        version: 5.12.3
+        specifier: 5.12.7
+        version: 5.12.7
       fastify-raw-body:
         specifier: ^5.0.0
         version: 5.0.0
@@ -3855,8 +3856,8 @@ packages:
     resolution: {integrity: sha512-2qfoaQ3BQDhZ1gtbkKZd6n0kKxJISJGM6u/skD9ljdWItAscjXrtZ1lnjr7PavmXX9j4EyCPmBDiIsLn07d5vA==}
     engines: {node: '>= 10'}
 
-  fastify@5.12.3:
-    resolution: {integrity: sha512-reZ8wce5VNCcufIt9AVtzZa3L4u1j8esikn7OEgHWLVpRpL5R7Y2+Xzj70OUkv5zDfzUAxXZT6cu4Rt0zr3EKA==}
+  fastify@5.12.7:
+    resolution: {integrity: sha512-v4pEPsTRPuqlDIYiQFB+BHjVN4SdHX9u0ABk0ZDUKbbdY1vsNryUd1j4Z+jQEZajvYIVk047Kimva9/AJ79GYw==}
 
   fastq@1.20.3:
     resolution: {integrity: sha512-XKv5nnLs6nLF71NgiKJLIZFLkPyIEuOselLG7ujZnGrRfQK8HpvY+WqKhAJUAdLomwVHErVS4LfxFlPq0/FTAw==}
@@ -7868,7 +7869,7 @@ snapshots:
       raw-body: 3.0.2
       secure-json-parse: 2.7.0
 
-  fastify@5.12.3:
+  fastify@5.12.7:
     dependencies:
       '@fastify/ajv-compiler': 4.0.6
       '@fastify/error': 4.2.0
