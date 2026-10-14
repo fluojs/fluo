@@ -11,6 +11,15 @@ current Fluo reference example already implements the complete product contract.
 
 ## Reproduction boundary
 
+The #3992 security update pins source-map-js 1.2.2 separately in all four
+application install roots and advances the React Router fixture's Vite from
+8.0.3 to 8.0.16. The workspace also resolves brace-expansion 2.x to 2.1.7.
+These updated dependency inputs differ from the historical frozen environment
+described below. Existing baseline, configuration, raw measurements and
+FAIL/INCONCLUSIVE receipts retain their original versions and meaning.
+Production build, HTTP and browser correctness checks on this updated graph
+are not new performance measurements or a performance PASS.
+
 Install with this suite's isolated `pnpm-lock.yaml`; do not resolve framework versions
 from the root workspace or update the lockfile during a timed run. Build linked Fluo
 packages from the selected source commit, then build each application using its native
