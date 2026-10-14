@@ -8,19 +8,19 @@
       "node": ">=24.11.0 <27"
     },
     "dependencies": {
-      "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-      "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-      "@fluojs/platform-fastify": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz",
-      "@fluojs/react": "file:.fluo-ci/packages/fluojs-react-0.2.2.tgz",
-      "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz",
+      "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+      "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+      "@fluojs/platform-fastify": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz",
+      "@fluojs/react": "file:.fluo-ci/packages/fluojs-react-0.3.0.tgz",
+      "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz",
       "@fluojs/validation": "file:.fluo-ci/packages/fluojs-validation-2.1.2.tgz",
       "react": "^19.2.6",
       "react-dom": "^19.2.6"
     },
     "devDependencies": {
-      "@fluojs/cli": "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz",
-      "@fluojs/testing": "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz",
-      "@fluojs/vite": "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz",
+      "@fluojs/cli": "file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz",
+      "@fluojs/testing": "file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz",
+      "@fluojs/vite": "file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz",
       "@playwright/test": "^1.51.1",
       "@types/react": "^19.2.14",
       "@types/react-dom": "^19.2.3",
@@ -38,84 +38,84 @@
       "@vitejs/plugin-react": "^6.1.1"
     },
     "overrides": {
-      "@fluojs/vite": "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz",
-      "@fluojs/testing": "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz",
-      "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz",
-      "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz",
-      "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-      "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz",
-      "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-      "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz",
+      "@fluojs/vite": "file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz",
+      "@fluojs/testing": "file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz",
+      "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz",
+      "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz",
+      "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+      "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz",
+      "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+      "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz",
       "@fluojs/validation": "file:.fluo-ci/packages/fluojs-validation-2.1.2.tgz",
-      "@fluojs/auth": "file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz",
-      "@fluojs/config": "file:.fluo-ci/packages/fluojs-config-2.0.2.tgz",
-      "@fluojs/cli": "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz",
-      "@fluojs/studio": "file:.fluo-ci/packages/fluojs-studio-2.0.1.tgz",
-      "@fluojs/react": "file:.fluo-ci/packages/fluojs-react-0.2.2.tgz",
-      "@fluojs/platform-fastify": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz",
-      "@fluojs/platform-nodejs": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.2.tgz"
+      "@fluojs/auth": "file:.fluo-ci/packages/fluojs-auth-0.2.0.tgz",
+      "@fluojs/config": "file:.fluo-ci/packages/fluojs-config-2.0.3.tgz",
+      "@fluojs/cli": "file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz",
+      "@fluojs/studio": "file:.fluo-ci/packages/fluojs-studio-2.0.2.tgz",
+      "@fluojs/react": "file:.fluo-ci/packages/fluojs-react-0.3.0.tgz",
+      "@fluojs/platform-fastify": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz",
+      "@fluojs/platform-nodejs": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.3.tgz"
     },
     "resolutions": {
-      "@fluojs/vite": "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz",
-      "@fluojs/testing": "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz",
-      "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz",
-      "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz",
-      "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-      "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz",
-      "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-      "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz",
+      "@fluojs/vite": "file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz",
+      "@fluojs/testing": "file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz",
+      "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz",
+      "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz",
+      "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+      "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz",
+      "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+      "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz",
       "@fluojs/validation": "file:.fluo-ci/packages/fluojs-validation-2.1.2.tgz",
-      "@fluojs/auth": "file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz",
-      "@fluojs/config": "file:.fluo-ci/packages/fluojs-config-2.0.2.tgz",
-      "@fluojs/cli": "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz",
-      "@fluojs/studio": "file:.fluo-ci/packages/fluojs-studio-2.0.1.tgz",
-      "@fluojs/react": "file:.fluo-ci/packages/fluojs-react-0.2.2.tgz",
-      "@fluojs/platform-fastify": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz",
-      "@fluojs/platform-nodejs": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.2.tgz"
+      "@fluojs/auth": "file:.fluo-ci/packages/fluojs-auth-0.2.0.tgz",
+      "@fluojs/config": "file:.fluo-ci/packages/fluojs-config-2.0.3.tgz",
+      "@fluojs/cli": "file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz",
+      "@fluojs/studio": "file:.fluo-ci/packages/fluojs-studio-2.0.2.tgz",
+      "@fluojs/react": "file:.fluo-ci/packages/fluojs-react-0.3.0.tgz",
+      "@fluojs/platform-fastify": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz",
+      "@fluojs/platform-nodejs": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.3.tgz"
     }
   },
   "internalGraphs": {
-    "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz": {
+    "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz": {
       "name": "@fluojs/core",
-      "version": "2.1.2",
+      "version": "2.1.3",
       "engines": {
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
-        "@fluojs/diagnostics": "^0.1.0",
-        "@fluojs/persistence": "^0.0.0"
+        "@fluojs/diagnostics": "^0.2.0",
+        "@fluojs/persistence": "^0.1.0"
       },
       "devDependencies": {
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz": {
+    "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz": {
       "name": "@fluojs/http",
-      "version": "3.1.3",
+      "version": "3.2.0",
       "engines": {
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
-        "@fluojs/auth": "^0.1.0",
-        "@fluojs/core": "^2.1.2",
+        "@fluojs/auth": "^0.2.0",
+        "@fluojs/core": "^2.1.3",
         "@fluojs/validation": "^2.1.2",
-        "@fluojs/di": "^3.1.2"
+        "@fluojs/di": "^3.1.3"
       },
       "devDependencies": {
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz": {
+    "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz": {
       "name": "@fluojs/platform-fastify",
-      "version": "2.0.4",
+      "version": "2.0.5",
       "engines": {
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
         "@fastify/multipart": "^9.2.1",
-        "@fluojs/http": "^3.1.3",
-        "@fluojs/platform-nodejs": "^2.0.2",
-        "@fluojs/runtime": "^3.1.2",
+        "@fluojs/http": "^3.2.0",
+        "@fluojs/platform-nodejs": "^2.0.3",
+        "@fluojs/runtime": "^3.1.3",
         "fastify": "^5.12.7",
         "fastify-raw-body": "^5.0.0"
       },
@@ -125,14 +125,14 @@
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-react-0.2.2.tgz": {
+    "file:.fluo-ci/packages/fluojs-react-0.3.0.tgz": {
       "name": "@fluojs/react",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "dependencies": {
-        "@fluojs/core": "^2.1.2",
-        "@fluojs/di": "^3.1.2",
-        "@fluojs/http": "^3.1.3",
-        "@fluojs/runtime": "^3.1.2"
+        "@fluojs/core": "^2.1.3",
+        "@fluojs/di": "^3.1.3",
+        "@fluojs/http": "^3.2.0",
+        "@fluojs/runtime": "^3.1.3"
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
@@ -144,15 +144,15 @@
         "react-dom": "^18.3.0 || ^19.0.0"
       }
     },
-    "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz": {
+    "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz": {
       "name": "@fluojs/runtime",
-      "version": "3.1.2",
+      "version": "3.1.3",
       "dependencies": {
-        "@fluojs/persistence": "^0.0.0",
-        "@fluojs/core": "^2.1.2",
-        "@fluojs/di": "^3.1.2",
-        "@fluojs/http": "^3.1.3",
-        "@fluojs/diagnostics": "^0.1.0"
+        "@fluojs/persistence": "^0.1.0",
+        "@fluojs/core": "^2.1.3",
+        "@fluojs/di": "^3.1.3",
+        "@fluojs/http": "^3.2.0",
+        "@fluojs/diagnostics": "^0.2.0"
       },
       "devDependencies": {
         "@fluojs/serialization": "workspace:^",
@@ -167,7 +167,7 @@
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
-        "@fluojs/core": "^2.1.2",
+        "@fluojs/core": "^2.1.3",
         "@standard-schema/spec": "^1.1.0",
         "validator": "^13.15.26"
       },
@@ -179,9 +179,9 @@
         "zod": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz": {
+    "file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz": {
       "name": "@fluojs/cli",
-      "version": "3.0.3",
+      "version": "4.0.0",
       "engines": {
         "node": ">=24.11.0 <27"
       },
@@ -189,7 +189,7 @@
         "ejs": "^3.1.10",
         "tsx": "^4.23.1",
         "typescript": "^6.0.2",
-        "@fluojs/diagnostics": "^0.1.0"
+        "@fluojs/diagnostics": "^0.2.0"
       },
       "devDependencies": {
         "@clack/prompts": "^1.7.0",
@@ -200,8 +200,8 @@
       },
       "peerDependencies": {
         "@clack/prompts": "^1.3.0",
-        "@fluojs/runtime": "^3.1.2",
-        "@fluojs/studio": "^2.0.1"
+        "@fluojs/runtime": "^3.1.3",
+        "@fluojs/studio": "^2.0.2"
       },
       "peerDependenciesMeta": {
         "@clack/prompts": {
@@ -215,18 +215,18 @@
         }
       }
     },
-    "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz": {
+    "file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz": {
       "name": "@fluojs/testing",
-      "version": "3.0.3",
+      "version": "3.0.4",
       "engines": {
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
-        "@fluojs/config": "^2.0.2",
-        "@fluojs/core": "^2.1.2",
-        "@fluojs/http": "^3.1.3",
-        "@fluojs/di": "^3.1.2",
-        "@fluojs/runtime": "^3.1.2"
+        "@fluojs/config": "^2.0.3",
+        "@fluojs/core": "^2.1.3",
+        "@fluojs/http": "^3.2.0",
+        "@fluojs/di": "^3.1.3",
+        "@fluojs/runtime": "^3.1.3"
       },
       "devDependencies": {
         "@fluojs/platform-bun": "workspace:^",
@@ -242,9 +242,9 @@
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz": {
+    "file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz": {
       "name": "@fluojs/vite",
-      "version": "2.0.1",
+      "version": "3.0.0",
       "engines": {
         "node": ">=24.11.0 <27"
       },
@@ -258,51 +258,51 @@
         "vite": ">=6.2.0"
       }
     },
-    "file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz": {
+    "file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz": {
       "name": "@fluojs/diagnostics",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz": {
+    "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz": {
       "name": "@fluojs/di",
-      "version": "3.1.2",
+      "version": "3.1.3",
       "engines": {
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
-        "@fluojs/core": "^2.1.2"
+        "@fluojs/core": "^2.1.3"
       },
       "devDependencies": {
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz": {
+    "file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz": {
       "name": "@fluojs/persistence",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "devDependencies": {
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz": {
+    "file:.fluo-ci/packages/fluojs-auth-0.2.0.tgz": {
       "name": "@fluojs/auth",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "engines": {
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
-        "@fluojs/core": "^2.1.2"
+        "@fluojs/core": "^2.1.3"
       },
       "devDependencies": {
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-config-2.0.2.tgz": {
+    "file:.fluo-ci/packages/fluojs-config-2.0.3.tgz": {
       "name": "@fluojs/config",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "dependencies": {
-        "@fluojs/core": "^2.1.2",
+        "@fluojs/core": "^2.1.3",
         "@standard-schema/spec": "^1.1.0"
       },
       "devDependencies": {
@@ -311,16 +311,16 @@
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-studio-2.0.1.tgz": {
+    "file:.fluo-ci/packages/fluojs-studio-2.0.2.tgz": {
       "name": "@fluojs/studio",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "engines": {
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
         "react": "^19.2.6",
         "react-dom": "^19.2.6",
-        "@fluojs/diagnostics": "^0.1.0"
+        "@fluojs/diagnostics": "^0.2.0"
       },
       "devDependencies": {
         "@playwright/test": "^1.61.1",
@@ -331,15 +331,15 @@
         "vitest": "^4.1.11"
       }
     },
-    "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.2.tgz": {
+    "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.3.tgz": {
       "name": "@fluojs/platform-nodejs",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "engines": {
         "node": ">=24.0.0 <27"
       },
       "dependencies": {
-        "@fluojs/http": "^3.1.3",
-        "@fluojs/runtime": "^3.1.2"
+        "@fluojs/http": "^3.2.0",
+        "@fluojs/runtime": "^3.1.3"
       },
       "devDependencies": {
         "vitest": "^4.1.11"
@@ -353,45 +353,45 @@
       "excludeLinksFromLockfile": false
     },
     "overrides": {
-      "@fluojs/vite": "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz",
-      "@fluojs/testing": "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz",
-      "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz",
-      "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz",
-      "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-      "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz",
-      "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-      "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz",
+      "@fluojs/vite": "file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz",
+      "@fluojs/testing": "file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz",
+      "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz",
+      "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz",
+      "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+      "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz",
+      "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+      "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz",
       "@fluojs/validation": "file:.fluo-ci/packages/fluojs-validation-2.1.2.tgz",
-      "@fluojs/auth": "file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz",
-      "@fluojs/config": "file:.fluo-ci/packages/fluojs-config-2.0.2.tgz",
-      "@fluojs/cli": "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz",
-      "@fluojs/studio": "file:.fluo-ci/packages/fluojs-studio-2.0.1.tgz",
-      "@fluojs/react": "file:.fluo-ci/packages/fluojs-react-0.2.2.tgz",
-      "@fluojs/platform-fastify": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz",
-      "@fluojs/platform-nodejs": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.2.tgz"
+      "@fluojs/auth": "file:.fluo-ci/packages/fluojs-auth-0.2.0.tgz",
+      "@fluojs/config": "file:.fluo-ci/packages/fluojs-config-2.0.3.tgz",
+      "@fluojs/cli": "file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz",
+      "@fluojs/studio": "file:.fluo-ci/packages/fluojs-studio-2.0.2.tgz",
+      "@fluojs/react": "file:.fluo-ci/packages/fluojs-react-0.3.0.tgz",
+      "@fluojs/platform-fastify": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz",
+      "@fluojs/platform-nodejs": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.3.tgz"
     },
     "importers": {
       ".": {
         "dependencies": {
           "@fluojs/core": {
-            "specifier": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-            "version": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz"
+            "specifier": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+            "version": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz"
           },
           "@fluojs/http": {
-            "specifier": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-            "version": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz"
+            "specifier": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+            "version": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz"
           },
           "@fluojs/platform-fastify": {
-            "specifier": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz",
-            "version": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz"
+            "specifier": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz",
+            "version": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz"
           },
           "@fluojs/react": {
-            "specifier": "file:.fluo-ci/packages/fluojs-react-0.2.2.tgz",
-            "version": "file:.fluo-ci/packages/fluojs-react-0.2.2.tgz(react-dom@19.3.0(react@19.3.0))(react@19.3.0)"
+            "specifier": "file:.fluo-ci/packages/fluojs-react-0.3.0.tgz",
+            "version": "file:.fluo-ci/packages/fluojs-react-0.3.0.tgz(react-dom@19.3.0(react@19.3.0))(react@19.3.0)"
           },
           "@fluojs/runtime": {
-            "specifier": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz",
-            "version": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz"
+            "specifier": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz",
+            "version": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz"
           },
           "@fluojs/validation": {
             "specifier": "file:.fluo-ci/packages/fluojs-validation-2.1.2.tgz",
@@ -424,16 +424,16 @@
             "version": "8.0.7(@babel/core@8.0.7)"
           },
           "@fluojs/cli": {
-            "specifier": "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz",
-            "version": "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz(@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz)"
+            "specifier": "file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz",
+            "version": "file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz(@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz)"
           },
           "@fluojs/testing": {
-            "specifier": "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz",
-            "version": "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz(vitest@4.1.11)"
+            "specifier": "file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz",
+            "version": "file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz(vitest@4.1.11)"
           },
           "@fluojs/vite": {
-            "specifier": "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz",
-            "version": "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz(@babel/core@8.0.7)(@babel/plugin-proposal-decorators@8.0.2(@babel/core@8.0.7))(@babel/preset-typescript@8.0.7(@babel/core@8.0.7))(vite@8.3.3(@types/node@24.19.1)(esbuild@0.28.2)(tsx@4.23.15))"
+            "specifier": "file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz",
+            "version": "file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz(@babel/core@8.0.7)(@babel/plugin-proposal-decorators@8.0.2(@babel/core@8.0.7))(@babel/preset-typescript@8.0.7(@babel/core@8.0.7))(vite@8.3.3(@types/node@24.19.1)(esbuild@0.28.2)(tsx@4.23.15))"
           },
           "@playwright/test": {
             "specifier": "^1.51.1",
@@ -1208,22 +1208,22 @@
           "integrity": "sha512-zv07Y9GEuDsJPegZoDFd4SDWaZOW8N2pa0GSrYmKpId/tjt1Hgo3BjZBVjdVpfVrHaA+Qv5jawtS2O50J5xM9g=="
         }
       },
-      "@fluojs/auth@file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz": {
+      "@fluojs/auth@file:.fluo-ci/packages/fluojs-auth-0.2.0.tgz": {
         "resolution": {
           "integrity": "sha512-BCQfNnF7wS11649XGQMCeAMaWWv7DmYocd4K4Lo14xyEBa9pyR3DGU56Tz/xIZ/WoNPzsZIznr1LAv68suUqwQ==",
-          "tarball": "file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-auth-0.2.0.tgz"
         },
-        "version": "0.1.0",
+        "version": "0.2.0",
         "engines": {
           "node": ">=24.0.0 <27"
         }
       },
-      "@fluojs/cli@file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz": {
+      "@fluojs/cli@file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz": {
         "resolution": {
           "integrity": "sha512-tInHp0pKrkB5WkFyGBag2M3oN4vy+h5vBpmNfvrhUd+5iPvObPeCfa4+PnhdAqknZxMAtAlmpmeB8E00t1PsQA==",
-          "tarball": "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz"
         },
-        "version": "3.0.3",
+        "version": "4.0.0",
         "engines": {
           "node": ">=24.11.0 <27"
         },
@@ -1245,101 +1245,101 @@
           }
         }
       },
-      "@fluojs/config@file:.fluo-ci/packages/fluojs-config-2.0.2.tgz": {
+      "@fluojs/config@file:.fluo-ci/packages/fluojs-config-2.0.3.tgz": {
         "resolution": {
           "integrity": "sha512-GIM5OmRJ+3w/G5xgekGBTCVqTWb9T28jLstXhQ1LQGX7F4bWurlu2QdRzgUkGRj7i8PS+IR2K/31QP/uibn8aA==",
-          "tarball": "file:.fluo-ci/packages/fluojs-config-2.0.2.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-config-2.0.3.tgz"
         },
-        "version": "2.0.2"
+        "version": "2.0.3"
       },
-      "@fluojs/core@file:.fluo-ci/packages/fluojs-core-2.1.2.tgz": {
+      "@fluojs/core@file:.fluo-ci/packages/fluojs-core-2.1.3.tgz": {
         "resolution": {
           "integrity": "sha512-IZdN3CY5s1XnTNbXwTYGuthBjhYaRKhjY9Xe9ELQ9jnyAXpH1l7YaCd3+tS9Qxrn2JLWnwsAiujWkgcTn+dpSw==",
-          "tarball": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz"
         },
-        "version": "2.1.2",
+        "version": "2.1.3",
         "engines": {
           "node": ">=24.0.0 <27"
         }
       },
-      "@fluojs/di@file:.fluo-ci/packages/fluojs-di-3.1.2.tgz": {
+      "@fluojs/di@file:.fluo-ci/packages/fluojs-di-3.1.3.tgz": {
         "resolution": {
           "integrity": "sha512-cpnNmEP3RNod8MUxZBAqugzLCaEeGjlLi5hQdEEoZt3hD1uP61iM8yEuzNYWOemqUuk3W7vjzmSMu36Udek8hQ==",
-          "tarball": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz"
-        },
-        "version": "3.1.2",
-        "engines": {
-          "node": ">=24.0.0 <27"
-        }
-      },
-      "@fluojs/diagnostics@file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz": {
-        "resolution": {
-          "integrity": "sha512-GIPnrEnFOY/eMWqsHLsp4UsCwW3IUi5ytFkqJZl1z6XFPk0YZdVmgyNZ52BJe6E7/4I+7OEsoWpn1dXjEhSRYg==",
-          "tarball": "file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz"
-        },
-        "version": "0.1.0"
-      },
-      "@fluojs/http@file:.fluo-ci/packages/fluojs-http-3.1.3.tgz": {
-        "resolution": {
-          "integrity": "sha512-83G9cLx/6Dx3Cbc0HZIM9xwTcYOLxGPUJLcT6Um75CnnQHqebSO7svEMzjmMRZTqu9M2LFit8oSxjgEl6qE33g==",
-          "tarball": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz"
         },
         "version": "3.1.3",
         "engines": {
           "node": ">=24.0.0 <27"
         }
       },
-      "@fluojs/persistence@file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz": {
+      "@fluojs/diagnostics@file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz": {
+        "resolution": {
+          "integrity": "sha512-GIPnrEnFOY/eMWqsHLsp4UsCwW3IUi5ytFkqJZl1z6XFPk0YZdVmgyNZ52BJe6E7/4I+7OEsoWpn1dXjEhSRYg==",
+          "tarball": "file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz"
+        },
+        "version": "0.2.0"
+      },
+      "@fluojs/http@file:.fluo-ci/packages/fluojs-http-3.2.0.tgz": {
+        "resolution": {
+          "integrity": "sha512-83G9cLx/6Dx3Cbc0HZIM9xwTcYOLxGPUJLcT6Um75CnnQHqebSO7svEMzjmMRZTqu9M2LFit8oSxjgEl6qE33g==",
+          "tarball": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz"
+        },
+        "version": "3.2.0",
+        "engines": {
+          "node": ">=24.0.0 <27"
+        }
+      },
+      "@fluojs/persistence@file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz": {
         "resolution": {
           "integrity": "sha512-BrOWPI+hkN5HCaWEe0RqeVXjoIIofHv+UQsTGO/odTEbcYuVw0czFvUXBs+Mr5eOs6hJ6nyJ4j5PQRisR3NsNA==",
-          "tarball": "file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz"
         },
-        "version": "0.0.0"
+        "version": "0.1.0"
       },
-      "@fluojs/platform-fastify@file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz": {
+      "@fluojs/platform-fastify@file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz": {
         "resolution": {
           "integrity": "sha512-zr9BIkhuP+Xs0cyrJK/BHqjGvEE23YMOLR0SlzLDyy/CdqcVfqF3rz4Vo66RnPnmcqGGAHfJSyIoz830Mr+PDA==",
-          "tarball": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz"
         },
-        "version": "2.0.4",
+        "version": "2.0.5",
         "engines": {
           "node": ">=24.0.0 <27"
         }
       },
-      "@fluojs/platform-nodejs@file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.2.tgz": {
+      "@fluojs/platform-nodejs@file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.3.tgz": {
         "resolution": {
           "integrity": "sha512-dLo4peuS8Ez4gJ4vZlMxk1CKZgkZS/dAw79TnlMqK5bjifJWuX0FSLcNnn59whS0bblVP5OvWvxBhjnngAYZsA==",
-          "tarball": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.2.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.3.tgz"
         },
-        "version": "2.0.2",
+        "version": "2.0.3",
         "engines": {
           "node": ">=24.0.0 <27"
         }
       },
-      "@fluojs/react@file:.fluo-ci/packages/fluojs-react-0.2.2.tgz": {
+      "@fluojs/react@file:.fluo-ci/packages/fluojs-react-0.3.0.tgz": {
         "resolution": {
           "integrity": "sha512-Los6RLm32tvqV2qLiRsx3bD3b01WG86w22WgxXEcgsb4GRkJDt+96+gcFwXVZ5oYiFx1GF8aEPRKxM3L/7408w==",
-          "tarball": "file:.fluo-ci/packages/fluojs-react-0.2.2.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-react-0.3.0.tgz"
         },
-        "version": "0.2.2",
+        "version": "0.3.0",
         "peerDependencies": {
           "react": "^18.3.0 || ^19.0.0",
           "react-dom": "^18.3.0 || ^19.0.0"
         }
       },
-      "@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz": {
+      "@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz": {
         "resolution": {
           "integrity": "sha512-ziamagK3PAc50aIy64fOE6KGba+aLOUQQNQvtRSCERs6puSgfkY20TZbgMbT8uekBMBXL6D1AxVNc7nsjJXRgA==",
-          "tarball": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz"
         },
-        "version": "3.1.2"
+        "version": "3.1.3"
       },
-      "@fluojs/testing@file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz": {
+      "@fluojs/testing@file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz": {
         "resolution": {
           "integrity": "sha512-cQOfivyNnrhiS7AKiSlV2rUAoAMAG3jZ2XrSwYpEIIsp6rDzcWFojqq1YXh+DIfjohb/6JGrbpIdQjySAL01Xw==",
-          "tarball": "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz"
         },
-        "version": "3.0.3",
+        "version": "3.0.4",
         "engines": {
           "node": ">=24.0.0 <27"
         },
@@ -1357,12 +1357,12 @@
           "node": ">=24.0.0 <27"
         }
       },
-      "@fluojs/vite@file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz": {
+      "@fluojs/vite@file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz": {
         "resolution": {
           "integrity": "sha512-gj5GSbm+XsgkOyZZ4a/ANAkElb44RGFwoXPBimCcMXDUICIR6J+BBVPUuhS6Kc87ZMVjicV/KTF8R4ewy5ZgYw==",
-          "tarball": "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz"
+          "tarball": "file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz"
         },
-        "version": "2.0.1",
+        "version": "3.0.0",
         "engines": {
           "node": ">=24.11.0 <27"
         },
@@ -3390,102 +3390,102 @@
           "ipaddr.js": "2.5.0"
         }
       },
-      "@fluojs/auth@file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz": {
+      "@fluojs/auth@file:.fluo-ci/packages/fluojs-auth-0.2.0.tgz": {
         "dependencies": {
-          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz"
+          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz"
         }
       },
-      "@fluojs/cli@file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz(@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz)": {
+      "@fluojs/cli@file:.fluo-ci/packages/fluojs-cli-4.0.0.tgz(@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz)": {
         "dependencies": {
-          "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz",
+          "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz",
           "ejs": "3.1.10",
           "tsx": "4.23.15",
           "typescript": "6.0.3"
         },
         "optionalDependencies": {
-          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz"
+          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz"
         }
       },
-      "@fluojs/config@file:.fluo-ci/packages/fluojs-config-2.0.2.tgz": {
+      "@fluojs/config@file:.fluo-ci/packages/fluojs-config-2.0.3.tgz": {
         "dependencies": {
-          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
+          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
           "@standard-schema/spec": "1.1.0"
         }
       },
-      "@fluojs/core@file:.fluo-ci/packages/fluojs-core-2.1.2.tgz": {
+      "@fluojs/core@file:.fluo-ci/packages/fluojs-core-2.1.3.tgz": {
         "dependencies": {
-          "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz",
-          "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz"
+          "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz",
+          "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz"
         }
       },
-      "@fluojs/di@file:.fluo-ci/packages/fluojs-di-3.1.2.tgz": {
+      "@fluojs/di@file:.fluo-ci/packages/fluojs-di-3.1.3.tgz": {
         "dependencies": {
-          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz"
+          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz"
         }
       },
-      "@fluojs/diagnostics@file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz": {},
-      "@fluojs/http@file:.fluo-ci/packages/fluojs-http-3.1.3.tgz": {
+      "@fluojs/diagnostics@file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz": {},
+      "@fluojs/http@file:.fluo-ci/packages/fluojs-http-3.2.0.tgz": {
         "dependencies": {
-          "@fluojs/auth": "file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz",
-          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-          "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz",
+          "@fluojs/auth": "file:.fluo-ci/packages/fluojs-auth-0.2.0.tgz",
+          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+          "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz",
           "@fluojs/validation": "file:.fluo-ci/packages/fluojs-validation-2.1.2.tgz"
         }
       },
-      "@fluojs/persistence@file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz": {},
-      "@fluojs/platform-fastify@file:.fluo-ci/packages/fluojs-platform-fastify-2.0.4.tgz": {
+      "@fluojs/persistence@file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz": {},
+      "@fluojs/platform-fastify@file:.fluo-ci/packages/fluojs-platform-fastify-2.0.5.tgz": {
         "dependencies": {
           "@fastify/multipart": "9.4.0",
-          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-          "@fluojs/platform-nodejs": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.2.tgz",
-          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz",
+          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+          "@fluojs/platform-nodejs": "file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.3.tgz",
+          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz",
           "fastify": "5.12.7",
           "fastify-raw-body": "5.0.0"
         }
       },
-      "@fluojs/platform-nodejs@file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.2.tgz": {
+      "@fluojs/platform-nodejs@file:.fluo-ci/packages/fluojs-platform-nodejs-2.0.3.tgz": {
         "dependencies": {
-          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz"
+          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz"
         }
       },
-      "@fluojs/react@file:.fluo-ci/packages/fluojs-react-0.2.2.tgz(react-dom@19.3.0(react@19.3.0))(react@19.3.0)": {
+      "@fluojs/react@file:.fluo-ci/packages/fluojs-react-0.3.0.tgz(react-dom@19.3.0(react@19.3.0))(react@19.3.0)": {
         "dependencies": {
-          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-          "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz",
-          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz",
+          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+          "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz",
+          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz",
           "react": "19.3.0",
           "react-dom": "19.3.0(react@19.3.0)"
         }
       },
-      "@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz": {
+      "@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz": {
         "dependencies": {
-          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-          "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz",
-          "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.1.0.tgz",
-          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-          "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz"
+          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+          "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz",
+          "@fluojs/diagnostics": "file:.fluo-ci/packages/fluojs-diagnostics-0.2.0.tgz",
+          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+          "@fluojs/persistence": "file:.fluo-ci/packages/fluojs-persistence-0.1.0.tgz"
         }
       },
-      "@fluojs/testing@file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz(vitest@4.1.11)": {
+      "@fluojs/testing@file:.fluo-ci/packages/fluojs-testing-3.0.4.tgz(vitest@4.1.11)": {
         "dependencies": {
-          "@fluojs/config": "file:.fluo-ci/packages/fluojs-config-2.0.2.tgz",
-          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
-          "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz",
-          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz",
-          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz",
+          "@fluojs/config": "file:.fluo-ci/packages/fluojs-config-2.0.3.tgz",
+          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
+          "@fluojs/di": "file:.fluo-ci/packages/fluojs-di-3.1.3.tgz",
+          "@fluojs/http": "file:.fluo-ci/packages/fluojs-http-3.2.0.tgz",
+          "@fluojs/runtime": "file:.fluo-ci/packages/fluojs-runtime-3.1.3.tgz",
           "vitest": "4.1.11(@types/node@24.19.1)(@vitest/coverage-v8@4.1.11)(happy-dom@20.14.5)(vite@8.3.3(@types/node@24.19.1)(esbuild@0.28.2)(tsx@4.23.15))"
         }
       },
       "@fluojs/validation@file:.fluo-ci/packages/fluojs-validation-2.1.2.tgz": {
         "dependencies": {
-          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz",
+          "@fluojs/core": "file:.fluo-ci/packages/fluojs-core-2.1.3.tgz",
           "@standard-schema/spec": "1.1.0",
           "validator": "13.15.35"
         }
       },
-      "@fluojs/vite@file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz(@babel/core@8.0.7)(@babel/plugin-proposal-decorators@8.0.2(@babel/core@8.0.7))(@babel/preset-typescript@8.0.7(@babel/core@8.0.7))(vite@8.3.3(@types/node@24.19.1)(esbuild@0.28.2)(tsx@4.23.15))": {
+      "@fluojs/vite@file:.fluo-ci/packages/fluojs-vite-3.0.0.tgz(@babel/core@8.0.7)(@babel/plugin-proposal-decorators@8.0.2(@babel/core@8.0.7))(@babel/preset-typescript@8.0.7(@babel/core@8.0.7))(vite@8.3.3(@types/node@24.19.1)(esbuild@0.28.2)(tsx@4.23.15))": {
         "dependencies": {
           "@babel/core": "8.0.7",
           "@babel/plugin-proposal-decorators": "8.0.2(@babel/core@8.0.7)",

@@ -1,5 +1,15 @@
 # @fluojs/example-openapi-multiple-documents
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [[`364061e`](https://github.com/fluojs/fluo/commit/364061e43ae0e90e25b2fb71303ff60fa51976a2), [`a3b7830`](https://github.com/fluojs/fluo/commit/a3b78304b178742896bcbbc6be570dccd9836f1b), [`2f8d354`](https://github.com/fluojs/fluo/commit/2f8d3549160036260d7185b1440bab40d902e65e), [`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf), [`75bcfcc`](https://github.com/fluojs/fluo/commit/75bcfcc06d9d8832d146c46a5f6e221c351c0f95), [`aa0dadc`](https://github.com/fluojs/fluo/commit/aa0dadcc2c3d3221c76bda46e0ecf3915cac69a8), [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035)]:
+  - @fluojs/runtime@3.1.3
+  - @fluojs/platform-fastify@2.0.5
+  - @fluojs/openapi@2.0.2
+  - @fluojs/core@2.1.3
+
 ## 0.0.7
 
 ### Patch Changes

@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## 2.1.0
+
+### Minor Changes
+
+- [#3853](https://github.com/fluojs/fluo/pull/3853) [`d762bd2`](https://github.com/fluojs/fluo/commit/d762bd2f47561503cb076870ba35f22c228d6456) Thanks [@ayden94](https://github.com/ayden94)! - Allow code-first query, mutation, and subscription decorators to mark their root return type non-null with `nullable: false`. Omitted and `nullable: true` retain nullable root returns, and list item and argument nullability remain unchanged.
+
+### Patch Changes
+
+- [#3965](https://github.com/fluojs/fluo/pull/3965) [`ce70426`](https://github.com/fluojs/fluo/commit/ce70426f3bf29430c4eb941f8e94baaf8f78d364) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate dispatcher request-scope completion and separate GraphQL HTTP and WebSocket operation-scope ownership without changing public APIs, execution order, or cleanup and retry behavior.
+
+- [#3997](https://github.com/fluojs/fluo/pull/3997) [`d9e33d1`](https://github.com/fluojs/fluo/commit/d9e33d1995fb1ac9083e954640a2b3184aac76db) Thanks [@ayden94](https://github.com/ayden94)! - Update GraphQL Yoga to ^5.24.5 so its direct, executor, schema, and merge dependency paths resolve patched GraphQL Tools utils for GHSA-7mx3-vvmw-hjmv. Refresh application lockfiles when upgrading. Existing GraphQL APIs and Node.js >=24.0.0 <27 support are preserved; no workspace-only overrides or application migration are required.
+
+- [#3970](https://github.com/fluojs/fluo/pull/3970) [`aa0dadc`](https://github.com/fluojs/fluo/commit/aa0dadcc2c3d3221c76bda46e0ecf3915cac69a8) Thanks [@ayden94](https://github.com/ayden94)! - Clarify README prerequisites and distinguish application fragments from complete examples. Repair first-use examples, align English/Korean guidance and toolchain requirements, and separate deprecated Deno migration paths from new-project recommendations.
+
+- Updated dependencies [[`364061e`](https://github.com/fluojs/fluo/commit/364061e43ae0e90e25b2fb71303ff60fa51976a2), [`ce70426`](https://github.com/fluojs/fluo/commit/ce70426f3bf29430c4eb941f8e94baaf8f78d364), [`a719508`](https://github.com/fluojs/fluo/commit/a7195088aaaa787db909bcdb63e1fe31bf15bfa3), [`a34789a`](https://github.com/fluojs/fluo/commit/a34789af807b87f134feb66f756ab1242946bf05), [`00525a8`](https://github.com/fluojs/fluo/commit/00525a81b37166889cbf9d742d5a7cc0ca2b92ef), [`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf), [`63920ab`](https://github.com/fluojs/fluo/commit/63920ab592ec57e39c3155906b0068de26238b5a), [`adedc3a`](https://github.com/fluojs/fluo/commit/adedc3a1f4dcdfde8c9325d063ce36cfbb5f5d7e), [`985dcd0`](https://github.com/fluojs/fluo/commit/985dcd0e532bc63d59253bafc0a9bf8cf73781f6), [`942f673`](https://github.com/fluojs/fluo/commit/942f673d34d58a9093d7012253913aec9143ff45), [`8f7c69d`](https://github.com/fluojs/fluo/commit/8f7c69d3c0c50b8a0cbd6abff51dba4d08e67991), [`12c47ae`](https://github.com/fluojs/fluo/commit/12c47ae9a3da31bc6a6d336ccfc6f5f61d11674d), [`aa0dadc`](https://github.com/fluojs/fluo/commit/aa0dadcc2c3d3221c76bda46e0ecf3915cac69a8), [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035)]:
+  - @fluojs/runtime@3.1.3
+  - @fluojs/http@3.2.0
+  - @fluojs/core@2.1.3
+  - @fluojs/di@3.1.3
+
 ## 2.0.1
 
 ### Patch Changes
