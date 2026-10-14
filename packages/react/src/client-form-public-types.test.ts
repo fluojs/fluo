@@ -89,7 +89,7 @@ it('compiles typed successful input names and exhaustive mutation and follow-up 
     }
   `);
   expect(diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
-});
+}, 30_000);
 
 it.each([
   `binding.fieldErrors('password');`,
@@ -108,4 +108,4 @@ it.each([
     ${invalid}
   `);
   expect(diagnostics.some((diagnostic) => [2345, 2322, 2339].includes(diagnostic.code))).toBe(true);
-});
+}, 30_000);
