@@ -531,6 +531,20 @@ test('C3b: test-support declarations outside src are not consumer-visible', () =
 	assert.equal(isConsumerVisibleFile('packages/terminus/test-fixtures/public-subpaths-import.ts'), false);
 });
 
+test('C3b: private package-root fixtures are not consumer-visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/prisma/fixtures/after-commit/package.json'), false);
+	assert.equal(isConsumerVisibleFile('packages/prisma/fixtures/after-commit/pnpm-lock.yaml'), false);
+});
+
+test('C3b: production paths including nested fixtures stay consumer-visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/prisma/package.json'), true);
+	assert.equal(isConsumerVisibleFile('packages/prisma/README.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/prisma/README.ko.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/prisma/LICENSE'), true);
+	assert.equal(isConsumerVisibleFile('packages/prisma/src/fixtures/client.ts'), true);
+	assert.equal(isConsumerVisibleFile('packages/prisma/dist/fixtures/client.js'), true);
+});
+
 test('C3b: a directory merely starting with "test" stays consumer-visible', () => {
 	assert.equal(isConsumerVisibleFile('packages/testing/src/http.ts'), true);
 	assert.equal(isConsumerVisibleFile('packages/platform-deno/src/testing-support.ts'), true);
