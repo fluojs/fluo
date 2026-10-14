@@ -33,7 +33,7 @@ describe('@fluojs/microservices root barrel public surface', () => {
     };
 
     expect(packageJson.peerDependencies).toMatchObject({
-      '@grpc/grpc-js': '^1.14.4',
+      '@grpc/grpc-js': '^1.14.5',
       '@grpc/proto-loader': '^0.8.0',
       ioredis: '^5.0.0',
       mqtt: '^5.0.0',
