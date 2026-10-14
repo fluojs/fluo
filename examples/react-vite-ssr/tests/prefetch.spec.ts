@@ -40,6 +40,8 @@ test('refreshes a consumed public entry on revisit and history traversal', async
   const original = await page.getByRole('heading', { name: /Browser destination: Prefetch public-84 visit/u }).textContent();
 
   // When: the browser traverses away and back without a cached entry.
+  // Keep the pointer off remounted links so history traversal cannot start a new hover prefetch.
+  await page.mouse.move(0, 0);
   const back = nextNavigation(page, '/admin/qr');
   await page.goBack();
   await back;
