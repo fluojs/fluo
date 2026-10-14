@@ -44,6 +44,7 @@
   "files": {
     "includes": [
       "packages/*/src/**/*.ts",
+      "examples/react-vite-ssr/tests/**/*.ts",
       "tooling/**/*.ts",
       "tooling/**/*.mjs",
       "!tooling/benchmarks/http-comparison/src/nestjs/**/*.ts",
