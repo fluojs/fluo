@@ -385,6 +385,7 @@ function collectStableNodeEngineRangeNarrowings(baseRef, dependencies = {}) {
           {
             filePath: packageJsonPath,
             nextEngineRange: next.nodeEngineRange,
+            nextVersion: next.version,
             packageName: next.packageName,
             previousEngineRange: previous.nodeEngineRange,
             previousVersion: previous.version,
@@ -426,6 +427,32 @@ function hasConsumerNodeEngineMigrationGuidance(body, nextEngineRange) {
 function hasGeneratedMajorMigrationEvidence(section) {
   return /(?:^|\n) {0,3}Migration:\s+\S/iu.test(section) ||
     /(?:^|\n) {0,3}(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+ {0,3}\S/iu.test(section);
+}
+
+function hasUnpublishedMajorNodeEngineEvidence(narrowing, dependencies = {}) {
+  const previous = parseOfficialVersion(narrowing.previousVersion);
+  const next = parseOfficialVersion(narrowing.nextVersion ?? '');
+  if (!previous || !next || next[0] <= previous[0]) {
+    return false;
+  }
+
+  const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
+  const changelogPath = join(repoRoot, packageChangelogPathForPackageJson(narrowing.filePath));
+  if (!pathExists(changelogPath)) {
+    return false;
+  }
+
+  const changelog = readFile(changelogPath, 'utf8');
+  return [...changelog.matchAll(/^## (\S+)$/gmu)].some(([, version]) => {
+    const candidate = parseOfficialVersion(version);
+    if (!candidate || candidate[0] <= previous[0] || candidate[1] !== 0 || candidate[2] !== 0 ||
+      compareOfficialVersions(candidate, next) > 0) {
+      return false;
+    }
+    const section = changelogSectionForVersion(changelog, version);
+    return section?.includes('### Major Changes') === true &&
+      hasConsumerNodeEngineMigrationGuidance(section.replace(/^ {0,3}(?:- )?/gmu, ''), narrowing.nextEngineRange);
+  });
 }
 
 function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, dependencies = {}) {
@@ -807,7 +834,8 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
       narrowing.unparseableVersion === true ||
       (!intents.some(
         (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
-      ) && !authorizedConsumedGeneratedMajorPackages.has(narrowing.packageName)),
+      ) && !authorizedConsumedGeneratedMajorPackages.has(narrowing.packageName) &&
+        !hasUnpublishedMajorNodeEngineEvidence(narrowing, dependencies)),
   );
   const missingNodeEngineMigrationNotes = collectMissingNodeEngineMigrationNotes(
     allStableNodeEngineRangeNarrowings,
