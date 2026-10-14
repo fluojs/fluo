@@ -19,7 +19,7 @@ overrides:
   js-yaml@4.1.1: 4.3.2
   mongoose: 9.7.2
   next: 16.3.8
-  nodemailer: 9.1.1
+  nodemailer: 10.1.0
   postcss: 8.5.23
   protobufjs: 7.6.5
   qs: 6.16.0
@@ -659,8 +659,8 @@ importers:
         specifier: workspace:^
         version: link:../runtime
       nodemailer:
-        specifier: 9.1.1
-        version: 9.1.1
+        specifier: 10.1.0
+        version: 10.1.0
     devDependencies:
       '@fluojs/queue':
         specifier: workspace:^
@@ -4764,9 +4764,9 @@ packages:
     resolution: {integrity: sha512-YHs7BmmcsdAI5Ozuf8JZo6PT0mv2GIWC9vMfvUC3dp65M8hn7Ux8CPL+2oBI7juNuj9d0ndhTcznq2ODBps9cQ==}
     engines: {node: '>=18'}
 
-  nodemailer@9.1.1:
-    resolution: {integrity: sha512-izw9mVKFix6YSnC9eLgV6g1opl9DUlRio9ZNcq+Wu9Ujn2UwF+8Nl0B8nz22kEC+CTZCvinkxwJ0DeFbb6NwcQ==}
-    engines: {node: '>=6.0.0'}
+  nodemailer@10.1.0:
+    resolution: {integrity: sha512-fXW8AulB25aOTuwfRYV6lqHyfz2VM4rr4SGXH03mE7x5znEUpzL5mu6anARUpZN7744Ziwkmr4AxSLPJsBQspg==}
+    engines: {node: '>=20.0.0'}
 
   number-allocator@1.0.14:
     resolution: {integrity: sha512-OrL44UTVAvkKdOdRQZIJpLkAdjXGTRda052sN4sO77bKEzYYqWKMBjQvrJFzqygI99gL6Z4u2xctPW1tB8ErvA==}
@@ -9094,7 +9094,7 @@ snapshots:
 
   node-releases@2.0.54: {}
 
-  nodemailer@9.1.1: {}
+  nodemailer@10.1.0: {}
 
   number-allocator@1.0.14:
     dependencies:
