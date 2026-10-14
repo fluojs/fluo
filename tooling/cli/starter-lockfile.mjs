@@ -55,6 +55,70 @@ export function captureStarterSnapshot(projectDirectory, lockfile) {
   };
 }
 
+export function refreshStarterSnapshotVersions(snapshot, packageManifests) {
+  if (snapshot.version !== 1 || snapshot.lockfile?.lockfileVersion !== '9.0') {
+    throw new TypeError('Expected a version 1 starter snapshot with pnpm lockfile version 9.0');
+  }
+  const manifests = new Map(packageManifests.map((manifest) => [manifest.name, manifest]));
+  const previousVersions = new Map(Object.values(snapshot.internalGraphs).map(({ name, version }) => [name, version]));
+  const currentVersions = new Map(packageManifests.map(({ name, version }) => [name, version]));
+  const referenceFor = (name, version) => `file:.fluo-ci/packages/${name.replace(/^@/, '').replaceAll('/', '-')}-${version}.tgz`;
+  const packedGraph = (manifest, versions) => {
+    const packed = structuredClone(graph(manifest));
+    packed.version = versions.get(manifest.name);
+    // Match the local starter packer's production/optional/peer workspace rewrite.
+    // Dev dependencies stay workspace ranges in the packed manifest.
+    for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const [name, specifier] of Object.entries(packed[section] ?? {})) {
+        if (!specifier.startsWith('workspace:')) continue;
+        const version = versions.get(name);
+        if (version === undefined) throw new TypeError(`Unknown workspace dependency in starter graph: ${name}`);
+        const range = specifier.slice('workspace:'.length);
+        packed[section][name] = range === '^' || range === '~' ? `${range}${version}`
+          : range === '*' || range === '' ? version : range;
+      }
+    }
+    return packed;
+  };
+  const references = new Map();
+  const internalGraphs = {};
+  for (const [reference, previousGraph] of Object.entries(snapshot.internalGraphs)) {
+    const manifest = manifests.get(previousGraph.name);
+    if (!manifest || reference !== referenceFor(previousGraph.name, previousGraph.version)
+      || !same(previousGraph, packedGraph(manifest, previousVersions))) {
+      throw new TypeError(`Starter dependency graph changed for ${previousGraph.name}; regenerate the reviewed verification snapshot`);
+    }
+    const nextReference = referenceFor(manifest.name, manifest.version);
+    references.set(reference, nextReference);
+    internalGraphs[nextReference] = packedGraph(manifest, currentVersions);
+  }
+  const replaceReference = (value) => {
+    for (const [previous, current] of references) value = value.replaceAll(previous, current);
+    return value;
+  };
+  const rebind = (value) => {
+    if (typeof value === 'string') return replaceReference(value);
+    if (Array.isArray(value)) return value.map(rebind);
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [replaceReference(key), rebind(item)]));
+    }
+    return value;
+  };
+  const lockfile = rebind(snapshot.lockfile);
+  for (const [key, entry] of Object.entries(snapshot.lockfile.packages ?? {})) {
+    const reference = entry.resolution?.tarball;
+    if (typeof reference !== 'string' || !reference.startsWith('file:')) continue;
+    const previousGraph = snapshot.internalGraphs[reference];
+    if (!previousGraph || entry.version !== previousGraph.version) {
+      throw new TypeError(`Packed dependency version mismatch in verification snapshot: ${reference}`);
+    }
+    lockfile.packages[replaceReference(key)].version = currentVersions.get(previousGraph.name);
+  }
+  // Keep captured integrity bytes intact. The strict consumer binds real packed bytes
+  // only after checking the complete new manifest and internal graphs.
+  return { ...snapshot, manifest: rebind(snapshot.manifest), internalGraphs, lockfile };
+}
+
 export function prepareStarterDependencies(projectDirectory, snapshotPath) {
   const current = packedDependencies(projectDirectory);
   if (snapshotPath === undefined) return { mode: 'fresh', internal: current.packed };
