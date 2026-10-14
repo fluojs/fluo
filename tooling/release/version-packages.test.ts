@@ -143,6 +143,25 @@ describe('normalizePackageChangelog', () => {
 });
 
 describe('runVersionPackages', () => {
+  it('runs snapshot generation after version mutation and published dependency generation', () => {
+    const executions: string[][] = [];
+    let versioned = false;
+
+    runVersionPackages({
+      workspacePackageManifests: () => [],
+      runChangesetsVersion: () => { versioned = true; },
+      execFileSync: (_command, args) => {
+        expect(versioned).toBe(true);
+        executions.push([...args]);
+      },
+    });
+
+    expect(executions.map(([script]) => script?.split('/').at(-1))).toEqual([
+      'generate-published-internal-dependencies.mjs',
+      'generate-starter-snapshots.mjs',
+    ]);
+  });
+
   it('normalizes only public package changelogs changed by Changesets', () => {
     const prismaChangelogPath = '/repo/packages/prisma/CHANGELOG.md';
     const drizzleChangelogPath = '/repo/packages/drizzle/CHANGELOG.md';

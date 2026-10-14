@@ -40,6 +40,7 @@ describe('CLI release metadata generation', () => {
     const fixture = createReleaseFixture();
     execFileSync(process.execPath, [fixture.script], { timeout: 10_000 });
     const nextVersions = { ...releaseVersions, '@fluojs/config': '9.8.7', '@fluojs/react': '0.12.3' };
+    const generationCommands: string[][] = [];
 
     runVersionPackages({
       workspacePackageManifests: () => [],
@@ -53,12 +54,18 @@ describe('CLI release metadata generation', () => {
       },
       execFileSync: (command, args) => {
         expect(command).toBe(process.execPath);
-        expect(args).toEqual([join(repositoryRoot, 'packages/cli/scripts/generate-published-internal-dependencies.mjs')]);
+        generationCommands.push([...args]);
         // Execute only the copied generator: its import.meta.url confines all writes to the fixture.
-        execFileSync(process.execPath, [fixture.script], { timeout: 10_000 });
+        if (args[0] === join(repositoryRoot, 'packages/cli/scripts/generate-published-internal-dependencies.mjs')) {
+          execFileSync(process.execPath, [fixture.script], { timeout: 10_000 });
+        }
       },
     });
 
+    expect(generationCommands).toEqual([
+      [join(repositoryRoot, 'packages/cli/scripts/generate-published-internal-dependencies.mjs')],
+      [join(repositoryRoot, 'tooling/cli/generate-starter-snapshots.mjs')],
+    ]);
     const output = execFileSync(process.execPath, [
       '--input-type=module', '--eval',
       `import { PUBLISHED_INTERNAL_DEPENDENCIES } from ${JSON.stringify(pathToFileURL(fixture.output).href)}; console.log(JSON.stringify(PUBLISHED_INTERNAL_DEPENDENCIES));`,

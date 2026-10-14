@@ -110,6 +110,9 @@ export function runVersionPackages(dependencies = {}) {
   executeFile(process.execPath, [join(repoRoot, 'packages/cli/scripts/generate-published-internal-dependencies.mjs')], {
     stdio: 'inherit',
   });
+  executeFile(process.execPath, [join(repoRoot, 'tooling/cli/generate-starter-snapshots.mjs')], {
+    stdio: 'inherit',
+  });
 
   const normalizedChangelogPaths = [];
   const pendingWrites = [];
