@@ -124,11 +124,10 @@ function packPackage(packageDirectory: string, tarballDirectory: string): string
   const existingArchives = new Set(readdirSync(tarballDirectory));
   const isPublishedNodemailer = JSON.parse(readFileSync(join(packageDirectory, 'package.json'), 'utf8')).name === 'nodemailer';
   // Published Nodemailer 10 already contains dist; its prepare script references unpublished build sources.
-  const command = isPublishedNodemailer ? 'npm' : 'pnpm';
   const args = ['pack', '--json', '--pack-destination', tarballDirectory];
-  if (isPublishedNodemailer) args.push('--ignore-scripts');
-  const packed = runCommand(command, args, packageDirectory);
-  expectCommandSuccess(`${command} pack in ${packageDirectory}`, packed);
+  if (isPublishedNodemailer) args.push('--config.ignore-scripts=true');
+  const packed = runCommand('pnpm', args, packageDirectory);
+  expectCommandSuccess(`pnpm pack in ${packageDirectory}`, packed);
   const filename = readdirSync(tarballDirectory).find((entry) => entry.endsWith('.tgz') && !existingArchives.has(entry));
   if (!filename) {
     throw new Error(`pnpm pack did not report an archive for ${packageDirectory}.`);

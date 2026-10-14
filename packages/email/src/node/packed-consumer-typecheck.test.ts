@@ -1,11 +1,28 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { createWorkspaceArtifactWriter } from '../../../../tooling/scripts/run-workspace-build-closure.mjs';
 
 import { createPackedEmailConsumer } from './packed-consumer.fixture.js';
 
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    spawnSync: (...args: Parameters<typeof actual.spawnSync>) => {
+      if (args[0] === 'npm' && args[1]?.[0] === 'pack') {
+        return actual.spawnSync(
+          process.execPath,
+          ['-e', "process.stderr.write('npm error Exit handler never called!\\n'); process.exit(1);"],
+          args[2],
+        );
+      }
+      return actual.spawnSync(...args);
+    },
+  };
+});
+
 it(
-  'typechecks the packed Node subpath in a clean consumer installation',
+  'typechecks the packed Node subpath in a clean consumer installation when npm packing is unavailable',
   async () => {
     const writer = createWorkspaceArtifactWriter(
       fileURLToPath(new URL('../../dist', import.meta.url)),
