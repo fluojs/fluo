@@ -1,5 +1,12 @@
 # @fluojs/example-react-stable-ssr
 
+## 0.0.9
+
+### Patch Changes
+
+- Updated dependencies [[`4c2f534`](https://github.com/fluojs/fluo/commit/4c2f5342f9223a65b50de3b4b17156b03d7cbacf)]:
+  - @fluojs/platform-fastify@2.0.6
+
 ## 0.0.8
 
 ### Patch Changes

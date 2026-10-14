@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## 2.0.6
+
+### Patch Changes
+
+- [#4000](https://github.com/fluojs/fluo/pull/4000) [`4c2f534`](https://github.com/fluojs/fluo/commit/4c2f5342f9223a65b50de3b4b17156b03d7cbacf) Thanks [@ayden94](https://github.com/ayden94)! - Require patched Fastify 5.12.7 and raise the optional gRPC peer security floor to @grpc/grpc-js 1.14.5. Existing transport APIs and resource ownership remain unchanged.
+
+  Generated gRPC projects now require @grpc/grpc-js ^1.14.5, matching the microservices peer contract and the CLI installation guidance.
+
+  Migration: Applications using @grpc/grpc-js 1.14.4 must install @grpc/grpc-js ^1.14.5 and refresh their lockfile before upgrading @fluojs/microservices. The gRPC peers remain optional when the application does not use gRPC.
+
 ## 2.0.5
 
 ### Patch Changes
