@@ -119,7 +119,7 @@
         "vitest": "^4.1.11"
       },
       "peerDependencies": {
-        "@grpc/grpc-js": "^1.14.4",
+        "@grpc/grpc-js": "^1.14.5",
         "@grpc/proto-loader": "^0.8.0",
         "ioredis": "^5.0.0",
         "mqtt": "^5.0.0"
@@ -1102,7 +1102,7 @@
       },
       "@fluojs/auth@file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz": {
         "resolution": {
-          "integrity": "sha512-KJ0BZAS0+zARM9liIcBnIcOjXNKlDBOKCh7Lh9vRmi1+wKJjugjqcFzPpycEaTRb+Jp/gfO2g0+GbnxiRvag6A==",
+          "integrity": "sha512-BCQfNnF7wS11649XGQMCeAMaWWv7DmYocd4K4Lo14xyEBa9pyR3DGU56Tz/xIZ/WoNPzsZIznr1LAv68suUqwQ==",
           "tarball": "file:.fluo-ci/packages/fluojs-auth-0.1.0.tgz"
         },
         "version": "0.1.0",
@@ -1112,7 +1112,7 @@
       },
       "@fluojs/cli@file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz": {
         "resolution": {
-          "integrity": "sha512-lUV3BLPAuiOvdwFSIUlv7saFPGRO974ZpZ64mtXumCYJUflFay2VlK0GmdoEUjHj68TiaXoxfzltoGDkLdh5pQ==",
+          "integrity": "sha512-tInHp0pKrkB5WkFyGBag2M3oN4vy+h5vBpmNfvrhUd+5iPvObPeCfa4+PnhdAqknZxMAtAlmpmeB8E00t1PsQA==",
           "tarball": "file:.fluo-ci/packages/fluojs-cli-3.0.3.tgz"
         },
         "version": "3.0.3",
@@ -1139,14 +1139,14 @@
       },
       "@fluojs/config@file:.fluo-ci/packages/fluojs-config-2.0.2.tgz": {
         "resolution": {
-          "integrity": "sha512-rvhskak0DLvOzL4USUJ2ZteMm4mJ0ckF/CBST7QLm2n0S72ACWiAuopABVSXsh2JSfkvqBXLQjzB9cosXqjVww==",
+          "integrity": "sha512-GIM5OmRJ+3w/G5xgekGBTCVqTWb9T28jLstXhQ1LQGX7F4bWurlu2QdRzgUkGRj7i8PS+IR2K/31QP/uibn8aA==",
           "tarball": "file:.fluo-ci/packages/fluojs-config-2.0.2.tgz"
         },
         "version": "2.0.2"
       },
       "@fluojs/core@file:.fluo-ci/packages/fluojs-core-2.1.2.tgz": {
         "resolution": {
-          "integrity": "sha512-D2ZynVOj2RUrRqv7GK3VlDzxheJMDcefhtjavLO98yVoNerPvZ1k3DpJz20wdATtwyQjgENsQLjyCOgAdRuVQQ==",
+          "integrity": "sha512-IZdN3CY5s1XnTNbXwTYGuthBjhYaRKhjY9Xe9ELQ9jnyAXpH1l7YaCd3+tS9Qxrn2JLWnwsAiujWkgcTn+dpSw==",
           "tarball": "file:.fluo-ci/packages/fluojs-core-2.1.2.tgz"
         },
         "version": "2.1.2",
@@ -1156,7 +1156,7 @@
       },
       "@fluojs/di@file:.fluo-ci/packages/fluojs-di-3.1.2.tgz": {
         "resolution": {
-          "integrity": "sha512-tINgTXQ9Gy7mwnhldvQq0nqUqgjd/VgvuSlJM+0u0dkewSpsn7F2MCe8V+5upRSC9LYXf28hmrWlfOowfHtOYg==",
+          "integrity": "sha512-cpnNmEP3RNod8MUxZBAqugzLCaEeGjlLi5hQdEEoZt3hD1uP61iM8yEuzNYWOemqUuk3W7vjzmSMu36Udek8hQ==",
           "tarball": "file:.fluo-ci/packages/fluojs-di-3.1.2.tgz"
         },
         "version": "3.1.2",
@@ -1173,7 +1173,7 @@
       },
       "@fluojs/http@file:.fluo-ci/packages/fluojs-http-3.1.3.tgz": {
         "resolution": {
-          "integrity": "sha512-ci1fIlJSq/uFtpnAUBfWdfKU77ej0KHy48LkwINiv3i9OK/m6KIHc9X1G3omU90cFzdrNOYyMFVpFoyLfM00eg==",
+          "integrity": "sha512-83G9cLx/6Dx3Cbc0HZIM9xwTcYOLxGPUJLcT6Um75CnnQHqebSO7svEMzjmMRZTqu9M2LFit8oSxjgEl6qE33g==",
           "tarball": "file:.fluo-ci/packages/fluojs-http-3.1.3.tgz"
         },
         "version": "3.1.3",
@@ -1183,7 +1183,7 @@
       },
       "@fluojs/microservices@file:.fluo-ci/packages/fluojs-microservices-2.0.2.tgz": {
         "resolution": {
-          "integrity": "sha512-AoknCRdZbkdRS2uVEtu29kiC7FeYslCHR/ZP+/JoMnA+N0RXJM2Mb2f5MWCQa3ZIDqLaIWcwjpWJQJeOfxqt+Q==",
+          "integrity": "sha512-xoGqe18Un3NiISlwMzlRY2kVHepTZGUBIHC6LYD+Ekx45D9ytX7rY+l2hA/l8fIN9y5GcjACtt0WVHsAxXnyRA==",
           "tarball": "file:.fluo-ci/packages/fluojs-microservices-2.0.2.tgz"
         },
         "version": "2.0.2",
@@ -1191,7 +1191,7 @@
           "node": ">=24.0.0 <27"
         },
         "peerDependencies": {
-          "@grpc/grpc-js": "^1.14.4",
+          "@grpc/grpc-js": "^1.14.5",
           "@grpc/proto-loader": "^0.8.0",
           "ioredis": "^5.0.0",
           "mqtt": "^5.0.0"
@@ -1213,21 +1213,21 @@
       },
       "@fluojs/persistence@file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz": {
         "resolution": {
-          "integrity": "sha512-lIasfYJ2g0bo+hSPk5lw3ZLk0H9ETrKlbAL03Msqjqwony2gkc8A1/o3vTYjJrd3DQsi9ZiR4lEZUSy3QvWhYg==",
+          "integrity": "sha512-BrOWPI+hkN5HCaWEe0RqeVXjoIIofHv+UQsTGO/odTEbcYuVw0czFvUXBs+Mr5eOs6hJ6nyJ4j5PQRisR3NsNA==",
           "tarball": "file:.fluo-ci/packages/fluojs-persistence-0.0.0.tgz"
         },
         "version": "0.0.0"
       },
       "@fluojs/runtime@file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz": {
         "resolution": {
-          "integrity": "sha512-UaJqE+B9vJbxDpTeoQogVUefdkjVd8isqFc8/sWWFp7065cuFjGeq3Wx0ChWHGNc1Ei38qbQrCpTUxEfZq/wFA==",
+          "integrity": "sha512-ziamagK3PAc50aIy64fOE6KGba+aLOUQQNQvtRSCERs6puSgfkY20TZbgMbT8uekBMBXL6D1AxVNc7nsjJXRgA==",
           "tarball": "file:.fluo-ci/packages/fluojs-runtime-3.1.2.tgz"
         },
         "version": "3.1.2"
       },
       "@fluojs/testing@file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz": {
         "resolution": {
-          "integrity": "sha512-6reBA5BuyD7MteZ6WQOkxCEFGZUX52ZGAuVywM9mvOdnxa5zp1O7BnyfYtXDNqHQd1IoRCYhQDLgsZq1xRbzug==",
+          "integrity": "sha512-cQOfivyNnrhiS7AKiSlV2rUAoAMAG3jZ2XrSwYpEIIsp6rDzcWFojqq1YXh+DIfjohb/6JGrbpIdQjySAL01Xw==",
           "tarball": "file:.fluo-ci/packages/fluojs-testing-3.0.3.tgz"
         },
         "version": "3.0.3",
@@ -1250,7 +1250,7 @@
       },
       "@fluojs/vite@file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz": {
         "resolution": {
-          "integrity": "sha512-Ht9r9c+bCqHZ8vS7xPqod8WRV5zd/aTaM9AsCx2jq5YEPS8Dc0mCwz7tr/NFdM1oqMwMhsh9NNFBCcMzK5i1jA==",
+          "integrity": "sha512-gj5GSbm+XsgkOyZZ4a/ANAkElb44RGFwoXPBimCcMXDUICIR6J+BBVPUuhS6Kc87ZMVjicV/KTF8R4ewy5ZgYw==",
           "tarball": "file:.fluo-ci/packages/fluojs-vite-2.0.1.tgz"
         },
         "version": "2.0.1",
