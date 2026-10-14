@@ -35,15 +35,17 @@ Install `@fluojs/notifications` and `@fluojs/queue` only when you want the built
 npm install @fluojs/notifications @fluojs/queue
 ```
 
-Install `nodemailer` and its `@types/nodemailer` declarations only when you use the explicit `@fluojs/email/node` subpath for Node-only SMTP delivery.
+Install `nodemailer` only when you use the explicit `@fluojs/email/node` subpath for Node-only SMTP delivery. Nodemailer 10 bundles its declarations; the existing `@types/nodemailer` peer remains optional.
 
 ```bash
-npm install @fluojs/email nodemailer@^9.0.1 @types/nodemailer@^8.0.0
+npm install @fluojs/email nodemailer@^10.0.9
 ```
 
 Node-specific SMTP delivery is available from the explicit `@fluojs/email/node` subpath. Queue-backed notifications integration is available from `@fluojs/email/queue`, and `@fluojs/queue` is declared as an optional peer for that subpath. The root `@fluojs/email` entrypoint stays transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only or queue-specific behavior.
 
-`@fluojs/email/node` requires Nodemailer `^9.0.1`. Consumers upgrading from Nodemailer 6, 7, or 8 must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/email` release. The fluo transport factory API is unchanged, but applications should validate provider-specific SMTP options against Nodemailer 9 when migrating.
+Migration: `@fluojs/email/node` now requires Nodemailer `^10.0.9`; Nodemailer 9.x support from `@fluojs/email` 3.0.3 is removed because it remains affected by the addressed security advisories. Upgrade the peer and refresh your lockfile before adopting this major release. Nodemailer 10 requires Node.js 20 or newer, uses ESM/CommonJS builds, and provides bundled declarations. The fluo `create(...)` / `createFactory(...)` API, explicit SMTP options, receipt fields, and transporter ownership are unchanged. Validate provider-specific SMTP options against Nodemailer 10; existing caller-owned transporters must also use the supported peer. Transport-agnostic root consumers do not need to install Nodemailer.
+
+TypeScript Node consumers need `@types/node` (`npm install -D @types/node`) and must include `"types": ["node"]` in `compilerOptions` when automatic ambient type inclusion is disabled, including TypeScript 6. Keep `strict: true` and `skipLibCheck: false`; Nodemailer 10's bundled declarations do not replace the Node platform declarations.
 
 ## When to Use
 

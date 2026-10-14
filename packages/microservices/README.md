@@ -27,7 +27,7 @@ Optional transport-specific dependencies:
 - Package-managed optional peers loaded by `@fluojs/microservices`: `@grpc/grpc-js`, `@grpc/proto-loader`, `ioredis`, `mqtt`
 - Caller-owned broker clients passed explicitly to transports: `nats`, `kafkajs`, `amqplib`
 
-The gRPC transport requires `@grpc/grpc-js@^1.14.4` and `@grpc/proto-loader@^0.8.0`. Consumers using an older `@grpc/grpc-js` release must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/microservices` release. A refreshed install must resolve the proto-loader chain to `protobufjs@7.6.5` or newer so its patched UTF-8 helper is included; the fluo transport API is unchanged.
+The gRPC transport requires `@grpc/grpc-js@^1.14.5` and `@grpc/proto-loader@^0.8.0`. Consumers using `@grpc/grpc-js@1.14.4` or an older release must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/microservices` release. This security floor excludes the vulnerable gRPC releases; the peer remains optional for applications that do not use gRPC. A refreshed install must resolve the proto-loader chain to `protobufjs@7.6.5` or newer so its patched UTF-8 helper is included; the fluo transport API is unchanged.
 
 ## Requirements
 
