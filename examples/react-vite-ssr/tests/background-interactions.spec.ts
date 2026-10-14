@@ -39,7 +39,8 @@ async function release(page: Page, keys: readonly string[]) {
 const started = (page: Page, key: string) => page.request.get(`/__background/started?key=${encodeURIComponent(key)}`);
 const cleaned = (page: Page, key: string) => page.request.get(`/__background/cleaned?key=${encodeURIComponent(key)}`);
 async function open(page: Page) {
-  await page.goto('/catalog/login');
+  // Prepare the shared cookie jar without starting an unrelated client document.
+  expect((await page.request.get('/catalog/login')).ok()).toBe(true);
   await page.goto('/catalog/background#queue');
   await connected(page);
 }

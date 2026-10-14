@@ -62,7 +62,7 @@ test('evicts the oldest completed entry after 33 distinct public prefetches', as
   await openHydratedAdmin(page, '?prefetchBounds=cache');
   await page.clock.install();
   await page.clock.pauseAt(new Date());
-  await page.evaluate(() => { document.cookie = 'session=alice; Path=/'; });
+  await page.context().addCookies([{ name: 'session', value: 'alice', url: new URL('/', page.url()).href }]);
   const firstRequests = observeNavigation(page, '/prefetch/public-cache-1');
   const lastRequests = observeNavigation(page, '/prefetch/public-cache-33');
 
