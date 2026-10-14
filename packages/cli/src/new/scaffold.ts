@@ -28,7 +28,7 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
   '@types/react': '^19.2.14',
   '@types/react-dom': '^19.2.3',
   '@types/amqplib': '^0.10.7',
-  '@grpc/grpc-js': '^1.14.4',
+  '@grpc/grpc-js': '^1.14.5',
   '@grpc/proto-loader': '^0.8.0',
   amqplib: '^0.10.5',
   ioredis: '^5.0.0',

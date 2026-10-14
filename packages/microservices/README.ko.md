@@ -27,7 +27,7 @@ pnpm add @fluojs/microservices
 - `@fluojs/microservices`가 직접 로드하는 선택적 peer: `@grpc/grpc-js`, `@grpc/proto-loader`, `ioredis`, `mqtt`
 - 애플리케이션이 transport에 명시적으로 넘겨야 하는 caller-owned broker client: `nats`, `kafkajs`, `amqplib`
 
-gRPC transport는 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-loader@^0.8.0`을 요구합니다. 더 오래된 `@grpc/grpc-js` release를 사용하던 consumer는 이 major `@fluojs/microservices` release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신해야 합니다. 갱신된 install은 proto-loader chain을 `protobufjs@7.6.5` 이상으로 resolve해 수정된 UTF-8 helper를 포함해야 합니다. fluo transport API는 그대로입니다.
+gRPC transport는 `@grpc/grpc-js@^1.14.5`와 `@grpc/proto-loader@^0.8.0`을 요구합니다. `@grpc/grpc-js@1.14.4` 또는 더 오래된 release를 사용하던 consumer는 이 major `@fluojs/microservices` release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신해야 합니다. 이 보안 하한은 취약한 gRPC release를 제외하며, gRPC를 사용하지 않는 애플리케이션에서는 여전히 선택적 peer입니다. 갱신된 install은 proto-loader chain을 `protobufjs@7.6.5` 이상으로 resolve해 수정된 UTF-8 helper를 포함해야 합니다. fluo transport API는 그대로입니다.
 
 ## 요구 사항
 
