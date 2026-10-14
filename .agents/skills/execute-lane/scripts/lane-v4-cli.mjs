@@ -338,6 +338,9 @@ export const isConsumerVisibleFile = (file) => {
 		return false;
 	}
 	const withinPackage = file.replace(/^packages\/[^/]+\//, "");
+	if (withinPackage.startsWith("fixtures/")) {
+		return false;
+	}
 	return !/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(
 		withinPackage,
 	);
