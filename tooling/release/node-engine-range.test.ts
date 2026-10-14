@@ -155,6 +155,8 @@ describe('published Node engine manifest enforcement', () => {
     ['old published major', '1.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
     ['future major', '3.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
     ['patch-only history', '2.0.0', '### Patch Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
+    ['nested major heading', '2.0.0', '#### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
+    ['body major marker', '2.0.0', 'Not a heading: ### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
     ['duplicate major sections', '2.0.0\n\n## 2.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0.', false],
     ['missing migration', '2.0.0', '### Major Changes', 'Raise the minimum supported Node.js version.', false],
     ['unsupported replacement', '2.0.0', '### Major Changes', 'Migration: Node.js 20 support is removed. Upgrade to Node.js 21.', false],

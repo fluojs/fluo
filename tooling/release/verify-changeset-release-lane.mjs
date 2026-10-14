@@ -450,7 +450,7 @@ function hasUnpublishedMajorNodeEngineEvidence(narrowing, dependencies = {}) {
       return false;
     }
     const section = changelogSectionForVersion(changelog, version);
-    return section?.includes('### Major Changes') === true &&
+    return section !== null && /^### Major Changes$/mu.test(section) &&
       hasConsumerNodeEngineMigrationGuidance(section.replace(/^ {0,3}(?:- )?/gmu, ''), narrowing.nextEngineRange);
   });
 }
