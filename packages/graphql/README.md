@@ -24,6 +24,8 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 `@fluojs/graphql` includes `ws@^8.21.0` for optional GraphQL-over-WebSocket subscriptions. Refresh the application lockfile when upgrading so the patched package-owned WebSocket runtime is installed; applications do not need to add `ws` directly unless they import it themselves.
 
+The package requires `graphql-yoga@^5.24.5` with patched GraphQL Tools dependencies (`@graphql-tools/utils` >=12.0.1) and `graphql@^16.13.1`. Refresh the application lockfile when upgrading; no workspace-only overrides are required. Existing module registration, resolvers, and subscription APIs remain compatible.
+
 `@fluojs/graphql` supports Node.js `>=24.0.0 <27` and declares that exact range through `engines.node`. That range is the package's own verified Node support contract; portable `@fluojs/runtime` and `@fluojs/config` have no package-wide `engines.node`, and config guards its Node-only env-file and watch features at execution. HTTP queries/mutations and the default SSE subscription path use Web-standard request/response primitives internally, but that implementation detail does not establish package support for Bun, Deno, or Cloudflare Workers. Those runtimes remain unsupported until the complete dependency metadata and native runtime suites prove the full GraphQL contract. Optional WebSocket subscriptions additionally require an adapter that exposes a server-backed Node HTTP/S upgrade surface.
 
 ## When to Use

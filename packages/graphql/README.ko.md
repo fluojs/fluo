@@ -24,6 +24,8 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 `@fluojs/graphql`은 선택적 GraphQL-over-WebSocket subscription을 위해 `ws@^8.21.0`을 포함합니다. 업그레이드할 때 application lockfile을 갱신해 패치된 package-owned WebSocket runtime이 설치되도록 하세요. 애플리케이션이 `ws`를 직접 import하지 않는 한 별도로 추가할 필요는 없습니다.
 
+이 패키지는 패치된 GraphQL Tools 의존성(`@graphql-tools/utils` >=12.0.1)을 포함하는 `graphql-yoga@^5.24.5`와 `graphql@^16.13.1`을 요구합니다. 업그레이드할 때 application lockfile을 갱신하세요. Workspace 전용 override는 필요하지 않습니다. 기존 module registration, resolver, subscription API는 호환성을 유지합니다.
+
 `@fluojs/graphql`은 Node.js `>=24.0.0 <27`을 지원하며, 이 정확한 범위를 `engines.node`로 선언합니다. 이 범위는 패키지 자체의 검증된 Node 지원 계약입니다. Portable `@fluojs/runtime`과 `@fluojs/config`에는 package-wide `engines.node`가 없으며, config의 Node 전용 env-file 및 watch 기능은 실행 시점에 보호됩니다. HTTP query/mutation과 기본 SSE subscription 경로는 내부적으로 Web-standard request/response primitive를 사용하지만, 이 구현 세부 사항이 Bun, Deno, Cloudflare Workers에 대한 package 지원을 의미하지는 않습니다. 전체 dependency metadata와 native runtime suite가 완전한 GraphQL 계약을 입증하기 전까지 해당 runtime은 지원하지 않습니다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S upgrade 표면을 노출하는 adapter도 필요합니다.
 
 ## 사용 시점
