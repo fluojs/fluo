@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 3.1.3
+
+### Patch Changes
+
+- [#3970](https://github.com/fluojs/fluo/pull/3970) [`aa0dadc`](https://github.com/fluojs/fluo/commit/aa0dadcc2c3d3221c76bda46e0ecf3915cac69a8) Thanks [@ayden94](https://github.com/ayden94)! - Clarify README prerequisites and distinguish application fragments from complete examples. Repair first-use examples, align English/Korean guidance and toolchain requirements, and separate deprecated Deno migration paths from new-project recommendations.
+
+- Updated dependencies [[`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf), [`aa0dadc`](https://github.com/fluojs/fluo/commit/aa0dadcc2c3d3221c76bda46e0ecf3915cac69a8), [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035)]:
+  - @fluojs/core@2.1.3
+
 ## 3.1.2
 
 ### Patch Changes
