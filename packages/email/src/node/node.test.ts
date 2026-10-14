@@ -108,9 +108,9 @@ describe('@fluojs/email/node', () => {
 
   it('preserves string and structured Nodemailer receipt recipient identities', async () => {
     const sendMail = vi.fn().mockResolvedValue({
-      accepted: ['accepted-string@example.com', { address: 'accepted-structured@example.com', name: 'Accepted' }],
-      pending: ['pending-string@example.com', { address: 'pending-structured@example.com', name: 'Pending' }],
-      rejected: ['rejected-string@example.com', { address: 'rejected-structured@example.com', name: 'Rejected' }],
+      accepted: [{ name: 'No identity' }, 'accepted-string@example.com', { address: 'accepted-structured@example.com', name: 'Accepted' }],
+      pending: [{ name: 'No identity' }, 'pending-string@example.com', { address: 'pending-structured@example.com', name: 'Pending' }],
+      rejected: [{ name: 'No identity' }, 'rejected-string@example.com', { address: 'rejected-structured@example.com', name: 'Rejected' }],
     });
     const transport = NodemailerEmailTransport.create({
       transporter: {

@@ -35,15 +35,17 @@ npm install @fluojs/email
 npm install @fluojs/notifications @fluojs/queue
 ```
 
-명시적인 `@fluojs/email/node` 서브패스로 Node 전용 SMTP 전달을 사용할 때만 `nodemailer`와 `@types/nodemailer` 선언을 설치하면 됩니다.
+명시적인 `@fluojs/email/node` 서브패스로 Node 전용 SMTP 전달을 사용할 때만 `nodemailer`를 설치하면 됩니다. Nodemailer 10은 선언 타입을 내장하며, 기존 `@types/nodemailer` peer는 optional로 유지됩니다.
 
 ```bash
-npm install @fluojs/email nodemailer@^9.0.1 @types/nodemailer@^8.0.0
+npm install @fluojs/email nodemailer@^10.0.9
 ```
 
 Node 전용 SMTP 전달은 명시적인 `@fluojs/email/node` 서브패스에서 사용할 수 있습니다. queue 기반 notifications 통합은 `@fluojs/email/queue` 서브패스에 있으며, 이 서브패스용 `@fluojs/queue`는 루트 설치 필수가 아닌 optional peer로 선언됩니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 또는 queue 전용 동작을 함께 끌어오지 않습니다.
 
-`@fluojs/email/node`는 Nodemailer `^9.0.1`을 요구합니다. Nodemailer 6, 7, 8을 사용하던 consumer는 이 major `@fluojs/email` release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신해야 합니다. fluo transport factory API는 그대로지만, migration 시 provider별 SMTP option이 Nodemailer 9와 호환되는지 확인하세요.
+Migration: `@fluojs/email/node`는 이제 Nodemailer `^10.0.9`를 요구합니다. `@fluojs/email` 3.0.3의 Nodemailer 9.x 지원은 담당 보안 advisory의 취약 범위에 남아 있어 제거됩니다. 이 major release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신하세요. Nodemailer 10은 Node.js 20 이상을 요구하며 ESM/CommonJS 빌드와 내장 선언 타입을 제공합니다. fluo의 `create(...)` / `createFactory(...)` API, 명시적 SMTP option, receipt field, transporter 소유권은 유지됩니다. provider별 SMTP option이 Nodemailer 10과 호환되는지 확인하고, 기존 caller-owned transporter도 지원 peer를 사용하세요. transport-agnostic 루트 consumer는 Nodemailer를 설치할 필요가 없습니다.
+
+TypeScript Node consumer에는 `@types/node`가 필요합니다(`npm install -D @types/node`). TypeScript 6을 포함해 ambient type 자동 포함이 비활성화된 설정에서는 `compilerOptions`에 `"types": ["node"]`를 명시하세요. `strict: true`와 `skipLibCheck: false`를 유지하세요. Nodemailer 10의 내장 선언 타입은 Node platform 선언을 대체하지 않습니다.
 
 ## 사용 시점
 

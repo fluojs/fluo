@@ -46,6 +46,7 @@ interface PackedManifest {
 
 /** Hermetic packed-package consumer used to verify the published Node declaration closure. */
 export interface PackedEmailConsumer {
+  readonly directory: string;
   readonly compilerOptions: Readonly<{ readonly skipLibCheck: false }>;
   readonly packedManifest: PackedManifest;
   cleanup(): void;
@@ -121,8 +122,13 @@ function resolveInstalledPackage(packageName: string, fromDirectory: string): st
 
 function packPackage(packageDirectory: string, tarballDirectory: string): string {
   const existingArchives = new Set(readdirSync(tarballDirectory));
-  const packed = runCommand('pnpm', ['pack', '--json', '--pack-destination', tarballDirectory], packageDirectory);
-  expectCommandSuccess(`pnpm pack in ${packageDirectory}`, packed);
+  const isPublishedNodemailer = JSON.parse(readFileSync(join(packageDirectory, 'package.json'), 'utf8')).name === 'nodemailer';
+  // Published Nodemailer 10 already contains dist; its prepare script references unpublished build sources.
+  const command = isPublishedNodemailer ? 'npm' : 'pnpm';
+  const args = ['pack', '--json', '--pack-destination', tarballDirectory];
+  if (isPublishedNodemailer) args.push('--ignore-scripts');
+  const packed = runCommand(command, args, packageDirectory);
+  expectCommandSuccess(`${command} pack in ${packageDirectory}`, packed);
   const filename = readdirSync(tarballDirectory).find((entry) => entry.endsWith('.tgz') && !existingArchives.has(entry));
   if (!filename) {
     throw new Error(`pnpm pack did not report an archive for ${packageDirectory}.`);
@@ -144,9 +150,10 @@ function addPackedDependency(
  * Creates an offline consumer from locally packed workspace dependencies.
  *
  * @param observeSnapshot Optional test barrier entered after build and before packing.
+ * @param nodemailerDirectory Optional independently installed Nodemailer package for peer compatibility checks.
  * @returns A disposable consumer fixture with its packed manifest and typecheck command.
  */
-export function createPackedEmailConsumer(observeSnapshot?: () => void): PackedEmailConsumer {
+export function createPackedEmailConsumer(observeSnapshot?: () => void, nodemailerDirectory?: string): PackedEmailConsumer {
   const sandboxPath = mkdtempSync(join(tmpdir(), 'fluo-email-clean-consumer-'));
 
   try {
@@ -166,7 +173,10 @@ export function createPackedEmailConsumer(observeSnapshot?: () => void): PackedE
         packedManifest = readPackedManifest(emailTarballPath);
         archives[packedManifest.name] = `file:${emailTarballPath}`;
         for (const dependencyName of consumerDependencyNames) {
-          addPackedDependency(dependencyName, resolveInstalledPackage(dependencyName, packageRootPath), tarballDirectory, archives);
+          const directory = dependencyName === 'nodemailer' && nodemailerDirectory
+            ? nodemailerDirectory
+            : resolveInstalledPackage(dependencyName, packageRootPath);
+          addPackedDependency(dependencyName, directory, tarballDirectory, archives);
         }
       },
     });
@@ -181,6 +191,7 @@ export function createPackedEmailConsumer(observeSnapshot?: () => void): PackedE
       noEmit: true,
       skipLibCheck: false,
       strict: true,
+      types: ['node'],
     } as const;
     writeFileSync(
       join(consumerDirectory, 'package.json'),
@@ -190,7 +201,20 @@ export function createPackedEmailConsumer(observeSnapshot?: () => void): PackedE
     mkdirSync(join(consumerDirectory, 'src'));
     writeFileSync(
       join(consumerDirectory, 'src', 'index.ts'),
-      "import type { NodemailerTransporter } from '@fluojs/email/node';\n\nexport type ConsumerTransporter = NodemailerTransporter;\n",
+      [
+        "import nodemailer from 'nodemailer';",
+        "import { NodemailerEmailTransport, type NodemailerTransporter } from '@fluojs/email/node';",
+        '',
+        "const smtp = { host: '127.0.0.1', port: 2525, secure: false };",
+        'const transporter: NodemailerTransporter = nodemailer.createTransport(smtp);',
+        'export const wrapped = NodemailerEmailTransport.create({ transporter });',
+        'export const factory = NodemailerEmailTransport.createFactory({ smtp });',
+        "export const urlFactory = NodemailerEmailTransport.createFactory({ smtp: 'smtp://127.0.0.1:2525' });",
+        'export const verified = transporter.verify();',
+        "export const sent = transporter.sendMail({ from: { name: 'Sender', address: 'from@example.com' }, to: 'to@example.com', attachments: [{ filename: 'payload.txt', content: 'hello' }] });",
+        'transporter.close();',
+        '',
+      ].join('\n'),
     );
 
     expectCommandSuccess(
@@ -198,8 +222,10 @@ export function createPackedEmailConsumer(observeSnapshot?: () => void): PackedE
       runCommand('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'], consumerDirectory),
     );
     expectCommandSuccess('clean consumer Nodemailer types', runCommand('npm', ['ls', '@types/nodemailer'], consumerDirectory));
+    expectCommandSuccess('clean consumer Nodemailer version', runCommand('npm', ['ls', 'nodemailer'], consumerDirectory));
 
     return {
+      directory: consumerDirectory,
       compilerOptions,
       packedManifest,
       cleanup: () => rmSync(sandboxPath, { force: true, recursive: true }),
