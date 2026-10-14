@@ -14,5 +14,10 @@
   },
   "devDependencies": {
     "@types/react": "19.2.14"
+  },
+  "pnpm": {
+    "overrides": {
+      "source-map-js": "1.2.2"
+    }
   }
 }

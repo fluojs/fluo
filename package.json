@@ -69,7 +69,7 @@
       "@babel/core@<8": "7.29.7",
       "body-parser": "2.3.0",
       "brace-expansion@1.1.12": "1.1.18",
-      "brace-expansion@2.0.2": "2.1.4",
+      "brace-expansion@2": "2.1.7",
       "engine.io": "6.6.9",
       "fast-uri@3": "3.1.7",
       "find-my-way": "9.7.0",
@@ -84,6 +84,7 @@
       "qs": "6.16.0",
       "sharp": "0.35.4",
       "socket.io-parser": "4.2.7",
+      "source-map-js": "1.2.2",
       "valibot": "1.4.2",
       "vite": "8.2.2",
       "ws": "8.21.1"
