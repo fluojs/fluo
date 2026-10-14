@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "issue": 3987,
+  "kind": "security-dependency-correctness",
+  "not_performance_baseline": true,
+  "source_identity": {
+    "starting_head_sha": "70dab3f22c65939aa315a7e6a8fc9eb20f4b9bd0",
+    "branch": "issue-3987",
+    "preflight_sha256": "be480aa41d26b47196409b2b419606d07ae51444d85d019e82d9effb9afac674",
+    "phase": "precommit dirty dependency snapshot; final-head receipts are retained separately",
+    "manifest": "tooling/benchmarks/http-comparison/package.json",
+    "manifest_sha256": "d8c84437fdfb9a2f5e9c78b59709fe1b4d62b6cf2227de4797a13dcf9c6f97a9",
+    "lockfile": "tooling/benchmarks/http-comparison/pnpm-lock.yaml",
+    "lockfile_sha256": "962b81c6c476a5f1a51ea96a2b86537d6504b1e121d150b4c37c39c6923b5d82"
+  },
+  "environment": {
+    "node": "24.20.0",
+    "pnpm": "10.4.1",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "packages": {
+    "next": {
+      "version": "16.3.8",
+      "path": "tooling/benchmarks/http-comparison/node_modules/.pnpm/next@16.3.8_@types+node@22.19.17_react-dom@19.2.6_react@19.2.6__react@19.2.6/node_modules/next/package.json"
+    },
+    "react": {
+      "version": "19.2.6",
+      "path": "tooling/benchmarks/http-comparison/node_modules/.pnpm/react@19.2.6/node_modules/react/package.json"
+    },
+    "react-dom": {
+      "version": "19.2.6",
+      "path": "tooling/benchmarks/http-comparison/node_modules/.pnpm/react-dom@19.2.6_react@19.2.6/node_modules/react-dom/package.json"
+    },
+    "sharp": {
+      "version": "0.35.5",
+      "path": "tooling/benchmarks/http-comparison/node_modules/.pnpm/sharp@0.35.5_@types+node@22.19.17/node_modules/sharp/package.json",
+      "esm": "tooling/benchmarks/http-comparison/node_modules/.pnpm/sharp@0.35.5_@types+node@22.19.17/node_modules/sharp/dist/index.mjs"
+    }
+  },
+  "sharp_probe": {
+    "input": "1x1 raw RGB [255,0,0]",
+    "output": "PNG",
+    "bytes": 90,
+    "width": 1,
+    "height": 1,
+    "metadata_format": "png",
+    "evidence": ".omo/focused-evidence/issue-3987/precommit/graph-final-source/graph-final-source.stdout.raw.log"
+  },
+  "validation": [
+    {
+      "command": "sh -c pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --frozen-lockfile",
+      "exit_code": 0,
+      "receipt": ".omo/focused-evidence/issue-3987/precommit/http-install/http-install.command-receipt.json",
+      "stdout": ".omo/focused-evidence/issue-3987/precommit/http-install/http-install.stdout.raw.log",
+      "stderr": ".omo/focused-evidence/issue-3987/precommit/http-install/http-install.stderr.raw.log"
+    },
+    {
+      "command": "sh -c pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace list next sharp --depth Infinity --json",
+      "exit_code": 0,
+      "receipt": ".omo/focused-evidence/issue-3987/precommit/http-list/http-list.command-receipt.json",
+      "stdout": ".omo/focused-evidence/issue-3987/precommit/http-list/http-list.stdout.raw.log",
+      "stderr": ".omo/focused-evidence/issue-3987/precommit/http-list/http-list.stderr.raw.log"
+    },
+    {
+      "command": "sh -c BENCH_TARGETS=native-nextjs,fluo-nextjs,native-nextjs-pages,fluo-nextjs-pages pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace smoke",
+      "exit_code": 0,
+      "receipt": ".omo/focused-evidence/issue-3987/precommit/http-smoke-ready/http-smoke-ready.command-receipt.json",
+      "stdout": ".omo/focused-evidence/issue-3987/precommit/http-smoke-ready/http-smoke-ready.stdout.raw.log",
+      "stderr": ".omo/focused-evidence/issue-3987/precommit/http-smoke-ready/http-smoke-ready.stderr.raw.log"
+    },
+    {
+      "command": "sh -c pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace audit --json",
+      "exit_code": 1,
+      "receipt": ".omo/focused-evidence/issue-3987/precommit/http-audit/http-audit.command-receipt.json",
+      "stdout": ".omo/focused-evidence/issue-3987/precommit/http-audit/http-audit.stdout.raw.log",
+      "stderr": ".omo/focused-evidence/issue-3987/precommit/http-audit/http-audit.stderr.raw.log"
+    },
+    {
+      "command": "sh -c node .omo/focused-evidence/issue-3987/audit-check.mjs .omo/focused-evidence/issue-3987/precommit",
+      "exit_code": 0,
+      "receipt": ".omo/focused-evidence/issue-3987/precommit/targeted-audit/targeted-audit.command-receipt.json",
+      "stdout": ".omo/focused-evidence/issue-3987/precommit/targeted-audit/targeted-audit.stdout.raw.log",
+      "stderr": ".omo/focused-evidence/issue-3987/precommit/targeted-audit/targeted-audit.stderr.raw.log"
+    }
+  ],
+  "consumer": {
+    "targets": [
+      "native-nextjs",
+      "fluo-nextjs",
+      "native-nextjs-pages",
+      "fluo-nextjs-pages"
+    ],
+    "scenarios": 3,
+    "correctness_only": true
+  },
+  "audit": {
+    "targeted_advisories_remaining": 0,
+    "full_audit_passed": false,
+    "unrelated_findings_preserved": true
+  },
+  "historical_evidence": "Existing raw measurements, baseline, verdicts and collector fingerprints are unchanged. No performance acceptance is inferred."
+}
