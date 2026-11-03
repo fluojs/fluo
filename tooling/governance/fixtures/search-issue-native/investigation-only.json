@@ -36,7 +36,7 @@
       "draft_id": "D1",
       "decision": "register",
       "reason": "High-confidence runtime behavior finding.",
-      "labels": ["source:package-audit", "priority:p1", "area:foundation", "bug"],
+      "labels": ["source:package-audit", "priority:p1", "area:foundation", "pkg:runtime", "bug"],
       "duplicate_of": null,
       "safety_route": "public-issue",
       "confidence": "high"

@@ -130,6 +130,21 @@ Do not use foreground or serial reviewer calls. If native background task
 batching is unavailable, block the run instead of removing reviewer todos or
 inventing reviewer results.
 
+## Package labels
+
+`references/domain.json` owns the package groups and label allowlist.
+Each package belongs to exactly one group: its group label is
+`area:<group-slug>` and its individual label is `pkg:<package-slug>`
+(for example, `area:ui` and `pkg:react`, not `pkg:@fluojs/react`).
+Use the catalog's groups rather than inferring them from package names.
+
+Every issue draft and registering triage decision must retain both labels
+for each affected package. Bundled drafts use the union of affected package
+labels and their owning group labels, not the entire audit scope. Keep
+priority, issue type, and `source:package-audit` labels alongside them.
+Before registration, confirm required labels exist on GitHub; missing labels
+block registration rather than being silently omitted.
+
 ## Stop
 
 Stop when every expected invocation and draft is terminal, all creation

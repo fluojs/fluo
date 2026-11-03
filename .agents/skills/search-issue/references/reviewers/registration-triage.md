@@ -29,7 +29,9 @@ Return `register` only when all conditions hold:
    actionable issue.
 3. The draft is not a duplicate of an open issue.
 4. It is safe for public disclosure and is not a support or usage question.
-5. Every proposed label is canonical and currently available.
+5. Every proposed label is canonical and currently available. Labels include
+   `pkg:<package-slug>` and the owning `area:<group-slug>` from `domain.json`
+   for every affected package; a bundle uses their deduplicated union.
 6. Confidence is `high` or `medium`.
 7. The issue preserves the documented contract or makes any required contract,
    migration, docs, tests, and release impact explicit.
@@ -72,6 +74,8 @@ Never pair `register` with a security or support route.
 
 - Verify every stable draft receives exactly one decision.
 - Verify no unknown or unavailable label appears on a `register` decision.
+- Verify no affected package or owning group label is dropped from a
+  `register` decision; scope packages without findings are not affected packages.
 - Verify duplicate evidence against the supplied open issue rather than title
   similarity alone.
 - Verify security-sensitive, support-only, evidence-free, speculative,

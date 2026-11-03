@@ -83,7 +83,7 @@
       "draft_id": "D1",
       "decision": "register",
       "reason": "High-confidence runtime behavior finding.",
-      "labels": ["source:package-audit", "priority:p1", "area:foundation", "bug"],
+      "labels": ["source:package-audit", "priority:p1", "area:foundation", "pkg:runtime", "bug"],
       "duplicate_of": null,
       "safety_route": "public-issue",
       "confidence": "high"
@@ -92,7 +92,7 @@
       "draft_id": "D2",
       "decision": "defer",
       "reason": "P2 test gap needs maintainer confirmation.",
-      "labels": ["source:package-audit", "priority:p2", "area:http-runtime", "tech-debt"],
+      "labels": ["source:package-audit", "priority:p2", "area:http-runtime", "pkg:http", "tech-debt"],
       "duplicate_of": null,
       "safety_route": "public-issue",
       "confidence": "medium"

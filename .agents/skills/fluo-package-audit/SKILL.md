@@ -20,5 +20,11 @@ Audits must:
 - fail closed on catalog drift, unknown labels, missing reviewer output, or
   incomplete publication receipts.
 
+Keep package groups aligned with their `area:<group-slug>` labels. Every
+public package also has a `pkg:<package-slug>` label. Drafts and approved
+registration decisions retain both labels for each affected package; bundled
+issues use the deduplicated union, not all packages in the audit scope.
+Confirm required labels exist on GitHub before registration.
+
 Security-sensitive reports, support questions, duplicates, speculative ideas,
 and low-confidence P2 findings are deferred or rejected.
