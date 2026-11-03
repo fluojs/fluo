@@ -65,6 +65,7 @@ const labelsFor = (finding, domain) => {
     'source:package-audit',
     severityLabel,
     ...(typeof areaLabel === 'string' ? [areaLabel] : []),
+    `pkg:${finding.package}`,
     finding.contract_impact === 'none' ? 'tech-debt' : 'bug',
   ];
 };

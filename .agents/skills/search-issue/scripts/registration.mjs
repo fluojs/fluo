@@ -31,6 +31,14 @@ const validateTriage = (ledger, labelAllowlist) => {
     }
     if (
       decision.decision === 'register' &&
+      draft.labels
+        .filter((label) => label.startsWith('area:') || label.startsWith('pkg:'))
+        .some((label) => !decision.labels.includes(label))
+    ) {
+      throw new TypeError(`Missing package labels for ${decision.draft_id}.`);
+    }
+    if (
+      decision.decision === 'register' &&
       (decision.safety_route !== 'public-issue' ||
         !['high', 'medium'].includes(decision.confidence))
     ) {
