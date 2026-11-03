@@ -74,8 +74,9 @@ FLUO_PRODUCT_ACCEPTANCE=1 FLUO_BACKGROUND_EVIDENCE="$PACKED_OUTPUT" \
 ```
 
 이 명령은 full canonical CI를 대체하거나 remote operation을 승인하지 않습니다.
-기존 CI의 `starters`와 `tooling-1` task도 같은 명령으로 domain receipt와 raw
-artifact를 생성합니다. Domain 완료는 제품 전체 완료가 아니며 normal CI는
+CI의 `react-product` task는 `tooling` domain receipt와 raw artifact를 생성하고
+`starters` task는 기존 `starters` domain을 같은 명령으로 계속 생성합니다.
+Domain 완료는 제품 전체 완료가 아니며 normal CI는
 historical benchmark를 수집하거나 Frida를 활성화하지 않습니다.
 
 실행 가능한 consumer interface는 다음과 같습니다.

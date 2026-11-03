@@ -113,8 +113,9 @@ barrier를 켜며 framework API나 기본 production 설정이 아닙니다.
 `.github/workflows/react-reliability-soak.yml`은 checkout SHA에 묶인 별도
 scheduled/manual job입니다. 실제 최소 2시간 운용하며 event-settled cycle마다
 측정하고 failure artifact도 남깁니다. Duration 자체가 검증 대상이며 correctness를
-sleep으로 동기화하지 않습니다. Normal PR coverage는 기존 `tooling-1` task에
-통합하므로 task나 18-job expanded plan을 늘리지 않습니다. Locked runner의
+sleep으로 동기화하지 않습니다. Normal PR의 browser 설치와 `capture tooling`은
+`react-product` task가 소유하며 직접 Node companion 회귀는 `tooling-1`에 남습니다.
+Profile별 task/job 수는 [Node.js Support](../reference/node-support.ko.md)를 따릅니다. Locked runner의
 원시 browser receipt/trace는 `/evidence` mount에 기록합니다. 이 source pass는
 elapsed-time budget을 입증하지 않습니다.
 
