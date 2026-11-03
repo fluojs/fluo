@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-const root = process.argv[2] ? path.resolve(process.argv[2]) : fileURLToPath(new URL('../../', import.meta.url));
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const docs = path.join(root, 'apps/docs');
 const destination = path.join(root, '.artifacts/docs-site');
 const run = promisify(execFile);
