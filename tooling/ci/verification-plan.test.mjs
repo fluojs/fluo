@@ -56,11 +56,13 @@ test('catalog: absent apps suite -> explicit exclusion without losing full or do
     assert.ok(plan.tasks.find(({ id }) => id === 'static').outputs.includes('docs-site'));
     assert.ok(plan.capabilityTasks.typecheck);
     if (options.forceFull || options.profile === 'extended') {
-      assert.equal(plan.tasks.length, 16);
+      assert.equal(plan.tasks.length, options.profile === 'extended' ? 17 : 25);
       const tooling = plan.tasks.find(({ id }) => id === 'tooling-1');
       assert.ok(tooling.commands.some(({ argv }) => argv.includes('examples')));
       assert.ok(tooling.commands.some(({ argv }) => argv.includes('--shard=1/2')));
-      assert.ok(tooling.commands.some(({ argv }) => argv.includes('tooling/ci/react-product-acceptance.mjs')));
+      assert.ok(!tooling.commands.some(({ argv }) => argv.includes('tooling/ci/react-product-acceptance.mjs')));
+      assert.ok(plan.tasks.find(({ id }) => id === 'react-product').commands
+        .some(({ argv }) => argv.includes('tooling/ci/react-product-acceptance.mjs')));
     } else {
       assert.deepEqual(plan.tasks.map(({ id }) => id), ['static']);
     }
@@ -116,7 +118,7 @@ test('catalog: Node-only tooling TS tests -> excluded from Vitest and executed i
   for (const options of [{ forceFull: true }, { profile: 'extended' }]) {
     const plan = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity, root, ...options });
 
-    assert.equal(plan.tasks.length, 16);
+    assert.equal(plan.tasks.length, options.profile === 'extended' ? 17 : 25);
     for (const file of nodeTests) {
       assert.ok(!plan.testCatalog.tooling.includes(file), `${file} must not enter Vitest`);
       const commands = plan.tasks.flatMap((task) => task.commands).filter(({ executable, argv }) =>
@@ -166,12 +168,12 @@ test('buildVerificationPlan: prose docs -> no build or runtime prerequisites', (
   assert.ok(plan.tasks[0].commands.some(({ argv }) => argv.includes('verify:docs')));
 });
 
-test('buildVerificationPlan: explicit full and extended -> preserves all sixteen tasks', () => {
-  for (const options of [{ forceFull: true }, { profile: 'extended' }]) {
+test('buildVerificationPlan: explicit full and extended -> exact expanded task inventories', () => {
+  for (const [options, expected] of [[{ forceFull: true }, 25], [{ profile: 'extended' }, 17]]) {
     const plan = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity, ...options });
 
     assert.equal(plan.mode, 'full');
-    assert.equal(plan.tasks.length, 16);
+    assert.equal(plan.tasks.length, expected);
   }
 });
 
@@ -188,12 +190,14 @@ test('buildVerificationPlan: representative affected inputs -> full coverage and
     const full = buildVerificationPlan({ changedFiles, identity, forceFull: true });
     const extended = buildVerificationPlan({ changedFiles, identity, profile: 'extended' });
 
-    assert.equal(full.tasks.length, 16);
-    assert.equal(extended.tasks.length, 16);
-    assert.ok(selected.tasks.every(({ id }) => full.tasks.some((task) => task.id === id)));
+    assert.equal(full.tasks.length, 25);
+    assert.equal(extended.tasks.length, 17);
+    assert.ok(selected.tasks.every(({ id }) => full.tasks.some((task) => task.id === id)
+      || id.startsWith('compatibility-') && full.tasks.some((task) => task.id.startsWith(`${id}-`))));
     assert.deepEqual(full.notApplicableCommands.map(({ taskId }) => taskId), ['tooling-1']);
     for (const capability of ['examples', 'studio-browser', 'generated-starters', 'packed-consumers', 'runtime-floor',
-      'bun-routing', 'web-portability', 'tooling-1', 'tooling-2', 'packages-1', 'packages-2', 'packages-3', 'packages-4']) {
+      'bun-routing', 'web-portability', 'tooling-1', 'tooling-2', 'react-product', 'compatibility-floor', 'compatibility-next',
+      'packages-1', 'packages-2', 'packages-3', 'packages-4']) {
       assert.ok(full.capabilityTasks[capability]?.length, capability);
       assert.ok(extended.capabilityTasks[capability]?.length, capability);
     }
@@ -215,7 +219,7 @@ test('buildVerificationPlan: leaf plus release metadata -> release check without
   assert.ok(plan.tasks.find(({ id }) => id === 'static').commands.some(({ argv }) => argv.includes('tooling/release/verify-changeset-release-lane.mjs')));
 });
 
-test('the canonical PR plan covers all required groups within eighteen expanded jobs', () => {
+test('the canonical PR plan covers all required groups within twenty-seven expanded jobs', () => {
   // Given
   const changedFiles = ['tooling/ci/verify-local.mjs'];
 
@@ -225,20 +229,23 @@ test('the canonical PR plan covers all required groups within eighteen expanded 
   // Then
   assert.equal(plan.version, 2);
   assert.equal(plan.profile, 'pr');
-  assert.equal(plan.tasks.length + 2, 18);
-  assert.deepEqual(new Set(plan.tasks.map(({ id }) => id)), new Set([
+  assert.equal(plan.tasks.length + 2, 27);
+  assert.deepEqual(plan.tasks.map(({ id }) => id), [
     'build', 'static',
     'packages-1', 'packages-2', 'packages-3', 'packages-4',
-    'tooling-1', 'tooling-2', 'starters', 'studio',
-    'compatibility-floor', 'compatibility-next', 'runtime-floor',
-    'native-bun', 'native-web', 'packed',
-  ]));
+    'tooling-1', 'tooling-2', 'react-product', 'starters', 'studio',
+    'compatibility-floor-1', 'compatibility-floor-2', 'compatibility-floor-3', 'compatibility-floor-4',
+    'compatibility-floor-smoke',
+    'compatibility-next-1', 'compatibility-next-2', 'compatibility-next-3', 'compatibility-next-4',
+    'compatibility-next-smoke',
+    'runtime-floor', 'native-bun', 'native-web', 'packed',
+  ]);
 });
 
 test('nonroot reliability task downloads all browsers without requesting OS installation', () => {
-  // Given / When: resolve the task run under the caller's nonroot UID.
+  // Given / When: resolve the product task run under the caller's nonroot UID.
   const plan = buildVerificationPlan({ changedFiles: ['examples/react-vite-ssr/tests/long-session.spec.ts'], identity });
-  const install = plan.tasks.find(({ id }) => id === 'tooling-1').commands
+  const install = plan.tasks.find(({ id }) => id === 'react-product').commands
     .find(({ argv }) => argv.includes('playwright') && argv.includes('install'));
   // Then: OS dependencies belong to the locked image, not a task-side su prompt.
   assert.ok(install);
@@ -262,7 +269,7 @@ test('all companion requirements resolve to executable tasks rather than duplica
   }
 });
 
-test('the PR catalog executes reliability receipt regressions without adding a job', () => {
+test('the PR catalog executes reliability receipt regressions from the dedicated product owner', () => {
   // Given: the affected receipt consumer belongs to the existing tooling task.
   const changedFiles = ['examples/react-vite-ssr/tests/reliability-handoff.mjs'];
   // When: the canonical runner resolves its executable PR tasks.
@@ -278,7 +285,178 @@ test('the PR catalog executes reliability receipt regressions without adding a j
   assert.equal(packedRunner.cwd, '.');
   assert.equal(packedRunner.env.FLUO_BACKGROUND_EVIDENCE, '/evidence/react-product/runner-regressions');
   assert.equal(plan.mode, 'scoped');
-  assert.ok(plan.tasks.length <= 16);
+  assert.deepEqual(plan.tasks.map(({ id }) => id), ['build', 'static', 'tooling-1', 'react-product', 'starters']);
+});
+
+test('full PR compatibility expands each secondary runtime into four shards and one smoke task', () => {
+  // Given
+  const plan = buildVerificationPlan({ changedFiles: ['tooling/ci/verify-local.mjs'], identity });
+  const manifest = readVerificationManifest();
+
+  // Then: exact runtime/ID/shard/smoke inventory with per-task JSON evidence identity.
+  for (const [base, runtime] of [['compatibility-floor', 'compat24'], ['compatibility-next', 'compat26']]) {
+    const original = manifest.tasks.find((task) => task.id === base);
+    for (let shard = 1; shard <= 4; shard += 1) {
+      const id = `${base}-${shard}`;
+      const task = plan.tasks.find((candidate) => candidate.id === id);
+      assert.ok(task, id);
+      assert.equal(task.runtime, runtime);
+      assert.deepEqual(task.dependencies, []);
+      assert.deepEqual(task.inputs, []);
+      assert.deepEqual(task.outputs, []);
+      assert.equal(task.commands.length, 3);
+      assert.deepEqual(task.commands.slice(0, 2), original.commands.slice(0, 2));
+      assert.deepEqual(task.commands[2].argv, ['vitest', 'run', '--project', 'packages', '--maxWorkers=1',
+        `--shard=${shard}/4`, '--reporter=json', '--reporter=default', `--outputFile=/evidence/${id}-vitest.json`]);
+    }
+    const smoke = plan.tasks.find((candidate) => candidate.id === `${base}-smoke`);
+    assert.ok(smoke, `${base}-smoke`);
+    assert.equal(smoke.runtime, runtime);
+    assert.deepEqual(smoke.dependencies, []);
+    assert.deepEqual(smoke.inputs, []);
+    assert.deepEqual(smoke.outputs, []);
+    assert.equal(smoke.commands.length, 3);
+    assert.deepEqual(smoke.commands[2], original.commands.at(-1));
+    assert.equal(smoke.commands[2].env.FLUO_CLI_SANDBOX_PROFILE, 'smoke');
+    assert.equal(smoke.commands[2].env.FLUO_CLI_SANDBOX_DEPENDENCIES, 'locked');
+    assert.ok(!plan.tasks.some((candidate) => candidate.id === base));
+    assert.deepEqual(plan.capabilityTasks[base],
+      [1, 2, 3, 4].map((shard) => `${base}-${shard}`).concat([`${base}-smoke`]));
+  }
+  assert.equal(plan.tasks.filter(({ id }) => id.startsWith('compatibility-')).length, 10);
+});
+
+test('scoped and extended profiles keep composite secondary coverage without shards', () => {
+  // Given
+  const scoped = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity });
+  const extended = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity, profile: 'extended' });
+
+  // Then: the original composite coverage is preserved exactly once per runtime.
+  for (const [plan, isExtended] of [[scoped, false], [extended, true]]) {
+    assert.ok(!plan.tasks.some(({ id }) => id !== 'compatibility-floor' && id !== 'compatibility-next'
+      && id.startsWith('compatibility-')));
+    for (const id of ['compatibility-floor', 'compatibility-next']) {
+      const task = plan.tasks.find((candidate) => candidate.id === id);
+      assert.ok(task, id);
+      const packagesCommands = task.commands.filter(({ argv }) => argv.includes('vitest') && argv.includes('packages'));
+      assert.equal(task.commands.filter(({ argv }) => argv.some((arg) => arg.startsWith('--shard='))).length, 0);
+      assert.ok(task.commands.every(({ argv }) => !argv.includes('--outputFile=')));
+      if (isExtended) {
+        // The packages command is replaced by complete secondary verification, never sharded.
+        assert.equal(packagesCommands.length, 0);
+        for (const argv of ['typecheck', 'lint', 'test:verify']) {
+          assert.equal(task.commands.filter(({ argv: candidate }) => candidate.join(' ') === argv).length, 1);
+        }
+        assert.equal(task.commands.filter(({ env }) => env?.FLUO_CLI_SANDBOX_PROFILE === 'full').length, 1);
+      } else {
+        assert.equal(packagesCommands.length, 1);
+        assert.ok(packagesCommands[0].argv.includes('packages/email/'));
+      }
+    }
+  }
+});
+
+test('scoped secondary smoke accompanies only starter-affecting package selections', () => {
+  // Given
+  const without = buildVerificationPlan({ changedFiles: ['packages/email/src/index.ts'], identity });
+  const withStarters = buildVerificationPlan({ changedFiles: ['packages/cli/src/new/page.ts'], identity });
+
+  // When / Then
+  for (const id of ['compatibility-floor', 'compatibility-next']) {
+    assert.ok(!without.tasks.find((candidate) => candidate.id === id).commands
+      .some(({ argv }) => argv.includes('sandbox:matrix')));
+    assert.ok(withStarters.tasks.find((candidate) => candidate.id === id).commands
+      .some(({ argv }) => argv.includes('sandbox:matrix')));
+  }
+});
+
+test('scoped product selection owns browser capture exactly once with retained regressions', () => {
+  for (const [file, selectsProduct, toolingCommands, toolingCapabilities] of [
+    ['packages/react/src/index.ts', true, [
+      'install --frozen-lockfile',
+      'vitest run --project examples examples/react-stable-ssr/ examples/react-vite-ssr/ --maxWorkers=1',
+      'vitest run --project tooling tooling/docs/fixtures/ tooling/governance/ tooling/scripts/ --maxWorkers=1',
+      '--test packages/cli/scripts/*.test.mjs tooling/ci/react-product-acceptance.test.mjs',
+      '--test examples/react-vite-ssr/tests/reliability-handoff.test.mjs',
+      '--test examples/react-vite-ssr/tests/verify-background-starter.test.mjs',
+    ], ['examples', 'tooling-1']],
+    ['examples/react-vite-ssr/tests/long-session.spec.ts', true, [
+      'install --frozen-lockfile',
+      'vitest run --project examples examples/react-vite-ssr/ --maxWorkers=1',
+      '--test examples/react-vite-ssr/tests/reliability-handoff.test.mjs',
+      '--test examples/react-vite-ssr/tests/verify-background-starter.test.mjs',
+    ], ['examples']],
+    ['packages/email/src/index.ts', false, [], []],
+    ['docs/reference/node-support.md', false, [], []],
+  ]) {
+    // Given / When
+    const plan = buildVerificationPlan({ changedFiles: [file], identity });
+    const productTasks = plan.tasks.filter(({ id }) => id === 'react-product');
+    const capture = plan.tasks.flatMap(({ commands }) => commands)
+      .filter(({ executable, argv }) => executable === 'node'
+        && argv.includes('tooling/ci/react-product-acceptance.mjs') && argv[2] === 'tooling');
+    const browsers = plan.tasks.flatMap(({ commands }) => commands)
+      .filter(({ argv }) => argv.includes('playwright') && argv.includes('install'));
+
+    // Then
+    assert.equal(productTasks.length, selectsProduct ? 1 : 0, file);
+    assert.equal(capture.length, selectsProduct ? 1 : 0, file);
+    assert.equal(browsers.length, selectsProduct ? 1 : 0, file);
+    const tooling = plan.tasks.find(({ id }) => id === 'tooling-1');
+    assert.deepEqual(tooling?.commands.map(({ argv }) => argv.join(' ')) ?? [], toolingCommands, file);
+    assert.deepEqual(tooling?.capabilities ?? [], toolingCapabilities, file);
+    assert.deepEqual(productTasks.flatMap(({ capabilities }) => capabilities), selectsProduct ? ['react-product'] : [], file);
+    assert.deepEqual(productTasks.flatMap(({ commands }) => commands).map(({ argv }) => argv.join(' ')), selectsProduct ? [
+      'install --frozen-lockfile',
+      '--filter @fluojs/example-react-vite-ssr exec playwright install chromium firefox webkit',
+      'tooling/ci/react-product-acceptance.mjs capture tooling /evidence/react-product/tooling',
+    ] : [], file);
+    if (file.startsWith('docs/')) {
+      assert.deepEqual(plan.tasks.map(({ id }) => id), ['static']);
+      assert.deepEqual(plan.tasks[0].capabilities,
+        ['changeset', 'platform-governance', 'docs', 'docs-package', 'docs-release', 'documentation-governance']);
+      assert.deepEqual(plan.tasks[0].commands.map(({ argv }) => argv.join(' ')), [
+        'install --frozen-lockfile',
+        'verify:platform-consistency-governance',
+        `tooling/release/verify-changeset-release-lane.mjs --lane=stable --base-ref=${identity.baseSha}`,
+        'verify:docs', 'docs:package', 'docs:release-check --require-clean',
+      ]);
+    }
+    if (selectsProduct) {
+      assert.equal(capture[0], productTasks[0].commands.at(-1));
+      assert.ok(plan.tasks.some(({ id }) => id === 'build'), `${file} needs the build closure`);
+      assert.ok(tooling.commands.some(({ argv }) => argv.includes('examples/react-vite-ssr/tests/reliability-handoff.test.mjs')));
+      assert.ok(tooling.commands.some(({ argv }) => argv.includes('examples/react-vite-ssr/tests/verify-background-starter.test.mjs')));
+      assert.ok(!tooling.commands.some(({ argv }) => argv.includes('playwright') || argv.includes('capture')));
+    }
+  }
+});
+
+test('transitive React package change -> complete scoped tooling and product command sets', () => {
+  // Given / When
+  const plan = buildVerificationPlan({ changedFiles: ['packages/react/src/index.ts'], identity });
+  const tooling = plan.tasks.find(({ id }) => id === 'tooling-1');
+  const product = plan.tasks.find(({ id }) => id === 'react-product');
+
+  // Then: complete command and capability sets, not just presence of a single task.
+  assert.equal(plan.mode, 'scoped');
+  assert.deepEqual(tooling.commands[0], { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' });
+  assert.deepEqual(tooling.commands.map(({ argv }) => argv.join(' ')), [
+    'install --frozen-lockfile',
+    'vitest run --project examples examples/react-stable-ssr/ examples/react-vite-ssr/ --maxWorkers=1',
+    'vitest run --project tooling tooling/docs/fixtures/ tooling/governance/ tooling/scripts/ --maxWorkers=1',
+    '--test packages/cli/scripts/*.test.mjs tooling/ci/react-product-acceptance.test.mjs',
+    '--test examples/react-vite-ssr/tests/reliability-handoff.test.mjs',
+    '--test examples/react-vite-ssr/tests/verify-background-starter.test.mjs',
+  ]);
+  assert.deepEqual(tooling.capabilities, ['examples', 'tooling-1']);
+  assert.deepEqual(product.commands.map(({ argv }) => argv.join(' ')), [
+    'install --frozen-lockfile',
+    '--filter @fluojs/example-react-vite-ssr exec playwright install chromium firefox webkit',
+    'tooling/ci/react-product-acceptance.mjs capture tooling /evidence/react-product/tooling',
+  ]);
+  assert.deepEqual(product.capabilities, ['react-product']);
+  assert.deepEqual(plan.capabilityTasks['react-product'], ['react-product']);
 });
 
 test('secondary compatibility retains package tests and target-local builds without full browser checks', () => {
@@ -288,14 +466,21 @@ test('secondary compatibility retains package tests and target-local builds with
   // When
   const plan = buildVerificationPlan(planInput);
 
-  // Then
-  for (const id of ['compatibility-floor', 'compatibility-next']) {
-    const task = plan.tasks.find((candidate) => candidate.id === id);
-    assert.ok(task, id);
-    assert.ok(task.commands.some(({ argv }) => argv.join(' ') === 'install --frozen-lockfile'), id);
-    assert.ok(task.commands.some(({ argv }) => argv.join(' ') === 'build'), id);
-    assert.ok(task.commands.some(({ argv }) => argv.includes('--project') && argv.includes('packages')), id);
-    assert.ok(task.commands.some(({ env }) => env?.FLUO_CLI_SANDBOX_PROFILE === 'smoke'), id);
+  // Then: each expanded secondary family keeps per-task bootstrap, package tests and the locked smoke profile.
+  for (const base of ['compatibility-floor', 'compatibility-next']) {
+    for (const suffix of ['1', '2', '3', '4', 'smoke']) {
+      const task = plan.tasks.find((candidate) => candidate.id === `${base}-${suffix}`);
+      assert.ok(task, `${base}-${suffix}`);
+      assert.ok(task.commands.some(({ argv }) => argv.join(' ') === 'install --frozen-lockfile'), `${base}-${suffix}`);
+      assert.ok(task.commands.some(({ argv }) => argv.join(' ') === 'build'), `${base}-${suffix}`);
+      if (suffix !== 'smoke') {
+        assert.ok(task.commands.some(({ argv }) => argv.includes('--project') && argv.includes('packages')), `${base}-${suffix}`);
+      }
+    }
+    assert.ok(plan.tasks.find(({ id }) => id === `${base}-smoke`).commands
+      .some(({ env }) => env?.FLUO_CLI_SANDBOX_PROFILE === 'smoke'), base);
+    assert.ok(plan.tasks.filter(({ id }) => id.startsWith(`${base}-`))
+      .every(({ commands }) => commands.every(({ argv }) => !argv.includes('playwright'))), base);
   }
 });
 

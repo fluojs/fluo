@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { digest, buildVerificationPlan, semanticPlanDigest } from './local-verification.mjs';
+import { buildVerificationPlan, digest, semanticPlanDigest } from './local-verification.mjs';
 import { aggregateResults, restoreBuildInputs, validateHostChecks, validatePlan } from './verification-runner.mjs';
 
 const script = new URL('./verification-runner.mjs', import.meta.url).pathname;
@@ -141,6 +141,82 @@ test('restoreBuildInputs: scoped archive -> authentic selected plan and output p
 });
 
 const processExec = () => globalThis.process.execPath;
+
+function syntheticEnvironment(lock) {
+  return {
+    os: 'linux', arch: 'arm64',
+    node: Object.fromEntries(Object.entries(lock.node).map(([name, value]) => [name, value.version])),
+    bun: Object.fromEntries(Object.entries(lock.bun).map(([name, value]) => [name, value.version])),
+    deno: Object.fromEntries(Object.entries(lock.deno).map(([name, value]) => [name, value.version])),
+    pnpm: lock.pnpm.version,
+    browser: { channel: lock.browser.channel, version: lock.browser.version, launched: true },
+    docker: { reachable: true, version: '28.3.3', cliVersion: lock.docker.version },
+    redis: { ping: 'PONG', image: lock.redis.image },
+    watch: { linuxVolume: true, event: 'rename' },
+  };
+}
+
+test('aggregate requires every full PR shard result and rejects cancelled jobs despite complete artifacts', (t) => {
+  // Given: complete successful synthetic evidence for the entire expanded 25-task plan.
+  const root = mkdtempSync(join(tmpdir(), 'fluo-full-aggregate-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const plan = buildVerificationPlan({ changedFiles: [], identity: fixtureIdentity });
+  assert.equal(plan.tasks.length, 25);
+  const output = join(root, 'results');
+  const artifacts = join(root, 'artifacts');
+  mkdirSync(output, { recursive: true });
+  mkdirSync(artifacts, { recursive: true });
+  const environment = syntheticEnvironment(plan.environment.lock);
+  const identityBoundary = { headSha: plan.source.headSha, treeSha: plan.source.treeSha, statusDigest: digest('') };
+  for (const task of plan.tasks) {
+    const logs = [];
+    const commands = [];
+    for (const [index, command] of task.commands.entries()) {
+      const path = `${task.id}-${index}.log`;
+      writeFileSync(join(output, path), 'synthetic success');
+      logs.push({ commandIndex: index, path, digest: digest('synthetic success') });
+      commands.push({ command, exitCode: 0, signal: null, spawnError: null,
+        identityBefore: identityBoundary, identityAfter: identityBoundary });
+    }
+    const files = [];
+    for (const name of task.outputs) {
+      const path = name === 'docs-site' ? `${name}/index.html` : name;
+      mkdirSync(dirname(join(artifacts, path)), { recursive: true });
+      writeFileSync(join(artifacts, path), 'synthetic archive');
+      const bytes = readFileSync(join(artifacts, path));
+      files.push({ path, digest: digest(bytes), size: bytes.length });
+    }
+    writeFileSync(join(output, `${task.id}.json`), `${JSON.stringify({
+      version: 2, status: 'passed', taskId: task.id, imageKey: plan.environment.imageKey,
+      imageId: `sha256:${'1'.repeat(64)}`, headSha: plan.source.headSha, treeSha: plan.source.treeSha,
+      planDigest: plan.semanticDigest, environment, commands, logs, artifacts: files,
+    })}\n`);
+  }
+  writeFileSync(join(output, 'host-check-0.log'), 'host fixture');
+  writeFileSync(join(output, 'host-checks.json'), `${JSON.stringify({
+    status: 'passed', planDigest: plan.semanticDigest, headSha: plan.source.headSha, treeSha: plan.source.treeSha,
+    commands: plan.hostChecks.map((command) => ({ command, exitCode: 0, signal: null, spawnError: null })),
+    logs: [{ path: 'host-check-0.log', digest: digest('host fixture') }],
+  })}\n`);
+  const jobs = { plan: { result: 'success' }, build: { result: 'success' },
+    compatibility: { result: 'success' }, verification: { result: 'success' } };
+
+  // When: every selected result exists.
+  const results = aggregateResults(plan, output, artifacts, jobs);
+  // Then: the aggregate admits exactly the expanded inventory.
+  assert.equal(results.length, 25);
+  assert.ok(results.some(({ taskId }) => taskId === 'react-product'));
+  assert.ok(results.some(({ taskId }) => taskId === 'compatibility-floor-smoke'));
+
+  // When: one machine-consumed field is mutated on the otherwise intact fixture.
+  // Then: workflow job state alone never certifies complete artifacts.
+  assert.throws(() => aggregateResults(plan, output, artifacts, { ...jobs, compatibility: { result: 'cancelled' } }),
+    /job failed|cancelled/u);
+  assert.throws(() => aggregateResults(plan, output, artifacts, { ...jobs, build: { result: 'skipped' } }),
+    /job failed|skipped/u);
+  rmSync(join(output, 'compatibility-floor-2.json'));
+  assert.throws(() => aggregateResults(plan, output, artifacts, jobs), /missing task/u);
+});
 
 test('host integration evidence rejects missing commands and tampered logs', (t) => {
   // Given

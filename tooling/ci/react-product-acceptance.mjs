@@ -1177,7 +1177,7 @@ export function externalEvidence(root, receipt, head) {
     && Array.isArray(remote.jobs?.jobs) && remote.jobs.jobs.length > 0
     && remote.jobs.jobs.every((job) => job.status === 'completed'
       && ['success', 'skipped'].includes(job.conclusion)), 'Missing or failed exact-head full GitHub CI');
-  requireValue(['Verify', 'Primary build / build', 'Verify task (tooling-1) / tooling-1',
+  requireValue(['Verify', 'Primary build / build', 'Verify task (react-product) / react-product',
     'Verify task (starters) / starters'].every((name) =>
     remote.jobs.jobs.some((job) => job.name === name && job.conclusion === 'success')),
   'Full canonical CI and product domain jobs are required');

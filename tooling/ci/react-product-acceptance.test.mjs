@@ -577,7 +577,7 @@ function externalFixture(t) {
   const binding = localCheckBinding(review, acceptedAt);
   const remote = {
     run: { head_sha: head, status: 'completed', path: '.github/workflows/ci.yml', conclusion: 'success' },
-    jobs: { jobs: ['Verify', 'Primary build / build', 'Verify task (tooling-1) / tooling-1',
+    jobs: { jobs: ['Verify', 'Primary build / build', 'Verify task (react-product) / react-product',
       'Verify task (starters) / starters'].map((name) => ({ name, status: 'completed', conclusion: 'success' })) },
   };
   value.receipt.stage = 'final';
@@ -1531,7 +1531,7 @@ test('final external evidence: relocated producer checkout -> preserves canonica
   await assert.rejects(consumeProduct(value.matrix, value.receipt, value.root, head, tree), /engine inventory/u);
 });
 
-for (const name of ['Verify', 'Primary build / build', 'Verify task (tooling-1) / tooling-1',
+for (const name of ['Verify', 'Primary build / build', 'Verify task (react-product) / react-product',
   'Verify task (starters) / starters']) {
   test(`final external evidence: removed ${name} -> rejects at required job guard`, (t) => {
     const value = externalFixture(t);
@@ -1541,6 +1541,18 @@ for (const name of ['Verify', 'Primary build / build', 'Verify task (tooling-1) 
     assert.throws(() => externalEvidence(value.root, value.receipt, head), /product domain jobs/u);
   });
 }
+
+test('final external evidence: a retired tooling-1 producer success cannot satisfy the react-product domain guard', (t) => {
+  // Given: complete successful jobs whose product domain is still named after the retired owner.
+  const value = externalFixture(t);
+  assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+  value.remote.jobs.jobs = value.remote.jobs.jobs.map((job) => (job.name === 'Verify task (react-product) / react-product'
+    ? { ...job, name: 'Verify task (tooling-1) / tooling-1' } : job));
+  value.receipt.external.remoteCi = value.save('remote.json', value.remote);
+
+  // When / Then: the renamed required producer is missing, not satisfied by the old name.
+  assert.throws(() => externalEvidence(value.root, value.receipt, head), /product domain jobs/u);
+});
 
 for (const id of Object.keys(browserFiles)) {
   test(`browser inventory: complete applicable ${id} cases and projects -> accepted`, () => {
