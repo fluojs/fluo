@@ -14,7 +14,17 @@ Node floor는 역할별로 분류됩니다. 순수 runtime인 34개 Node-bound p
 | Locked Node `26.x` | PR: 독립 frozen install/fresh build와 영향받는 package test, 관련 4종 starter smoke; full PR: 모든 package; extended: 전체 검증과 browser journey | Forward verification 전용이며 publish에 사용하지 않음 |
 | Bun, Deno, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
 
-`.github/workflows/ci.yml`의 full plan은 plan 확정과 필수 `Verify` 집계를 포함해 18개 job으로 확장됩니다. 16개 실행 task는 `tooling/ci/local-verification-manifest.json`의 공통 catalog와 `tooling/ci/verification-runner.mjs`를 사용하며, `.github/workflows/node-verification.yml`은 호출마다 task 하나를 실행합니다. Full primary package test는 4개 shard, tooling은 2개 shard를 유지하고 apps/examples는 첫 tooling shard에서 한 번 실행합니다. Primary build는 선택 package artifact와 필요한 경우 runtime-floor bundle을 제공합니다. Exact Node `24.0.0`은 workspace dependency 설치와 Babel 로딩 없이 bundle을 실행합니다.
+`tooling/ci/local-verification-manifest.json`의 공통 catalog는 17개 task 정의를 유지합니다. 정의 수와 profile별 실행 task 수는 다릅니다. `tooling/ci/local-verification.mjs`가 계획을 고정하고 `tooling/ci/verification-runner.mjs`가 실행하며, `.github/workflows/node-verification.yml`은 호출마다 task 하나를 실행합니다. `.github/workflows/ci.yml`의 job 수에는 plan 확정과 필수 `Verify` 집계가 포함됩니다.
+
+| Plan | Manifest definitions | Execution tasks | Expanded jobs | Secondary compatibility |
+| --- | --- | --- | --- | --- |
+| Full PR (`profile=pr`, `mode=full`) | 17 | 25 | 27 | Runtime마다 package 4개 shard + starter smoke 1개 task |
+| Extended (`profile=extended`, `mode=full`) | 17 | 17 | 19 | Runtime마다 전체 검증을 수행하는 composite task 1개 |
+| Scoped PR (`profile=pr`, `mode=scoped`) | 17 | 선택에 따라 다름 | 선택에 따라 다름 | 선택된 경우 기존 composite task; full PR shard 확장 없음 |
+
+Full PR에서만 `compatibility-floor`와 `compatibility-next` 정의를 각각 `compatibility-floor-1`–`compatibility-floor-4`와 `compatibility-floor-smoke`, `compatibility-next-1`–`compatibility-next-4`와 `compatibility-next-smoke`로 확장합니다. 각 task는 해당 보조 Node에서 독립 `pnpm install --frozen-lockfile`과 fresh `pnpm build`를 실행합니다. Package task는 `--shard=i/4 --maxWorkers=1`로 실행하고 JSON/default reporter 및 `/evidence/<task-id>-vitest.json`을 남깁니다. Smoke task는 runtime마다 기존 locked 4종 starter smoke를 한 번 실행합니다. 보조 runtime 전체로는 독립 install/build 10회이며 primary build 산출물로 보조 compiler 검증을 대체하지 않습니다. Scoped PR은 영향 package와 조건부 starter smoke를 같은 composite task에서 검증하며 extended는 보조 runtime마다 전체 typecheck, lint, `test:verify`, full starter matrix를 한 번씩 유지합니다. Build, compatibility, 나머지 검증 task의 workflow partition은 서로소이며 모든 planned task를 포함해야 합니다.
+
+Full primary package test는 4개 shard, tooling은 2개 shard를 유지합니다. 선택된 apps/examples와 직접 Node 회귀는 `tooling-1`에 남고, matching suite가 없는 apps 명령은 명시적인 not-applicable로 기록합니다. Browser 설치와 전체 `capture tooling`은 primary build에 의존하는 `react-product`가 유일하게 소유하며 tooling domain receipt의 필수 producer도 `react-product`입니다. `tooling-1` 성공은 누락된 제품 receipt를 대신하지 않습니다. Scoped PR도 기존 React/example 선택 조건이 참일 때만 제품 task를 한 번 선택합니다. Capture 내부 build/browser/fault/복구 순서와 정상 배포 복원은 유지하고 `starters`의 별도 `capture starters`도 유지합니다. Primary build는 선택 package artifact와 필요한 경우 runtime-floor bundle을 제공합니다. Exact Node `24.0.0`은 workspace dependency 설치와 Babel 로딩 없이 bundle을 실행합니다.
 
 이 정책은 기존의 세 버전 전체 PR matrix를 전체 primary profile과 두 compatibility profile로 대체합니다. Package engine 지원 범위는 바꾸지 않지만 보조 버전의 PR 검증 범위는 좁아집니다. 보조 버전의 전체 typecheck, lint, tooling, apps/examples, browser 검증은 `.github/workflows/extended-verification.yml`과 `.github/workflows/release.yml`의 exact-source 선행 검증으로 이동합니다. 이전 정기 실행의 성공은 publishing commit의 extended 검증을 대신하지 않습니다.
 
@@ -26,6 +36,8 @@ Plan job과 canonical local 명령은 task fan-out 전에 host에서 실제 Dock
 
 Task는 pnpm의 integrity 검증을 거친 package store를 재사용하지만 checkout과 `node_modules` 배치는 분리합니다. Workspace build output은 검증된 build archive로만 task 경계를 넘습니다. 재실행 job은 attempt별 task 증거를 저장한 뒤 canonical artifact alias를 갱신하므로 이전 실패 log와 browser trace도 보존합니다.
 
+호환성 task는 workspace, `dist`, `node_modules`를 공유하지 않습니다. 같은 상대 `dist` 경로의 동시 격리 검증은 각 task가 token을 쓴 뒤 양쪽 ready event를 모두 받아야 release하고, 그 뒤 자기 token만 보이는지 검사합니다. 고정 sleep이나 종료 시각의 우연한 중첩을 격리 증거로 사용하지 않습니다. Immutable image cache는 environment lock과 Dockerfile recipe로 key를 정하고, cache hit에서도 각 job의 image restore/load와 runtime probe는 필요합니다. Task 증가에 따른 반복 image 준비·install·build는 없어지는 비용이 아닙니다.
+
 `pnpm verify:local --base-ref <sha>`는 격리된 Linux/arm64 container에서 같은 PR task를
 실행하고 exact-head receipt를 기록합니다. `--plan`은 성공 증거 없이 고정 계획만
 출력하며 `--profile extended`는 보조 버전의 전체 검증도 실행합니다.
@@ -35,12 +47,24 @@ native로 실행합니다. Source와 file-watch 검증은 macOS bind mount가 �
 실행합니다. 환경을 사용할 수 없으면 실패하며 native macOS나 Linux/amd64 실행으로 조용히
 대체하지 않습니다.
 
-반복 개발 시 PR 검증 예산은 로컬 15분과 이후 GitHub 15분이며, 소스 설치,
-build, test, 최종 집계를 포함합니다. 고정 환경의 최초 준비 시간은 별도로
-측정하고 GitHub 큐 대기 시간도 실행 시간과 구분하여 보고합니다. Job 수 감소만으로
-이 예산을 충족했다고 판단하지 않습니다. 준비 산출물은 source와 output inventory를
-검증한 경우에만 재사용하며, standalone 준비와 fresh build 자체를 시험하는 테스트는
-기존 build를 그대로 실행합니다.
+반복 개발 시 PR 검증 예산은 로컬 15분(900초)과 이후 GitHub 15분(900초)이며,
+각각 완료된 canonical 실행으로 따로 판정합니다. GitHub 예산 구간은 가장 이른 job의
+`started_at`부터 필수 `Verify`의 `completed_at`까지입니다. Run 생성부터 완료까지의
+전체 시간도 보존하고 최초 큐 대기와 dependency 해제 후 runner 대기를 따로 보고하되
+사용자가 체감하는 전체 시간에서 빼지 않습니다. 고정 환경의 최초 provisioning만
+별도 분류합니다. 반복 image restore/load/probe, artifact 전달, 소스 설치, build,
+test, 증거 upload와 최종 집계는 반복 실행 예산에 포함됩니다.
+
+병렬화는 대기를 줄이려는 구조이며 속도나 비용 절감을 입증한 결과가 아닙니다.
+늘어난 job과 runtime별 반복 build는 합산 runner 경과 시간을 증가시킬 수 있으므로
+이를 별도 보고해야 합니다. 합산 job 경과 시간은 CPU 사용량이나 청구 비용이 아닙니다.
+Job 수나 `--plan` 성공만으로 예산 충족을 판단하지 않습니다. 예를 들어 실제 최종
+판정이 17분(1020초)이면 15분 예산은 FAIL이며, 이전보다 빨라도 충족으로 표시하지
+않습니다. 예산 미달은 완료·머지 전에 결과와 별도 owner 결정을 요구합니다.
+완료된 canonical local 실행이 없으면 로컬 15분은 NOT MEASURED이며 GitHub 성공이나
+host-native 검사로 증명할 수 없습니다. 실측 전 속도 개선 여부는 미확인으로 남깁니다.
+준비 산출물은 source와 output inventory를 검증한 경우에만 재사용하며, standalone
+준비와 fresh build 자체를 시험하는 테스트는 기존 build를 그대로 실행합니다.
 
 Receipt는 source tree, base/diff, profile, catalog, environment lock, 실제 runtime/browser
 버전, 필수 task 결과와 log/artifact digest를 묶습니다. 이전 host-native receipt는 이
