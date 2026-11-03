@@ -7,7 +7,7 @@
 | Layer | Representative packages | Responsibility | Boundary |
 | --- | --- | --- | --- |
 | Core | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/runtime` | 데코레이터, 의존성 해석, 구성 접근, 부트스트랩 순서, 런타임 오케스트레이션을 정의한다. | Core 패키지는 구체적인 HTTP 서버나 기능 통합과 분리된 프레임워크 계약을 제공해야 한다. |
-| Transport | `@fluojs/http`, `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` | 요청 실행, 라우팅, 응답 기록, 호스팅 환경 어댑터를 런타임 계약에 연결한다. | Transport 패키지는 런타임용 어댑터 접점을 구현해야 하며, core 계층의 DI 또는 구성 규칙을 다시 정의하면 안 된다. |
+| Transport | `@fluojs/http`, `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers` | 요청 실행, 라우팅, 응답 기록, 호스팅 환경 어댑터를 런타임 계약에 연결한다. | Transport 패키지는 런타임용 어댑터 접점을 구현해야 하며, core 계층의 DI 또는 구성 규칙을 다시 정의하면 안 된다. |
 | Feature | `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi`, `@fluojs/jwt`, `@fluojs/passport`, `@fluojs/cqrs`, `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/websockets`, `@fluojs/socket.io` | 코어와 전송 계약 위에 프로토콜 확장, 영속성 통합, 인증, 관측성, 애플리케이션 기능을 추가한다. | Feature 패키지는 문서화된 프레임워크 접점에 붙어야 하며, 별도의 부트스트랩, DI, 플랫폼 수명주기를 도입하면 안 된다. |
 
 ## Package Responsibilities
@@ -19,7 +19,7 @@
 | `@fluojs/config` | Core | 검증된 구성 스냅샷을 로드하고 환경 접근을 중앙화한다. | `docs/architecture/config-and-environments.ko.md` |
 | `@fluojs/runtime` | Core | 모듈을 컴파일하고, 런타임 토큰을 등록하고, lifecycle hook을 조정하고, adapter shell을 시작한다. | `docs/getting-started/bootstrap-paths.ko.md` |
 | `@fluojs/http` | Transport | request context, routing phase, guard, interceptor, materialization, response serialization을 정의한다. | `docs/architecture/http-runtime.ko.md` |
-| `@fluojs/platform-*` | Transport | Node.js, Bun, Deno, Express, Fastify, Cloudflare Workers용 구체 런타임 어댑터를 구현한다. | `docs/architecture/platform-consistency-design.ko.md` |
+| `@fluojs/platform-*` | Transport | Node.js, Bun, Express, Fastify, Cloudflare Workers용 구체 런타임 어댑터를 구현한다. | `docs/architecture/platform-consistency-design.ko.md` |
 | `@fluojs/graphql` | Feature | HTTP 실행 모델을 GraphQL schema 노출과 resolver 실행으로 확장한다. | `docs/reference/package-surface.ko.md` |
 | `@fluojs/validation` and `@fluojs/serialization` | Feature | 입력 materialization, validation 경계, 출력 shaping을 강제한다. | `docs/reference/package-surface.ko.md` |
 | `@fluojs/openapi` | Feature | HTTP 메타데이터를 OpenAPI 표면 문서로 투영한다. | `docs/reference/package-surface.ko.md` |

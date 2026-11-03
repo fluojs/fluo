@@ -20,7 +20,6 @@ it('builds the portable cookie helper dependency closure in native CI', () => {
   expect(buildTask?.commands).toContainEqual({ executable: 'pnpm', argv: ['build'], cwd: '.' });
   expect(nativeTask?.commands).toEqual(expect.arrayContaining([
     expect.objectContaining({ executable: 'bun', argv: ['test', 'tooling/native-runtime/response-cookie-conformance.test.mjs'] }),
-    expect.objectContaining({ executable: 'deno', argv: ['test', '--allow-read', 'tooling/native-runtime/response-cookie-conformance.test.mjs'] }),
     expect.objectContaining({ executable: 'node', argv: ['--test', 'tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs'] }),
   ]));
 });
@@ -42,22 +41,14 @@ it('runs sharded PR suites with one worker to prevent shared artifact build race
     .toEqual(['--shard=1/2', '--shard=1/4', '--shard=2/2', '--shard=2/4', '--shard=3/4', '--shard=4/4']);
 });
 
-it('requires the Deno platform job before the Verify aggregate can pass', () => {
+it('aggregates PR verification jobs through the verify job', () => {
   // Given
   const workflow = readFileSync(resolve(import.meta.dirname, '../../.github/workflows/ci.yml'), 'utf8');
-  const { tasks } = readVerificationManifest();
 
   // When
   const verifyJob = workflow.slice(workflow.indexOf('  verify:\n'));
-  const denoTask = tasks.find(({ capabilities }) => capabilities.includes('deno-native'));
 
   // Then
-  expect(denoTask?.commands).toEqual(expect.arrayContaining([
-    expect.objectContaining({
-      executable: 'deno',
-      argv: ['test', '--no-lock', '--config', 'packages/platform-deno/deno/deno.json', '--allow-net', '--allow-read', 'packages/platform-deno/deno/native-adapter.test.js'],
-    }),
-  ]));
   expect(verifyJob.match(/needs: \[([^\]]+)\]/u)?.[1]?.split(',').map((name) => name.trim()))
     .toContain('verification');
   expect(verifyJob).toContain('node tooling/ci/verification-runner.mjs --plan .omo/ci-plan/plan.json --aggregate');

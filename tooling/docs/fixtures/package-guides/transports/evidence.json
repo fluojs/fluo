@@ -30,7 +30,7 @@
       "pnpm exec tsc -p tooling/docs/fixtures/package-guides/transports/tsconfig.json --noEmit — exit 0, 0 errors for this workstream's files (see typecheck note in README)"
     ],
     "unexecuted": [
-      "@fluojs/websockets/bun, /deno, /cloudflare-workers runtime subpaths were not booted on native hosts here; documented from README, sources, and package tests (native-platform evidence belongs to the platform-guide workstream fixtures)",
+      "@fluojs/websockets/bun and /cloudflare-workers runtime subpaths were not booted on native hosts here; documented from README, sources, and package tests (native-platform evidence belongs to the platform-guide workstream fixtures); the former /deno subpath is archived and removed in WebSockets 3",
       "limits.maxPayloadBytes close code 1009 and buffer/overflow policies are cited from packages/websockets/src/node/node-service.ts behavior and its package tests, not re-run in this fixture",
       "serverBacked dedicated listeners were not exercised here (documented from README and the package's server-backed scenario matrix)"
     ]

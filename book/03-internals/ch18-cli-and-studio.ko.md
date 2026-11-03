@@ -164,7 +164,7 @@ pnpm exec fluo inspect ./src/app.ts --report --output artifacts/product-report.j
 
 Node 개발 환경에서는 `pnpm exec fluo dev --studio`를 사용한다. CLI는 로컬 sidecar를 시작하고 token이 포함된 URL을 출력한다. 앱이 runtime을 import하기 전에 명시적인 Studio 설정을 child process에 전달한다. runtime 소스가 환경 변수를 직접 읽고 자의적으로 관측을 켜는 구조가 아니다. 이 조기 주입 경계 때문에 임의 native watcher와 조합할 수 없다.
 
-live Studio는 Fluo가 소유한 Node restart runner를 요구한다. `--raw-watch`, `--runner native`, `FLUO_DEV_RUNNER=native`와 섞으면 거부되는 것이 계약이다. Bun, Deno, Workers에도 동일한 live bridge가 이미 있다고 설명하지 않는다. 이들의 대체 경로는 지원되는 설정에서 만든 static/report artifact다. 본문의 실행 기준을 Node24로 고정한 이유가 여기서도 드러난다.
+live Studio는 Fluo가 소유한 Node restart runner를 요구한다. `--raw-watch`, `--runner native`, `FLUO_DEV_RUNNER=native`와 섞으면 거부되는 것이 계약이다. Bun, Workers에도 동일한 live bridge가 이미 있다고 설명하지 않는다. 이들의 대체 경로는 지원되는 설정에서 만든 static/report artifact다. 본문의 실행 기준을 Node24로 고정한 이유가 여기서도 드러난다.
 
 재현은 시간 지연을 추측하지 말고 상태를 기준으로 진행한다. token URL을 열고 연결 상태가 `connected`가 된 뒤, 기존 테스트 계정으로 `/orders/order-42`에 요청한다. 그 요청의 method/path와 request ID를 찾아 route와 handler, status code를 연결한다. 코드를 수정해 재시작하면 `restarting`과 새 실행의 snapshot을 구분한다. 과거 요청 목록을 새 프로세스가 처리한 요청으로 읽지 않는다.
 

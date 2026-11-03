@@ -5,7 +5,7 @@
 
 fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 React page type 생성, 런타임 검사 데이터 내보내기, 코드 변환을 지원합니다.
 
-> **Deno target deprecated.** 기존 Deno `fluo new` recipe와 dev/build/start 명령은 이전 기간 동안 사용할 수 있지만 새 프로젝트에는 권장하지 않습니다. CLI의 다음 major에서 Deno 전용 지원을 제거하는 계획은 [#3938](https://github.com/fluojs/fluo/issues/3938)에서 추적합니다. 신규 Deno 기능, 성능 개선, runtime 호환성 작업은 중단하며 심각한 보안 문제와 회귀는 추가 패치나 LTS 보장 없이 건별로 판단합니다. 기본 경로는 Node.js + Fastify이며 배포 방식에 따라 Bun/Workers를 선택하세요. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
+> **Deno 지원 종료.** Deno 스타터 생성과 Deno dev/build/start lifecycle 라우팅이 CLI에서 제거되었습니다. 명시적인 `--runtime deno`/`--platform deno` 생성 플래그와 `@fluojs/platform-deno` 의존 프로젝트의 `fluo dev`/`fluo build`/`fluo start`는 다른 런타임으로 대체하지 않고 마이그레이션 방향과 함께 실패합니다. 기본 경로는 Node.js + Fastify이며 배포 방식에 따라 Bun/Workers를 선택하세요. [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
 
 ## Canonical command vocabulary
 
@@ -47,8 +47,8 @@ pnpm dlx @fluojs/cli new my-app
 
 공유 inspect report와 live envelope 선언은 [`@fluojs/diagnostics`](../diagnostics/README.ko.md)가 소유합니다. CLI는 project-local lazy runtime resolution, bootstrap/close, stdout/stderr 분리, JSON/report wrapping과 output write를 유지하고 Mermaid는 Studio root에 위임합니다. Sidecar는 부분 ingress와 unknown payload를 보관하고 자체 epoch/sequence를 생성하며 recursive body-like-field 거부를 유지합니다. 이를 완전한 wire reader와 동일화하지 않습니다. [선택적 data-only migration](../../docs/getting-started/migrate-diagnostics.ko.md)을 참조하세요.
 
-- `@fluojs/cli`와 생성된 모든 Node HTTP, mixed, microservice, React SSR + Fastify 프로젝트는 Babel 8 compiler toolchain floor인 Node.js `>=24.11.0 <27`을 요구합니다. Node build target은 `node24`, Node starter typings는 `@types/node@^24.0.0`입니다. Bun과 Deno starter는 native engine을 유지하고 Workers의 Node engine은 로컬 CLI/Wrangler tooling만 제한합니다. 업그레이드 전에 [Node.js 마이그레이션](../../docs/reference/node-support.ko.md)을 적용하세요.
-- `@fluojs/cli`는 Node.js `>=24.11.0 <27`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 하고 생성 Babel 8 toolchain이 지원되는 engine 범위 안에 있도록 Node.js `>=24.11.0 <27`을 선언합니다. Node 24.11 미만과 Node 27 이상은 제외되며, Node microservice-only 프로젝트는 같은 `>=24.11.0 <27` 하한을 유지합니다.
+- `@fluojs/cli`와 생성된 모든 Node HTTP, mixed, microservice, React SSR + Fastify 프로젝트는 Babel 8 compiler toolchain floor인 Node.js `>=24.11.0 <27`을 요구합니다. Node build target은 `node24`, Node starter typings는 `@types/node@^24.0.0`입니다. Bun starter는 native engine을 유지하고 Workers의 Node engine은 로컬 CLI/Wrangler tooling만 제한합니다. 업그레이드 전에 [Node.js 마이그레이션](../../docs/reference/node-support.ko.md)을 적용하세요.
+- `@fluojs/cli`는 Node.js `>=24.11.0 <27`을 요구합니다. 생성된 Bun, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 하고 생성 Babel 8 toolchain이 지원되는 engine 범위 안에 있도록 Node.js `>=24.11.0 <27`을 선언합니다. Node 24.11 미만과 Node 27 이상은 제외되며, Node microservice-only 프로젝트는 같은 `>=24.11.0 <27` 하한을 유지합니다.
 - `inspect`는 검사를 실행할 때만, 그리고 검사 대상 프로젝트의 dependency tree에서만 `@fluojs/runtime`을 해석합니다. `fluo inspect`를 사용하기 전에 현재 Node.js 버전과 호환되는 runtime 버전을 설치하세요. 다른 CLI 명령은 CLI 전체 Node.js `>=24.11.0 <27` 범위에서 계속 사용할 수 있습니다.
 - 대화형 `new` 흐름과 선택적인 대화형 `inspect --mermaid` 안내는 필요할 때만 `@clack/prompts`를 해석합니다. CLI가 지원하는 Node.js `>=24.11.0 <27` 전체 범위에서 대화형 및 비대화형 명령을 사용할 수 있습니다.
 - CLI와 생성된 Node.js starter toolchain은 `tsx@^4.23.1`을 사용하며, 생성된 gRPC starter는 `@grpc/grpc-js@^1.14.5`를 요구합니다. 이 패치된 floor를 적용할 때 기존 project lockfile을 갱신하세요.
@@ -114,7 +114,7 @@ Non-interactive 출력에서는 이 블록 전에 설치 시 `Installing depende
 
 `fluo create`는 `fluo new`의 alias입니다. 버전 확인, 명령 도움말, 진단, first-party package shortcut, upgrade 안내가 필요하면 `fluo version`, `fluo help <command>`, `fluo doctor`/`fluo info`/`fluo analyze`, `fluo add`, `fluo upgrade`를 사용하세요.
 
-생성된 Node.js `dev`, `build`, `start` package script는 각각 `fluo dev`, `fluo build`, `fluo start`로 위임합니다. CLI가 Node 지향 lifecycle 명령을 소유하고 local toolchain binary를 실행할 때 project-local `node_modules/.bin`을 앞에 붙이며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `build`/`start`는 `NODE_ENV=production`을 기본값으로 사용합니다. Bun, Deno, Workers의 생성된 `dev` script는 같은 `fluo dev` 추상성을 유지하되 Node-supervised dev process를 줄이도록 Bun, Deno, Wrangler의 native watch loop를 기본값으로 사용합니다. fluo가 소유한 restart boundary의 debounce/hash reporter 계약이 필요하면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하세요. production/deployment script는 runtime-native입니다. Bun은 `bun build ./src/main.ts --outdir ./dist --target bun`과 `bun dist/main.js`를 사용하고, Deno는 `deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts`와 `./dist/app`을 사용하며, Workers는 `start` 대신 Wrangler `preview`/`deploy` script를 노출합니다. 생성된 Deno `AppModule`은 `Deno.env.toObject()`로 application-owned environment value를 snapshot하므로 dev와 compiled command는 광범위한 `--allow-env`를 유지합니다. dev, test, compiled command에는 무제한 filesystem 접근 대신 애플리케이션 `.env` 파일의 read 권한만 추가합니다. Signal listener에는 별도의 Deno permission이 필요하지 않습니다. 기본적으로 `fluo dev`와 `fluo start`는 CLI가 process boundary를 소유하는 경로에서 앱 로그만(애플리케이션 stdout/stderr) 표시합니다. Interactive terminal에서 fluo lifecycle status와 `app │` prefix가 붙은 애플리케이션 출력이 필요하면 `--reporter pretty`를 사용하고, 런타임/도구 watcher 원본 출력이 필요하면 `--verbose`(또는 `FLUO_VERBOSE=1`)를 사용하세요.
+생성된 Node.js `dev`, `build`, `start` package script는 각각 `fluo dev`, `fluo build`, `fluo start`로 위임합니다. CLI가 Node 지향 lifecycle 명령을 소유하고 local toolchain binary를 실행할 때 project-local `node_modules/.bin`을 앞에 붙이며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `build`/`start`는 `NODE_ENV=production`을 기본값으로 사용합니다. Bun, Workers의 생성된 `dev` script는 같은 `fluo dev` 추상성을 유지하되 Node-supervised dev process를 줄이도록 Bun, Wrangler의 native watch loop를 기본값으로 사용합니다. fluo가 소유한 restart boundary의 debounce/hash reporter 계약이 필요하면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하세요. production/deployment script는 runtime-native입니다. Bun은 `bun build ./src/main.ts --outdir ./dist --target bun`과 `bun dist/main.js`를 사용하고, Workers는 `start` 대신 Wrangler `preview`/`deploy` script를 노출합니다. 기본적으로 `fluo dev`와 `fluo start`는 CLI가 process boundary를 소유하는 경로에서 앱 로그만(애플리케이션 stdout/stderr) 표시합니다. Interactive terminal에서 fluo lifecycle status와 `app │` prefix가 붙은 애플리케이션 출력이 필요하면 `--reporter pretty`를 사용하고, 런타임/도구 watcher 원본 출력이 필요하면 `--verbose`(또는 `FLUO_VERBOSE=1`)를 사용하세요.
 
 생성된 starter는 프로젝트를 만든 generator CLI package version을 기준으로 `@fluojs/cli` `devDependency`를 설정합니다. 따라서 `pnpm dev`, `pnpm build`, `pnpm start` 같은 lifecycle script는 오래된 hard-coded range가 아니라 starter를 스캐폴딩한 CLI 동작과 같은 기준을 사용합니다.
 
@@ -123,20 +123,20 @@ Published mode에서 나머지 내부 `@fluojs/*` dependency와 dev dependency�
 Changesets versioning 이후 이 metadata를 생성하여 `dist`에 포함하므로, unpack한
 CLI도 monorepo나 registry 조회 없이 scaffold를 생성합니다. React의 `0.x`를 포함한
 버전은 패키지별로 독립적이며 CLI의 major로 통일하지 않습니다.
-모든 HTTP, microservice, mixed, React, Bun, Deno, Workers starter에 적용됩니다.
+모든 HTTP, microservice, mixed, React, Bun, Workers starter에 적용됩니다.
 내부 local sandbox의 tarball override는 계속 우선합니다.
 
-생성된 non-Deno standard starter의 `vite.config.ts`는 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하고, React SSR + Vite starter는 같은 plugin을 `vite.server.config.ts`에 적용합니다. 따라서 decorator transform 업데이트는 각 신규 프로젝트에 inline 복사되는 대신 유지보수되는 Vite 패키지를 통해 전달됩니다.
+생성된 standard starter의 `vite.config.ts`는 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하고, React SSR + Vite starter는 같은 plugin을 `vite.server.config.ts`에 적용합니다. 따라서 decorator transform 업데이트는 각 신규 프로젝트에 inline 복사되는 대신 유지보수되는 Vite 패키지를 통해 전달됩니다.
 
-새 non-Deno 프로젝트는 Vite `^8.2.2`, Vitest `^4.1.11`, `@vitest/coverage-v8` `^4.1.11`을 선언합니다. 생성된 ESM Vite config는 `build.rolldownOptions`를 사용합니다. Rolldown/Oxc가 애플리케이션 코드를 처리하기 전에 `fluoDecoratorsPlugin()`을 통해 Babel이 표준 데코레이터를 변환하고, `vitest.config.ts`는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와 `@fluojs/core/metadata-preload`를 사용합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다. 생성 프로젝트는 Babel 8 compiler toolchain floor인 Node.js `>=24.11.0 <27`을 선언하고, runtime-native starter metadata는 바뀌지 않습니다. 기존 프로젝트를 다시 쓰지는 않으므로 업그레이드 시 [생성 toolchain 기준선](../../docs/reference/toolchain-contract-matrix.ko.md)을 명시적으로 적용하세요.
+새 프로젝트는 Vite `^8.2.2`, Vitest `^4.1.11`, `@vitest/coverage-v8` `^4.1.11`을 선언합니다. 생성된 ESM Vite config는 `build.rolldownOptions`를 사용합니다. Rolldown/Oxc가 애플리케이션 코드를 처리하기 전에 `fluoDecoratorsPlugin()`을 통해 Babel이 표준 데코레이터를 변환하고, `vitest.config.ts`는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와 `@fluojs/core/metadata-preload`를 사용합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다. 생성 프로젝트는 Babel 8 compiler toolchain floor인 Node.js `>=24.11.0 <27`을 선언하고, runtime-native starter metadata는 바뀌지 않습니다. 기존 프로젝트를 다시 쓰지는 않으므로 업그레이드 시 [생성 toolchain 기준선](../../docs/reference/toolchain-contract-matrix.ko.md)을 명시적으로 적용하세요.
 
 기존 starter를 업그레이드할 때는 `babel.config.cjs`에서 `ignore: ['src/**/*.test.ts']` 규칙을 제거하세요. 생성된 Babel config는 더 이상 test file을 제외하지 않으므로 testing plugin이 테스트 내부에 선언된 데코레이터도 Vitest 4 실행 전에 변환합니다.
 
-새 non-Deno 프로젝트는 Babel 8 의존성(`@babel/core ^8.0.6`, `@babel/cli ^8.0.6`, `@babel/plugin-proposal-decorators ^8.0.2`, `@babel/preset-typescript ^8.0.1`)을 선언하고 제거된 `allowDeclareFields` 옵션을 전달하지 않는 Babel config를 생성합니다. `2023-11` decorator transform은 application 및 test TypeScript의 decorated field를 계속 처리합니다. 기존 프로젝트의 config는 다시 쓰지 않습니다.
+새 프로젝트는 Babel 8 의존성(`@babel/core ^8.0.6`, `@babel/cli ^8.0.6`, `@babel/plugin-proposal-decorators ^8.0.2`, `@babel/preset-typescript ^8.0.1`)을 선언하고 제거된 `allowDeclareFields` 옵션을 전달하지 않는 Babel config를 생성합니다. `2023-11` decorator transform은 application 및 test TypeScript의 decorated field를 계속 처리합니다. 기존 프로젝트의 config는 다시 쓰지 않습니다.
 
-생성된 standard non-Deno HTTP starter는 TDD-first Vitest 레이아웃을 사용합니다. 빠른 greeting unit test와 `greeting.slice.test.ts`는 `src/greeting/` 아래에 colocate하고, 앱 dispatch test는 `src/app.test.ts`에 유지하며, 기본 e2e 스타일 request-pipeline test는 `Test.createApp({ rootModule })`와 `app.request(...).send()`를 사용해 `test/app.e2e.test.ts`에 둡니다. React starter는 대신 streamed SSR, DOM hydration, production Playwright hydration에 집중한 test를 포함합니다. `test:browser` script는 build된 Fastify server를 시작하며 asset 누락, hydration warning, server-owned route를 우회하는 navigation이 있으면 실패합니다.
+생성된 standard HTTP starter는 TDD-first Vitest 레이아웃을 사용합니다. 빠른 greeting unit test와 `greeting.slice.test.ts`는 `src/greeting/` 아래에 colocate하고, 앱 dispatch test는 `src/app.test.ts`에 유지하며, 기본 e2e 스타일 request-pipeline test는 `Test.createApp({ rootModule })`와 `app.request(...).send()`를 사용해 `test/app.e2e.test.ts`에 둡니다. React starter는 대신 streamed SSR, DOM hydration, production Playwright hydration에 집중한 test를 포함합니다. `test:browser` script는 build된 Fastify server를 시작하며 asset 누락, hydration warning, server-owned route를 우회하는 navigation이 있으면 실패합니다.
 
-생성된 Node.js 애플리케이션 프로젝트에서 `fluo dev`는 기본적으로 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 Node 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart와 terminal shutdown은 현재 앱 child에 먼저 `SIGTERM`을 보내고, 제한된 grace period 뒤에도 종료되지 않으면 force-kill하므로 비협조적인 child가 restart supervisor를 무기한 멈추게 할 수 없습니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. Primary recursive watcher 또는 fallback directory watcher에서 terminal error가 발생하거나 watcher 등록 전에 필수 source target이 없거나 접근할 수 없거나 recursive watch를 사용할 수 없을 때 필수 fallback source watcher를 획득하지 못하면 동일한 cleanup path를 따릅니다. 이는 fallback 획득이 전부 실패하는 경우, sibling watcher를 획득한 뒤 일부가 실패하는 경우, fallback watcher 실행 중 새로 발견된 directory의 획득이 실패하는 경우를 모두 포함하며, runner는 기존 제한 시간 안에 현재 앱 child를 종료하고 child나 sibling watcher를 남겨 두는 대신 exit code `1`로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하세요. 생성된 Bun/Deno/Workers 프로젝트는 기본적으로 watch/reload를 `bun --watch`, `deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts`, `wrangler dev`에 위임합니다. Deno command는 `Deno.env.toObject()`를 통해 소비되는 모든 application-owned environment key에 대한 접근을 보존합니다. 해당 프로젝트에서 fluo 소유 restart runner로 되돌리려면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하고, 그 runner에 추가 ignore 경로가 필요하면 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
+생성된 Node.js 애플리케이션 프로젝트에서 `fluo dev`는 기본적으로 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 Node 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart와 terminal shutdown은 현재 앱 child에 먼저 `SIGTERM`을 보내고, 제한된 grace period 뒤에도 종료되지 않으면 force-kill하므로 비협조적인 child가 restart supervisor를 무기한 멈추게 할 수 없습니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. Primary recursive watcher 또는 fallback directory watcher에서 terminal error가 발생하거나 watcher 등록 전에 필수 source target이 없거나 접근할 수 없거나 recursive watch를 사용할 수 없을 때 필수 fallback source watcher를 획득하지 못하면 동일한 cleanup path를 따릅니다. 이는 fallback 획득이 전부 실패하는 경우, sibling watcher를 획득한 뒤 일부가 실패하는 경우, fallback watcher 실행 중 새로 발견된 directory의 획득이 실패하는 경우를 모두 포함하며, runner는 기존 제한 시간 안에 현재 앱 child를 종료하고 child나 sibling watcher를 남겨 두는 대신 exit code `1`로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하세요. 생성된 Bun/Workers 프로젝트는 기본적으로 watch/reload를 `bun --watch`, `wrangler dev`에 위임합니다. 해당 프로젝트에서 fluo 소유 restart runner로 되돌리려면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하고, 그 runner에 추가 ignore 경로가 필요하면 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
 
 `fluo new`는 같은 Node 기반 설치/빌드 흐름 위에서 Node.js + Fastify, Express, raw Node.js HTTP 애플리케이션 스타터를 제공합니다.
 
@@ -148,11 +148,10 @@ fluo new my-node-app --shape application --transport http --runtime node --platf
 
 Raw Node starter는 `NodeHttpApplicationAdapter.create(options)`로 adapter를 만들고 `FluoFactory.create(AppModule, { adapter })` 다음 `app.listen()`을 실행합니다. Host가 `app.close()`와 명시적인 signal 등록/해제를 소유합니다. 기존 run helper의 middleware/logger/signal 기본값에서 이전하려면 [Node adapter 생성 마이그레이션](../../docs/getting-started/migrate-node-adapter-create.ko.md)을 따르세요. 기존 프로젝트는 자동 변경하지 않습니다.
 
-애플리케이션 매트릭스에는 런타임별 entrypoint, scripts, dependency 세트를 갖춘 Bun과 Cloudflare Workers 네이티브 스타터도 포함됩니다. 아래 Deno 명령은 deprecated 이전 경로를 설명하기 위해 유지하며 새 프로젝트에는 사용하지 마세요.
+애플리케이션 매트릭스에는 런타임별 entrypoint, scripts, dependency 세트를 갖춘 Bun과 Cloudflare Workers 네이티브 스타터도 포함됩니다.
 
 ```bash
 fluo new my-bun-app --shape application --transport http --runtime bun --platform bun
-fluo new my-deno-app --shape application --transport http --runtime deno --platform deno
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 ```
 
@@ -227,7 +226,7 @@ React의 Node native watch 경로는 macOS/Windows에서 source, `.env`, Vite co
 감시하므로 생성된 `dist`로 다시 빌드하지 않습니다. Linux에서는 Node의
 `--watch-path`를 사용할 수 없어 React에서 `--runner native`/`--raw-watch`를
 선택해도 fluo restart runner를 사용합니다. macOS/Windows의 raw watch는 계속 native
-process restart이며 Fast Refresh가 아닙니다. Bun, Deno, Workers의 watch 선택과 다른
+process restart이며 Fast Refresh가 아닙니다. Bun, Workers의 watch 선택과 다른
 starter의 mode는 그대로이고 Fast Refresh 지원 대상은 Node React/Vite 경로입니다.
 
 Generated application wiring은 framework abstraction에 숨지 않고 보이는 상태를 유지합니다.
@@ -330,7 +329,7 @@ fluo new my-mixed-app --shape mixed --dry-run
 
 plan preview 모드는 실제 scaffold와 같은 named starter, 프로젝트 이름, shape, runtime, platform, transport, tooling preset, package manager, install 선택, git 선택을 resolve합니다. 선택된 starter와 recipe, dependency 세트를 출력한 뒤 파일 생성, dependency 설치, git 저장소 초기화 없이 종료합니다.
 
-현재 제공되는 스타터 매트릭스(standard Node.js Fastify/Express/raw Node.js HTTP, Node.js + Fastify 기반 React SSR + Vite, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice, 그리고 mixed)와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요. `@fluojs/redis` 같은 패키지 수준 통합은 더 넓은 생태계에 남아 있지만, 추가 `fluo new --transport` 스타터 플래그는 아닙니다.
+현재 제공되는 스타터 매트릭스(standard Node.js Fastify/Express/raw Node.js HTTP, Node.js + Fastify 기반 React SSR + Vite, Bun, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice, 그리고 mixed)와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요. `@fluojs/redis` 같은 패키지 수준 통합은 더 넓은 생태계에 남아 있지만, 추가 `fluo new --transport` 스타터 플래그는 아닙니다.
 
 ### 2. 기능 추가
 feature slice를 생성합니다. 일부 schematic은 모듈에 자동 등록되고, 일부는 파일만 생성하므로 직접 wiring해야 합니다.
@@ -374,7 +373,7 @@ fluo info
 fluo analyze
 ```
 
-`fluo analyze`는 read-only로 동작하며 더 깊은 `inspect --report`와 `migrate --json` workflow를 안내합니다. 생성된 Node.js 프로젝트에서는 `fluo dev`, `fluo build`, `fluo start`가 환경 기본값 및 project-local toolchain binary와 함께 생성 lifecycle을 직접 실행합니다. 생성된 Bun, Deno, Cloudflare Workers 프로젝트에서는 `fluo dev`가 runtime-owned watch loop를 기본값으로 사용하고, `fluo dev --runner fluo`가 CLI 소유 restart boundary를 복원합니다. production/deployment에는 생성된 package script(`bun dist/main.js`, `./dist/app`, Wrangler `preview`/`deploy`)를 사용합니다. lifecycle 명령은 `--dry-run`으로 미리 확인할 수 있습니다:
+`fluo analyze`는 read-only로 동작하며 더 깊은 `inspect --report`와 `migrate --json` workflow를 안내합니다. 생성된 Node.js 프로젝트에서는 `fluo dev`, `fluo build`, `fluo start`가 환경 기본값 및 project-local toolchain binary와 함께 생성 lifecycle을 직접 실행합니다. 생성된 Bun, Cloudflare Workers 프로젝트에서는 `fluo dev`가 runtime-owned watch loop를 기본값으로 사용하고, `fluo dev --runner fluo`가 CLI 소유 restart boundary를 복원합니다. production/deployment에는 생성된 package script(`bun dist/main.js`, Wrangler `preview`/`deploy`)를 사용합니다. lifecycle 명령은 `--dry-run`으로 미리 확인할 수 있습니다:
 
 ```bash
 fluo dev --dry-run
@@ -382,7 +381,7 @@ fluo build --dry-run
 fluo start --dry-run
 ```
 
-`fluo dev --dry-run`은 watch boundary도 함께 표시합니다. 생성된 Node 프로젝트는 기본적으로 `Watch mode: fluo-restart`를 보여 주며, Node의 `--raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`은 `Watch mode: native-watch`를 보여 줍니다. Bun/Deno/Workers 프로젝트는 기본적으로 `Watch mode: runtime-native-watch`를 보여 주며, `--runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하면 `Watch mode: fluo-restart`로 fluo 소유 restart runner가 복원됩니다.
+`fluo dev --dry-run`은 watch boundary도 함께 표시합니다. 생성된 Node 프로젝트는 기본적으로 `Watch mode: fluo-restart`를 보여 주며, Node의 `--raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`은 `Watch mode: native-watch`를 보여 줍니다. Bun/Workers 프로젝트는 기본적으로 `Watch mode: runtime-native-watch`를 보여 주며, `--runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하면 `Watch mode: fluo-restart`로 fluo 소유 restart runner가 복원됩니다.
 
 ### Runtime-connected Studio devtool
 
@@ -404,7 +403,6 @@ MVP runtime support는 명시적으로 제한됩니다.
 | --- | --- |
 | Node dev runner | Full support target입니다. |
 | Bun | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Bun 프로젝트를 거부합니다. 대신 `fluo inspect <module-path> --json --output <path>` 또는 `fluo inspect <module-path> --report --output <path>`로 Studio 호환 static artifact를 내보내세요. |
-| Deno | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Deno 프로젝트를 거부합니다. |
 | Cloudflare Workers | worker bridge를 추가하고 테스트하지 않는 한 이번 MVP에서는 unsupported입니다. |
 
 CLI process boundary를 조정해야 할 때는 런타임 앱 로깅이 아니라 reporter flag를 사용하세요:

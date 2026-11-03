@@ -6,7 +6,7 @@ package: "@fluojs/platform-cloudflare-workers"
 
 `@fluojs/platform-cloudflare-workers` is the HTTP adapter that runs a fluo application as a [Cloudflare Worker](https://workers.cloudflare.com/): an edge `fetch` handler instead of a listening server. It implements the framework's `HttpApplicationAdapter` contract on the Workers Web APIs, registering every request's lifecycle with `executionContext.waitUntil(...)` so Worker shutdown does not drop active work.
 
-Use this package when your deployment target is Cloudflare Workers. Use [`@fluojs/platform-bun`](/docs/packages/platform-bun), [`@fluojs/platform-deno`](/docs/packages/platform-deno), or the Node.js adapters for long-running servers. The adapter is not a module: there is no `forRoot`/`forRootAsync` registration. You either create the adapter directly and export a `fetch` handler, or use the package's lazy `CloudflareWorkerApplicationHost` when the isolate must own bootstrap.
+Use this package when your deployment target is Cloudflare Workers. Use [`@fluojs/platform-bun`](/docs/packages/platform-bun) or the Node.js adapters for long-running servers. The adapter is not a module: there is no `forRoot`/`forRootAsync` registration. You either create the adapter directly and export a `fetch` handler, or use the package's lazy `CloudflareWorkerApplicationHost` when the isolate must own bootstrap.
 
 The package depends on `@fluojs/http` and `@fluojs/runtime` and declares no `engines.node` constraint because its runtime contract is the Workers runtime; the repository's Node.js requirement applies only to the maintainer toolchain.
 
@@ -226,14 +226,14 @@ Application-level options (`globalPrefix`, `cors`, `securityHeaders`, `middlewar
 
 ## Testing at this seam
 
-The package's regression targets are `packages/platform-cloudflare-workers/src/adapter.test.ts` and `adapter-lifecycle.test.ts` (request attachment, `waitUntil` SSE tracking, upgrade binding, host generations and restart, timeout recovery, 503 gating, drain-time `listen()` rejection), with `portability-smoke.test.ts`, `body-parser.test.ts`, and `websocket-conformance.test.ts` covering the shared wire behavior. The shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` runs the same baseline against Bun and Deno. These run the adapter in a Web-API-conformant local runtime; they are local Web conformance, not a deployed-isolate guarantee - claims about isolate eviction or Workers-only behavior come from the documented lifecycle contract, not from a test double.
+The package's regression targets are `packages/platform-cloudflare-workers/src/adapter.test.ts` and `adapter-lifecycle.test.ts` (request attachment, `waitUntil` SSE tracking, upgrade binding, host generations and restart, timeout recovery, 503 gating, drain-time `listen()` rejection), with `portability-smoke.test.ts`, `body-parser.test.ts`, and `websocket-conformance.test.ts` covering the shared wire behavior. The shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` runs the same baseline against Bun. These run the adapter in a Web-API-conformant local runtime; they are local Web conformance, not a deployed-isolate guarantee - claims about isolate eviction or Workers-only behavior come from the documented lifecycle contract, not from a test double.
 
 For your own tests, pass the adapter a minimal `executionContext` (an object with `waitUntil`) and real `Request` objects - the adapter needs no network listener. Boot on the factory, dispatch with `adapter.fetch(new Request(url), env, ctx)`, and always `await app.close()` in a `finally` block. For request-level assertions without the adapter, use [`Test.createApp(...)`](/docs/guides/testing).
 
 ## Related reading
 
 - [`@fluojs/platform-bun`](/docs/packages/platform-bun) - the sibling fetch-style adapter for the Bun runtime.
-- [`@fluojs/platform-deno`](/docs/packages/platform-deno) - the sibling fetch-style adapter for the Deno runtime.
+- [`@fluojs/platform-deno`](/docs/packages/platform-deno) - the archived sibling fetch-style adapter for the Deno runtime (removed; final `2.0.2`).
 - [Dependency injection](/docs/fundamentals/dependency-injection) - how the providers behind your controllers compose, and why each generation reconstructs singletons.
 - [Runtime Adapters](/docs/guides/runtime-adapters) - choosing between adapters, close ownership, and the portability matrix.
 - [`packages/platform-cloudflare-workers/README.md`](https://github.com/fluojs/fluo/blob/main/packages/platform-cloudflare-workers/README.md) - the owning package contract and realtime capability JSON.

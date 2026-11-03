@@ -8,7 +8,6 @@ import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-
 import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
-import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { behavioralChangedFiles, isNavigationDocument } from './docs-navigation-changes.mjs';
 import { enforceValidationMappedTypesImportBoundary } from './validation-mapped-types-import-boundary.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
@@ -117,7 +116,6 @@ const staticAssetRegressionEvidence = [
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 export { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
-export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 export { enforceExpressSseDocumentationContract } from './express-sse-documentation-contract.mjs';
@@ -818,7 +816,6 @@ const officialTransportDocsPackages = [
   '@fluojs/websockets',
   '@fluojs/socket.io',
   '@fluojs/platform-bun',
-  '@fluojs/platform-deno',
   '@fluojs/platform-cloudflare-workers',
 ];
 
@@ -833,8 +830,7 @@ const directProcessEnvAllowedPackageSourcePaths = new Set([
   'packages/cli/src/new/scaffold.ts',
 ]);
 
-const denoAndCloudflareWorkerServiceSourcePaths = new Set([
-  'packages/websockets/src/deno/deno-service.ts',
+const cloudflareWorkerServiceSourcePaths = new Set([
   'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
 ]);
 
@@ -1125,6 +1121,24 @@ function collectPackageDirs() {
     .map((entry) => entry.name);
 }
 
+const archiveDocumentationFileNames = new Set(['README.md', 'README.ko.md', 'CHANGELOG.md']);
+
+function isDocumentationOnlyArchiveDirectory(directoryPath) {
+  for (const entry of readdirSync(directoryPath, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (!isDocumentationOnlyArchiveDirectory(join(directoryPath, entry.name))) {
+        return false;
+      }
+      continue;
+    }
+    if (!archiveDocumentationFileNames.has(entry.name)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function enforcePackageDirectoriesHaveManifests() {
   const packagesRoot = join(repoRoot, 'packages');
 
@@ -1135,8 +1149,10 @@ function enforcePackageDirectoriesHaveManifests() {
 
     const manifestPath = join(packagesRoot, entry.name, 'package.json');
     assert(
-      existsSync(manifestPath),
-      `packages/${entry.name} must contain package.json so packages/* does not admit ghost workspace members.`,
+      existsSync(manifestPath) || (existsSync(join(packagesRoot, entry.name, 'README.md'))
+        && existsSync(join(packagesRoot, entry.name, 'README.ko.md'))
+        && isDocumentationOnlyArchiveDirectory(join(packagesRoot, entry.name))),
+      `packages/${entry.name} must contain package.json so packages/* does not admit ghost workspace members. Retired platform directories may keep only README/CHANGELOG archive files.`,
     );
   }
 }
@@ -1301,7 +1317,7 @@ export function collectNodeGlobalBufferViolations(relativePaths, readSource) {
   const violations = [];
 
   for (const relativePath of relativePaths) {
-    if (!denoAndCloudflareWorkerServiceSourcePaths.has(relativePath)) {
+    if (!cloudflareWorkerServiceSourcePaths.has(relativePath)) {
       continue;
     }
 
@@ -1324,17 +1340,17 @@ export function collectNodeGlobalBufferViolations(relativePaths, readSource) {
   return violations;
 }
 
-export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
-  relativePaths = [...denoAndCloudflareWorkerServiceSourcePaths],
+export function enforceNoNodeGlobalBufferInCloudflareWorkerServices(
+  relativePaths = [...cloudflareWorkerServiceSourcePaths],
   readSource = read,
 ) {
   const violations = collectNodeGlobalBufferViolations(relativePaths, readSource);
   assert(
     violations.length === 0,
     [
-      'Deno and Cloudflare Workers service source files must not use the Node.js global Buffer.',
+      'Cloudflare Workers service source files must not use the Node.js global Buffer.',
       'Use TextEncoder / TextDecoder or other Web-standard API equivalents instead.',
-      `Governed paths: ${[...denoAndCloudflareWorkerServiceSourcePaths].join(', ')}.`,
+      `Governed paths: ${[...cloudflareWorkerServiceSourcePaths].join(', ')}.`,
       ...violations.map((violation) => `${violation.path}:${violation.line} ${violation.excerpt}`),
     ].join('\n'),
   );
@@ -1585,7 +1601,7 @@ function documentSnapshotsFromGit(paths, runCommand = run, env = process.env) {
 
 export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
   return documentSnapshotsFromGit(
-    [...nestMigrationGuidePaths, ...emailMigrationDocumentPaths, emailMigrationEnforcementTool,
+    [...nestMigrationGuidePaths, ...emailMigrationDocumentPaths, ...httpLifecycleContractDocs, emailMigrationEnforcementTool,
       ...fastifyReadmePaths, 'packages/http/src/dispatch/dispatch-response-policy.ts'],
     runCommand,
     env,
@@ -1823,6 +1839,31 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
       hasChanged(changedFiles, httpRuntimeIsolationRegressionTest),
       `HTTP runtime contract updates must include ${httpRuntimeIsolationRegressionTest}.`,
     );
+    // Adapter inventory edits use portability evidence only when the core
+    // implementation and every documented lifecycle boundary remain intact.
+    const portabilityOnlyUpdate = hasChanged(
+      changedFiles, 'packages/testing/src/portability/web-runtime-adapter-portability.test.ts',
+    ) && !changedFiles.some((path) => (
+      path.startsWith('packages/http/src/') || path.startsWith('packages/runtime/src/')
+    ) && !path.endsWith('.test.ts')) && [...httpLifecycleContractDocs].every((path) => {
+      const snapshot = migrationGuideSnapshots?.[path];
+      if (typeof snapshot?.base !== 'string' || typeof snapshot.head !== 'string') return false;
+      return [
+        'Request Lifecycle',
+        'Request Context Isolation',
+        'Managed SSE Backpressure Cancellation',
+        'Connection Identity',
+      ].every((heading) => {
+        const marker = `\n## ${heading}\n`;
+        const baseParts = snapshot.base.split(marker);
+        const headParts = snapshot.head.split(marker);
+        if (baseParts.length !== 2 || headParts.length !== 2) return false;
+        const baseSection = baseParts[1].split('\n## ')[0];
+        const headSection = headParts[1].split('\n## ')[0];
+        return baseSection.trim().length > 0 && baseSection === headSection;
+      });
+    });
+    if (portabilityOnlyUpdate) return;
     assert(
       hasChanged(changedFiles, manualSseLifecycleRegressionTest),
       `HTTP runtime lifecycle contract updates must include ${manualSseLifecycleRegressionTest}.`,
@@ -2104,73 +2145,6 @@ function enforceDocsHubOfficialTransportLinks() {
     assert(
       docsContextKo.includes(packageName),
       `docs/CONTEXT.ko.md must mention ${packageName} when it is part of the official transport package set.`,
-    );
-  }
-}
-
-const denoManagedStartupCommand = 'deno run --allow-net main.ts';
-const denoNativeDevCommand = 'deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts';
-const denoCompileCommand = 'deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts';
-const invalidDenoPermissionPatterns = [
-  /deno run --allow-net --allow-env main\.ts/u,
-  /deno run(?: --watch)? --allow-env=PORT --allow-net src\/main\.ts/u,
-  /deno compile --allow-env=PORT --allow-net --output dist\/app src\/main\.ts/u,
-];
-const denoPermissionGuidanceRequirements = [
-  [
-    'packages/platform-deno/README.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'does not read environment variables', 'does not require a separate Deno permission'],
-  ],
-  [
-    'packages/platform-deno/README.ko.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
-  ],
-  [
-    'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'does not read environment variables', 'does not require a separate Deno permission'],
-  ],
-  [
-    'book/intermediate/ch23-deno.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'does not read environment variables', 'does not require a separate Deno permission'],
-  ],
-  [
-    'book/intermediate/ch23-deno.ko.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
-  ],
-  [
-    'docs/CONTEXT.md',
-    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownRegistration', 'does not require environment access', 'does not require a separate Deno permission'],
-  ],
-  [
-    'docs/CONTEXT.ko.md',
-    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownRegistration', 'environment 접근 권한이 필요하지 않', '별도의 Deno permission이 필요하지 않'],
-  ],
-  [
-    'packages/cli/src/new/scaffold.ts',
-    [denoNativeDevCommand, denoCompileCommand, 'deno test --allow-env --allow-net --allow-read=.env', 'Deno.env.toObject()'],
-  ],
-  ['packages/cli/README.md', [denoNativeDevCommand, denoCompileCommand]],
-  ['packages/cli/README.ko.md', [denoNativeDevCommand, denoCompileCommand]],
-  ['docs/reference/toolchain-contract-matrix.md', [denoNativeDevCommand, denoCompileCommand]],
-  ['docs/reference/toolchain-contract-matrix.ko.md', [denoNativeDevCommand, denoCompileCommand]],
-  ['docs/architecture/dev-reload-architecture.md', [denoNativeDevCommand]],
-  ['docs/architecture/dev-reload-architecture.ko.md', [denoNativeDevCommand]],
-];
-
-export function enforceDenoPermissionGuidance(
-  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
-) {
-  for (const [relativePath, requiredMarkers] of denoPermissionGuidanceRequirements) {
-    const content = readText(relativePath);
-    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
-
-    assert(
-      missingMarkers.length === 0,
-      `${relativePath} must keep Deno permission guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
-    );
-    assert(
-      invalidDenoPermissionPatterns.every((pattern) => !pattern.test(content)),
-      `${relativePath} must not include invalid Deno permission syntax or narrow generated application env access.`,
     );
   }
 }
@@ -3716,7 +3690,6 @@ export function enforceHttpCustomMethodContract() {
   const portableAdapterManifestPaths = [
     'packages/platform-bun/package.json',
     'packages/platform-cloudflare-workers/package.json',
-    'packages/platform-deno/package.json',
   ];
   const documentationPaths = [
     'docs/CONTEXT.md',
@@ -4613,8 +4586,6 @@ export async function main() {
   enforceSocketIoNodeEngineAlignment();
   enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();
-  enforceDenoHostOwnedLifecycleContract();
-  enforceDenoPermissionGuidance();
   enforceEmailLifecycleDocsContract();
   enforceEmailNestjsMigrationDocs();
   enforceSerializerResponseOwnershipDocsSync();
@@ -4646,7 +4617,7 @@ export async function main() {
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
-  enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
+  enforceNoNodeGlobalBufferInCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactPageCatalogContract();
   enforceReactNavigationPayloadContract();

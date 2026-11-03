@@ -42,7 +42,7 @@ describe('resolveBootstrapSchema', () => {
 });
 
 describe('resolveBootstrapPlan', () => {
-  it('locks the shipped starter registry to the current fifteen supported matrix profiles', () => {
+  it('locks the shipped starter registry to the current fourteen supported matrix profiles', () => {
     expect(STARTER_PROFILE_REGISTRY.map((profile) => ({
       id: profile.id,
       schema: profile.schema,
@@ -52,20 +52,6 @@ describe('resolveBootstrapPlan', () => {
         schema: {
           platform: 'bun',
           runtime: 'bun',
-          shape: 'application',
-          tooling: 'standard',
-          topology: {
-            deferred: true,
-            mode: 'single-package',
-          },
-          transport: 'http',
-        },
-      },
-      {
-        id: 'application-deno-deno-http',
-        schema: {
-          platform: 'deno',
-          runtime: 'deno',
           shape: 'application',
           tooling: 'standard',
           topology: {
@@ -366,46 +352,19 @@ describe('resolveBootstrapPlan', () => {
     });
   });
 
-  it('resolves the Deno application starter as a first-class HTTP path', () => {
-    expect(resolveBootstrapPlan({
+  it('rejects the retired Deno runtime and platform with the support-ended migration direction', () => {
+    expect(() => Reflect.apply(resolveBootstrapPlan, undefined, [{
       packageManager: 'pnpm' as const,
       runtime: 'deno',
       shape: 'application',
-    })).toEqual({
-      dependencies: {
-        dependencies: [
-          '@fluojs/config',
-          '@fluojs/core',
-          '@fluojs/validation',
-          '@fluojs/di',
-          '@fluojs/http',
-          '@fluojs/platform-deno',
-          '@fluojs/runtime',
-        ],
-        devDependencies: [
-          '@fluojs/cli',
-        ],
-      },
-      emitter: {
-        platform: 'deno',
-        preset: 'standard',
-        runtime: 'deno',
-        transport: 'http',
-        type: 'http',
-      },
-      profile: profileById('application-deno-deno-http'),
-      schema: {
-        platform: 'deno',
-        runtime: 'deno',
-        shape: 'application',
-        tooling: 'standard',
-        topology: {
-          deferred: true,
-          mode: 'single-package',
-        },
-        transport: 'http',
-      },
-    });
+    }])).toThrow('https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md');
+
+    expect(() => Reflect.apply(resolveBootstrapPlan, undefined, [{
+      packageManager: 'pnpm' as const,
+      platform: 'deno',
+      runtime: 'node',
+      shape: 'application',
+    }])).toThrow('https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md');
   });
 
   it('resolves the Cloudflare Workers application starter as a first-class HTTP path', () => {
@@ -946,7 +905,7 @@ describe('resolveBootstrapPlan', () => {
       },
       transport: 'tcp',
     })).toThrow(
-      'Unsupported bootstrap schema "application/node/tcp/fastify/standard/single-package". Application starters currently require the HTTP transport across the Fastify, Express, raw Node.js, Bun, Deno, and Cloudflare Workers starter profiles.',
+      'Unsupported bootstrap schema "application/node/tcp/fastify/standard/single-package". Application starters currently require the HTTP transport across the Fastify, Express, raw Node.js, Bun, and Cloudflare Workers starter profiles.',
     );
   });
 
@@ -986,7 +945,7 @@ describe('resolveBootstrapPlan', () => {
       transport: 'http',
       platform: 'fastify',
     })).toThrow(
-      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/nats/kafka/rabbitmq/mqtt/grpc microservice starters, and the mixed single-package starter.',
+      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Cloudflare Workers HTTP starters, the tcp/redis-streams/nats/kafka/rabbitmq/mqtt/grpc microservice starters, and the mixed single-package starter.',
     );
   });
 
@@ -1003,7 +962,7 @@ describe('resolveBootstrapPlan', () => {
       },
       transport: 'tcp',
     })).toThrow(
-      'Unsupported bootstrap schema "mixed/node/tcp/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/nats/kafka/rabbitmq/mqtt/grpc microservice starters, and the mixed single-package starter.',
+      'Unsupported bootstrap schema "mixed/node/tcp/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Cloudflare Workers HTTP starters, the tcp/redis-streams/nats/kafka/rabbitmq/mqtt/grpc microservice starters, and the mixed single-package starter.',
     );
   });
 });

@@ -1,6 +1,5 @@
 import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
 import { CloudflareWorkerHttpApplicationAdapter } from '@fluojs/platform-cloudflare-workers';
-import { DenoHttpApplicationAdapter } from '@fluojs/platform-deno';
 import { describe, expect, it } from 'vitest';
 
 import { FetchStyleWebSocketConformanceHarness } from './fetch-style-websocket-conformance.js';
@@ -36,18 +35,6 @@ describe('official fetch-style runtime websocket contract', () => {
         'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
       expectedVersion: 1,
       name: 'bun',
-    });
-
-    expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
-  });
-
-  it('keeps Deno on the shared supported websocket expansion seam', () => {
-    const harness = FetchStyleWebSocketConformanceHarness.create({
-      createAdapter: () => DenoHttpApplicationAdapter.create(),
-      expectedSupport: 'supported',
-      expectedReason:
-        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
-      name: 'deno',
     });
 
     expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();

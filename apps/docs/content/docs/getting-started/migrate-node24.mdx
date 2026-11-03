@@ -19,7 +19,7 @@ each environment; do not use `--ignore-engines` as a migration.
 
 Exact `24.0.0`, latest `24.x`, and latest `26.x` are separate verification targets.
 Latest Node 24 owns Fluo release automation; Node 26 is never a publish runtime.
-Bun, Deno, and Workers retain native runtime metadata and deployment commands;
+Bun and Workers retain native runtime metadata and deployment commands;
 upgrade their Node-hosted developer tooling separately.
 
 ## 2. Upgrade Fluo packages together
@@ -54,9 +54,9 @@ loading and watch are Node-only features on `>=24.0.0 <27`.
 The existing capability guard raises `CONFIG_RUNTIME_UNAVAILABLE` when Node
 builtins are unavailable; it does not compare Node versions or reject portable imports.
 
-Keep all eight package-wide Node engine omissions: `@fluojs/config`,
-`@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`,
-`@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`,
+Keep all nine package-wide Node engine omissions: `@fluojs/config`,
+`@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`,
+`@fluojs/platform-cloudflare-workers`, `@fluojs/react`,
 and `@fluojs/runtime`.
 
 ## 5. Update existing toolchains manually
@@ -76,7 +76,7 @@ The workspace verifies Vite `8.2.2` and Vitest `4.1.11`; `@fluojs/vite` keeps it
 - Remove the Babel `ignore` entry for `src/**/*.test.ts` so decorators declared
   inside tests are transformed. Retain `version: '2023-11'`, not legacy decorator
   compiler flags. React SSR keeps decorated declarations in `.ts` and JSX in `.tsx`.
-- Preserve native Bun/Deno/Workers build/start commands; Deno keeps its native toolchain.
+- Preserve native Bun/Workers build/start commands; Deno generation is removed (see the migration guide).
 
 ## 6. Verify before rollout
 
@@ -86,4 +86,4 @@ and React production assets/hydration where applicable. Resolve peer and engine
 diagnostics. Consult the
 [runtime support matrix](https://github.com/fluojs/fluo/blob/main/docs/reference/package-surface.md)
 for package-specific restrictions: a compatible Node version does not make every
-integration portable to Bun, Deno or Workers.
+integration portable to Bun or Workers.

@@ -199,7 +199,6 @@ async function resolveInteractiveBootstrapAnswers(
     answers.runtime = await prompt.select('Runtime', [
       { label: 'Bun', value: 'bun' },
       { label: 'Cloudflare Workers', value: 'cloudflare-workers' },
-      { label: 'Deno', value: 'deno' },
       { label: 'Node.js', value: 'node' },
     ] as const, 'node');
   }
@@ -211,7 +210,7 @@ async function resolveInteractiveBootstrapAnswers(
         label: profile.platformPromptLabel ?? profile.schema.platform,
         value: profile.schema.platform,
       })), 'fastify');
-    } else if (answers.runtime === 'bun' || answers.runtime === 'deno' || answers.runtime === 'cloudflare-workers') {
+    } else if (answers.runtime === 'bun' || answers.runtime === 'cloudflare-workers') {
       answers.platform = answers.runtime;
     }
   }

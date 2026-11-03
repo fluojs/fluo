@@ -28,12 +28,14 @@ process.once('exit', () => {
   for (const child of activeTargets) signalTarget(child, 'SIGKILL');
 });
 
+// 'deno' remains in the union only to type archived records; the active
+// platform matrix no longer contains it and no target is launched with it.
 export type Platform = 'fastify' | 'express' | 'nodejs' | 'bun' | 'deno' | 'workers' | 'nextjs';
 export type Product = 'native' | 'fluo' | 'nestjs';
-type TargetName = `${Product}-${Platform}` | 'native-nextjs-pages' | 'fluo-nextjs-pages';
+type TargetName = `${Product}-${Exclude<Platform, 'deno'>}` | 'native-nextjs-pages' | 'fluo-nextjs-pages';
 export interface TargetConfig {
   name: TargetName;
-  platform: Platform;
+  platform: Exclude<Platform, 'deno'>;
   product: Product;
   label: string;
   port: number;
@@ -42,7 +44,7 @@ export interface TargetConfig {
   readonly nextRouter?: 'pages';
 }
 
-export const PLATFORMS: readonly Platform[] = ['fastify', 'express', 'nodejs', 'bun', 'deno', 'workers', 'nextjs'];
+export const PLATFORMS: readonly Exclude<Platform, 'deno'>[] = ['fastify', 'express', 'nodejs', 'bun', 'workers', 'nextjs'];
 export const TARGETS: TargetConfig[] = PLATFORMS.flatMap((platform) => {
   const products: readonly Product[] = platform === 'fastify' || platform === 'express' ? ['native', 'fluo', 'nestjs'] : ['native', 'fluo'];
   return products.map((product) => {
@@ -50,13 +52,25 @@ export const TARGETS: TargetConfig[] = PLATFORMS.flatMap((platform) => {
     const port = Number(process.env.BENCH_PORT_BASE ?? 33909) + PLATFORMS.indexOf(platform) * 3 + products.indexOf(product);
     const source = product === 'nestjs' ? 'nestjs' : name === 'fluo-fastify' ? 'fluo' : name;
     const args = platform === 'bun' ? ['run', `dist/${name}/${source}/server.js`]
-      : platform === 'deno' ? ['run', `--allow-net=${process.env.BENCH_BIND_HOST ?? '127.0.0.1'}`, '--allow-read', '--allow-env', `dist/${name}/server.mjs`, String(port)]
       : platform === 'workers' ? ['serve']
       : platform === 'nextjs' ? ['node_modules/next/dist/bin/next', 'start', `nextjs/${product}`, '--hostname', process.env.BENCH_BIND_HOST ?? '127.0.0.1', '--port', String(port)]
       : [`dist/${product === 'nestjs' ? 'nestjs' : name}/${source}/server.js`];
-    return { name, platform, product, label: name, port, command: platform === 'bun' ? 'bun' : platform === 'deno' ? 'deno' : 'node', args };
+    return { name, platform, product, label: name, port, command: platform === 'bun' ? 'bun' : 'node', args };
   });
 });
+
+// Frozen history-reader inventory: archived baseline records and the frozen
+// issue3910 timing matrix still contain the removed Deno targets. Existing
+// results stay interpretable against this list; active runs never use it.
+export const ARCHIVED_BASELINE_TARGET_NAMES: readonly string[] = Object.freeze([
+  'native-fastify', 'fluo-fastify', 'nestjs-fastify',
+  'native-express', 'fluo-express', 'nestjs-express',
+  'native-nodejs', 'fluo-nodejs',
+  'native-bun', 'fluo-bun',
+  'native-deno', 'fluo-deno',
+  'native-workers', 'fluo-workers',
+  'native-nextjs', 'fluo-nextjs',
+]);
 
 // Opt-in inventory: old target names, ports, and default matrices stay intact.
 export const NEXT_PAGES_TARGETS: TargetConfig[] = (['native', 'fluo'] as const).map((product, index) => {
@@ -162,13 +176,10 @@ export function targetLaunch(target: TargetConfig, appShape: AppShape, options: 
   const configuration = options.env?.BENCH_CONFIGURATION ?? process.env.BENCH_CONFIGURATION ?? 'default';
   const config = target.platform === 'workers' ? workerdConfig(target, appShape, configuration) : undefined;
   const args = config ? ['serve', config.path, 'config', '--control-fd=3', `--socket-addr=http=${process.env.BENCH_BIND_HOST ?? '127.0.0.1'}:${target.port}`]
-    : target.platform === 'deno' ? [...target.args, appShape] : [...target.args];
+    : [...target.args];
   if (options.timingIdentity && target.platform !== 'workers') {
     const bootstrap = join(WDIR, 'src/timing-bootstrap.mjs');
-    if (target.platform === 'deno') {
-      const index = args.findIndex((arg) => arg.endsWith('.mjs'));
-      args[index] = bootstrap;
-    } else if (target.platform === 'bun') args.splice(1, 0, '--preload', bootstrap);
+    if (target.platform === 'bun') args.splice(1, 0, '--preload', bootstrap);
     else args.unshift('--import', bootstrap);
   }
   if (options.inspectorPort !== undefined) {
@@ -178,15 +189,13 @@ export function targetLaunch(target: TargetConfig, appShape: AppShape, options: 
         args.push(`--inspector-addr=${address}`);
         break;
       case 'bun': args.unshift(`--inspect=${address}/3910`); break;
-      case 'deno': args.splice(1, 0, `--inspect=${address}`); break;
       case 'fastify': case 'express': case 'nodejs': case 'nextjs':
         args.unshift(`--inspect=${address}`);
         break;
     }
   }
   if (options.gcTrace) {
-    if (target.platform === 'deno') args.splice(1, 0, '--v8-flags=--trace-gc');
-    else if (target.command === 'node' && target.platform !== 'workers') args.unshift('--trace-gc');
+    if (target.command === 'node' && target.platform !== 'workers') args.unshift('--trace-gc');
   }
   return {
     command: target.platform === 'workers' ? workerdExecutable() : target.command, args, cwd: WDIR,
@@ -416,8 +425,5 @@ export async function buildTarget(target: TargetConfig): Promise<void> {
   if (target.name === 'fluo-fastify') { await buildFluoFastifyTarget(); return; }
   if (target.name === 'fluo-bun') { await buildBunTarget(); return; }
   await runCommand('pnpm', ['exec', 'tsc', `src/${target.name}/server.ts`, '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--strict', '--skipLibCheck', '--esModuleInterop', '--outDir', `dist/${target.name}`]);
-  if (target.platform === 'deno') {
-    await runCommand('pnpm', ['exec', 'esbuild', `dist/${target.name}/${target.name}/server.js`, '--bundle', '--platform=node', '--format=esm', `--outfile=dist/${target.name}/server.mjs`]);
-  }
 }
 

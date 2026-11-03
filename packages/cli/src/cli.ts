@@ -132,7 +132,7 @@ const NODE_DEV_RUNNER_COMMAND = '__node-dev-runner';
 const DEV_RUNNER_COMMAND = '__dev-runner';
 
 function parseDevRunnerRuntime(value: string | undefined): DevRunnerRuntime {
-  if (value === 'bun' || value === 'cloudflare-workers' || value === 'deno' || value === 'node') {
+  if (value === 'bun' || value === 'cloudflare-workers' || value === 'node') {
     return value;
   }
 

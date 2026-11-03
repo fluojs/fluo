@@ -4,6 +4,8 @@
 
 fluo를 위한 transport-agnostic 이메일 코어 패키지입니다. Nest-like 모듈 API, standalone 사용을 위한 주입 가능한 `EmailService`, 그리고 특정 런타임 transport를 내장하지 않는 `@fluojs/notifications` 연동용 1st-party channel/queue adapter를 제공합니다.
 
+종료된 Deno adapter를 사용하는 애플리케이션은 [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)에 따라 application host를 이전하세요. 대체 host를 고를 때 아래 transport별 runtime 요구 사항도 확인하세요.
+
 ## 목차
 
 - [설치](#설치)

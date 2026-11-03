@@ -41,7 +41,7 @@ Node 24.
   application advertises the full range. Latest Node `24.x` owns Fluo release
   automation; Node 26 is never a publish runtime.
 
-The eight engine omissions below remain intentional. Bun, Deno, and Cloudflare
+The nine engine omissions below remain intentional. Bun and Cloudflare
 Workers deployments keep their native runtime metadata and deployment commands.
 Upgrade Node-hosted CLI/build tooling separately; Workers' starter Node engine
 describes local CLI/Wrangler tooling, not the deployed isolate.
@@ -117,11 +117,11 @@ use the final Node 24 support range, not the earlier listener-only Node 20/22 fl
 
 ## 4. Preserve portable configuration boundaries
 
-Do not add `engines.node` to these eight public package roots merely to match
+Do not add `engines.node` to these nine public package roots merely to match
 their neighbors:
 
-`@fluojs/config`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`,
-`@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`,
+`@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`,
+`@fluojs/platform-cloudflare-workers`, `@fluojs/react`,
 and `@fluojs/runtime`.
 
 Config's in-memory load, merge, validation, clone, and service access remain
@@ -182,8 +182,8 @@ mock helpers and configure the decorator transform through `@fluojs/vite`.
    TypeScript preset. Do not enable `experimentalDecorators` or
    `emitDecoratorMetadata`, or replace Babel with direct Oxc/esbuild decorator
    processing. React SSR keeps decorated declarations in `.ts` and JSX in `.tsx`.
-5. Preserve Bun/Deno/Workers native build and deployment commands. The Deno
-   starter retains its Deno-native toolchain rather than this Vite/Vitest baseline.
+5. Preserve Bun/Workers native build and deployment commands. Deno generation is
+   removed; migrate Deno projects with the [Deno migration guide](./migrate-from-deno.md).
 
 ## 6. Verify the migrated application
 

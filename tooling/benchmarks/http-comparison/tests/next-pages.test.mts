@@ -13,7 +13,7 @@ test('Pages selection: explicit targets -> native and Fluo production hosts with
 
   // Then
   assert.deepEqual(defaults, TARGETS);
-  assert.equal(defaults.length, 16);
+  assert.equal(defaults.length, 14);
   assert.deepEqual(pages.map((target) => target.name), ['native-nextjs-pages', 'fluo-nextjs-pages']);
   for (const target of pages) {
     const launch = targetLaunch(target, 'stage-body');

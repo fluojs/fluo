@@ -80,7 +80,6 @@
     "platform-nextjs",
     "platform-express",
     "platform-bun",
-    "platform-deno",
     "platform-cloudflare-workers",
     "validation",
     "serialization",
@@ -125,7 +124,6 @@
       "platform-nextjs",
       "platform-express",
       "platform-bun",
-      "platform-deno",
       "platform-cloudflare-workers"
     ],
     "request-pipeline": [
@@ -220,7 +218,6 @@
     "platform-nextjs": "area:http-runtime",
     "platform-express": "area:http-runtime",
     "platform-bun": "area:http-runtime",
-    "platform-deno": "area:http-runtime",
     "platform-cloudflare-workers": "area:http-runtime",
     "validation": "area:request-pipeline",
     "serialization": "area:request-pipeline",

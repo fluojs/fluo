@@ -664,7 +664,6 @@ async function verifySandboxProject(projectName) {
     }
   } else if (
     !packageJson.dependencies?.['@fluojs/platform-bun']
-    && !packageJson.dependencies?.['@fluojs/platform-deno']
     && !packageJson.dependencies?.['@fluojs/platform-cloudflare-workers']
   ) {
     log(`Checking cold installed ${starterContract} dev before any application build`);

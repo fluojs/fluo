@@ -3,6 +3,8 @@
 
 # Chapter 16. Email Systems
 
+Applications using the retired Deno adapter should migrate their application host with the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md). Check the Email package's per-transport runtime requirements when choosing the replacement host.
+
 <!-- fluo:docs-navigation:start -->
 > **Previous edition — optional capability deep dives.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
 >

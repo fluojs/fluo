@@ -10,7 +10,7 @@
 | Node.js application needs direct control over the HTTP listener | Use the bare Node adapter | `@fluojs/platform-nodejs` |
 | Node.js application must use Express as the host/platform HTTP engine while application middleware stays on the fluo `Middleware` contract and migration-only native handlers use an explicit pre-router seam | Use the Express adapter and its `nativeMiddleware` option only at the platform boundary | `@fluojs/platform-express` |
 | Bun-native fetch-style runtime target | Use the Bun adapter | `@fluojs/platform-bun` |
-| Deno `serve()` runtime target | Use the Deno adapter | `@fluojs/platform-deno` |
+| Deno `serve()` runtime target (removed) | Migrate to Node/Fastify or Workers with the [Deno migration guide](../getting-started/migrate-from-deno.md) | — |
 | Cloudflare Workers isolate target | Use the Workers adapter | `@fluojs/platform-cloudflare-workers` |
 
 ## Database Adapter Selection

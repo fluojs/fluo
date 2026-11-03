@@ -221,9 +221,8 @@ const runtimePath = (lock, task, command) => {
   const version = lock.node[task.runtime === 'runtimeFloor' ? 'floor' : task.runtime === 'compat24' ? 'compat24'
     : task.runtime === 'compat26' ? 'compat26' : 'primary'].version;
   const prefix = `/opt/node/${version}/bin`;
-  const extra = command.executable === 'bun' ? `/opt/bun/${command.runtimeVersion}` : command.executable === 'deno'
-    ? `/opt/deno/${command.runtimeVersion}` : null;
-  return [extra, prefix, '/opt/bun/1.4.0', '/opt/deno/2.9.7', '/usr/local/bin', '/usr/bin', '/bin'].filter(Boolean).join(':');
+  const extra = command.executable === 'bun' ? `/opt/bun/${command.runtimeVersion}` : null;
+  return [extra, prefix, '/opt/bun/1.4.0', '/usr/local/bin', '/usr/bin', '/bin'].filter(Boolean).join(':');
 };
 
 function collectFailureDiagnostics(task, root, output) {
@@ -324,8 +323,8 @@ function insideTask(plan, task, output, artifacts) {
     catch (error) { failure = `command ${index} source changed before execution: ${error.message}`; break; }
     const executable = command.executable === 'pnpm'
       ? `/opt/node/${plan.environment.lock.node[task.runtime === 'runtimeFloor' ? 'floor' : task.runtime === 'compat24' ? 'compat24' : task.runtime === 'compat26' ? 'compat26' : 'primary'].version}/bin/node`
-      : command.executable === 'bun' || command.executable === 'deno'
-        ? `/opt/${command.executable}/${command.runtimeVersion}/${command.executable}`
+      : command.executable === 'bun'
+        ? `/opt/bun/${command.runtimeVersion}/bun`
         : `/opt/node/${plan.environment.lock.node[task.runtime === 'runtimeFloor' ? 'floor' : task.runtime === 'compat24' ? 'compat24' : task.runtime === 'compat26' ? 'compat26' : 'primary'].version}/bin/node`;
     const argv = command.executable === 'pnpm' ? ['/opt/pnpm/bin/pnpm.cjs', ...command.argv] : command.argv;
     const result = spawnSync(executable, argv, { cwd: resolve(root, command.cwd), encoding: 'utf8',

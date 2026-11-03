@@ -2,6 +2,8 @@
 
 <!-- book:volume=03-internals;chapter=14 -->
 
+> **Deno 부분은 아카이브입니다.** `@fluojs/platform-deno`는 활성 워크스페이스에서 제거되었습니다. 공개 18개 버전 전체가 npm에서 deprecated이며 최종 릴리스는 `2.0.2`입니다. 유지보수되는 fetch-style 런타임은 Bun과 Cloudflare Workers입니다. 기존 Deno 배포는 [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르고, 이 장의 Deno 예제는 `<= 2.0.2` 배포를 위한 역사적 자료입니다.
+
 [이전: Node.js 어댑터 비교하기](./ch13-node-adapters.ko.md) · [목차](./toc.ko.md) · [다음: Next.js 안에서 Fluo 실행하기](./ch15-nextjs-hosting.ko.md)
 
 ## 공개 상품을 가까이 보내도 주문의 권위는 옮겨지지 않는다
@@ -324,7 +326,7 @@ Bun의 네이티브 `routes` 가속 역시 semantic을 보존할 수 있을 때�
 ## 근거와 재현 범위
 
 - [Bun README](../../packages/platform-bun/README.ko.md), [공개 export](../../packages/platform-bun/src/index.ts), [Fetch handler·managed adapter 구현](../../packages/platform-bun/src/adapter.ts), [adapter 테스트](../../packages/platform-bun/src/adapter.test.ts).
-- [Deno README](../../packages/platform-deno/README.ko.md), [공개 export](../../packages/platform-deno/src/index.ts), [host-owned Fetch handler](../../packages/platform-deno/src/fetch-handler.ts), [handler 테스트](../../packages/platform-deno/src/fetch-handler.test.ts), [managed lifecycle 테스트](../../packages/platform-deno/src/adapter.test.ts).
+- [Deno README](../../packages/platform-deno/README.ko.md) - 아카이브된 패키지 계약 안내(최종 `2.0.2`). Deno 소스와 테스트는 Git history의 `packages/platform-deno/src/`에 보존되며, 공개 `2.0.2` npm tarball에는 소스 테스트가 아니라 `dist/`의 빌드된 구현이 남습니다.
 - [Workers README](../../packages/platform-cloudflare-workers/README.ko.md), [공개 export](../../packages/platform-cloudflare-workers/src/index.ts), [env-aware factory·lifecycle 구현](../../packages/platform-cloudflare-workers/src/adapter.ts), [종료 회귀 테스트](../../packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts).
 - [공유 Web 요청·응답 구현](../../packages/runtime/src/web.ts), [세 Web 런타임의 이식성 테스트](../../packages/testing/src/portability/web-runtime-adapter-portability.test.ts).
 

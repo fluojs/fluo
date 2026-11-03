@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync, statSync } from 'node:fs';
 import { join, matchesGlob } from 'node:path';
 
 export function readTestCatalog(root, changedFiles, identity) {
@@ -8,9 +8,21 @@ export function readTestCatalog(root, changedFiles, identity) {
     && !project.exclude.some((pattern) => matchesGlob(file, pattern));
   const catalog = Object.fromEntries(Object.entries(testProjects).map(([name, project]) =>
     [name, globSync(project.include, { cwd: root, exclude: project.exclude }).sort()]));
+  const retiredOwners = new Map();
   for (const [name, project] of Object.entries(testProjects)) {
     for (const file of changedFiles.filter((path) => matches(path, project))) {
       const owner = file.split('/').slice(0, 2).join('/');
+      if (!retiredOwners.has(owner)) {
+        const removedManifest = owner.startsWith('packages/')
+          && !existsSync(join(root, owner, 'package.json'))
+          && spawnSync('git', ['cat-file', '-e', `${identity.baseSha}:${owner}/package.json`], { cwd: root }).status === 0;
+        // Only an authenticated retirement with no remaining active files can
+        // retire its tests. Unknown owners and partial removals stay fail-closed.
+        retiredOwners.set(owner, removedManifest && globSync(`${owner}/**`, { cwd: root })
+          .filter((path) => statSync(join(root, path)).isFile())
+          .every((path) => path.endsWith('.md')));
+      }
+      if (retiredOwners.get(owner)) continue;
       if (!catalog[name].some((path) => path.startsWith(`${owner}/`))) {
         throw new TypeError(`coverage-loss: ${owner} has no matching ${name} tests after changing ${file}`);
       }

@@ -39,8 +39,6 @@ describe('generated Node support', () => {
       expect(config.match(/target: '([^']+)'/u)?.[1]).toBe('node24');
     } else if (profile.schema.runtime === 'bun') {
       expect(manifest.engines).toEqual({ bun: '>=1.2.5' });
-    } else if (profile.schema.runtime === 'deno') {
-      expect(manifest.engines).toEqual({ deno: '>=2.0.0' });
     } else {
       // Workers' Node metadata belongs to shared local CLI/Wrangler tooling.
       expect(manifest.engines).toEqual({ node: '>=24.11.0 <27' });

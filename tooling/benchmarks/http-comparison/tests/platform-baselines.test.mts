@@ -20,7 +20,7 @@ test('keeps business scenarios separate from opt-in stage measurements', () => {
   assert.throws(() => selectSuite('unknown'), TypeError);
 });
 
-test('selects real native and Fluo targets for all seven platforms and Nest for both Node engines', () => {
+test('selects real native and Fluo targets for all six platforms and Nest for both Node engines', () => {
   // Given: the runner consumes this target inventory.
   // When
   const names = TARGETS.map((target) => target.name).sort();
@@ -30,7 +30,6 @@ test('selects real native and Fluo targets for all seven platforms and Nest for 
     'native-express', 'fluo-express', 'nestjs-express',
     'native-nodejs', 'fluo-nodejs',
     'native-bun', 'fluo-bun',
-    'native-deno', 'fluo-deno',
     'native-workers', 'fluo-workers',
     'native-nextjs', 'fluo-nextjs',
   ].sort());

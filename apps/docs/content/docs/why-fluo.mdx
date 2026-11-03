@@ -17,14 +17,14 @@ fluo keeps the same organizational benefits—modules, controllers, providers, l
 | --- | --- |
 | Standard-first TypeScript | TC39 standard decorators are the baseline. |
 | Explicit dependency boundaries | Providers and modules expose wiring in source code. |
-| Runtime portability | HTTP semantics are separated from Node, Bun, Deno, Workers, and framework adapters. |
+| Runtime portability | HTTP semantics are separated from Node, Bun, Workers, and framework adapters. |
 | Package clarity | Each `@fluojs/*` package owns a focused boundary. |
 | Contract-backed behavior | Docs, tests, and package surfaces are treated as binding contracts. |
 
 ## When fluo fits
 
 - You want NestJS-like structure without legacy decorator metadata.
-- You need one application model that can move across Fastify, Node.js, Express, Bun, Deno, or Workers.
+- You need one application model that can move across Fastify, Node.js, Express, Bun, or Workers.
 - You prefer package-level boundaries over a monolithic framework surface.
 - You want docs and tests to describe the same behavior.
 

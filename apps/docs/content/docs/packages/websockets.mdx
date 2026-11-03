@@ -1,19 +1,19 @@
 ---
 title: WebSockets
-description: Decorator-based WebSocket gateways on raw websocket connections, with explicit Node, Bun, Deno, and Cloudflare Workers runtime bindings.
+description: Decorator-based WebSocket gateways on raw websocket connections, with explicit Node, Bun, and Cloudflare Workers runtime bindings.
 package: "@fluojs/websockets"
 ---
 
-> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+> **Deno support is Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno target are deleted from the active workspace; npm registry observation on 2026-11-03 confirmed all 18 published `@fluojs/platform-deno` versions deprecated, with `2.0.2` as the final release. The prior implementation remains in Git history and npm tarballs, and removal reaches published packages with the next CLI and WebSockets majors (CLI 5 and WebSockets 3 per the removal changesets; Changesets is authoritative), tracked in [#3938](https://github.com/fluojs/fluo/issues/3938). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
 
 `@fluojs/websockets` adds raw WebSocket gateways to a fluo application. A gateway is a class: `@WebSocketGateway()` marks it, `@OnMessage()`, `@OnConnect()`, and `@OnDisconnect()` mark its handler methods, and the runtime does the rest - accepting upgrades, matching messages, tracking connections, and cleaning up on shutdown. The package splits deliberately in two:
 
 - The root `@fluojs/websockets` entrypoint is runtime-neutral: gateway decorators, metadata helpers, and shared contracts (`WebSocketRoomService`, `WebSocketModuleOptions`, upgrade types).
-- Runtime subpaths - `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` - each export their registration module (`NodeWebSocketModule`, ...) and lifecycle-service token, plus runtime-specific handler and guard projections.
+- Runtime subpaths - `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/cloudflare-workers` - each export their registration module (`NodeWebSocketModule`, ...) and lifecycle-service token, plus runtime-specific handler and guard projections. The `@fluojs/websockets/deno` subpath is removed; it existed through WebSockets 2.x.
 
 Use this package when clients should speak plain WebSocket framing and you want gateway code that looks the same on every runtime. Reach for `@fluojs/socket.io` instead when you want Socket.IO's reconnection, ACK envelopes, and namespace ecosystem on top; reach for `@fluojs/microservices` when the participants are services rather than browsers. There is no client-side story here - this package is the server.
 
-Prerequisites: the DI model ([Dependency injection](/docs/fundamentals/dependency-injection)) and an HTTP application hosted by a platform adapter. Node.js hosts are supported on `>=24.0.0 <27` under the package-owned support contract; Bun, Deno, and Cloudflare Workers hosts use their fetch-style subpaths.
+Prerequisites: the DI model ([Dependency injection](/docs/fundamentals/dependency-injection)) and an HTTP application hosted by a platform adapter. Node.js hosts are supported on `>=24.0.0 <27` under the package-owned support contract; Bun and Cloudflare Workers hosts use their fetch-style subpaths.
 
 ## Installation
 
@@ -21,7 +21,7 @@ Prerequisites: the DI model ([Dependency injection](/docs/fundamentals/dependenc
 npm install @fluojs/websockets
 ```
 
-The Node subpath uses the package-owned `ws` dependency (`^8.21.0`) - you do not install `ws` yourself unless your own code imports it. The Bun, Deno, and Cloudflare Workers subpaths use their runtime-owned WebSocket implementations and load no Node networking code.
+The Node subpath uses the package-owned `ws` dependency (`^8.21.0`) - you do not install `ws` yourself unless your own code imports it. The Bun and Cloudflare Workers subpaths use their runtime-owned WebSocket implementations and load no Node networking code.
 
 ## A small working example
 
@@ -113,7 +113,7 @@ The decorator writes TC39 standard metadata (`Symbol.metadata`). There is no `em
 Every inbound frame is normalized into an event envelope before dispatch:
 
 - Text frames are parsed as JSON when possible and otherwise delivered as strings.
-- Binary frames are decoded as UTF-8 first, then run through the same JSON-or-string step, whether the runtime surfaces them as Node `Buffer`, Bun/Deno views, or Workers `Blob`.
+- Binary frames are decoded as UTF-8 first, then run through the same JSON-or-string step, whether the runtime surfaces them as Node `Buffer`, Bun views, or Workers `Blob`.
 - `@OnMessage('ping')` matches the envelope's `event` field; `@OnMessage()` without an event is a wildcard that receives every message.
 - Handlers receive `(payload, socket, request, socketId)`. The `socketId` is the stable connection identity the room service accepts, so a handler never needs adapter-specific socket inspection.
 
@@ -201,7 +201,7 @@ Node server-backed adapters (raw Node, Express, Fastify) can host a gateway on i
 class TelemetryGateway {}
 ```
 
-`port: 0` lets the OS allocate the listener atomically - use it in tests and dynamic hosts. The transport owns that listener, closes it during application shutdown, and enables heartbeat timers for it. Fetch-style runtimes (Bun, Deno, Workers) reject `serverBacked` because their WebSocket lifecycle is owned by `Bun.serve`/`Deno.serve`/the Workers runtime; Socket.IO gateways reject it on every runtime because they always share the application listener.
+`port: 0` lets the OS allocate the listener atomically - use it in tests and dynamic hosts. The transport owns that listener, closes it during application shutdown, and enables heartbeat timers for it. Fetch-style runtimes (Bun, Workers) reject `serverBacked` because their WebSocket lifecycle is owned by `Bun.serve`/the Workers runtime; Socket.IO gateways reject it on every runtime because they always share the application listener.
 
 ## Runtime subpaths
 
@@ -211,17 +211,17 @@ The root barrel owns only runtime-neutral authoring; runtime modules and tokens 
 | --- | --- | --- | --- |
 | Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
 | Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
-| Deno (Deprecated) | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Deno (removed) | `@fluojs/websockets/deno` - archived through WebSockets 2.x | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
 | Cloudflare Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
 
-Gateway code moves between runtimes unchanged - decorators and handler signatures come from the root, and only the `forRoot` import changes. Guard and handler request types stay runtime-specific: the Node guard receives `IncomingMessage`, fetch-style guards receive the web-standard `Request`. Native socket and host types remain owned by the platform packages (`@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers`), not re-exported here. The removed root-level Node registration and lifecycle alias have no compatibility export; import them from `@fluojs/websockets/node`.
+Gateway code moves between runtimes unchanged - decorators and handler signatures come from the root, and only the `forRoot` import changes. Guard and handler request types stay runtime-specific: the Node guard receives `IncomingMessage`, fetch-style guards receive the web-standard `Request`. Native socket and host types remain owned by the platform packages (`@fluojs/platform-bun` and `@fluojs/platform-cloudflare-workers`), not re-exported here. The removed root-level Node registration and lifecycle alias have no compatibility export; import them from `@fluojs/websockets/node`.
 
 ## Composition with neighboring packages
 
 - **`@fluojs/http`** owns the application listener the Node runtime shares. Upgrade requests for registered gateway paths are intercepted before HTTP routing; an upgrade for an unregistered path is delegated to later `upgrade` listeners, and 404s when nobody claims it. Malformed upgrade URLs answer 400 without crashing the server. Guards can reuse the same `UnauthorizedException` family the HTTP layer throws.
 - **`@fluojs/core` and `@fluojs/di`** are the composition substrate: gateways are providers, room services are resolved tokens, and the same `@Inject` rules apply as everywhere else in fluo.
 - **`@fluojs/socket.io`** is the alternative transport for the same gateway authoring API - see [Socket.IO](/docs/packages/socket-io) for how its namespaces, ACKs, and guards differ from raw framing.
-- **Platform packages** own the listener lifecycle: [platform-nodejs](/docs/packages/platform-nodejs) for Node hosts, plus the Bun/Deno/Workers adapters for fetch-style runtimes.
+- **Platform packages** own the listener lifecycle: [platform-nodejs](/docs/packages/platform-nodejs) for Node hosts, plus the Bun/Workers adapters for fetch-style runtimes.
 
 ## Resource ownership, startup, and shutdown
 
@@ -277,6 +277,6 @@ Rules that keep these tests honest: never sleep - subscribe first and await the 
 - [Socket.IO](/docs/packages/socket-io) - namespaces, ACKs, and guards over the same gateway authoring API.
 - [Dependency injection](/docs/fundamentals/dependency-injection) - tokens, visibility, and scopes this package composes with.
 - [HTTP](/docs/packages/http) - the shared listener and the exception family guards reuse.
-- [platform-nodejs](/docs/packages/platform-nodejs), [platform-bun](/docs/packages/platform-bun), [platform-deno](/docs/packages/platform-deno), [platform-cloudflare-workers](/docs/packages/platform-cloudflare-workers) - the listener owners.
-- [`@fluojs/websockets` package README](https://github.com/fluojs/fluo/blob/main/packages/websockets/README.md) - the owning API contract, including the Bun/Deno/Workers projection tables.
+- [platform-nodejs](/docs/packages/platform-nodejs), [platform-bun](/docs/packages/platform-bun), [platform-deno](/docs/packages/platform-deno) (archived), [platform-cloudflare-workers](/docs/packages/platform-cloudflare-workers) - the listener owners.
+- [`@fluojs/websockets` package README](https://github.com/fluojs/fluo/blob/main/packages/websockets/README.md) - the owning API contract, including the Bun/Workers projection tables.
 - [Realtime & messaging packages](/docs/packages/realtime-messaging) - where raw sockets sit among event buses, CQRS, and microservice transports.

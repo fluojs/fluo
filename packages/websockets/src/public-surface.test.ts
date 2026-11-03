@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -8,8 +9,6 @@ import type { WebSocketUpgradeGuard as BunWebSocketUpgradeGuard } from './bun.js
 import * as bun from './bun.js';
 import type { WebSocketUpgradeGuard as CloudflareWorkersWebSocketUpgradeGuard } from './cloudflare-workers.js';
 import * as workers from './cloudflare-workers.js';
-import type { WebSocketUpgradeGuard as DenoWebSocketUpgradeGuard } from './deno.js';
-import * as deno from './deno.js';
 import type { WebSocketUpgradeGuard as RootWebSocketUpgradeGuard } from './index.js';
 import * as websockets from './index.js';
 import type { WebSocketUpgradeGuard as NodeWebSocketUpgradeGuard } from './node.js';
@@ -20,8 +19,22 @@ type UpgradeGuardRequest<TGuard> = TGuard extends (...args: infer TArguments) =>
   : never;
 
 describe('@fluojs/websockets public surface', () => {
+  it('rejects resolution of the removed Deno subpath through the package export map', () => {
+    const cwd = fileURLToPath(new URL('..', import.meta.url));
+    const script = [
+      "import assert from 'node:assert/strict';",
+      "assert.throws(() => import.meta.resolve('@fluojs/websockets/deno'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });",
+    ].join('\n');
+
+    expect(() => execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd,
+      timeout: 10_000,
+      stdio: 'pipe',
+    })).not.toThrow();
+  });
+
   it('owns shared upgrade and reply contracts only at the root, not runtime subpaths', () => {
-    const paths = ['index', 'node', 'bun', 'deno', 'cloudflare-workers']
+    const paths = ['index', 'node', 'bun', 'cloudflare-workers']
       .map((name) => fileURLToPath(new URL(`./${name}.ts`, import.meta.url)));
     const program = ts.createProgram(paths, {
       module: ts.ModuleKind.NodeNext,
@@ -79,15 +92,11 @@ describe('@fluojs/websockets public surface', () => {
     expect(bun).toHaveProperty('BunWebSocketGatewayLifecycleService');
     expect(bun).not.toHaveProperty('createBunWebSocketProviders');
 
-    expect(deno).toHaveProperty('DenoWebSocketModule');
-    expect(deno).toHaveProperty('DenoWebSocketGatewayLifecycleService');
-    expect(deno).not.toHaveProperty('createDenoWebSocketProviders');
-
     expect(workers).toHaveProperty('CloudflareWorkersWebSocketModule');
     expect(workers).toHaveProperty('CloudflareWorkersWebSocketGatewayLifecycleService');
     expect(workers).not.toHaveProperty('createCloudflareWorkersWebSocketProviders');
 
-    const runtimeSubpaths = [bun, deno, node, workers];
+    const runtimeSubpaths = [bun, node, workers];
 
     for (const runtimeSubpath of runtimeSubpaths) {
       expect(runtimeSubpath).not.toHaveProperty('WebSocketGateway');
@@ -107,7 +116,6 @@ describe('@fluojs/websockets public surface', () => {
   it('keeps root gateway authoring types and fetch-style guards scoped to runtime-neutral Request inputs', () => {
     expectTypeOf<UpgradeGuardRequest<RootWebSocketUpgradeGuard>>().toEqualTypeOf<Request>();
     expectTypeOf<UpgradeGuardRequest<BunWebSocketUpgradeGuard>>().toEqualTypeOf<Request>();
-    expectTypeOf<UpgradeGuardRequest<DenoWebSocketUpgradeGuard>>().toEqualTypeOf<Request>();
     expectTypeOf<UpgradeGuardRequest<CloudflareWorkersWebSocketUpgradeGuard>>().toEqualTypeOf<Request>();
     expectTypeOf<UpgradeGuardRequest<NodeWebSocketUpgradeGuard>>().toEqualTypeOf<IncomingMessage>();
   });

@@ -16,7 +16,7 @@ Use this map to find APIs, support boundaries, and behavioral contracts for your
 
 The index is a small pilot reference index linking documentation authority, bootstrap, and lifecycle topics to their owning EN/KO documents and source/test paths. It does not replace contract text or establish full 43-package coverage or semantic/behavioral correctness. For contracts not yet indexed, use the ownership table and package chooser below.
 
-Deno support is Deprecated. Use the [Deno migration guide](./getting-started/migrate-from-deno.md) to move an existing Deno app, or the [runtime support matrix](./reference/package-surface.md) to choose a host for a new app.
+Deno support is Removed (every published `@fluojs/platform-deno` version is deprecated; final release `2.0.2`). Use the [Deno migration guide](./getting-started/migrate-from-deno.md) to move an existing Deno app, and the [runtime support matrix](./reference/package-surface.md) to choose a host for a new app.
 
 ## Source ownership
 

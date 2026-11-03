@@ -18,7 +18,7 @@ TypeScript, Promise, HTTP 요청의 기본 흐름과 Fluo의 모듈·DI 사용�
 
 ## 런타임 차이를 숨기지 않는다
 
-Node.js의 Fastify·raw Node·Express는 같은 서버 소유권을 가진 단일 구현이 아니다. Bun, Deno와 Cloudflare Workers는 Fetch 요청을 사용해도 시작·종료·환경 자원의 경계가 다르다. Next.js 안에서는 호스트가 서버와 번들을 소유하므로 별도의 listener를 열어야 한다고 가정하지 않는다.
+Node.js의 Fastify·raw Node·Express는 같은 서버 소유권을 가진 단일 구현이 아니다. Bun과 Cloudflare Workers는 Fetch 요청을 사용해도 시작·종료·환경 자원의 경계가 다르다. Next.js 안에서는 호스트가 서버와 번들을 소유하므로 별도의 listener를 열어야 한다고 가정하지 않는다.
 
 공통 계약을 찾되, 모든 플랫폼이 모든 기능을 제공한다고 일반화하지 않는다. 어댑터를 만들 때는 의도한 지원 범위를 선언하고 conformance와 portability 테스트로 그 범위를 검증한다. 불가능한 기능을 조용한 fallback으로 숨기는 대신 경계를 명시한다.
 

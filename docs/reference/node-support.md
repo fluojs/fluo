@@ -12,7 +12,7 @@ Node floors are classified by role. The 34 Node-bound public packages that are p
 | Exact Node `24.11.0` | PR: independent frozen install/fresh build and affected package tests, relevant four-starter smoke; full PR: all packages; extended: full verification and browser journeys | Minimum compiler toolchain floor for Babel 8 |
 | Locked Node `24.x` | Selected primary PR verification, relevant docs and generated starter dev/production browser matrix; full PR and extended retain all primary checks | Canonical development verification and Changesets release runtime |
 | Locked Node `26.x` | PR: independent frozen install/fresh build and affected package tests, relevant four-starter smoke; full PR: all packages; extended: full verification and browser journeys | Forward verification only; never publish |
-| Bun, Deno, Cloudflare Workers | Their existing independent adapter/native-runtime lanes | Runtime-native deployment contracts |
+| Bun, Cloudflare Workers | Their existing independent adapter/native-runtime lanes | Runtime-native deployment contracts |
 
 The full `.github/workflows/ci.yml` plan expands to 18 jobs including plan resolution and the required `Verify` aggregate. Sixteen execution tasks use the shared catalog in `tooling/ci/local-verification-manifest.json` and the runner in `tooling/ci/verification-runner.mjs`; `.github/workflows/node-verification.yml` hosts one task per invocation. Full primary package tests retain four shards, tooling retains two, and apps/examples run once in the first tooling shard. The primary build supplies selected package artifacts and, when required, the runtime-floor bundle. Exact Node `24.0.0` executes that bundle without installing workspace dependencies or loading Babel.
 
@@ -60,7 +60,7 @@ silently treating unavailable data as success.
 
 Full-verification package builds are transferred only within the same workflow run, commit, and Node version. The runtime-floor bundle intentionally crosses from compiler Node to exact Node `24.0.0`, while retaining the same run, commit, artifact identity, and digest checks. A tar archive preserves package `dist` directories and the CLI's generated dependency metadata, including executable permissions and symbolic links; it does not bypass public declaration fixtures or package global setup. Generated starter verification runs after the build without waiting for tests to finish. Latest `24.x` consolidates the former duplicate PR verification and runs `pnpm verify:docs` once. The aggregate gate does not treat a required job's failure, cancellation, or skip as success.
 
-Two native tasks preserve all runtime-specific checks. `native-bun` runs Bun routing/lifecycle and Drizzle using their respective locked versions. `native-web` runs the Deno adapter, every Bun/Deno/Workers portability case, and all three native cookie commands. Grouping does not replace a floor runtime with a newer one. Any required command failure, missing evidence, cancellation or unexpected skip blocks `Verify`.
+Two native tasks preserve all maintained runtime-specific checks. `native-bun` runs Bun routing/lifecycle and Drizzle using their respective locked versions. `native-web` runs every Bun/Workers portability case and both native cookie commands. Grouping does not replace a floor runtime with a newer one. Any required command failure, missing evidence, cancellation or unexpected skip blocks `Verify`.
 
 The focused `test:node-floor` command remains available for local checks, not as a substitute for full CI verification. It covers manifest classification, all scaffold profiles, config env-file/watch behavior, the published portable runtime import, Node HTTP listeners, adapter portability, and the existing Vite compatibility seam. The required runtime-only lane executes on exact Node `24.0.0`, so CI does not substitute a later 24.x patch for the runtime floor claim.
 
@@ -92,13 +92,13 @@ Documentation execution remains eligible when the unselected build job is skippe
 
 ## Portable package boundaries
 
-These ten public roots intentionally omit `engines.node`: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, and `@fluojs/runtime`. Do not restore engines merely to match neighboring manifests.
+These nine public roots intentionally omit `engines.node`: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/react`, and `@fluojs/runtime`. Do not restore engines merely to match neighboring manifests.
 
 Diagnostics root and all public subpaths are data contracts/readers without host builtins, runtime implementation, Studio UI or import-time resources. Studio remains Node `>=24.0.0 <27`; CLI remains Node `>=24.11.0 <27`. Moving declaration ownership does not narrow consumer support.
 
-Package-wide Node metadata is not a claim about every conditional export or runtime-native adapter. Existing Bun, Deno, and Workers behavior remains governed by each package's README. Config's in-memory root stays portable; env-file/default `.env` loading and watch mode are Node-only features supported on `>=24.0.0 <27`. Their existing capability guard still raises `CONFIG_RUNTIME_UNAVAILABLE` when the host cannot supply the builtin boundary. There is no new Node version check at import or feature invocation.
+Package-wide Node metadata is not a claim about every conditional export or runtime-native adapter. Existing Bun and Workers behavior remains governed by each package's README. Config's in-memory root stays portable; env-file/default `.env` loading and watch mode are Node-only features supported on `>=24.0.0 <27`. Their existing capability guard still raises `CONFIG_RUNTIME_UNAVAILABLE` when the host cannot supply the builtin boundary. There is no new Node version check at import or feature invocation.
 
-Generated Node HTTP (Fastify, Express, raw Node), mixed, all seven microservice transports, and React SSR + Fastify starters declare the compiler toolchain engine range `>=24.11.0 <27`, build for `node24`, use `@types/node@^24.0.0`, and generate Babel 8 dependencies with a Babel 8-compatible config. Bun and Deno engines and native build/start commands remain unchanged. Workers' existing Node engine describes local CLI/Wrangler tooling, not the deployed isolate.
+Generated Node HTTP (Fastify, Express, raw Node), mixed, all seven microservice transports, and React SSR + Fastify starters declare the compiler toolchain engine range `>=24.11.0 <27`, build for `node24`, use `@types/node@^24.0.0`, and generate Babel 8 dependencies with a Babel 8-compatible config. Bun engines and native build/start commands remain unchanged. Workers' existing Node engine describes local CLI/Wrangler tooling, not the deployed isolate.
 
 ## Migration
 

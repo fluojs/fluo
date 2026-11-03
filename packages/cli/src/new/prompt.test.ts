@@ -214,6 +214,27 @@ describe('collectBootstrapAnswers', () => {
     });
   });
 
+  it('omits the retired Deno runtime from the interactive runtime choices', async () => {
+    const runtimeChoices: string[][] = [];
+    const prompt = createPrompt({
+      select: async <T extends string>(message: string, choices: readonly { label: string; value: T }[], defaultValue?: T) => {
+        if (message === 'Starter shape') {
+          return 'application' as T;
+        }
+
+        if (message === 'Runtime') {
+          runtimeChoices.push(choices.map((choice) => choice.value));
+        }
+
+        return (defaultValue ?? 'pnpm') as T;
+      },
+    });
+
+    await collectBootstrapAnswers({ projectName: 'starter-app' }, process.cwd(), undefined, { interactive: true, prompt });
+
+    expect(runtimeChoices).toEqual([['bun', 'cloudflare-workers', 'node']]);
+  });
+
   it('branches through the microservice transport wizard path', async () => {
     const prompt = createPrompt({
       confirm: async (_message, defaultValue) => defaultValue,

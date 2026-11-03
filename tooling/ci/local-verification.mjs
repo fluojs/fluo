@@ -133,7 +133,7 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
       || item.when === 'isolated-benchmark' && applicableBenchmark
       || item.when === 'react-app-benchmark' && applicableReactBenchmark)
       .map((item) => {
-        if (!['pnpm', 'node', 'bun', 'deno'].includes(item.executable)
+        if (!['pnpm', 'node', 'bun'].includes(item.executable)
           || !Array.isArray(item.argv) || item.argv.some((arg) => typeof arg !== 'string') || item.cwd !== '.') {
           throw new TypeError(`malformed command in ${definition.id}`);
         }

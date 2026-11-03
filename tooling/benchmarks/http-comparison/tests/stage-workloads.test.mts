@@ -213,7 +213,7 @@ for (const product of ['native', 'fluo', 'nestjs-fastify', 'nestjs-express'] as 
 // Explicit real-host smoke, not performance traffic. Uses existing build/start APIs;
 // the lead's runner selector remains outside this track's edit boundary.
 if (process.env.BENCH_STAGE_HOSTS === '1') {
-  test('all sixteen production targets serve stage and preserved business scenarios', { timeout: 900_000 }, async (t) => {
+  test('all fourteen production targets serve stage and preserved business scenarios', { timeout: 900_000 }, async (t) => {
     for (const original of TARGETS) {
       await t.test(original.name, async () => {
         await buildTarget(original);

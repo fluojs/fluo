@@ -24,11 +24,11 @@ pnpm exec tsx src/profile.ts
 
 위 명령은 development-only smoke이다. 성능 측정, headroom 또는 profiler overhead budget 통과를 뜻하지 않는다.
 
-- `runProfiles(plan: CapturePlan)`: 선택한 target/scenario/mode/repeat를 순차 capture한다. 모든 16개 `TARGETS`를 선택할 수 있다. target name을 생략하면 16개 전체이며, unknown/duplicate name은 실패한다.
+- `runProfiles(plan: CapturePlan)`: 선택한 target/scenario/mode/repeat를 순차 capture한다. 모든 14개 `TARGETS`를 선택할 수 있다. target name을 생략하면 14개 전체이며, unknown/duplicate name은 실패한다.
 - `captureCondition(...)`: lead가 소유하는 orchestration에서 단일 조건을 실행한다. 기존 `EnvironmentSummary`, provenance SHA-256과 `EvidenceJournal`을 전달한다.
 - `validateCapture(capture, rawBytes)`: raw bytes의 hash/size, serving subject, profile schema, request frames, 3개 phase의 성공 traffic과 clock anchors를 검증한다.
 - `profileCompleteness(captures, requiredConditions, rawBytes)`: 선언한 조건의 missing/duplicate/failed/partial capture를 거부한다. **subset coverage complete와 issue acceptance complete는 다르다.**
-- `timingCompleteness(samples, provenanceSha256)`: fresh issue3910의 16 targets × (3 business + 8 stage scenarios) × 2 configurations × concurrency 1/64 × 3 repeats, **2112개** 고유 uninstrumented 조건만 complete로 판정한다. historical 576 archive, instrumented samples, 잘못된 provenance, empty/error traffic과 partial matrix는 거부한다. lead가 timing 결과를 `StageTimingSample`로 투영한다.
+- `timingCompleteness(samples, provenanceSha256)`: fresh issue3910의 16 targets(아카이브된 `native-deno`/`fluo-deno` 포함, `ARCHIVED_BASELINE_TARGET_NAMES` 고정 목록) × (3 business + 8 stage scenarios) × 2 configurations × concurrency 1/64 × 3 repeats, **2112개** 고유 uninstrumented 조건만 complete로 판정한다. historical 576 archive, instrumented samples, 잘못된 provenance, empty/error traffic과 partial matrix는 거부한다. lead가 timing 결과를 `StageTimingSample`로 투영한다.
 
 ### Lead의 raw timing 변환 계약
 
@@ -51,15 +51,15 @@ integrity·설정 등 내용이 다르면 실패한다. 원본 lockfile의 기�
 
 각 조건은 새 서버의 `control-before`, 별도 새 서버의 `capture`, 별도 새 서버의 `control-after`로 구성된다. control은 inspector, GC flags, runtime diagnostic injection을 사용하지 않는다. 각 phase는 실제 cold HTTP correctness request, warmup, `monitorServer`가 감싼 load와 process teardown을 수행한다.
 
-| Mode | Node / production Next / Deno / application workerd | Bun JSC |
+| Mode | Node / production Next / application workerd | Bun JSC |
 | --- | --- | --- |
 | `cpu` | `Profiler.enable`, `Profiler.setSamplingInterval({interval:1000})`, `Profiler.start` → `Profiler.stop` | `ScriptProfiler.startTracking({includeSamples:true})` → `ScriptProfiler.stopTracking` 및 `ScriptProfiler.trackingComplete` |
 | `allocation` | `HeapProfiler.enable`, `HeapProfiler.startSampling({samplingInterval:32768,includeObjectsCollectedByMajorGC:true,includeObjectsCollectedByMinorGC:true})` → `HeapProfiler.getSamplingProfile` → `HeapProfiler.stopSampling` | `Heap.enable`, `Heap.startTracking` → `Heap.stopTracking` 및 `Heap.trackingComplete.snapshotData` |
-| `gc-eventloop` | Node/Next `--trace-gc`와 serving `perf_hooks`; Deno `--v8-flags=--trace-gc`와 serving wall-delay sampler. workerd `Tracing.start` 지원을 직접 probe | `Heap.enable`의 `Heap.garbageCollected`와 serving wall-delay sampler |
+| `gc-eventloop` | Node/Next `--trace-gc`와 serving `perf_hooks`. workerd `Tracing.start` 지원을 직접 probe | `Heap.enable`의 `Heap.garbageCollected`와 serving wall-delay sampler |
 
-CPU-only mode는 heap/GC profiler를 시작하지 않는다. allocation/heap-only mode는 CPU profiler를 시작하지 않는다. GC/event-loop mode는 CPU 또는 allocation profiler를 시작하지 않는다. Bun heap은 **retained snapshot**이며 allocation sample/rate가 아니다. V8 allocation은 collected objects를 sampling에 포함하도록 명시한다. sampled bytes를 정확한 allocation count/rate로 표시하지 않는다. 초기 live-only Deno capture가 0 samples였던 실패도 보존한다.
+CPU-only mode는 heap/GC profiler를 시작하지 않는다. allocation/heap-only mode는 CPU profiler를 시작하지 않는다. GC/event-loop mode는 CPU 또는 allocation profiler를 시작하지 않는다. Bun heap은 **retained snapshot**이며 allocation sample/rate가 아니다. V8 allocation은 collected objects를 sampling에 포함하도록 명시한다. sampled bytes를 정확한 allocation count/rate로 표시하지 않는다. 아카이브된 Deno 결과 해석을 위해 초기 live-only Deno capture가 0 samples였던 실패도 보존한다.
 
-Node/Next/Deno inspector `/json/list`의 websocket을 선택한다. Bun은 JSC websocket이다. `Runtime.evaluate`의 실제 PID/runtime과 process tree를 대조한다. Workers는 priming HTTP 완료 후 `/json/list`에서 direct `workerd:` 또는 Wrangler proxy의 `Cloudflare Worker`/`description=workers` application target 하나를 선택한다. proxy websocket에는 `Origin: http://localhost`를 보낸다. `WebSocketPair`와 `caches`가 있는 Worker realm, actual workerd descendant PID, `Runtime.getIsolateId`의 실제 application isolate id를 확인한다. proxy discovery id는 inspector session id이며 둘을 혼동하지 않는다. process/isolate identity 원본과 `Runtime.enable` context notification을 protocol에 보존한다. Wrangler Node launcher를 application CPU subject로 인정하지 않는다.
+Node/Next inspector `/json/list`의 websocket을 선택한다. Bun은 JSC websocket이다. `Runtime.evaluate`의 실제 PID/runtime과 process tree를 대조한다. Workers는 priming HTTP 완료 후 `/json/list`에서 direct `workerd:` 또는 Wrangler proxy의 `Cloudflare Worker`/`description=workers` application target 하나를 선택한다. proxy websocket에는 `Origin: http://localhost`를 보낸다. `WebSocketPair`와 `caches`가 있는 Worker realm, actual workerd descendant PID, `Runtime.getIsolateId`의 실제 application isolate id를 확인한다. proxy discovery id는 inspector session id이며 둘을 혼동하지 않는다. process/isolate identity 원본과 `Runtime.enable` context notification을 protocol에 보존한다. Wrangler Node launcher를 application CPU subject로 인정하지 않는다.
 
 ## Evidence와 실패
 

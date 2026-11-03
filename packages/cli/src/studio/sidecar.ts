@@ -9,7 +9,7 @@ import { URL } from 'node:url';
 /**
  * Defines Studio Sidecar Runtime values used by the Studio devtool.
  */
-export type StudioSidecarRuntime = 'bun' | 'deno' | 'node' | 'unknown';
+export type StudioSidecarRuntime = 'bun' | 'node' | 'unknown';
 
 /**
  * Describes Studio Sidecar Options data used by the Studio devtool.
@@ -393,7 +393,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     sequence += 1;
     const source = isRecord(incoming.source) ? incoming.source : undefined;
     const sourceAppId = typeof source?.appId === 'string' && source.appId.length > 0 ? source.appId : appId;
-    const sourceRuntime = source?.runtime === 'bun' || source?.runtime === 'deno' || source?.runtime === 'node' ? source.runtime : runtime;
+    const sourceRuntime = source?.runtime === 'bun' || source?.runtime === 'node' ? source.runtime : runtime;
     const event: StoredStudioEvent = {
       emittedAt: new Date().toISOString(),
       epoch,

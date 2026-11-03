@@ -107,8 +107,8 @@ parameter decorator가 아닙니다. `di.Scope`는 namespace이며 decorator가 
 WebSocket host subpath 재수출은 API 16개를 추가하지 않습니다. 모든 기존 decorator가 타입 밖
 `null`을 일관되게 거부한다고 주장하지 않으며, 이번 변경은 전체 factory hardening이 아닙니다.
 
-소유한 공개 decorator가 없는 23개 패키지는 `config`, `di`, `i18n`, `runtime`,
-`platform-fastify`, `platform-nodejs`, `platform-express`, `platform-bun`, `platform-deno`,
+소유한 공개 decorator가 없는 22개 패키지는 `config`, `di`, `i18n`, `runtime`,
+`platform-fastify`, `platform-nodejs`, `platform-express`, `platform-bun`,
 `platform-cloudflare-workers`, `redis`, `notifications`, `email`, `slack`, `discord`,
 `socket.io`, `metrics`, `terminus`, `cli`, `studio`, `testing`, `vite`, `jwt`입니다.
 

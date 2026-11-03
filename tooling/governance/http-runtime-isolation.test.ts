@@ -130,6 +130,64 @@ describe('HTTP runtime isolation governance', () => {
     );
   });
 
+  const portabilityContractPaths = [
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'tooling/governance/verify-platform-consistency-governance.mjs',
+    'tooling/governance/verify-platform-consistency-governance.test.ts',
+    'tooling/governance/http-runtime-isolation.test.ts',
+    'packages/testing/src/portability/web-runtime-adapter-portability.test.ts',
+  ];
+  const lifecycleHeadings = [
+    'Request Lifecycle',
+    'Request Context Isolation',
+    'Managed SSE Backpressure Cancellation',
+    'Connection Identity',
+  ];
+  const lifecycleDocumentation = [
+    '## Byte Range Contract\nBun, Deno, Workers',
+    ...lifecycleHeadings.map((heading) => `## ${heading}\nstable-${heading}`),
+  ].join('\n\n');
+  const portabilityDocumentation = lifecycleDocumentation.replace('Bun, Deno, Workers', 'Bun, Workers');
+
+  it('accepts adapter inventory updates with portability evidence and unchanged lifecycle contracts', () => {
+    const snapshots = Object.fromEntries(portabilityContractPaths.slice(0, 2).map((path) => [
+      path,
+      { base: lifecycleDocumentation, head: portabilityDocumentation },
+    ]));
+
+    expect(() => enforceContractCompanionUpdates(portabilityContractPaths, snapshots)).not.toThrow();
+  });
+
+  for (const scenario of [
+    'changed lifecycle',
+    'changed managed SSE',
+    'missing section',
+    'duplicate section',
+    'missing snapshots',
+    'core implementation',
+  ]) {
+    it(`keeps manual-SSE regression evidence mandatory for portability updates with ${scenario}`, () => {
+      let head = portabilityDocumentation;
+      if (scenario === 'changed lifecycle') head = head.replace('stable-Request Lifecycle', 'new-lifecycle');
+      if (scenario === 'changed managed SSE') head = head.replace('stable-Managed SSE Backpressure Cancellation', 'new-sse');
+      if (scenario === 'missing section') head = head.replace('## Connection Identity', '## Removed section');
+      if (scenario === 'duplicate section') head += '\n\n## Request Lifecycle\nduplicate';
+      const snapshots = scenario === 'missing snapshots' ? undefined : Object.fromEntries(
+        portabilityContractPaths.slice(0, 2).map((path) => [path, { base: lifecycleDocumentation, head }]),
+      );
+      const changedFiles = scenario === 'core implementation'
+        ? [...portabilityContractPaths, 'packages/runtime/src/request-transaction.ts']
+        : portabilityContractPaths;
+
+      expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).toThrow(
+        /dispatcher-manual-sse-lifecycle\.test\.ts/u,
+      );
+    });
+  }
+
   it('admits manual-SSE lifecycle changes with their executable regression', () => {
     // Given
     const changedFiles = [

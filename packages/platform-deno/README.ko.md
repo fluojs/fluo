@@ -2,9 +2,11 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-네이티브 `Deno.serve`를 기반으로 구축된 fluo 런타임용 Deno 기반 HTTP 어댑터 패키지입니다.
+네이티브 `Deno.serve`를 기반으로 구축된 fluo 런타임용 Deno 기반 HTTP 어댑터 패키지입니다. **Archived: 활성 workspace와 배포 대상에서 제거되었습니다.**
 
-> **Deprecated.** 새 애플리케이션에서는 이 어댑터를 채택하지 마세요. 최종 지원 라인은 `2.x`이며, 다음 major에서 제거할 계획은 [#3938](https://github.com/fluojs/fluo/issues/3938)에서 추적합니다. 신규 기능, 성능 개선, 새 Deno 릴리스 호환성 작업은 중단합니다. 심각한 보안 문제와 회귀는 건별로 판단하며 추가 패치나 장기 지원을 보장하지 않습니다. 이전 기간에는 기존 API, CLI starter와 회귀 검증을 유지합니다. Node.js + Fastify 또는 Cloudflare Workers로 이전하려면 [Deno 이전 가이드](../../docs/getting-started/migrate-from-deno.ko.md)를 따르세요. 정확한 최종 안내 버전은 이 공지가 아니라 Changesets 릴리스에서 결정합니다.
+> **Archived / 지원 종료 ([#3938](https://github.com/fluojs/fluo/issues/3938)).** 최종 안내 릴리스는 `2.0.2`이며, 2026-11-03 조회 시 prerelease를 포함한 배포 버전 18개 모두 npm deprecated metadata가 설정되어 있었습니다. 활성 패키지, Deno 전용 테스트와 release/CI 설정을 제거했습니다. CLI Deno 생성 및 `dev`/`build`/`start`는 CLI 5에서, `@fluojs/websockets/deno`는 WebSockets 3에서 종료합니다(배포 버전은 major Changesets가 결정합니다). 기존 배포 tarball과 pinned 버전은 삭제하거나 수정하지 않습니다. 추가 패치, runtime 호환성 작업이나 지원을 보장하지 않습니다. [Node.js + Fastify 또는 Cloudflare Workers로 이전](../../docs/getting-started/migrate-from-deno.ko.md)하세요.
+
+이하 내용은 종료된 `2.x` adapter의 역사적 문서이며 현재 `main`의 지원이나 실행 가능한 검증을 뜻하지 않습니다. Pinned 설치를 이해하거나 이전할 때만 참고하세요. 과거 구현과 테스트는 [제거 전 마지막 source tree](https://github.com/fluojs/fluo/tree/4106e3edcd05790022080399e74962e5472b0342/packages/platform-deno)에 보존됩니다. 이전 전에는 CLI와 WebSocket 버전도 각각 고정하고, 이 예제를 지원 제거 major와 함께 사용하지 마세요.
 
 [Deno 공식 발표](https://deno.com/blog/cloudflare)는 1년간 월별 버그·보안 수정 후 팀의 runtime 개발을 종료한다는 내용이며 오픈소스는 남습니다. Deno Deploy는 6개월 후 종료합니다. Fluo의 지원 중단은 upstream의 일정과 별개인 결정입니다.
 
@@ -165,6 +167,8 @@ await app.listen();
 Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve`, `upgradeWebSocket` seam, `rawBody`, `maxBodySize`, `multipart`가 포함됩니다. `createDenoFetchHandler(...)`는 같은 request parsing option을 받으며 byte-exact JSON/text raw body를 보존하고 multipart request에서는 `rawBody`를 제외합니다. Seam을 주입하지 않으면 managed adapter는 listen/upgrade 시점에 `globalThis.Deno.serve`와 `globalThis.Deno.upgradeWebSocket`으로 fallback합니다. `createDenoShutdownSignalRegistration()`은 기본적으로 `SIGINT`/`SIGTERM`을 선택하고, Factory의 `shutdownRegistration`을 생략하면 signal 소유권을 host에 남기며, 여러 signal을 등록하다 실패하면 이미 연결한 listener를 rollback합니다. 이미 실행 중인 adapter에 대한 중복 `listen(...)` 호출은 원래 dispatcher pipeline을 보존하는 no-op입니다. Close는 Deno serve signal을 abort하기 전에 active request drain을 최대 10초 기다립니다. Graceful shutdown이 reject되면 adapter는 ingress를 abort하지만 `server.finished`가 settle될 때까지 active server controller를 유지하고, 그 뒤에만 managed lifecycle을 해제한 다음 원래 shutdown error를 다시 throw합니다. `handle(...)`은 websocket upgrade 요청을 포함해 `listen()`이 dispatcher를 bind하기 전에는 JSON `500`, shutdown 진행 중에는 JSON `503`을 반환합니다.
 
 ## Conformance 커버리지
+
+아래 내용은 위 source revision의 과거 테스트 설명입니다. 현재 conformance suite는 유지되는 adapter만 검증합니다.
 
 `packages/platform-deno/src/adapter.test.ts`는 managed Deno 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, `listen(dispatcher)` 이후 direct `adapter.handle(...)` success-path dispatch, 직접 constructor/factory option normalization, HTTPS startup forwarding, `Deno.serve(...)` bind target과 startup log에 대한 `host` alias 및 `hostname` 우선순위, 중복 `listen(...)` no-op dispatcher 보존, 기본 `SIGINT`/`SIGTERM` signal listener 등록, `shutdownRegistration` 생략, partial signal-registration failure 이후 listener rollback, websocket upgrade binding 및 no-binding HTTP fallback, websocket listen 전 bootstrap gating, global Deno serve/upgrade fallback seam, listen 전 `500` 처리, shutdown 중 `503` 처리, serve-signal abort 전 in-flight request drain, `server.finished`까지 shutdown failure ownership 유지, bounded 10초 close timeout을 검증합니다. `packages/platform-deno/src/fetch-handler.test.ts`는 host-owned handler에 shared web-runtime portability harness를 적용하여 cookie/query decoding, JSON/text와 byte-exact raw body, multipart exclusion, SSE framing, dispatch가 `Deno.serve(...)`를 호출하지 않는다는 사실을 검증합니다. `packages/platform-deno/src/declaration-surface.test.ts`는 package를 다시 build하고 manifest가 export하는 declaration을 검증합니다.
 

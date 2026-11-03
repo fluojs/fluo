@@ -42,8 +42,8 @@ describe('canonical Node HTTP starter boundary', () => {
     }
   });
 
-  it.each(['bun', 'deno'] as const)('creates %s applications through Factory with explicit host shutdown ownership', async (runtime) => {
-    // Given
+  it('creates Bun applications through Factory with explicit host shutdown ownership', async () => {
+    const runtime = 'bun' as const;
     const targetDirectory = await mkdtemp(join(tmpdir(), 'fluo-factory-edge-starter-'));
     try {
       await scaffoldBootstrapApp({
@@ -67,11 +67,7 @@ describe('canonical Node HTTP starter boundary', () => {
       // Then
       expect(calls.filter((name) => name === 'FluoFactory.create')).toHaveLength(1);
       expect(calls.filter((name) => name === 'app.listen')).toHaveLength(1);
-      expect(calls).toContain(
-        runtime === 'bun'
-          ? 'createBunShutdownSignalRegistration'
-          : 'createDenoShutdownSignalRegistration',
-      );
+      expect(calls).toContain('createBunShutdownSignalRegistration');
       expect(calls.filter((name) => /^run.*Application$/.test(name))).toEqual([]);
       if (runtime === 'bun') {
         expect(source).toContain('shutdownTimeoutMs: 30_000');

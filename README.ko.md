@@ -161,9 +161,9 @@ Book은 중심 학습 과정이고 짧은 HTTP 실습은 보조 과정입니다.
 
 **기존 프로젝트를 업그레이드한다면:** [Node 24 마이그레이션 가이드](./docs/getting-started/migrate-node24.ko.md)의 Node → 패키지 → import 순서를 확인하세요. CLI를 업그레이드해도 기존 앱의 설정 파일은 자동으로 변경되지 않습니다. [Node.js 지원 정책](./docs/reference/node-support.ko.md)과 [HTTP 의존성 보안 업데이트](./docs/reference/dependency-security-update.ko.md)도 함께 확인하세요.
 
-> **Deno: Deprecated.** 신규 프로젝트에는 권장하지 않습니다. 새 기능, 성능 개선, 새로운 런타임 호환성을 추가하지 않으며 중대한 보안·회귀 수정은 건별 검토로 patch/LTS를 보장하지 않습니다. 기존 Deno 경로와 예제는 유지하고 각 Deno 관련 패키지의 다음 major에서 제거합니다([#3938](https://github.com/fluojs/fluo/issues/3938)). [Deno 이전 가이드](./docs/getting-started/migrate-from-deno.ko.md)를 따르세요.
+> **Deno: 제거됨.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, CLI Deno 대상을 활성 워크스페이스에서 제거했습니다([#3938](https://github.com/fluojs/fluo/issues/3938)). 2026-11-03 npm registry 관측에서 공개된 `@fluojs/platform-deno` 18개 버전 전체가 deprecated로 확인되었으며 최종 릴리스는 `2.0.2`입니다. 이전 구현은 Git history와 npm tarball에 남고, 제거는 CLI와 WebSockets의 다음 major(제거 changeset 기준 CLI 5, WebSockets 3. Changesets가 버전의 권위적 원천)로 공개 패키지에 반영됩니다. 기존 Deno 애플리케이션은 [Deno 이전 가이드](./docs/getting-started/migrate-from-deno.ko.md)로 이전하세요.
 
-기존 Deno 앱의 API 사용법은 [Deno 어댑터 README](./packages/platform-deno/README.ko.md)에 유지합니다.
+아카이브된 Deno API 사용법은 [Deno 어댑터 README](./packages/platform-deno/README.ko.md)의 아카이브 안내로 남으며 이전 구현은 Git history와 npm tarball에 보존됩니다.
 
 ## 커뮤니티
 

@@ -137,7 +137,7 @@ Malformed forwarding input is discarded rather than partially trusted.
 
 The policy follows RFC validator precedence: `If-Match` takes precedence over `If-Unmodified-Since`; `If-None-Match` takes precedence over `If-Modified-Since`. `If-Match` uses strong comparison, while `If-None-Match` uses weak comparison. A failed unsafe precondition produces a bodyless `412`; a fresh safe representation produces a bodyless `304`. Both responses retain resolved validators. `HEAD` receives the same validators and status as `GET`; framework-managed response writing suppresses its body. An explicit `@Head` handler remains an independent route, and custom response writers own body emission, including preserving the bodyless `HEAD` contract.
 
-The dispatcher applies validators through the portable `FrameworkResponse` facade. Node.js, Express, Fastify, Bun, Deno, and Cloudflare Workers therefore expose identical conditional-response headers and body suppression.
+The dispatcher applies validators through the portable `FrameworkResponse` facade. Node.js, Express, Fastify, Bun, and Cloudflare Workers therefore expose identical conditional-response headers and body suppression.
 
 ## Middleware Constraints
 

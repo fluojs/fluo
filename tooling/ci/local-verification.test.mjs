@@ -19,7 +19,6 @@ function testEnvironment(lock) {
     os: 'linux', arch: 'arm64',
     node: Object.fromEntries(Object.entries(lock.node).map(([name, value]) => [name, value.version])),
     bun: Object.fromEntries(Object.entries(lock.bun).map(([name, value]) => [name, value.version])),
-    deno: Object.fromEntries(Object.entries(lock.deno).map(([name, value]) => [name, value.version])),
     pnpm: lock.pnpm.version,
     browser: { channel: lock.browser.channel, version: lock.browser.version, launched: true },
     docker: { reachable: true, version: '28.3.3', cliVersion: lock.docker.version },
@@ -70,7 +69,6 @@ test('the full primary profile maps every triggered companion onto existing task
   const plan = buildVerificationPlan({ changedFiles: [
     'packages/core/package.json', 'packages/core/src/index.mjs',
     'packages/core/test/global-setup.ts', 'docs/reference/node-support.md',
-    'packages/platform-deno/src/index.ts',
   ], identity });
   assert.deepEqual(plan.companionChecks, [
     'declaration-importers', 'documentation-governance', 'global-setup-contract',
@@ -78,7 +76,10 @@ test('the full primary profile maps every triggered companion onto existing task
   ]);
   for (const id of plan.companionChecks) assert.ok(plan.capabilityTasks[id]?.length, id);
   assert.equal(plan.tasks.some((task) => task.commands.some((command) => command.argv.join(' ') === 'test:verify')), false);
-  assert.ok(plan.tasks.find((task) => task.id === 'native-web')?.commands.some((command) => command.executable === 'deno'));
+  const nativeWeb = plan.tasks.find((task) => task.id === 'native-web');
+  assert.ok(nativeWeb?.commands.some((command) =>
+    command.argv.includes('packages/testing/src/portability/web-runtime-adapter-portability.test.ts')));
+  assert.equal(plan.tasks.some((task) => task.commands.some((command) => command.executable === 'deno')), false);
 });
 
 test('React comparison uses a distinct conditional capability in the existing catalog', () => {

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 interface PackageManifest {
@@ -15,7 +15,6 @@ const portablePackages = [
   '@fluojs/persistence',
   '@fluojs/platform-bun',
   '@fluojs/platform-cloudflare-workers',
-  '@fluojs/platform-deno',
   '@fluojs/react',
   '@fluojs/runtime',
 ];
@@ -45,9 +44,13 @@ function requiredNodeEngineRange(manifest: PackageManifest): string {
 
 function readPackageManifests(): { root: PackageManifest; packages: PackageManifest[] } {
   const packagesRoot = new URL('../../packages/', import.meta.url);
-  const packages: PackageManifest[] = readdirSync(packagesRoot).map((directory) => JSON.parse(
-    readFileSync(new URL(`${directory}/package.json`, packagesRoot), 'utf8'),
-  ));
+  // Retired platform directories (the platform-deno archive) keep only
+  // README/CHANGELOG files and publish no manifest that needs classification.
+  const packages: PackageManifest[] = readdirSync(packagesRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(new URL(`${entry.name}/package.json`, packagesRoot)))
+    .map((entry) => JSON.parse(
+      readFileSync(new URL(`${entry.name}/package.json`, packagesRoot), 'utf8'),
+    ));
   const root: PackageManifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
 
   return { root, packages };

@@ -4,6 +4,8 @@
 
 Transport-agnostic email delivery core for fluo. It provides a Nest-like module API, an injectable `EmailService` for standalone usage, and a first-party channel/queue adapter pair for `@fluojs/notifications` integration without hard-coding any runtime-specific transport.
 
+Applications using the retired Deno adapter should migrate their application host with the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md). Check the per-transport runtime requirements below when choosing the replacement host.
+
 ## Table of Contents
 
 - [Installation](#installation)

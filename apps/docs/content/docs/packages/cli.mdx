@@ -4,11 +4,11 @@ description: Scaffold, generate, migrate, inspect, and run fluo applications wit
 package: "@fluojs/cli"
 ---
 
-> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+> **Deno support is Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno target are deleted from the active workspace; npm registry observation on 2026-11-03 confirmed all 18 published `@fluojs/platform-deno` versions deprecated, with `2.0.2` as the final release. The prior implementation remains in Git history and npm tarballs, and removal reaches published packages with the next CLI and WebSockets majors (CLI 5 and WebSockets 3 per the removal changesets; Changesets is authoritative), tracked in [#3938](https://github.com/fluojs/fluo/issues/3938). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
 
 `@fluojs/cli` is the canonical entry point for fluo application work: it scaffolds new projects (`fluo new`), generates feature files with automatic module wiring (`fluo generate`), aligns existing codebases with fluo's decorator model (`fluo migrate`), exports runtime inspection data (`fluo inspect`), generates React page types (`fluo typegen`), and runs the application lifecycle (`fluo dev`, `fluo build`, `fluo start`). Everything the CLI writes is ordinary project code - there is no daemon, no hidden state, and no config file it owns.
 
-The CLI runs on Node.js `>=24.11.0 <27` (its published `engines.node` contract and Babel 8 toolchain floor). Generated Bun, Deno, and Cloudflare Workers starters may target those native runtimes, but the CLI process itself is always Node.js.
+The CLI runs on Node.js `>=24.11.0 <27` (its published `engines.node` contract and Babel 8 toolchain floor). Generated Bun and Cloudflare Workers starters may target those native runtimes, but the CLI process itself is always Node.js; the Deno target is removed and explicit Deno requests fail with migration guidance.
 
 ## Installation
 
@@ -66,7 +66,6 @@ fluo new my-node-app --shape application --transport http --runtime node --platf
 
 # Runtime-native applications
 fluo new my-bun-app --shape application --transport http --runtime bun --platform bun
-fluo new my-deno-app --shape application --transport http --runtime deno --platform deno
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 
 # Microservices (tcp is the default transport)
@@ -98,7 +97,7 @@ Generated Node.js projects start with `FluoFactory.create(AppModule, { adapter }
 
 For generated Node.js projects, `fluo dev`, `fluo build`, and `fluo start` run the generated lifecycle directly, prepending project-local `node_modules/.bin` and defaulting `NODE_ENV` to `development` for `dev` and `production` for `build`/`start` when unset. Preview them with `--dry-run` (`fluo dev --dry-run` also reports the watch boundary).
 
-By default `fluo dev` runs through a fluo-owned restart boundary: it watches source and config inputs, debounces atomic-save bursts, hashes content so an unchanged Ctrl+S cannot restart, and reloads `.env` per child process. Restarts send `SIGTERM` first, then force-kill after a bounded grace period; a terminal child exit closes watchers, unregisters signal handlers, and exits with the child's code. This is full-process restart, not module-level HMR. `--raw-watch` (or `FLUO_DEV_RAW_WATCH=1`) falls back to the runtime-native Node watcher for debugging. Bun, Deno, and Workers projects default to their native watch loops (`bun --watch`, `deno run --watch ...`, `wrangler dev`); use `--runner fluo` (or `FLUO_DEV_RUNNER=fluo`) to restore the CLI-owned boundary, and `FLUO_DEV_WATCH_IGNORE` to add ignored paths.
+By default `fluo dev` runs through a fluo-owned restart boundary: it watches source and config inputs, debounces atomic-save bursts, hashes content so an unchanged Ctrl+S cannot restart, and reloads `.env` per child process. Restarts send `SIGTERM` first, then force-kill after a bounded grace period; a terminal child exit closes watchers, unregisters signal handlers, and exits with the child's code. This is full-process restart, not module-level HMR. `--raw-watch` (or `FLUO_DEV_RAW_WATCH=1`) falls back to the runtime-native Node watcher for debugging. Bun and Workers projects default to their native watch loops (`bun --watch`, `wrangler dev`); use `--runner fluo` (or `FLUO_DEV_RUNNER=fluo`) to restore the CLI-owned boundary, and `FLUO_DEV_WATCH_IGNORE` to add ignored paths.
 
 Output is tuned per process boundary, not per log line: `fluo dev` shows app output only, `--reporter pretty` adds fluo-branded lifecycle status, `--reporter stream`/`--verbose` expose raw tooling output, and `--reporter silent` suppresses wrapper status for `fluo build`. Application logging is configured separately through `ApplicationLogger` (for example `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })`).
 
@@ -109,7 +108,7 @@ fluo dev --studio
 fluo dev --studio --studio-port 51234
 ```
 
-Starts a token-protected local Studio sidecar alongside the app, injects explicit Studio config into the Node app child before it imports `@fluojs/runtime`, and prints a URL such as `http://127.0.0.1:51234/?token=...`. Live mode requires the fluo-owned Node restart runner, so it rejects `--raw-watch` and native runners. Bun, Deno, and Workers projects are rejected for the live MVP - export static artifacts instead (`fluo inspect ... --json --output <path>` / `--report --output <path>`). See [`@fluojs/studio`](/docs/packages/studio) for the security model and what live mode shows.
+Starts a token-protected local Studio sidecar alongside the app, injects explicit Studio config into the Node app child before it imports `@fluojs/runtime`, and prints a URL such as `http://127.0.0.1:51234/?token=...`. Live mode requires the fluo-owned Node restart runner, so it rejects `--raw-watch` and native runners. Bun and Workers projects are rejected for the live MVP - export static artifacts instead (`fluo inspect ... --json --output <path>` / `--report --output <path>`). See [`@fluojs/studio`](/docs/packages/studio) for the security model and what live mode shows.
 
 ## Generating features
 

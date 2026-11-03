@@ -21,7 +21,7 @@ test('coverage manifest exactly tracks the current public workspace package surf
   const coverage = loadCoverageManifest(root);
   const expected = publicPackageNames(root);
 
-  assert.equal(expected.length, 47);
+  assert.equal(expected.length, 46);
   assert.deepEqual(coverage.packages.map((entry) => entry.package), expected);
   assert.deepEqual(validateCoverageManifest(coverage, { root }), []);
 });
@@ -67,7 +67,7 @@ test('packed closure includes every internal dependency of applied packages', ()
 
 test('coverage file remains checked JSON rather than generated runtime state', () => {
   const source = readFileSync(coverageManifestPath(root), 'utf8');
-  assert.equal(JSON.parse(source).packages.length, 47);
+  assert.equal(JSON.parse(source).packages.length, 46);
   assert.deepEqual(loadCoverageManifest(root).packages.map((entry) => entry.package), publicPackageNames(root));
 });
 
@@ -76,7 +76,6 @@ test('non-packed hosts cite their own executable checks without claiming Node ex
   for (const [packageName, platform, check] of [
     ['@fluojs/platform-bun', 'bun', 'tooling/native-runtime/platform-bun-native-conformance.test.mjs'],
     ['@fluojs/platform-cloudflare-workers', 'workers', 'tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs'],
-    ['@fluojs/platform-deno', 'deno', 'packages/platform-deno/deno/native-adapter.test.js'],
     ['@fluojs/platform-nextjs', 'next', 'packages/platform-nextjs/e2e/next.test.mjs'],
   ]) {
     const entry = coverage.packages.find((row) => row.package === packageName);
@@ -98,7 +97,6 @@ test('full tooling CI prepares native runtimes before host fixtures run', () => 
 
   // Then
   assert.equal(environment.bun['1.4.0'].version, '1.4.0');
-  assert.equal(environment.deno['2.9.7'].version, '2.9.7');
   assert.equal(toolingTasks.length, 2);
   for (const task of toolingTasks) {
     assert.ok(task.dependencies.includes('build'));

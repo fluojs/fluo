@@ -40,7 +40,7 @@ production 경로는 최신 Node 24 LTS를 사용합니다. Node 20과 Node 22 �
   명시한다면 각 대상을 검증하세요. Fluo release automation은 최신 Node `24.x`를
   사용하며 Node 26은 publish runtime이 아닙니다.
 
-아래 8개 engine omission은 의도적으로 유지합니다. Bun, Deno, Cloudflare Workers
+아래 9개 engine omission은 의도적으로 유지합니다. Bun, Cloudflare Workers
 배포는 native runtime metadata와 deployment 명령을 유지하세요. Node-hosted
 CLI/build tooling은 별도로 업그레이드합니다. Workers starter의 Node engine은
 배포 isolate가 아니라 로컬 CLI/Wrangler tooling을 설명합니다.
@@ -119,10 +119,10 @@ Portable bootstrap은 `@fluojs/runtime`, fetch-style helper는
 
 ## 4. Preserve portable configuration boundaries
 
-이웃 패키지와 맞추기 위해 다음 8개 public root에 `engines.node`를 추가하지 마세요.
+이웃 패키지와 맞추기 위해 다음 9개 public root에 `engines.node`를 추가하지 마세요.
 
-`@fluojs/config`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/platform-bun`,
-`@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`,
+`@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`,
+`@fluojs/platform-cloudflare-workers`, `@fluojs/react`,
 `@fluojs/runtime`.
 
 Config의 in-memory load, merge, validation, clone, service access는 portable하게
@@ -182,8 +182,8 @@ consumer를 업그레이드하고 decorator transform은 `@fluojs/vite`로 구�
    유지하세요. `experimentalDecorators`, `emitDecoratorMetadata`를 켜거나
    Babel을 direct Oxc/esbuild decorator processing으로 대체하지 마세요.
    React SSR은 decorator 선언을 `.ts`, JSX를 `.tsx`에 유지합니다.
-5. Bun/Deno/Workers의 native build 및 deployment 명령을 보존하세요. Deno
-   starter는 이 Vite/Vitest baseline 대신 Deno-native toolchain을 유지합니다.
+5. Bun/Workers의 native build 및 deployment 명령을 보존하세요. Deno 생성은
+   제거되었으므로 Deno 프로젝트는 [Deno 이전 가이드](./migrate-from-deno.ko.md)로 이전하세요.
 
 ## 6. Verify the migrated application
 

@@ -37,9 +37,6 @@ importers:
       '@fluojs/platform-cloudflare-workers':
         specifier: link:../../../packages/platform-cloudflare-workers
         version: link:../../../packages/platform-cloudflare-workers
-      '@fluojs/platform-deno':
-        specifier: link:../../../packages/platform-deno
-        version: link:../../../packages/platform-deno
       '@fluojs/platform-express':
         specifier: link:../../../packages/platform-express
         version: link:../../../packages/platform-express

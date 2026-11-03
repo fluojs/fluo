@@ -46,7 +46,7 @@ type ApplicationStarterDescriptor = {
   adapterCall?: string;
   adapterFactory?: string;
   entrypoint: 'src/main.ts' | 'src/worker.ts';
-  packageName?: '@fluojs/platform-bun' | '@fluojs/platform-cloudflare-workers' | '@fluojs/platform-deno' | '@fluojs/platform-express' | '@fluojs/platform-fastify' | '@fluojs/platform-nodejs';
+  packageName?: '@fluojs/platform-bun' | '@fluojs/platform-cloudflare-workers' | '@fluojs/platform-express' | '@fluojs/platform-fastify' | '@fluojs/platform-nodejs';
   platformLabel: string;
   runtimeLabel: string;
 };
@@ -60,17 +60,6 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
       packageName: '@fluojs/platform-bun',
       platformLabel: 'Bun native HTTP',
       runtimeLabel: 'Bun runtime',
-    };
-  }
-
-  if (options.runtime === 'deno') {
-    return {
-      adapterCall: 'DenoHttpApplicationAdapter.create({ port })',
-      adapterFactory: 'DenoHttpApplicationAdapter',
-      entrypoint: 'src/main.ts',
-      packageName: '@fluojs/platform-deno',
-      platformLabel: 'Deno native HTTP',
-      runtimeLabel: 'Deno runtime',
     };
   }
 
@@ -202,15 +191,6 @@ function createProjectScripts(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
         'test:watch': 'vitest',
         typecheck: 'tsc -p tsconfig.json --noEmit',
       };
-    case 'application-deno-deno-http':
-      return {
-        build: 'deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts',
-        dev: 'fluo dev',
-        start: './dist/app',
-        test: 'deno test --allow-env --allow-net --allow-read=.env',
-        'test:watch': 'deno test --allow-env --allow-net --allow-read=.env --watch',
-        typecheck: 'deno check src/main.ts src/app.test.ts',
-      };
     case 'application-cloudflare-workers-cloudflare-workers-http':
       return {
         build: 'wrangler deploy --dry-run',
@@ -245,8 +225,6 @@ function createProjectEngines(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
   switch (bootstrapPlan.profile.id) {
     case 'application-bun-bun-http':
       return { bun: '>=1.2.5' };
-    case 'application-deno-deno-http':
-      return { deno: '>=2.0.0' };
     case 'application-node-fastify-http':
     case 'application-node-fastify-react-vite-ssr':
     case 'application-node-express-http':
@@ -259,10 +237,6 @@ function createProjectEngines(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
 }
 
 function createPublishedDevDependencies(bootstrapPlan: ResolvedBootstrapPlan): Record<string, string> {
-  if (bootstrapPlan.profile.id === 'application-deno-deno-http') {
-    return {};
-  }
-
   if (bootstrapPlan.profile.id === 'application-bun-bun-http') {
     return {
       ...PUBLISHED_DEV_DEPENDENCIES,
@@ -442,8 +416,6 @@ function createHttpPackageManagerLine(options: BootstrapOptions): string {
   switch (options.runtime) {
     case 'bun':
       return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Bun's native watch loop (\`bun --watch src/main.ts\`) for fewer Node-supervised dev processes, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'build')} plus ${createRunCommand(options.packageManager, 'start')} run Bun-native production commands (\`bun build ./src/main.ts --outdir ./dist --target bun\` then \`bun dist/main.js\`) so deployment targets do not need Node just to start the built app`;
-    case 'deno':
-      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Deno's native watch loop (\`deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts\`) for fewer Node-supervised dev processes, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'build')} plus ${createRunCommand(options.packageManager, 'start')} run Deno-native production commands (\`deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts\` then \`./dist/app\`) so deployment targets can run the compiled app without Node`;
     case 'cloudflare-workers':
       return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Wrangler's native dev loop (\`wrangler dev --show-interactive-dev-session=false\`) for Wrangler-owned reloads, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'preview')} plus ${createRunCommand(options.packageManager, 'deploy')} run Wrangler-native preview/deploy commands; Wrangler tooling requires Node/npm-compatible tooling locally, but deployed Workers run on Cloudflare's isolate runtime`;
     default:
@@ -457,7 +429,7 @@ function createHttpCommandsSection(options: BootstrapOptions): string {
     `- Build: ${createRunCommand(options.packageManager, 'build')}`,
   ];
 
-  if (options.runtime === 'bun' || options.runtime === 'deno' || options.runtime === 'cloudflare-workers') {
+  if (options.runtime === 'bun' || options.runtime === 'cloudflare-workers') {
     commands.push('- Dev fluo restart fallback: fluo dev --runner fluo');
   }
 
@@ -482,7 +454,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
   const starter = describeApplicationStarter(options);
   const adapterCreation = starter.adapterCall?.split('(')[0];
   const entrypointLabel = starter.entrypoint;
-  const starterContract = options.runtime === 'node' || options.runtime === 'bun' || options.runtime === 'deno'
+  const starterContract = options.runtime === 'node' || options.runtime === 'bun'
     ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`FluoFactory.create(..., { adapter, shutdownRegistration })\` then \`app.listen()\``
     : options.runtime === 'cloudflare-workers'
       ? `\`${entrypointLabel}\` exports the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`CloudflareWorkerApplicationHost.create(...)\``
@@ -492,9 +464,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
     : options.runtime === 'cloudflare-workers'
     ? '- CORS: no CORS middleware is added by default; pass `cors` explicitly to `CloudflareWorkerApplicationHost.create(AppModule, { cors })` to configure it'
     : `- CORS: no CORS middleware is added by default; pass \`cors\` explicitly to \`FluoFactory.create(AppModule, { adapter, cors })\` to configure it`;
-  const testingSection = options.runtime === 'deno'
-    ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
-    : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`Test.createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — default HTTP/e2e-style template powered by \`Test.createApp\` and \`app.request(...).send()\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`Test.createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated request-level e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
+  const testingSection = `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`Test.createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — default HTTP/e2e-style template powered by \`Test.createApp\` and \`app.request(...).send()\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`Test.createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated request-level e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
 
   return `# ${options.projectName}
 
@@ -713,8 +683,6 @@ function createProjectReadme(options: BootstrapOptions, bootstrapPlan: ResolvedB
 }
 
 function createAppFile(options: BootstrapOptions): string {
-  const importSuffix = options.runtime === 'deno' ? '.ts' : '';
-
   if (options.runtime === 'cloudflare-workers') {
     return `import { Module } from '@fluojs/core';
 import { HealthModule } from '@fluojs/runtime';
@@ -732,22 +700,18 @@ export class AppModule {}
 `;
   }
 
-  const processEnvValue = options.runtime === 'deno'
-      ? 'Deno.env.toObject()'
-      : 'process.env';
-
   return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { HealthModule } from '@fluojs/runtime';
 
-import { GreetingModule } from './greeting/greeting.module${importSuffix}';
+import { GreetingModule } from './greeting/greeting.module';
 
 @Module({
   global: true,
   imports: [
     ConfigModule.forRoot({
       envFilePaths: ['.env'],
-      processEnv: ${processEnvValue},
+      processEnv: process.env,
     }),
     GreetingModule,
     HealthModule.forRoot(),
@@ -949,28 +913,6 @@ export class GreetingModule {}
 
 function createMainFile(options: BootstrapOptions): string {
   const starter = describeApplicationStarter(options);
-
-  if (options.runtime === 'deno') {
-    return `import '@fluojs/core/metadata-preload';
-import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
-import { FluoFactory } from '@fluojs/runtime';
-
-import { AppModule } from './app.ts';
-
-// The generated starter wires the selected first-class fluo new application path:
-// Deno runtime + Deno native HTTP via DenoHttpApplicationAdapter.create(...),
-// FluoFactory.create(...), and an explicit Deno host shutdown callback.
-
-const parsedPort = Number.parseInt(Deno.env.get('PORT') ?? '3000', 10);
-const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
-
-const app = await FluoFactory.create(AppModule, {
-  adapter: DenoHttpApplicationAdapter.create({ port }),
-  shutdownRegistration: createDenoShutdownSignalRegistration(),
-});
-await app.listen();
-`;
-  }
 
   if (options.runtime === 'cloudflare-workers') {
     return `import '@fluojs/core/metadata-preload';
@@ -2383,80 +2325,6 @@ async function withCleanup<T>(
 `;
 }
 
-function createDenoAppTestFile(): string {
-  return `import { FluoFactory } from '@fluojs/runtime';
-
-import { AppModule } from './app.ts';
-
-type ResponseStub = {
-  body?: unknown;
-  committed: boolean;
-  headers: Record<string, string>;
-  redirect(status: number, location: string): void;
-  send(body: unknown): void;
-  setHeader(name: string, value: string): void;
-  setStatus(code: number): void;
-  statusCode?: number;
-  statusSet: boolean;
-};
-
-function createResponse(): ResponseStub {
-  return {
-    committed: false,
-    headers: {},
-    redirect(status, location) {
-      this.setStatus(status);
-      this.setHeader('Location', location);
-      this.committed = true;
-    },
-    send(body) {
-      this.body = body;
-      this.committed = true;
-    },
-    setHeader(name, value) {
-      this.headers[name] = value;
-    },
-    setStatus(code) {
-      this.statusCode = code;
-      this.statusSet = true;
-    },
-    statusCode: undefined,
-    statusSet: false,
-  };
-}
-
-Deno.test('AppModule dispatches the generated Deno starter routes', async () => {
-  const app = await FluoFactory.create(AppModule, {});
-  const healthResponse = createResponse();
-  const readyResponse = createResponse();
-  const infoResponse = createResponse();
-
-  await app.dispatch({ body: undefined, cookies: {}, headers: {}, method: 'GET', params: {}, path: '/health', query: {}, raw: {}, url: '/health' }, healthResponse as never);
-  await app.dispatch({ body: undefined, cookies: {}, headers: {}, method: 'GET', params: {}, path: '/ready', query: {}, raw: {}, url: '/ready' }, readyResponse as never);
-  await app.dispatch({ body: undefined, cookies: {}, headers: {}, method: 'GET', params: {}, path: '/greeting/', query: {}, raw: {}, url: '/greeting/' }, infoResponse as never);
-
-  if (JSON.stringify(healthResponse.body) !== JSON.stringify({ status: 'ok' })) {
-    throw new Error('Expected /health to return status ok.');
-  }
-
-  if (JSON.stringify(readyResponse.body) !== JSON.stringify({ status: 'ready' })) {
-    throw new Error('Expected /ready to return status ready.');
-  }
-
-  if (typeof infoResponse.body !== 'object' || infoResponse.body === null) {
-    throw new Error('Expected /greeting/ to return an object body.');
-  }
-
-  const infoBody = infoResponse.body as { framework?: unknown; message?: unknown; project?: unknown };
-  if (infoBody.message !== 'Hello from fluo' || infoBody.framework !== 'fluo' || typeof infoBody.project !== 'string') {
-    throw new Error('Expected /greeting/ to return the generated service payload.');
-  }
-
-  await app.close();
-});
-`;
-}
-
 function createEnvFile(bootstrapPlan: ResolvedBootstrapPlan): string | undefined {
   if (bootstrapPlan.profile.id === 'application-cloudflare-workers-cloudflare-workers-http') {
     return undefined;
@@ -2566,15 +2434,13 @@ function emitSharedScaffoldFiles(
     { content: createGitignore(), path: '.gitignore' },
   ];
 
-  if (bootstrapPlan.profile.id !== 'application-deno-deno-http') {
-    sharedFiles.push(
-      { content: createProjectTsconfig(bootstrapPlan), path: 'tsconfig.json' },
-      { content: createProjectTsconfigBuild(), path: 'tsconfig.build.json' },
-      { content: createBabelConfig(), path: 'babel.config.cjs' },
-      { content: createViteConfig(bootstrapPlan), path: 'vite.config.ts' },
-      { content: createVitestConfig(), path: 'vitest.config.ts' },
-    );
-  }
+  sharedFiles.push(
+    { content: createProjectTsconfig(bootstrapPlan), path: 'tsconfig.json' },
+    { content: createProjectTsconfigBuild(), path: 'tsconfig.build.json' },
+    { content: createBabelConfig(), path: 'babel.config.cjs' },
+    { content: createViteConfig(bootstrapPlan), path: 'vite.config.ts' },
+    { content: createVitestConfig(), path: 'vitest.config.ts' },
+  );
 
   if (bootstrapPlan.profile.id === 'application-cloudflare-workers-cloudflare-workers-http') {
     sharedFiles.push({ content: createWranglerConfig(options.projectName), path: 'wrangler.jsonc' });
@@ -2588,30 +2454,24 @@ function emitSharedScaffoldFiles(
 }
 
 function emitApplicationScaffoldFiles(options: BootstrapOptions): ScaffoldFile[] {
-  const importSuffix = options.runtime === 'deno' ? '.ts' : '';
   const entrypointPath = describeApplicationStarter(options).entrypoint;
   const files: ScaffoldFile[] = [
     { content: createAppFile(options), path: 'src/app.ts' },
     { content: createMainFile(options), path: entrypointPath },
     { content: createGreetingResponseDtoFile(), path: 'src/greeting/greeting.response.dto.ts' },
-    { content: createGreetingRepoFile(options.projectName, importSuffix), path: 'src/greeting/greeting.repo.ts' },
-    { content: createGreetingServiceFile(importSuffix), path: 'src/greeting/greeting.service.ts' },
-    { content: createGreetingControllerFile(importSuffix), path: 'src/greeting/greeting.controller.ts' },
-    { content: createGreetingModuleFile(importSuffix), path: 'src/greeting/greeting.module.ts' },
+    { content: createGreetingRepoFile(options.projectName), path: 'src/greeting/greeting.repo.ts' },
+    { content: createGreetingServiceFile(), path: 'src/greeting/greeting.service.ts' },
+    { content: createGreetingControllerFile(), path: 'src/greeting/greeting.controller.ts' },
+    { content: createGreetingModuleFile(), path: 'src/greeting/greeting.module.ts' },
   ];
-
-  if (options.runtime === 'deno') {
-    files.push({ content: createDenoAppTestFile(), path: 'src/app.test.ts' });
-    return files;
-  }
 
   files.push(
     { content: createGreetingRepoTestFile(), path: 'src/greeting/greeting.repo.test.ts' },
     { content: createGreetingServiceTestFile(), path: 'src/greeting/greeting.service.test.ts' },
     { content: createGreetingControllerTestFile(), path: 'src/greeting/greeting.controller.test.ts' },
-    { content: createGreetingSliceTestFile(importSuffix), path: 'src/greeting/greeting.slice.test.ts' },
-    { content: createAppTestFile(importSuffix), path: 'src/app.test.ts' },
-    { content: createAppE2eTestFile(importSuffix), path: 'test/app.e2e.test.ts' },
+    { content: createGreetingSliceTestFile(), path: 'src/greeting/greeting.slice.test.ts' },
+    { content: createAppTestFile(), path: 'src/app.test.ts' },
+    { content: createAppE2eTestFile(), path: 'test/app.e2e.test.ts' },
   );
 
   return files;
@@ -2625,9 +2485,7 @@ function emitScaffoldFilesForRecipe(options: BootstrapOptions, recipeId: Starter
   if (
     recipeId === 'application-bun-bun-http'
     || recipeId === 'application-cloudflare-workers-cloudflare-workers-http'
-    || recipeId === 'application-deno-deno-http'
-    ||
-    recipeId === 'application-node-fastify-http'
+    || recipeId === 'application-node-fastify-http'
     || recipeId === 'application-node-express-http'
     || recipeId === 'application-node-nodejs-http'
   ) {

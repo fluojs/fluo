@@ -127,12 +127,11 @@ it('preserves all native runtime and packed-consumer verification capabilities',
     'tooling/native-runtime/platform-bun-native-conformance.test.mjs',
     'tooling/native-runtime/drizzle-bun-conformance.test.mjs',
     'tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs',
-    'packages/platform-deno/deno/native-adapter.test.js',
     'packages/testing/src/portability/web-runtime-adapter-portability.test.ts',
   ]) {
     expect(args.some((value) => value.includes(path)), path).toBe(true);
   }
-  expect(args.filter((value) => value.includes('tooling/native-runtime/response-cookie-conformance.test.mjs'))).toHaveLength(2);
+  expect(args.filter((value) => value.includes('tooling/native-runtime/response-cookie-conformance.test.mjs'))).toHaveLength(1);
   expect(args.some((value) => value.includes('duplicate-module-safety'))).toBe(true);
   expect(args.some((value) => value.includes('@fluojs/studio') && value.includes('test:browser'))).toBe(true);
 });

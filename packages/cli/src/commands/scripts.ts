@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { denoSupportEndedMessage, RETIRED_DENO_PLATFORM_PACKAGE } from '../deno-support.js';
 import { createStudioDevtoolsNodeImport } from '../studio/runtime-config.js';
 import type { startStudioSidecar, StudioSidecar, StudioSidecarRuntime } from '../studio/sidecar.js';
 import { SUPPORTED_PACKAGE_MANAGERS } from './package-manager.js';
@@ -38,7 +39,7 @@ type StartStudioSidecar = typeof startStudioSidecar;
 
 type JsonRecord = Record<string, unknown>;
 type ScriptCommand = 'build' | 'dev' | 'start';
-type ProjectRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
+type ProjectRuntime = 'bun' | 'cloudflare-workers' | 'node';
 type ProjectRunnerMode = 'fluo-restart' | 'native-watch' | 'runtime-native-watch' | 'single-run';
 type ProjectRunnerStep = { args: string[]; command: string; mode?: ProjectRunnerMode };
 
@@ -106,12 +107,12 @@ function hasManifestDependency(manifest: JsonRecord, packageName: string): boole
 }
 
 function detectProjectRuntime(manifest: JsonRecord): ProjectRuntime {
-  if (hasManifestDependency(manifest, '@fluojs/platform-bun')) {
-    return 'bun';
+  if (hasManifestDependency(manifest, RETIRED_DENO_PLATFORM_PACKAGE)) {
+    throw new Error(denoSupportEndedMessage(`this project declares the retired ${RETIRED_DENO_PLATFORM_PACKAGE} dependency`));
   }
 
-  if (hasManifestDependency(manifest, '@fluojs/platform-deno')) {
-    return 'deno';
+  if (hasManifestDependency(manifest, '@fluojs/platform-bun')) {
+    return 'bun';
   }
 
   if (hasManifestDependency(manifest, '@fluojs/platform-cloudflare-workers')) {
@@ -216,8 +217,6 @@ function buildNativeRuntimeDevStep(runtime: ProjectRuntime, passThrough: string[
       return buildNativeNodeWatchStep(passThrough);
     case 'bun':
       return { command: 'bun', args: ['--watch', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
-    case 'deno':
-      return { command: 'deno', args: ['run', '--watch', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
     case 'cloudflare-workers':
       return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...passThrough], mode: 'runtime-native-watch' };
     default:
@@ -230,8 +229,6 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
     switch (runtime) {
       case 'bun':
         return [{ command: 'bun', args: ['build', './src/main.ts', '--outdir', './dist', '--target', 'bun', ...passThrough] }];
-      case 'deno':
-        return [{ command: 'deno', args: ['compile', '--allow-env', '--allow-net', '--allow-read=.env', '--output', join('dist', 'app'), 'src/main.ts', ...passThrough] }];
       case 'cloudflare-workers':
         return [{ command: 'wrangler', args: ['deploy', '--dry-run', ...passThrough] }];
       default:
@@ -255,8 +252,6 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
     switch (runtime) {
       case 'bun':
         return [buildFluoDevRunnerStep(runtime, passThrough)];
-      case 'deno':
-        return [buildFluoDevRunnerStep(runtime, passThrough)];
       case 'cloudflare-workers':
         return [buildFluoDevRunnerStep(runtime, passThrough)];
       default:
@@ -270,8 +265,6 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
   switch (runtime) {
     case 'bun':
       return [{ command: 'bun', args: ['dist/main.js', ...passThrough] }];
-    case 'deno':
-      return [{ command: join('dist', 'app'), args: [...passThrough] }];
     case 'cloudflare-workers':
       return [{ command: 'wrangler', args: ['dev', '--remote', '--show-interactive-dev-session=false', ...passThrough] }];
     default:
@@ -441,7 +434,7 @@ function resolveDevRunnerPreference(parsed: { devRunner?: DevRunnerPreference },
 }
 
 function projectRuntimeToStudioRuntime(runtime: ProjectRuntime): StudioSidecarRuntime {
-  if (runtime === 'bun' || runtime === 'deno' || runtime === 'node') {
+  if (runtime === 'bun' || runtime === 'node') {
     return runtime;
   }
 

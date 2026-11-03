@@ -113,9 +113,9 @@ outside the count. WebSocket host-subpath re-exports do not add 16 more APIs.
 No claim is made that every existing decorator consistently rejects out-of-type
 `null`; this change does not harden all factories.
 
-The 23 packages without owned public decorators are `config`, `di`, `i18n`,
+The 22 packages without owned public decorators are `config`, `di`, `i18n`,
 `runtime`, `platform-fastify`, `platform-nodejs`, `platform-express`, `platform-bun`,
-`platform-deno`, `platform-cloudflare-workers`, `redis`, `notifications`, `email`,
+`platform-cloudflare-workers`, `redis`, `notifications`, `email`,
 `slack`, `discord`, `socket.io`, `metrics`, `terminus`, `cli`, `studio`, `testing`,
 `vite`, and `jwt`.
 

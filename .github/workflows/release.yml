@@ -57,11 +57,6 @@ jobs:
       - name: Verify Bun native routing and lifecycle
         run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
 
-      - name: Setup Deno for native tooling fixtures
-        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
-        with:
-          deno-version: 'v2.9.7'
-
       - name: Verify release readiness
         # Reuse the successful build above on this same checkout; all other gates still run.
         run: pnpm verify:release-readiness --skip-build
@@ -81,9 +76,3 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
-
-      - name: Deprecate published Deno adapter versions
-        # Skip until the advisory package metadata is public; safe to rerun after publication.
-        run: node tooling/release/deprecate-platform-deno.mjs
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
