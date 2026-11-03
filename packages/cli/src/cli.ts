@@ -502,6 +502,7 @@ export async function runCli(
       return runReactViteDevApp(cwd, {
         onEpochChange: (epoch) => { process.env.FLUO_STUDIO_EPOCH = epoch; },
         port: Number(env.PORT ?? '3000'),
+        testReady: env.FLUO_REACT_TEST_READY === '1',
       });
     }
 

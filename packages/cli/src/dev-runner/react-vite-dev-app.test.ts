@@ -3,11 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { type IncomingMessage, type OutgoingHttpHeaders, request, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { createGunzip, gzipSync, gunzipSync } from 'node:zlib';
 
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 
 import { runReactViteDevApp } from './react-vite-dev-app.js';
 
@@ -170,7 +171,6 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
 }
 
 afterEach(() => {
-  vi.unstubAllEnvs();
   for (const directory of directories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -180,18 +180,30 @@ it('publishes the bound public gateway URL when test readiness is enabled on por
   const { directory, state } = await createFixture();
   state.realHttp = true;
   state.httpHandler = (_incoming, response) => response.end('public gateway');
-  vi.stubEnv('FLUO_REACT_TEST_READY', '1');
   const signals = new EventEmitter();
   const stdout = new PassThrough();
-  let output = '';
-  stdout.on('data', (chunk) => { output += String(chunk); });
-  const ready = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
-  const running = runReactViteDevApp(directory, { port: 0, signalTarget: signals, stdout });
+  const lines = createInterface({ input: stdout });
+  const ready = new Promise<string>((resolve, reject) => {
+    const onLine = (line: string) => {
+      if (/^FLUO_REACT_DEV_READY (http:\/\/127\.0\.0\.1:[1-9]\d*)$/u.test(line)) {
+        clearTimeout(timeout);
+        resolve(line);
+      }
+    };
+    const timeout = setTimeout(() => reject(new Error('Expected the bound gateway ready frame.')), 5_000);
+    lines.on('line', onLine);
+    lines.once('close', () => {
+      clearTimeout(timeout);
+      lines.off('line', onLine);
+      reject(new Error('Gateway output closed before the ready frame.'));
+    });
+  });
+  const running = runReactViteDevApp(directory, { port: 0, signalTarget: signals, stdout, testReady: true });
   state.createGate.resolve();
   state.appGate.resolve();
 
   try {
-    await ready;
+    const output = await ready;
     const match = /^FLUO_REACT_DEV_READY (http:\/\/127\.0\.0\.1:[1-9]\d*)$/mu.exec(output);
     expect(match).not.toBeNull();
     const address = state.websocketServer?.address();
@@ -199,6 +211,7 @@ it('publishes the bound public gateway URL when test readiness is enabled on por
     expect(match[1]).toBe(`http://127.0.0.1:${address.port}`);
     expect(await requestGateway(match[1])).toMatchObject({ body: Buffer.from('public gateway'), status: 200 });
   } finally {
+    lines.close();
     signals.emit('SIGTERM');
     await expect(running).resolves.toBe(0);
   }
