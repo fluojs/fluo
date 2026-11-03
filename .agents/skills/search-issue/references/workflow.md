@@ -139,6 +139,12 @@ Draft bodies contain:
 - affected packages
 - why the issue should be acted on now
 
+Attach `pkg:<package-slug>` and the package's `package_area` label from
+`domain.json` for every affected package. For a bundle, deduplicate the union
+of those labels. Do not label every package merely because it was audited.
+The group keys, `package_area`, and allowed `area:*` labels must agree;
+every catalog package must have an allowed `pkg:*` label.
+
 ## Registration triage
 
 After all drafts are stable, run exactly one native task using
@@ -151,6 +157,10 @@ The triage task is read-only. The lead alone owns registration:
 - skip all registration in investigation-only mode
 - register only `register` decisions
 - reject labels outside `domain.json`
+- require the affected package and group labels on every registering decision;
+  triage may adjust issue classification but must not drop package ownership
+- confirm those labels exist in the repository before `gh issue create`;
+  missing labels block registration, never create an unlabeled substitute
 - never publicly register security-sensitive or support-only drafts
 - execute `gh issue create` once per approved draft and record the exact
   issue number and URL in the ledger
