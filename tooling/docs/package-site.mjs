@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
+const root = process.argv[2] ? path.resolve(process.argv[2]) : fileURLToPath(new URL('../../', import.meta.url));
 const docs = path.join(root, 'apps/docs');
 const destination = path.join(root, '.artifacts/docs-site');
 const run = promisify(execFile);
@@ -13,7 +14,9 @@ const dirty = (await run('git', ['status', '--porcelain'], { cwd: root })).stdou
 const versions = {};
 for (const entry of await readdir(path.join(root, 'packages'), { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
-  const manifest = JSON.parse(await readFile(path.join(root, 'packages', entry.name, 'package.json'), 'utf8'));
+  const manifestPath = path.join(root, 'packages', entry.name, 'package.json');
+  if (!existsSync(manifestPath)) continue;
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   if (manifest.name?.startsWith('@fluojs/') && manifest.private !== true) {
     versions[manifest.name] = manifest.version;
   }
