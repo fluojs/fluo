@@ -33,11 +33,9 @@ export function loadEnvironmentLock(path = defaultLockPath) {
   if (lock.node.compat24.version !== '24.11.0' || lock.node.floor.version !== '24.0.0') {
     throw new TypeError('Node compatibility and runtime-floor versions must remain exact');
   }
-  for (const [name, versions] of [['bun', ['1.2.3', '1.4.0']], ['deno', ['2.5.0', '2.9.7']]]) {
-    for (const version of versions) {
-      if (lock[name]?.[version]?.version !== version || !hex(64, lock[name][version].sha256)) {
-        throw new TypeError(`invalid ${name} ${version} sha256`);
-      }
+  for (const version of ['1.2.3', '1.4.0']) {
+    if (lock.bun?.[version]?.version !== version || !hex(64, lock.bun[version].sha256)) {
+      throw new TypeError(`invalid bun ${version} sha256`);
     }
   }
   if (lock.pnpm?.version !== '10.4.1' || !hex(128, lock.pnpm.sha512)
@@ -52,7 +50,7 @@ export function loadEnvironmentLock(path = defaultLockPath) {
 
 export function imageKeyFor(lock, dockerfileBytes, installerBytes = readFileSync(fileURLToPath(import.meta.url))) {
   // Validate supplied locks as well as locks read from disk.
-  for (const item of [...Object.values(lock.node ?? {}), ...Object.values(lock.bun ?? {}), ...Object.values(lock.deno ?? {})]) {
+  for (const item of [...Object.values(lock.node ?? {}), ...Object.values(lock.bun ?? {})]) {
     if (!hex(64, item?.sha256)) throw new TypeError('invalid download sha256');
   }
   if (lock.platform?.os !== 'linux' || lock.platform?.arch !== 'arm64') throw new TypeError('image requires linux/arm64');
@@ -95,10 +93,8 @@ export function validateVerificationEnvironment({ lock, actual, imageKey }) {
     if (actual.node?.[name] !== item.version) throw new Error(`Node ${name} version mismatch`);
   }
   if (actual.pnpm !== lock.pnpm.version) throw new Error('pnpm version mismatch');
-  for (const runtime of ['bun', 'deno']) {
-    for (const [name, item] of Object.entries(lock[runtime])) {
-      if (actual[runtime]?.[name] !== item.version) throw new Error(`${runtime} ${name} version mismatch`);
-    }
+  for (const [name, item] of Object.entries(lock.bun)) {
+    if (actual.bun?.[name] !== item.version) throw new Error(`bun ${name} version mismatch`);
   }
   if (actual.browser?.channel !== lock.browser.channel || actual.browser.version !== lock.browser.version
     || actual.browser.launched !== true) {
@@ -149,14 +145,6 @@ function install() {
     command('unzip', ['-q', archive, '-d', `/opt/bun/${version}`]);
     renameSync(`/opt/bun/${version}/bun-linux-aarch64/bun`, `/opt/bun/${version}/bun`);
     rmSync(`/opt/bun/${version}/bun-linux-aarch64`, { recursive: true });
-    rmSync(archive);
-  }
-  for (const { version, sha256 } of Object.values(lock.deno)) {
-    const archive = `/tmp/deno-${version}.zip`;
-    download(`https://github.com/denoland/deno/releases/download/v${version}/deno-aarch64-unknown-linux-gnu.zip`,
-      archive, 'sha256', sha256);
-    mkdirSync(`/opt/deno/${version}`, { recursive: true });
-    command('unzip', ['-q', archive, '-d', `/opt/deno/${version}`]);
     rmSync(archive);
   }
   download(lock.browser.url, '/tmp/chrome.zip', 'sha256', lock.browser.sha256);

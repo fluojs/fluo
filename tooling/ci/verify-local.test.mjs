@@ -102,7 +102,6 @@ const environment = lock => ({
   os:'linux', arch:lock.platform.arch==='arm64'?'arm64':'x64',
   node:Object.fromEntries(Object.entries(lock.node).map(([key,item])=>[key,item.version])),
   bun:Object.fromEntries(Object.entries(lock.bun).map(([key,item])=>[key,item.version])),
-  deno:Object.fromEntries(Object.entries(lock.deno).map(([key,item])=>[key,item.version])),
   pnpm:lock.pnpm.version,
   browser:{channel:lock.browser.channel,version:lock.browser.version,launched:true},
   docker:{reachable:true,version:'fixture',cliVersion:lock.docker.version},

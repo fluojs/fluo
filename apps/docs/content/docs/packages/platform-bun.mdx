@@ -6,7 +6,7 @@ package: "@fluojs/platform-bun"
 
 `@fluojs/platform-bun` is the HTTP adapter that runs a fluo application on the [Bun](https://bun.sh/) runtime. It implements the framework's `HttpApplicationAdapter` contract on top of native `Bun.serve()`, so controllers, providers, middleware, and shutdown hooks behave exactly as they do on Node.js-based adapters while the transport uses Bun's `Request`/`Response` bridge.
 
-Use this package when your deployment target is Bun. Use [`@fluojs/platform-nodejs`](/docs/packages/platform-nodejs), [`@fluojs/platform-fastify`](/docs/packages/platform-fastify), or [`@fluojs/platform-express`](/docs/packages/platform-express) when the target is Node.js, and [`@fluojs/platform-deno`](/docs/packages/platform-deno) or [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) for the other fetch-style runtimes. The adapter is not a module: there is no `forRoot`/`forRootAsync` registration, no `@Module` to import, and nothing to add to a provider list. You construct the adapter, hand it to `FluoFactory.create(...)`, and call `app.listen()`.
+Use this package when your deployment target is Bun. Use [`@fluojs/platform-nodejs`](/docs/packages/platform-nodejs), [`@fluojs/platform-fastify`](/docs/packages/platform-fastify), or [`@fluojs/platform-express`](/docs/packages/platform-express) when the target is Node.js, and [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) for the other fetch-style runtime (the Deno adapter is removed; its page is archived). The adapter is not a module: there is no `forRoot`/`forRootAsync` registration, no `@Module` to import, and nothing to add to a provider list. You construct the adapter, hand it to `FluoFactory.create(...)`, and call `app.listen()`.
 
 The package depends on `@fluojs/http` and `@fluojs/runtime` and requires `globalThis.Bun.serve()` when the server starts. It declares no `engines.node` constraint because its runtime contract is Bun, not Node.js; the repository's Node.js requirement applies only to the maintainer toolchain that builds and tests it.
 
@@ -239,7 +239,7 @@ Errors thrown by Bun itself or by application code keep their original class, me
 
 ## Testing at this seam
 
-The package's own regression target is `packages/platform-bun/src/adapter.test.ts`, which exercises the documented contract with a Bun-compatible server double: portability assertions (conditional requests, byte ranges, malformed cookies, raw-body preservation, multipart exclusion, SSE), native-route param parity and every documented fallback, shutdown drain, signal cleanup, 503 ingress rejection, and websocket binding delegation. The shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` runs the same baseline against Deno and Cloudflare Workers.
+The package's own regression target is `packages/platform-bun/src/adapter.test.ts`, which exercises the documented contract with a Bun-compatible server double: portability assertions (conditional requests, byte ranges, malformed cookies, raw-body preservation, multipart exclusion, SSE), native-route param parity and every documented fallback, shutdown drain, signal cleanup, 503 ingress rejection, and websocket binding delegation. The shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` runs the same baseline against Cloudflare Workers.
 
 For your own tests, boot the real factory on an ephemeral port and talk HTTP:
 
@@ -266,7 +266,7 @@ Port `0` selects an ephemeral port and `getListenTarget()` reports the actual UR
 
 ## Related reading
 
-- [`@fluojs/platform-deno`](/docs/packages/platform-deno) - the sibling fetch-style adapter for the Deno runtime.
+- [`@fluojs/platform-deno`](/docs/packages/platform-deno) - the archived sibling fetch-style adapter for the Deno runtime (removed; final `2.0.2`).
 - [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) - the edge fetch adapter and its lazy Worker host.
 - [Dependency injection](/docs/fundamentals/dependency-injection) - how the providers behind your controllers compose.
 - [Runtime Adapters](/docs/guides/runtime-adapters) - choosing between adapters and the portability matrix.

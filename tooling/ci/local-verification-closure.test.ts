@@ -26,7 +26,6 @@ describe('local verification companion closure', () => {
       'packages/core/src/index.mjs',
       'packages/core/test/global-setup.ts',
       'docs/reference/node-support.md',
-      'packages/platform-deno/src/index.ts',
     ];
 
     // When
@@ -44,7 +43,9 @@ describe('local verification companion closure', () => {
     const commands = plan.tasks.flatMap((task) => task.commands.map((command) => command.argv.join(' ')));
     expect(commands).toContain('verify:docs');
     expect(plan.tasks.find((task) => task.id === 'native-web')?.commands.some((command) =>
-      command.argv.includes('packages/platform-deno/deno/native-adapter.test.js'))).toBe(true);
+      command.argv.includes('packages/testing/src/portability/web-runtime-adapter-portability.test.ts'))).toBe(true);
+    const executables = plan.tasks.flatMap((task) => task.commands.map((command) => command.executable));
+    expect(executables).not.toContain('deno');
     expect(commands).toContain('lint');
     expect(plan.capabilityTasks['declaration-importers']).toContain('static');
   });

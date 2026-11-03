@@ -18,7 +18,7 @@ Analyze public exports, implementation, and tests from the same repository check
 
 ## Keeping runtime differences visible
 
-Fastify, raw Node, and Express on Node.js are not one implementation with identical server ownership. Bun, Deno, and Cloudflare Workers use Fetch requests but have different startup, shutdown, and environmental-resource boundaries. Inside Next.js, the host owns the server and bundles; do not assume that Fluo should open a separate listener.
+Fastify, raw Node, and Express on Node.js are not one implementation with identical server ownership. Bun and Cloudflare Workers use Fetch requests but have different startup, shutdown, and environmental-resource boundaries. Inside Next.js, the host owns the server and bundles; do not assume that Fluo should open a separate listener.
 
 Find shared contracts without generalizing that every platform offers every feature. When building an adapter, declare its intended support and verify it with conformance and portability tests. State unsupported boundaries instead of hiding them behind silent fallbacks.
 

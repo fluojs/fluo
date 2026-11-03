@@ -107,7 +107,7 @@ describe('verifyChangesetReleaseLane', () => {
           runGit: (args: string[]) => {
           const command = args.join(' ');
 
-          if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+          if (command === 'diff --name-only --diff-filter=d origin/main -- packages/*/package.json') {
             return 'packages/react/package.json\n';
           }
 
@@ -124,6 +124,35 @@ describe('verifyChangesetReleaseLane', () => {
     expect(result.checkedVersionDeltas).toEqual([]);
   });
 
+  it('ignores a retired package manifest while evaluating release deltas and Node engine ranges', () => {
+    const directory = createChangesetDirectory();
+    const changesetDirectory = join(directory, '.changeset');
+    const manifestDirectory = join(directory, 'packages', 'retired');
+    const manifestPath = join(manifestDirectory, 'package.json');
+    const gitOptions = { cwd: directory, encoding: 'utf8', env: { ...process.env, GIT_MASTER: '1' } } as const;
+    mkdirSync(changesetDirectory);
+    mkdirSync(manifestDirectory, { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify({ name: '@fluojs/retired', version: '1.0.0' }));
+    execFileSync('git', ['init', '--quiet'], gitOptions);
+    execFileSync('git', ['add', 'packages'], gitOptions);
+    rmSync(manifestPath);
+
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'index-base', changesetDirectory, lane: 'stable' },
+      {
+        runGit: (args: string[]) => execFileSync('git', args
+          .filter((argument) => argument !== 'index-base')
+          .map((argument) => argument.replace(/^index-base:/u, ':')), gitOptions),
+        readFileSync: () => readFileSync(manifestPath, 'utf8'),
+      },
+    );
+
+    expect(result).toMatchObject({
+      checkedStableNodeEngineRangeNarrowings: [],
+      checkedVersionDeltas: [],
+    });
+  });
+
   it('fails closed when base-ref package manifest probing fails for an unexpected git error', () => {
     const directory = createChangesetDirectory();
     writeChangeset(directory, 'react-scaffold.md', '"@fluojs/react": minor');
@@ -135,7 +164,7 @@ describe('verifyChangesetReleaseLane', () => {
           runGit: (args: string[]) => {
             const command = args.join(' ');
 
-            if (command === 'diff --name-only origin/missing -- packages/*/package.json') {
+            if (command === 'diff --name-only --diff-filter=d origin/missing -- packages/*/package.json') {
               return 'packages/react/package.json\n';
             }
 
@@ -317,7 +346,7 @@ describe('verifyChangesetReleaseLane', () => {
           runGit: (args: string[]) => {
             const command = args.join(' ');
 
-            if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+            if (command === 'diff --name-only --diff-filter=d origin/main -- packages/*/package.json') {
               return 'packages/graphql/package.json\n';
             }
 
@@ -412,7 +441,7 @@ describe('verifyChangesetReleaseLane', () => {
           runGit: (args: string[]) => {
             const command = args.join(' ');
 
-            if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+            if (command === 'diff --name-only --diff-filter=d origin/main -- packages/*/package.json') {
               return 'packages/graphql/package.json\n';
             }
 
@@ -733,3 +762,4 @@ describe('verifyChangesetReleaseLane', () => {
     expect(result.checkedIntents).toEqual([]);
   });
 });
+import { execFileSync } from 'node:child_process';

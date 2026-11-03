@@ -4,9 +4,9 @@
 
 ## Status and scope
 
-**Deno support is Deprecated.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno paths receive no new features, performance work, or compatibility with new runtime versions. Critical security and regression fixes are considered case-by-case, with no patch or LTS guarantee. New projects should use the default Node.js + Fastify path, or evaluate Cloudflare Workers for edge deployment.
+**Deno support is Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno paths are deleted from the active workspace and receive no further releases. npm registry observation on 2026-11-03 confirmed all 18 published `@fluojs/platform-deno` versions deprecated; `2.0.2` is the final release, and the prior implementation remains in Git history and npm tarballs. New projects should use the default Node.js + Fastify path, or evaluate Cloudflare Workers for edge deployment.
 
-Existing Deno adapter/WebSocket `2.x` and CLI `3.x` paths and examples remain usable. Removal is planned for the next major of the respective Deno-related packages, tracked in [#3938](https://github.com/fluojs/fluo/issues/3938). The exact last advisory release version is determined by the Changesets release. This document does not name a final version or assert that npm registry deprecation has completed.
+Removal reaches published packages with their next majors, tracked in [#3938](https://github.com/fluojs/fluo/issues/3938): the pre-removal workspace declared CLI `4.0.1` and WebSockets `2.0.3`, and the MAJOR removal changesets take `@fluojs/cli` to 5 and `@fluojs/websockets` to 3, with Changesets as the authoritative version source. Explicit `--runtime deno`/`--platform deno` generation and `fluo dev`/`build`/`start` in Deno-generated projects fail with migration guidance and never silently select a different runtime.
 
 The [official announcement on 2026-10-09](https://deno.com/blog/cloudflare) says the Deno runtime will receive monthly bug/security fixes for one year before the team's development ends; it remains open source. Deno Deploy shuts down after six months, while JSR continues operating. Those timelines are not a Fluo patch/LTS promise; the runtime, Deploy, and JSR are separate.
 
@@ -118,7 +118,7 @@ Keep gateway decorators, room contracts, and explicit replies or opt-in event-en
 
 ## CLI, configuration, scripts, and lockfiles
 
-The CLI process runs on Node.js `>=24.11.0 <27`. Although the Deno target is Deprecated, existing explicit `--runtime deno --platform deno` values and generated paths are not removed in this phase. Compare the new target with the [starter matrix](../reference/fluo-new-support-matrix.md) and [toolchain matrix](../reference/toolchain-contract-matrix.md).
+The CLI process runs on Node.js `>=24.11.0 <27`. The CLI removed its Deno target: explicit `--runtime deno`/`--platform deno` requests and lifecycle commands in existing Deno-generated projects fail with a migration direction instead of silently selecting a different runtime, and published CLI `4.x` is the last line that still contains the Deno paths. Compare the new target with the [starter matrix](../reference/fluo-new-support-matrix.md) and [toolchain matrix](../reference/toolchain-contract-matrix.md).
 
 1. Inventory import maps, `npm:`/URL/JSR imports, and tasks in `deno.json`/`deno.jsonc`; translate them into target `package.json` dependencies and bundler resolution. Do not blindly delete files still used by Deno consumers. Adapt local imports such as `./app.ts` to the selected starter's TypeScript/bundler rules.
 2. The CLI detects runtime from platform package dependencies in `package.json`. Once a target manifest has migrated, replace `@fluojs/platform-deno` with the target adapter and align explicit runtime overrides. Do not assume the existing `fluo dev` automatically switches to Node.
@@ -129,4 +129,4 @@ The CLI process runs on Node.js `>=24.11.0 <27`. Although the Deno target is Dep
 
 ## Evidence and verification scope
 
-Public APIs and examples derive from the [Fastify](../../packages/platform-fastify/README.md), [Deno](../../packages/platform-deno/README.md), [Workers](../../packages/platform-cloudflare-workers/README.md), and [WebSockets](../../packages/websockets/README.md) contracts. Implementation evidence is in `packages/platform-fastify/src/adapter.ts`, `packages/platform-deno/src/fetch-handler.ts`, `packages/platform-cloudflare-workers/src/adapter.ts`, `packages/cli/src/new/scaffold.ts`, and `packages/cli/src/commands/scripts.ts`. This document is not evidence of deployment or registry status. Actual application migration verification is application-owned.
+Public APIs and examples derive from the [Fastify](../../packages/platform-fastify/README.md), [Deno](../../packages/platform-deno/README.md), [Workers](../../packages/platform-cloudflare-workers/README.md), and [WebSockets](../../packages/websockets/README.md) contracts. Implementation evidence is in `packages/platform-fastify/src/adapter.ts` and `packages/platform-cloudflare-workers/src/adapter.ts`. The Deno adapter source is deleted from the worktree; the archived implementation is preserved in Git history and in the published `@fluojs/platform-deno` `2.0.2` npm tarball. This document is not evidence of deployment or registry status. Actual application migration verification is application-owned.

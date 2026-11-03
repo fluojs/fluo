@@ -15,7 +15,7 @@ semantics into the shared contract.
 
 Use it when one application should send email directly *and* plug into
 notifications, when transport choice must stay explicit and portable across
-Node, Bun, Deno, and Cloudflare-compatible boundaries, or when transport
+Node, Bun, and Cloudflare-compatible boundaries, or when transport
 resources must join application bootstrap/shutdown. Do not reach for it as a
 templating framework: the renderer is an optional fallback-content hook, and
 the package ships no template engine, no SMTP server, and no environment

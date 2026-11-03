@@ -31,7 +31,7 @@ Bridge helper가 guidance에서 first-party runtime surface로 승격되려면 �
 
 1. `@fluojs/i18n` root export가 아니라 dedicated subpath 또는 dedicated package 아래에서 publish합니다.
 2. Import-time registration side effect와 직접 `process.env` 읽기가 없습니다.
-3. Dependency는 optional 또는 isolated여서 root package가 Node.js, Bun, Deno, Cloudflare Workers, browser-oriented bundle에서 portable 상태를 유지합니다.
+3. Dependency는 optional 또는 isolated여서 root package가 Node.js, Bun, Cloudflare Workers, browser-oriented bundle에서 portable 상태를 유지합니다.
 4. README section이 runtime behavior, unsupported assumption, migration limit를 문서화합니다.
 5. Regression test가 catalog conversion, locale fallback behavior, invalid input handling, dependency isolation을 다룹니다.
 6. Public export는 repository TSDoc baseline을 따릅니다.

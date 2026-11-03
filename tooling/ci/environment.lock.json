@@ -25,10 +25,6 @@
     "1.2.3": { "version": "1.2.3", "sha256": "ac8d2f49b93e586ee6e1eac9286897d1ae812dbfb2fb5c09a031856323a1f7f9" },
     "1.4.0": { "version": "1.4.0", "sha256": "4b1a332ee861983eb93bcfe6f770fff94e3e31b2c388bdaea3c8ed35e58eed0e" }
   },
-  "deno": {
-    "2.5.0": { "version": "2.5.0", "sha256": "81d2ef446954429f0dcbcb24cdce115e5bb2c3a3548b79c01b49ec959682ac9b" },
-    "2.9.7": { "version": "2.9.7", "sha256": "c832298b1ad4422481334855f6003e0f54145762c5a134f20a489511d2f65bbf" }
-  },
   "browser": {
     "channel": "chrome",
     "version": "154.0.8037.57",

@@ -1,9 +1,9 @@
 ---
 title: Runtime Adapters
-description: Choose Fastify, Express, raw Node.js, Bun, or Cloudflare Workers; retain Deprecated Deno reference for existing applications.
+description: Choose Fastify, Express, raw Node.js, Bun, or Cloudflare Workers; the removed Deno adapter remains as an archived reference.
 ---
 
-> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+> **Deno support is Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno target are deleted from the active workspace; npm registry observation on 2026-11-03 confirmed all 18 published `@fluojs/platform-deno` versions deprecated, with `2.0.2` as the final release. The prior implementation remains in Git history and npm tarballs, and removal reaches published packages with the next CLI and WebSockets majors (CLI 5 and WebSockets 3 per the removal changesets; Changesets is authoritative), tracked in [#3938](https://github.com/fluojs/fluo/issues/3938). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
 
 Runtime adapters are the seam between fluo application semantics and a concrete host runtime.
 
@@ -27,7 +27,7 @@ The exported Cloudflare Worker `fetch` handler has no host-invoked shutdown call
 
 Static asset policy is portable only when the application supplies a `StaticAssetSource` to `createStaticAssetsMiddleware(...)`. This preserves the same traversal protection, validators, `HEAD`, `Range`, `If-Range`, and stream-cancellation behavior on every adapter without claiming that every host has a filesystem.
 
-On raw Node.js, Express, and Fastify, use `createNodeFileSystemAssetSource(...)` from `@fluojs/platform-nodejs` for a root-confined filesystem source. It rejects invalid roots during configuration, rejects lexical and symlink escapes, and can select `.br` or `.gz` siblings when precompression is enabled. Bun, Deno, and Cloudflare Workers must provide an application-owned source; fluo does not emulate Node filesystem access on those targets.
+On raw Node.js, Express, and Fastify, use `createNodeFileSystemAssetSource(...)` from `@fluojs/platform-nodejs` for a root-confined filesystem source. It rejects invalid roots during configuration, rejects lexical and symlink escapes, and can select `.br` or `.gz` siblings when precompression is enabled. Bun and Cloudflare Workers must provide an application-owned source; fluo does not emulate Node filesystem access on those targets.
 
 ## Adapter families
 
@@ -37,7 +37,7 @@ On raw Node.js, Express, and Fastify, use `createNodeFileSystemAssetSource(...)`
 | Raw Node.js HTTP/HTTPS | `@fluojs/platform-nodejs` | Minimal dependencies and direct Node server control. |
 | Express | `@fluojs/platform-express` | Existing Express infrastructure and middleware familiarity. |
 | Bun | `@fluojs/platform-bun` | Bun-native `Bun.serve()` applications. |
-| Deno (Deprecated) | `@fluojs/platform-deno` | Deno-native `Deno.serve` deployments. |
+| Deno (Removed) | `@fluojs/platform-deno` (archived, final `2.0.2`) | Migrate existing Deno-native `Deno.serve` deployments to Node/Fastify or Workers; see the [archived page](/docs/packages/platform-deno). |
 | Cloudflare Workers | `@fluojs/platform-cloudflare-workers` | Edge `fetch` handlers and Worker isolate constraints. |
 
 ## The portable application contract
@@ -279,7 +279,7 @@ Bun fetch dispatch preserves the shared single-byte-range and `If-Range` policy:
 
 ## Deno
 
-The following native `Deno.serve` examples preserve existing Deprecated Deno deployments; they are not a recommendation for new applications.
+The following native `Deno.serve` examples are archived for existing `<= 2.0.2` deployments; the adapter is removed from the active workspace. They are not a recommendation for new applications.
 
 ```ts
 import { FluoFactory } from '@fluojs/runtime';
@@ -444,7 +444,7 @@ export class WorkerBindingsModule {}
 
 ## Runtime behavior matrix
 
-| Behavior | Fastify | Node.js | Express | Bun | Deno | Workers |
+| Behavior | Fastify | Node.js | Express | Bun | Deno (archived) | Workers |
 | --- | --- | --- | --- | --- | --- | --- |
 | Server-backed HTTP | Yes | Yes | Yes | Native `Bun.serve` | Native `Deno.serve` | Fetch handler |
 | Managed startup | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `FluoFactory.create` + `app.listen` | `CloudflareWorkerApplicationHost.create` for lazy hosts |
@@ -464,7 +464,7 @@ export class WorkerBindingsModule {}
 | `@fluojs/platform-nodejs` | `NodeHttpApplicationAdapter.create`, Node adapter option types |
 | `@fluojs/platform-express` | `ExpressHttpApplicationAdapter.create`, `ExpressHttpApplicationAdapter`, multipart helpers |
 | `@fluojs/platform-bun` | `BunHttpApplicationAdapter.create`, `createBunFetchHandler`, Bun realtime binding types |
-| `@fluojs/platform-deno` | `DenoHttpApplicationAdapter.create`, `createDenoFetchHandler`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
+| `@fluojs/platform-deno` (archived) | `DenoHttpApplicationAdapter.create`, `createDenoFetchHandler`, `DenoHttpApplicationAdapter`, manual `handle(request)` - removed from the active workspace |
 | `@fluojs/platform-cloudflare-workers` | `CloudflareWorkerHttpApplicationAdapter.create`, `CloudflareWorkerApplicationHost.create`, Worker adapter/host generation types |
 
 ## Common mistakes
@@ -473,9 +473,9 @@ export class WorkerBindingsModule {}
 | --- | --- |
 | Reading `process.env.PORT` implicitly from adapter factories | Pass explicit ports through adapter or bootstrap options. |
 | Assuming native route acceleration bypasses fluo semantics | Native matches still hand back to the shared dispatcher. |
-| Using server-backed WebSocket options on fetch-style runtimes | Use runtime-specific WebSocket subpaths and avoid `serverBacked` on Bun/Deno/Workers fetch-style bindings. |
+| Using server-backed WebSocket options on fetch-style runtimes | Use runtime-specific WebSocket subpaths and avoid `serverBacked` on Bun/Workers fetch-style bindings. |
 | Treating raw body as available for multipart requests | Multipart requests do not expose `rawBody`; use multipart APIs and limits. |
-| Letting platform helpers terminate the process directly | The host process owns final termination. Do not infer that every runtime reports shutdown failure through an exit code: Deno logs and swallows signal-triggered application-close failures without setting an exit status. |
+| Letting platform helpers terminate the process directly | The host process owns final termination. Do not infer that every runtime reports shutdown failure through an exit code: the archived Deno registration logged and swallowed signal-triggered application-close failures without setting an exit status. |
 | Depending on Node globals in portable app code | Keep runtime-specific behavior inside adapter/bootstrap code. |
 | Existing Express application adoption or post-bootstrap `use(...)` mutation | Let the adapter construct the Express application, pass unavoidable native handlers through construction-time `nativeMiddleware`, and rewrite portable behavior as fluo `Middleware`. |
 

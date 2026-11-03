@@ -35,7 +35,13 @@ describe('standalone published CLI artifact', () => {
       cpSync(join(repositoryRoot, entry), join(releaseRoot, entry), { recursive: true });
     }
     for (const directory of readdirSync(join(repositoryRoot, 'packages'))) {
-      const manifest = JSON.parse(readFileSync(join(repositoryRoot, 'packages', directory, 'package.json'), 'utf8'));
+      const packageJsonPath = join(repositoryRoot, 'packages', directory, 'package.json');
+      // Retired archive-only package directories (for example the removed Deno platform
+      // adapter) no longer carry a manifest and are not part of the release checkout.
+      if (!existsSync(packageJsonPath)) {
+        continue;
+      }
+      const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
       manifest.version = releaseVersions[manifest.name] ?? manifest.version;
       mkdirSync(join(releaseRoot, 'packages', directory), { recursive: true });
       writeFileSync(join(releaseRoot, 'packages', directory, 'package.json'), JSON.stringify(manifest));

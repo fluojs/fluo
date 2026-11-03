@@ -29,13 +29,13 @@ const NEW_OPTION_HELP: CommandOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: 'Select the runtime explicitly (node, bun, deno, or cloudflare-workers for application starters; node for microservice and mixed starters).',
-    option: '--runtime <node|bun|deno|cloudflare-workers>',
+    description: 'Select the runtime explicitly (node, bun, or cloudflare-workers for application starters; node for microservice and mixed starters).',
+    option: '--runtime <node|bun|cloudflare-workers>',
   },
   {
     aliases: [],
-    description: 'Select the platform adapter explicitly (fastify, express, or nodejs on node; bun/deno/cloudflare-workers on their native runtimes; none for microservices).',
-    option: '--platform <fastify|express|nodejs|bun|deno|cloudflare-workers|none>',
+    description: 'Select the platform adapter explicitly (fastify, express, or nodejs on node; bun/cloudflare-workers on their native runtimes; none for microservices).',
+    option: '--platform <fastify|express|nodejs|bun|cloudflare-workers|none>',
   },
   {
     aliases: [],

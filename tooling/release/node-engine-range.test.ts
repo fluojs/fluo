@@ -36,7 +36,7 @@ function publishedGraphqlDependencies(
     runGit: (args: string[]) => {
       const command = args.join(' ');
 
-      if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+      if (command === 'diff --name-only --diff-filter=d origin/main -- packages/*/package.json') {
         return 'packages/graphql/package.json\n';
       }
 

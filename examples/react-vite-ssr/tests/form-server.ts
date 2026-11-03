@@ -28,3 +28,6 @@ const adapter = FastifyHttpApplicationAdapter.create({
 });
 const app = await FluoFactory.create(AppModule, { ...AppModule.applicationOptions, adapter });
 await app.listen();
+if (process.env.REACT_VITE_EXAMPLE_TEST_READY === '1') {
+  console.log(`REACT_VITE_EXAMPLE_READY ${adapter.getListenTarget().url}`);
+}

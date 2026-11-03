@@ -89,7 +89,7 @@ fixtures start importing them.
 
 ## Not executed (explicit gaps)
 
-- Fetch-style websockets runtimes: `@fluojs/websockets/bun`, `/deno`, `/cloudflare-workers` — README/source-derived only; no Bun/Deno/workerd host was booted in this fixture (native platform evidence lives with the platform-guide workstream fixtures).
+- Fetch-style websockets runtimes: `@fluojs/websockets/bun`, `/cloudflare-workers` — README/source-derived only; no Bun/workerd host was booted in this fixture (native platform evidence lives with the platform-guide workstream fixtures). The former `/deno` binding is archived and removed in WebSockets 3; earlier Deno observations above are historical, not current coverage.
 - Socket.IO on Bun (`@socket.io/bun-engine` path, static-CORS constraint, mapped body/frame limits) — README/source-derived only.
 - Socket.IO polling transport and ACK-with-multiple-arguments frames — the fixture client uses the websocket transport and single-payload events only.
 - Microservice transports other than TCP (Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC) — their broker clients (`ioredis`, `nats`, `kafkajs`, `amqplib`, `mqtt`, `@grpc/grpc-js`) are not resolvable from `tooling/` without lead-owned manifest changes, and no broker service was required for the TCP/native claims made by the guide. Transport choice, durability, and broker behavior are documented from the README capability matrix and transport sources.

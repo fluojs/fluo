@@ -14,7 +14,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -37,7 +36,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -55,7 +53,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -72,7 +69,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -89,7 +85,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -113,7 +108,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -131,7 +125,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -148,7 +141,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -171,7 +163,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -189,7 +180,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -209,7 +199,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -226,7 +215,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -243,7 +231,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -260,7 +247,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -277,7 +263,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -300,7 +285,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -318,7 +302,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -340,7 +323,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -358,7 +340,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -375,7 +356,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -397,7 +377,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -415,7 +394,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -432,7 +410,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -454,7 +431,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -478,7 +454,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -496,7 +471,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "host-evidence",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -514,7 +488,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "host-evidence",
         "next": "not-applicable"
       },
@@ -524,24 +497,6 @@
         ".github/workflows/ci.yml"
       ],
       "rationale": "Not packed here; the existing response-cookie conformance suite runs a real workerd host in CI, without claiming duplicate package interoperability."
-    },
-    {
-      "package": "@fluojs/platform-deno",
-      "status": "not-applicable",
-      "topologies": [],
-      "surfaces": [],
-      "platforms": {
-        "node": "not-applicable",
-        "bun": "not-applicable",
-        "deno": "host-evidence",
-        "workers": "not-applicable",
-        "next": "not-applicable"
-      },
-      "evidence": [
-        "packages/platform-deno/deno/native-adapter.test.js",
-        ".github/workflows/ci.yml"
-      ],
-      "rationale": "Not packed here; the Deno-native adapter journey runs a built listener and fetch handler in CI, separate from this duplicate-copy matrix."
     },
     {
       "package": "@fluojs/platform-express",
@@ -556,7 +511,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -579,7 +533,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -597,7 +550,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "host-evidence"
       },
@@ -620,7 +572,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -638,7 +589,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -655,7 +605,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -677,7 +626,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -695,7 +643,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -717,7 +664,6 @@
       "platforms": {
         "node": "native",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -735,7 +681,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -752,7 +697,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -769,7 +713,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -786,7 +729,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -803,7 +745,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -820,7 +761,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -837,7 +777,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -854,7 +793,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -871,7 +809,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
@@ -888,7 +825,6 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },

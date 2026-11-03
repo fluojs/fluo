@@ -12,7 +12,7 @@ import {
 import { RawCapture, RuntimeCapture } from '../src/profiling';
 import { monitorServer } from '../src/resources';
 import { SCENARIOS, STAGE_SCENARIOS } from '../src/scenarios';
-import { TARGETS, targetLaunch } from '../src/targets';
+import { ARCHIVED_BASELINE_TARGET_NAMES, TARGETS, targetLaunch } from '../src/targets';
 import { withResourceHttpServer } from './fixtures/resource-http-fixture.mjs';
 
 let measured: Awaited<ReturnType<typeof monitorServer<Awaited<ReturnType<typeof load>>>>>;
@@ -135,7 +135,7 @@ for (const version of ['24', '25']) {
 
 test('target selection supports every target and rejects unknown or duplicate entries', () => {
   // Given / When / Then
-  assert.equal(selectProfileTargets().length, 16);
+  assert.equal(selectProfileTargets().length, 14);
   assert.equal(selectProfileTargets(['nestjs-fastify', 'fluo-workers']).length, 2);
   assert.throws(() => selectProfileTargets(['unknown']));
   assert.throws(() => selectProfileTargets(['native-nodejs', 'native-nodejs']));
@@ -156,7 +156,7 @@ test('optional inspector launch preserves default args and isolates runtime flag
       assert.ok(!instrumented.args.includes('--trace-gc'));
     } else {
       assert.ok(instrumented.args.some((arg) => arg.startsWith('--inspect=127.0.0.1:35333')));
-      assert.equal(instrumented.args.includes('--trace-gc'), !['bun', 'deno'].includes(target.platform));
+      assert.equal(instrumented.args.includes('--trace-gc'), target.platform !== 'bun');
     }
   }
 });
@@ -445,7 +445,6 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
 
 for (const [name, expectedSource] of [
   ['native-bun', 'Heap.garbageCollected'],
-  ['native-deno', '--v8-flags=--trace-gc'],
   ['native-nodejs', '--trace-gc'],
 ] as const) {
   test(`RuntimeCapture.stop: ${name} GC diagnostics -> identifies actual collection source`, async () => {
@@ -711,10 +710,11 @@ test('direct workerd flushed capture: SIGINT intent/drain distinction -> rejects
 });
 
 function timingSamples(): StageTimingSample[] {
-  return TARGETS.flatMap((target) => [...SCENARIOS, ...STAGE_SCENARIOS].flatMap((scenario) =>
+  // The frozen issue3910 matrix includes the archived Deno targets.
+  return ARCHIVED_BASELINE_TARGET_NAMES.flatMap((target) => [...SCENARIOS, ...STAGE_SCENARIOS].flatMap((scenario) =>
     (['default', 'equivalent'] as const).flatMap((configuration) => [1, 64].flatMap((connections) =>
       [0, 1, 2].map((repeat) => ({
-        target: target.name, scenario: scenario.name, configuration, connections, repeat,
+        target, scenario: scenario.name, configuration, connections, repeat,
         mode: 'uninstrumented' as const, source: 'issue3910' as const,
         requests: 100, errors: 0, timeouts: 0, non2xx: 0, bodyMismatches: 0, statusMismatches: 0,
         warmupSeconds: 5, durationSeconds: 15, sourceSha256: sha256('source'),

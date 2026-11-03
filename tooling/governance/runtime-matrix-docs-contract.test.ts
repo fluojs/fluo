@@ -76,7 +76,6 @@ describe('runtime matrix docs contract', () => {
       '@fluojs/platform-express',
       '@fluojs/platform-nodejs',
       '@fluojs/platform-bun',
-      '@fluojs/platform-deno',
       '@fluojs/platform-cloudflare-workers',
     ]);
     expectAll(read('docs/reference/fluo-new-support-matrix.ko.md'), [
@@ -93,7 +92,6 @@ describe('runtime matrix docs contract', () => {
       '@fluojs/platform-express',
       '@fluojs/platform-nodejs',
       '@fluojs/platform-bun',
-      '@fluojs/platform-deno',
       '@fluojs/platform-cloudflare-workers',
     ]);
     expect(read('docs/reference/package-chooser.md')).toContain('./fluo-new-support-matrix.md');
@@ -150,7 +148,6 @@ describe('runtime matrix docs contract', () => {
       '--shape application --transport http --runtime node --platform express',
       '--shape application --transport http --runtime node --platform nodejs',
       '--shape application --transport http --runtime bun --platform bun',
-      '--shape application --transport http --runtime deno --platform deno',
       '--shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape microservice --transport redis-streams --runtime node --platform none',
@@ -167,7 +164,6 @@ describe('runtime matrix docs contract', () => {
       '--shape application --transport http --runtime node --platform express',
       '--shape application --transport http --runtime node --platform nodejs',
       '--shape application --transport http --runtime bun --platform bun',
-      '--shape application --transport http --runtime deno --platform deno',
       '--shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape microservice --transport redis-streams --runtime node --platform none',
@@ -184,7 +180,6 @@ describe('runtime matrix docs contract', () => {
       '--shape application --transport http --runtime node --platform express',
       '--shape application --transport http --runtime node --platform nodejs',
       '--shape application --transport http --runtime bun --platform bun',
-      '--shape application --transport http --runtime deno --platform deno',
       '--shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape microservice --transport redis-streams --runtime node --platform none',
@@ -201,7 +196,6 @@ describe('runtime matrix docs contract', () => {
       '--shape application --transport http --runtime node --platform express',
       '--shape application --transport http --runtime node --platform nodejs',
       '--shape application --transport http --runtime bun --platform bun',
-      '--shape application --transport http --runtime deno --platform deno',
       '--shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape microservice --transport redis-streams --runtime node --platform none',

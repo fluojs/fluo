@@ -7,9 +7,9 @@ export type BootstrapShape = 'application' | 'microservice' | 'mixed';
 /** Named starter variants exposed by `fluo new`. */
 export type BootstrapStarter = 'react-vite-ssr' | 'standard';
 /** Supported runtime families for the current starter matrix. */
-export type BootstrapRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
+export type BootstrapRuntime = 'bun' | 'cloudflare-workers' | 'node';
 /** Supported platform adapters for the current starter matrix. */
-export type BootstrapPlatform = 'bun' | 'cloudflare-workers' | 'deno' | 'express' | 'fastify' | 'nodejs' | 'none';
+export type BootstrapPlatform = 'bun' | 'cloudflare-workers' | 'express' | 'fastify' | 'nodejs' | 'none';
 /** Supported transport families for the current starter matrix. */
 export type BootstrapTransport = 'grpc' | 'http' | 'kafka' | 'mqtt' | 'nats' | 'rabbitmq' | 'redis-streams' | 'tcp';
 /** Supported tooling presets for the current starter matrix. */

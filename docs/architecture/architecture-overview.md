@@ -7,7 +7,7 @@
 | Layer | Representative packages | Responsibility | Boundary |
 | --- | --- | --- | --- |
 | Core | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/runtime` | Defines decorators, dependency resolution, configuration access, bootstrap order, and runtime orchestration. | Core packages MUST provide framework contracts that remain independent from any concrete HTTP server or feature integration. |
-| Transport | `@fluojs/http`, `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` | Maps request execution, routing, response writing, and hosting-environment adapters onto runtime contracts. | Transport packages MUST implement runtime-facing adapter seams and MUST NOT redefine core dependency or configuration rules. |
+| Transport | `@fluojs/http`, `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers` | Maps request execution, routing, response writing, and hosting-environment adapters onto runtime contracts. | Transport packages MUST implement runtime-facing adapter seams and MUST NOT redefine core dependency or configuration rules. |
 | Feature | `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi`, `@fluojs/jwt`, `@fluojs/passport`, `@fluojs/cqrs`, `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/websockets`, `@fluojs/socket.io` | Adds protocol extensions, persistence integrations, auth, observability, and application capabilities on top of core and transport contracts. | Feature packages MUST attach to documented framework seams instead of introducing alternate bootstrap, DI, or platform lifecycles. |
 
 ## Package Responsibilities
@@ -19,7 +19,7 @@
 | `@fluojs/config` | Core | Loads validated configuration snapshots and centralizes environment access. | `docs/architecture/config-and-environments.md` |
 | `@fluojs/runtime` | Core | Compiles modules, registers runtime tokens, coordinates lifecycle hooks, and starts the adapter shell. | `docs/getting-started/bootstrap-paths.md` |
 | `@fluojs/http` | Transport | Defines request context, routing phases, guards, interceptors, materialization, and response serialization. | `docs/architecture/http-runtime.md` |
-| `@fluojs/platform-*` | Transport | Implements concrete runtime adapters for Node.js, Bun, Deno, Express, Fastify, and Cloudflare Workers. | `docs/architecture/platform-consistency-design.md` |
+| `@fluojs/platform-*` | Transport | Implements concrete runtime adapters for Node.js, Bun, Express, Fastify, and Cloudflare Workers. | `docs/architecture/platform-consistency-design.md` |
 | `@fluojs/graphql` | Feature | Extends the HTTP execution model with GraphQL schema exposure and resolver execution. | `docs/reference/package-surface.md` |
 | `@fluojs/validation` and `@fluojs/serialization` | Feature | Enforces input materialization, validation boundaries, and output shaping. | `docs/reference/package-surface.md` |
 | `@fluojs/openapi` | Feature | Projects HTTP metadata into OpenAPI surface documentation. | `docs/reference/package-surface.md` |

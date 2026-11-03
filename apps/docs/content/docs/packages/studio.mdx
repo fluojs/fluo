@@ -41,7 +41,7 @@ The CLI starts the normal dev process, starts the sidecar, injects explicit Stud
 - recent request flow with route/handler correlation, success/error, status code, and duration;
 - bootstrap timing summaries and runtime/request diagnostics with severity, target, message, and fix hints.
 
-Runtime support is explicit for this MVP: the Node dev runner is the live target; Bun, Deno, and Cloudflare Workers projects are rejected by `fluo dev --studio` until dedicated bridges exist - use the static workflow below instead.
+Runtime support is explicit for this MVP: the Node dev runner is the live target; Bun and Cloudflare Workers projects are rejected by `fluo dev --studio` until dedicated bridges exist - use the static workflow below instead.
 
 Live request flow means route/handler and dependency-graph correlation, not full method-level service call tracing.
 
@@ -115,7 +115,7 @@ These are shipped defaults, not configuration knobs to relax for the MVP. Treat 
 - **Ownership**: the [CLI](/docs/packages/cli) owns sidecar launch and artifact export; [`@fluojs/runtime`](/docs/packages/runtime) produces snapshots, request traces, timing, and diagnostics; Studio owns parsing, filtering, graph rendering, validation semantics, and the viewer surface. Nothing in Studio writes to your application.
 - **Startup/shutdown**: the sidecar's lifecycle belongs to `fluo dev` - it starts with the dev session and tears down with it, including deterministic close while an authenticated ingestion body is still incomplete, so a stuck local client cannot hang CLI shutdown.
 - **Predictable limits**: static artifacts lack the compiled DI graph; request flow is route/handler correlation only; there is no cloud hosting, accounts, team sharing, production monitoring, or bidirectional commands (documented future direction, not shipped features); route `kind` is an open string at the integration boundary, so custom markers are preserved but only `react-page` gets dedicated labeling.
-- **Common mistakes**: opening `dist/index.html` from the filesystem instead of serving `fluo-studio-viewer`; importing the removed `@fluojs/studio/contracts` subpath; expecting live events from a Bun/Deno/Workers dev session; treating a valid live event's route list as a matching authority (Studio never participates in routing).
+- **Common mistakes**: opening `dist/index.html` from the filesystem instead of serving `fluo-studio-viewer`; importing the removed `@fluojs/studio/contracts` subpath; expecting live events from a Bun/Workers dev session; treating a valid live event's route list as a matching authority (Studio never participates in routing).
 
 ## Testing
 

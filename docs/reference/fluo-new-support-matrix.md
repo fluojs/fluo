@@ -2,17 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./fluo-new-support-matrix.ko.md"><kbd>한국어</kbd></a></p>
 
-> **Deno: Deprecated.** Not recommended for new projects. No new features, performance work, or new runtime compatibility; critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths and examples below remain usable; removal is planned for the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). Follow the [Deno migration guide](../getting-started/migrate-from-deno.md).
+> **Deno: Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno targets are removed from the active workspace ([#3938](https://github.com/fluojs/fluo/issues/3938)). Every published `@fluojs/platform-deno` version (all 18, final `2.0.2`) is deprecated on npm (observed 2026-11-03). Deno material below is archived history, not maintained API; follow the [Deno migration guide](../getting-started/migrate-from-deno.md).
 
 ## current starter coverage vs broader ecosystem support
 
 | surface | status today | what is wired into `fluo new` | where to go next |
 | --- | --- | --- | --- |
-| **Application starter** | **Scaffolded** | Node.js + HTTP via `--shape application --transport http --runtime node --platform fastify|express|nodejs`, Bun via `--runtime bun --platform bun`, Deno via `--runtime deno --platform deno`, and Cloudflare Workers via `--runtime cloudflare-workers --platform cloudflare-workers` | Fastify remains the default starter baseline when you omit `--platform`; Express, raw Node.js, Bun, and Cloudflare Workers remain recommended application choices; the existing Deno starter is Deprecated, not a maintained baseline. |
+| **Application starter** | **Scaffolded** | Node.js + HTTP via `--shape application --transport http --runtime node --platform fastify|express|nodejs`, Bun via `--runtime bun --platform bun`, and Cloudflare Workers via `--runtime cloudflare-workers --platform cloudflare-workers` | Fastify remains the default starter baseline when you omit `--platform`; Express, raw Node.js, Bun, and Cloudflare Workers remain recommended application choices. Explicit `--runtime deno`/`--platform deno` requests are removed and fail with migration guidance instead of silently selecting another runtime (CLI 5 per the removal changeset; Changesets is authoritative). |
 | **React SSR + Vite starter** | **Scaffolded** | Node.js + Fastify HTTP via `--starter react-vite-ssr`; generates explicit client/server entries, split Vite configs, manifest-fed hydration, an HTTP-owned page router, and focused SSR/hydration/browser tests | Use this named starter for the proven HTTP-first React path. It keeps manifest loading at `src/main.ts`, decorator-bearing declarations in `src/app.ts`, JSX rendering in `.tsx` modules, emits real anchors and full-document navigation, and excludes RSC, Server Functions, file routing, client route tables, prefetch, and data caches. |
 | **Microservice starter** | **Scaffolded** | Node.js + no HTTP platform + TCP via `--shape microservice --transport tcp --runtime node --platform none`, Redis Streams via `--transport redis-streams`, NATS via `--transport nats`, Kafka via `--transport kafka`, RabbitMQ via `--transport rabbitmq`, MQTT via `--transport mqtt`, and gRPC via `--transport grpc` | TCP remains the simplest default starter baseline when you omit `--transport`; Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC ship as runnable starters with transport-specific dependency/env/proto wiring. Broader messaging packages such as `@fluojs/redis` remain ecosystem choices after scaffolding rather than extra `fluo new --transport` starter values. |
 | **Mixed starter** | **Scaffolded** | Node.js + Fastify HTTP app + attached TCP microservice via `--shape mixed --transport tcp --runtime node --platform fastify` | This is the only published mixed starter variant. |
-| **Broader adapter/runtime ecosystem** | **Partially scaffolded, partially docs-only** | `@fluojs/platform-fastify`, `@fluojs/platform-express`, `@fluojs/platform-nodejs`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, and `@fluojs/platform-cloudflare-workers` retain application starter paths; Deno is Deprecated. Other runtime/package combinations remain broader ecosystem docs rather than starter presets. | Use the runtime/package docs below to adopt the remaining docs-only adapters after scaffolding or in hand-authored setups. |
+| **Broader adapter/runtime ecosystem** | **Partially scaffolded, partially docs-only** | `@fluojs/platform-fastify`, `@fluojs/platform-express`, `@fluojs/platform-nodejs`, `@fluojs/platform-bun`, and `@fluojs/platform-cloudflare-workers` retain application starter paths; `@fluojs/platform-deno` is archived (removed; all published versions deprecated). Other runtime/package combinations remain broader ecosystem docs rather than starter presets. | Use the runtime/package docs below to adopt the remaining docs-only adapters after scaffolding or in hand-authored setups. |
 
 ## generated toolchain
 
@@ -26,21 +26,21 @@ The representative sandbox matrix installs, builds, typechecks, and tests React 
 | --- | --- |
 | **Starter docs** | Read `fluo new` coverage as the shipped starter contract only. |
 | **Reference docs** | Read runtime and package references as the broader ecosystem map outside the shipped starter presets. |
-| **Application commands** | Treat explicit `fluo new --shape application --transport http --runtime ... --platform ...` commands for Fastify, Express, raw Node.js, Bun, Deno, and Cloudflare Workers as the runnable starter contract. |
+| **Application commands** | Treat explicit `fluo new --shape application --transport http --runtime ... --platform ...` commands for Fastify, Express, raw Node.js, Bun, and Cloudflare Workers as the runnable starter contract. |
 | **Named starter command** | Treat `fluo new my-app --starter react-vite-ssr` as the runnable Node.js + Fastify React SSR contract; omitting `--starter` or using `--starter standard` preserves the existing backend matrix. |
 | **Microservice commands** | Treat documented `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc` variants as the runnable starter contract. Other adapter or package mentions still describe the broader ecosystem. |
 | **Plan preview** | Treat `fluo new ... --dry-run` as a non-writing preview of the same resolved starter contract. It prints the selected named starter and recipe, package manager, install/git choices, and dependency sets without creating files, installing dependencies, initializing git, or checking for CLI updates. |
 
 ## explicit supported starter values
 
-- `--shape application --transport http` supports the shipped starter platforms `fastify`, `express`, `nodejs`, `bun`, `deno`, and `cloudflare-workers` through the documented runtime/platform combinations above.
+- `--shape application --transport http` supports the shipped starter platforms `fastify`, `express`, `nodejs`, `bun`, and `cloudflare-workers` through the documented runtime/platform combinations above; `deno` is rejected with migration guidance.
 - `--starter` supports exactly `standard` and `react-vite-ssr`. The React variant is fixed to `application/node/http/fastify/standard/single-package`; incompatible shape/runtime/platform/transport selections fail instead of silently widening the starter.
 - `--shape microservice --transport` supports exactly `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`.
 - Supported `fluo new --transport` starter values exclude `redis`; use `redis-streams` for the maintained Redis-backed starter, or add `@fluojs/redis` after scaffolding when you need broader Redis integration choices.
 - `--shape mixed` supports the single published starter combination `--transport tcp --runtime node --platform fastify`.
 - `--topology` is currently a single-package starter contract for application, microservice, and mixed shapes. Multi-package monorepo generation is not part of `fluo new` today.
 - `--tooling` currently resolves to the maintained `standard` preset. Other build/test presets are broader roadmap items, not accepted starter contracts.
-- Runtime/platform pairs are exact. For example, Node.js application starters use `--runtime node --platform fastify|express|nodejs`; Bun, Deno, and Cloudflare Workers application starters use their matching runtime/platform pairs and are not mix-and-match aliases for Node platforms.
+- Runtime/platform pairs are exact. For example, Node.js application starters use `--runtime node --platform fastify|express|nodejs`; Bun and Cloudflare Workers application starters use their matching runtime/platform pairs and are not mix-and-match aliases for Node platforms.
 
 ## NestJS migration reading
 

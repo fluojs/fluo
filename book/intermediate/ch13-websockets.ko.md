@@ -103,11 +103,11 @@ NodeWebSocketModule.forRoot({
 
 `upgrade.guard`는 특히 중요합니다. 이 guard는 WebSocket handshake가 완료되기 전에 실행되므로, 인증이나 origin 검증처럼 연결 성립 전에 판단해야 하는 조건을 가장 이른 경계에서 처리할 수 있습니다.
 
-`@fluojs/websockets/node`는 Node의 `IncomingMessage`를 사용하므로 header access도 Node request shape를 따릅니다. `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` 같은 fetch-style subpath는 Web standard `Request`를 받습니다. 이런 runtime의 reusable option object는 `request.headers.get('authorization')`으로 header를 읽고 runtime-specific options type을 import해야 합니다. Root는 authoring primitive와 shared contract만 export하며 Node registration alias는 제공하지 않습니다.
+`@fluojs/websockets/node`는 Node의 `IncomingMessage`를 사용하므로 header access도 Node request shape를 따릅니다. `@fluojs/websockets/bun`, `@fluojs/websockets/cloudflare-workers` 같은 fetch-style subpath는 Web standard `Request`를 받습니다. 이런 runtime의 reusable option object는 `request.headers.get('authorization')`으로 header를 읽고 runtime-specific options type을 import해야 합니다. Root는 authoring primitive와 shared contract만 export하며 Node registration alias는 제공하지 않습니다.
 
 Guard가 실패하면 connection은 즉시 거부됩니다. 서버가 인증되지 않은 client를 위해 리소스를 할당하지 않도록 막는 경계입니다.
 
-Shutdown은 이 admission boundary를 terminal하게 닫습니다. Node runtime은 `upgrade.guard`가 없는 경로까지 포함해 일치하는 request를 `ws`에 넘기기 직전에 shutdown gate를 다시 확인하므로, shutdown 시작 뒤 request가 authorization에서 acceptance로 넘어갈 수 없습니다. Node, Bun, Deno, Workers 모두 close event가 이미 queue한 `@OnDisconnect()`를 cleanup이 settle될 때까지 추적합니다. Application shutdown이 해당 cleanup과 겹치면 teardown을 벗어나지 않고 같은 `shutdown.timeoutMs` bounded drain에 포함됩니다.
+Shutdown은 이 admission boundary를 terminal하게 닫습니다. Node runtime은 `upgrade.guard`가 없는 경로까지 포함해 일치하는 request를 `ws`에 넘기기 직전에 shutdown gate를 다시 확인하므로, shutdown 시작 뒤 request가 authorization에서 acceptance로 넘어갈 수 없습니다. Node, Bun, Workers 모두 close event가 이미 queue한 `@OnDisconnect()`를 cleanup이 settle될 때까지 추적합니다. Application shutdown이 해당 cleanup과 겹치면 teardown을 벗어나지 않고 같은 `shutdown.timeoutMs` bounded drain에 포함됩니다.
 
 ## 13.5 Integrating with FluoShop events
 
@@ -167,20 +167,20 @@ export class OrderStatusGateway {
 
 ## 13.6 Cross-runtime websocket surfaces
 
-fluo는 이식성을 전제로 설계되었습니다. Node subpath의 `NodeWebSocketModule`은 Node.js를 대상으로 하며 FluoShop은 필요할 때 Bun, Deno, Cloudflare Workers runtime module을 사용할 수 있습니다. Root `@fluojs/websockets` import는 gateway authoring에 runtime-neutral하게 유지됩니다. Registration과 native 차이를 runtime import 경계에 모아두면 gateway의 업무 로직은 더 안정적으로 유지됩니다.
+fluo는 이식성을 전제로 설계되었습니다. Node subpath의 `NodeWebSocketModule`은 Node.js를 대상으로 하며 FluoShop은 필요할 때 Bun, Cloudflare Workers runtime module을 사용할 수 있습니다. Root `@fluojs/websockets` import는 gateway authoring에 runtime-neutral하게 유지됩니다. Registration과 native 차이를 runtime import 경계에 모아두면 gateway의 업무 로직은 더 안정적으로 유지됩니다.
 
 | Runtime | Subpath |
 | --- | --- |
 | Node.js | `@fluojs/websockets/node` |
 | Bun | `@fluojs/websockets/bun` |
-| Deno | `@fluojs/websockets/deno` |
+| Deno (아카이브) | `@fluojs/websockets/deno` - 제거됨(WebSockets 2.x까지 존재) |
 | Workers | `@fluojs/websockets/cloudflare-workers` |
 
 정확한 subpath에서 import하면 backend adapter가 호스트 환경에 맞게 바뀌어도 gateway 로직은 그대로 유지됩니다. 즉, 이식성은 추상적인 약속이 아니라 패키지 경계와 import 선택으로 드러나는 설계 원칙입니다.
 
-Root 및 Node entrypoint는 upgrade guard를 Node의 `IncomingMessage`로 type 지정합니다. Bun, Deno, Cloudflare Workers subpath는 Web standard `Request` guard를 사용합니다. Guard는 `true` 또는 return 없음으로 upgrade를 허용하고, `false`나 structured `WebSocketUpgradeRejection`으로 거절하거나 `UnauthorizedException` 같은 HTTP exception을 throw할 수 있습니다. fluo는 socket을 accept하기 전에 이런 실패를 pre-handshake rejection response로 변환합니다. Text frame은 JSON event envelope로 parse할 수 없으면 string으로 전달되고, binary frame은 동일한 dispatch 단계 전에 UTF-8로 decode되므로 지원 runtime 전반에서 payload 처리 방식이 일관됩니다.
+Root 및 Node entrypoint는 upgrade guard를 Node의 `IncomingMessage`로 type 지정합니다. Bun, Cloudflare Workers subpath는 Web standard `Request` guard를 사용합니다. Guard는 `true` 또는 return 없음으로 upgrade를 허용하고, `false`나 structured `WebSocketUpgradeRejection`으로 거절하거나 `UnauthorizedException` 같은 HTTP exception을 throw할 수 있습니다. fluo는 socket을 accept하기 전에 이런 실패를 pre-handshake rejection response로 변환합니다. Text frame은 JSON event envelope로 parse할 수 없으면 string으로 전달되고, binary frame은 동일한 dispatch 단계 전에 UTF-8로 decode되므로 지원 runtime 전반에서 payload 처리 방식이 일관됩니다.
 
-Raw WebSocket handler return value는 기본적으로 await된 뒤 무시됩니다. `socket.send(JSON.stringify({ event: 'pong', data }))`처럼 runtime socket argument로 client reply를 명시적으로 보낼 수 있습니다. Return 기반 reply를 선호하는 application은 선택한 runtime module의 `forRoot({ replies: { mode: 'event-envelope' } })`를 구성하며, 이 mode에서는 올바른 `{ event, data? }` handler return이 완료 후 serialize되어 Node, Bun, Deno, Cloudflare Workers 전반에서 전송됩니다.
+Raw WebSocket handler return value는 기본적으로 await된 뒤 무시됩니다. `socket.send(JSON.stringify({ event: 'pong', data }))`처럼 runtime socket argument로 client reply를 명시적으로 보낼 수 있습니다. Return 기반 reply를 선호하는 application은 선택한 runtime module의 `forRoot({ replies: { mode: 'event-envelope' } })`를 구성하며, 이 mode에서는 올바른 `{ event, data? }` handler return이 완료 후 serialize되어 Node, Bun, Cloudflare Workers 전반에서 전송됩니다.
 
 Low-level integration에서는 public seam 이름을 code review에서 드러나게 유지하세요. `WebSocketUpgradeContext`, `WebSocketUpgradeGuard`, `WebSocketUpgradeRejection`, gateway descriptor type은 root contract이고 runtime socket/binding type은 platform owner에 남습니다. Application code는 `NodeWebSocketGatewayLifecycleService`를 Node subpath에서 resolve하며 직접 생성하지 않습니다.
 
@@ -200,7 +200,7 @@ WebSocket은 조용히 끊길 수 있습니다. 네트워크 중단이나 silent
 export class DedicatedGateway {}
 ```
 
-이 설정은 server-backed Node adapter에서 3101 포트의 전용 listener를 시작합니다. 실시간 트래픽을 표준 API 트래픽과 격리하고, 서로 다른 load-balancing 규칙이나 방화벽 정책을 적용해야 할 때 유용합니다. 운영자는 이 분리를 통해 연결 유지 비용과 일반 요청 처리 비용을 따로 관찰할 수 있습니다. Fetch-style runtime(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 `serverBacked`를 거부합니다. 그런 runtime에서는 전용 listener 대신 runtime의 fetch-style upgrade surface를 사용하십시오.
+이 설정은 server-backed Node adapter에서 3101 포트의 전용 listener를 시작합니다. 실시간 트래픽을 표준 API 트래픽과 격리하고, 서로 다른 load-balancing 규칙이나 방화벽 정책을 적용해야 할 때 유용합니다. 운영자는 이 분리를 통해 연결 유지 비용과 일반 요청 처리 비용을 따로 관찰할 수 있습니다. Fetch-style runtime(`@fluojs/websockets/bun`, `@fluojs/websockets/cloudflare-workers`)은 `serverBacked`를 거부합니다. 그런 runtime에서는 전용 listener 대신 runtime의 fetch-style upgrade surface를 사용하십시오.
 
 ## 13.9 Shared path gateways
 
@@ -240,7 +240,7 @@ WebSocket이 도입되면서 주문 흐름은 더 직접적인 실시간 계약�
 - `NodeWebSocketModule.forRoot()`는 production 안정성을 위해 bounded default와 함께 Node engine을 초기화합니다.
 - `@WebSocketGateway` 클래스는 connection lifecycle과 message routing을 관리합니다.
 - `upgrade.guard`를 사용하면 서버 리소스를 소모하기 전에 인증되지 않은 handshake를 거부할 수 있습니다.
-- Runtime-specific subpath는 실시간 로직이 Node, Bun, Deno, Cloudflare Workers 간에 이식 가능하도록 보장합니다.
+- Runtime-specific subpath는 실시간 로직이 Node, Bun, Cloudflare Workers 간에 이식 가능하도록 보장합니다.
 - `WebSocketRoomService`는 gateway에 문서화된 room membership 및 broadcast contract를 제공합니다. Node subpath의 `NodeWebSocketGatewayLifecycleService` 또는 다른 runtime subpath의 해당 runtime lifecycle token을 `@Inject(...)`로 주입하고 parameter를 `WebSocketRoomService`로 type 지정하세요.
 - Text 및 binary payload는 `@OnMessage()` handler가 실행되기 전에 정규화됩니다.
 - Shutdown은 accept 전에 upgrade admission을 닫고 이미 queue된 disconnect cleanup을 bounded drain 안에 유지합니다.

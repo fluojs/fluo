@@ -24,30 +24,6 @@
       "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/native-platforms --maxWorkers=1: Test Files 4 passed (4); Tests 10 passed (10); exit 0; two consecutive runs (~2.0s each) on worktree head e0c73126e"
     ]
   },
-  "@fluojs/platform-deno": {
-    "page": "apps/docs/content/docs/packages/platform-deno.mdx",
-    "sources": [
-      "packages/platform-deno/README.md",
-      "packages/platform-deno/package.json",
-      "packages/platform-deno/src/index.ts",
-      "packages/platform-deno/src/adapter.ts",
-      "packages/platform-deno/src/options.ts",
-      "packages/platform-deno/src/fetch-handler.ts",
-      "packages/platform-deno/src/shutdown.ts",
-      "packages/platform-deno/deno/native-adapter.test.js",
-      "packages/runtime/src/types.ts"
-    ],
-    "tests": [
-      "tooling/docs/fixtures/package-guides/native-platforms/deno/deno-native.test.ts"
-    ],
-    "compositions": [
-      "tooling/docs/fixtures/package-guides/native-platforms/deno/deno-server-app.ts: real Deno.serve managed adapter path - FluoFactory.create + DenoHttpApplicationAdapter.create({ hostname: '127.0.0.1', port: 0 }) + app.listen() + createDenoShutdownSignalRegistration(['SIGTERM']); real HTTP fetch of a DI-injected controller route; SIGTERM close observed by OnApplicationShutdown sentinel (shutdown signal=SIGTERM) and child exit code 0",
-      "tooling/docs/fixtures/package-guides/native-platforms/deno/deno-native.test.ts: spawn flags deno run --no-check --node-modules-dir=manual --allow-net --allow-read --allow-write=<scratch> --sloppy-imports; ephemeral-port URL read from the FLUO_LISTENING stdout sentinel; bounded event barriers, no polling delays"
-    ],
-    "verifiedCommands": [
-      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/native-platforms --maxWorkers=1: Test Files 4 passed (4); Tests 10 passed (10); exit 0; two consecutive runs (~2.0s each) on worktree head e0c73126e; deno 2.9.7 native child verified serving and draining"
-    ]
-  },
   "@fluojs/platform-cloudflare-workers": {
     "page": "apps/docs/content/docs/packages/platform-cloudflare-workers.mdx",
     "sources": [

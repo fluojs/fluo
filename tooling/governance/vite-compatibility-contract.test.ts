@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 
 import { describe, expect, it } from 'vitest';
@@ -28,8 +28,11 @@ describe('@fluojs/vite compatibility contract', () => {
   });
 
   it('keeps every workspace test runner on Vitest 4', async () => {
+    // Retired platform directories may keep only README/CHANGELOG archive files without a
+    // manifest; enumerate the actual active workspace manifests, mirroring
+    // verify-platform-consistency-governance.mjs.
     const packageDirectories = readdirSync(new URL('../../packages', import.meta.url), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && existsSync(new URL(`../../packages/${entry.name}/package.json`, import.meta.url)))
       .map((entry) => entry.name);
     const manifests = await Promise.all(
       packageDirectories.map((directory) =>

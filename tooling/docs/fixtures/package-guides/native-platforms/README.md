@@ -1,10 +1,9 @@
 # native-platforms fixtures
 
-Runnable composition evidence for the three fetch-style platform package
+Runnable composition evidence for the maintained fetch-style platform package
 guides:
 
 - `apps/docs/content/docs/packages/platform-bun.mdx` (`@fluojs/platform-bun`)
-- `apps/docs/content/docs/packages/platform-deno.mdx` (`@fluojs/platform-deno`)
 - `apps/docs/content/docs/packages/platform-cloudflare-workers.mdx` (`@fluojs/platform-cloudflare-workers`)
 
 Run everything from the repository root with:
@@ -12,6 +11,12 @@ Run everything from the repository root with:
 ```bash
 pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/native-platforms --maxWorkers=1
 ```
+
+Deno support has ended. Its website URL remains an archive, not an active
+package guide or executable fixture. Deno-only fixtures and their active
+`evidence.json` entry were removed with #3938. Historical Deno observations in
+this document describe the earlier checkout named below; they are not current
+coverage or a runtime prerequisite. Bun and Workers coverage remains active.
 
 ## What each package's evidence actually is
 

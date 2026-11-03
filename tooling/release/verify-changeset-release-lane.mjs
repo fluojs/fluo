@@ -235,7 +235,7 @@ function collectPackageVersionDeltas(baseRef, dependencies = {}) {
   }
 
   const { readFileSync: readFile = readFileSync, runGit: git = runGit } = dependencies;
-  const diffOutput = git(['diff', '--name-only', baseRef, '--', 'packages/*/package.json']);
+  const diffOutput = git(['diff', '--name-only', '--diff-filter=d', baseRef, '--', 'packages/*/package.json']);
   const packageJsonPaths = diffOutput
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -334,7 +334,7 @@ function collectStableNodeEngineRangeNarrowings(baseRef, dependencies = {}) {
   }
 
   const { readFileSync: readFile = readFileSync, runGit: git = runGit } = dependencies;
-  const packageJsonPaths = git(['diff', '--name-only', baseRef, '--', 'packages/*/package.json'])
+  const packageJsonPaths = git(['diff', '--name-only', '--diff-filter=d', baseRef, '--', 'packages/*/package.json'])
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)

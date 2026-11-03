@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
-import { TARGETS } from '../src/targets';
+import { ARCHIVED_BASELINE_TARGET_NAMES } from '../src/targets';
 import { SCENARIOS } from '../src/scenarios';
 
 const execute = promisify(execFile);
@@ -28,7 +28,7 @@ for (const defect of ['none', 'missing-target', 'wrong-status', 'smoke-duration'
         const sweeps = [1, 64].map((connections) => ({
           connections,
           rawRuns: Array.from({ length: 3 }, () => SCENARIOS.map((scenario) => ({
-            name: scenario.name, targets: TARGETS.map((target) => ({ label: target.name, ...structuredClone(sample) })),
+            name: scenario.name, targets: ARCHIVED_BASELINE_TARGET_NAMES.map((label) => ({ label, ...structuredClone(sample) })),
           }))),
         }));
         if (configuration === 'equivalent' && defect === 'missing-target') sweeps[0].rawRuns[0][0].targets.pop();

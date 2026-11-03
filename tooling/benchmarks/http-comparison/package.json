@@ -23,7 +23,6 @@
     "@fluojs/http": "link:../../../packages/http",
     "@fluojs/platform-bun": "link:../../../packages/platform-bun",
     "@fluojs/platform-cloudflare-workers": "link:../../../packages/platform-cloudflare-workers",
-    "@fluojs/platform-deno": "link:../../../packages/platform-deno",
     "@fluojs/platform-express": "link:../../../packages/platform-express",
     "@fluojs/platform-fastify": "link:../../../packages/platform-fastify",
     "@fluojs/platform-nextjs": "link:../../../packages/platform-nextjs",

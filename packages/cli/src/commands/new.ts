@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 
+import { denoSupportEndedMessage, RETIRED_DENO_RUNTIME } from '../deno-support.js';
 import { installDependencies } from '../new/install.js';
 import { type BootstrapPrompter, collectBootstrapAnswers } from '../new/prompt.js';
 import { resolveBootstrapPlan } from '../new/resolver.js';
@@ -184,8 +185,12 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { dryRun?: boole
         }
 
         parsed.runtime = readOptionValue(argv, index, '--runtime') as BootstrapAnswers['runtime'];
+        if (parsed.runtime === RETIRED_DENO_RUNTIME) {
+          throw new Error(denoSupportEndedMessage('--runtime deno'));
+        }
+
         if (!SUPPORTED_RUNTIMES.has(parsed.runtime)) {
-          throw new Error(`Invalid --runtime value "${parsed.runtime}". Use one of: bun, cloudflare-workers, deno, node.`);
+          throw new Error(`Invalid --runtime value "${parsed.runtime}". Use one of: bun, cloudflare-workers, node.`);
         }
         index += 1;
         break;
@@ -195,8 +200,12 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { dryRun?: boole
         }
 
         parsed.platform = readOptionValue(argv, index, '--platform') as BootstrapAnswers['platform'];
+        if (parsed.platform === RETIRED_DENO_RUNTIME) {
+          throw new Error(denoSupportEndedMessage('--platform deno'));
+        }
+
         if (!SUPPORTED_PLATFORMS.has(parsed.platform)) {
-          throw new Error(`Invalid --platform value "${parsed.platform}". Use one of: bun, cloudflare-workers, deno, fastify, express, nodejs, none.`);
+          throw new Error(`Invalid --platform value "${parsed.platform}". Use one of: bun, cloudflare-workers, fastify, express, nodejs, none.`);
         }
         index += 1;
         break;

@@ -59,7 +59,6 @@ export async function prepareTimingIdentity(target: TargetConfig, appShape: AppS
     build: { commands: [...buildCommands], scope: 'serving entry and target output tree; linked dependency provenance remains in environment' },
     env: {
       BENCH_TIMING_ENTRY: entry, BENCH_TIMING_FILES: JSON.stringify(files),
-      ...(target.platform === 'deno' ? { BENCH_TIMING_IMPORT_ENTRY: '1' } : {}),
     },
   };
 }
@@ -123,7 +122,6 @@ export async function authenticateTimingIdentity(
     || sha256(JSON.stringify(object(identity.artifacts))) !== prepared.artifactsSha256
     || (nodeFamily && (typeof runtime.node !== 'string' || 'bun' in runtime || 'deno' in runtime))
     || (prepared.target.endsWith('-bun') && typeof runtime.bun !== 'string')
-    || (prepared.target.endsWith('-deno') && typeof runtime.deno !== 'string')
     || typeof identity.executable !== 'string' || typeof identity.executableSha256 !== 'string'
     || identity.executableSha256 !== sha256(await readFile(identity.executable))
     || identity.inspectorUrl !== null || !Array.isArray(identity.instrumentationFlags) || identity.instrumentationFlags.length !== 0) {

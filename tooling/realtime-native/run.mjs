@@ -61,16 +61,6 @@ if (source === 'final') {
 
 await run('node', ['tooling/realtime-native/.generated/node.js']);
 await run('bun', ['tooling/realtime-native/.generated/bun.js']);
-await run('pnpm', [
-  'dlx',
-  'deno@2.5.0',
-  'run',
-  '--allow-env',
-  '--allow-net',
-  '--allow-read',
-  '--node-modules-dir=manual',
-  'tooling/realtime-native/.generated/deno.js',
-]);
 await run('node', ['tooling/realtime-native/worker-native.mjs']);
 await run('bun', ['tooling/realtime-native/.generated/socket-io-bun.js']);
 

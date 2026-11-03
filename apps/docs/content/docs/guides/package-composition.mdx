@@ -204,8 +204,7 @@ listen boundary.
 A host-owned [Next.js](/docs/packages/platform-nextjs) request path is not a
 second Node listener. [Workers](/docs/packages/platform-cloudflare-workers)
 uses fetch and execution-context ownership rather than process signals.
-Native [Bun](/docs/packages/platform-bun) and
-[Deno](/docs/packages/platform-deno) adapters have their own shutdown semantics.
+Native [Bun](/docs/packages/platform-bun) adapters have their own shutdown semantics (the Deno adapter is archived).
 Do not transfer a Node-specific client or upgrade recipe just because the
 controller code is portable.
 

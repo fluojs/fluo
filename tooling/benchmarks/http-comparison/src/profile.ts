@@ -43,7 +43,6 @@ function withPort(target: TargetConfig, port: number): TargetConfig {
   const args = [...target.args];
   const flag = args.indexOf('--port');
   if (flag >= 0) args[flag + 1] = String(port);
-  if (target.platform === 'deno') args[args.length - 1] = String(port);
   return { ...target, port, args };
 }
 
@@ -93,7 +92,7 @@ export async function captureCondition(input: {
     }
     const entry = target.platform === 'workers' ? `dist/${target.name}/server.js`
       : target.platform === 'nextjs' ? nextBuildEntry(target)
-      : target.platform === 'deno' ? target.args[target.args.length - 2] : target.args[target.args.length - 1];
+      : target.args[target.args.length - 1];
     const entrySha256 = sha256(await readFile(join(WDIR, entry)));
     raw.save('build', 'entry.json', { path: entry, sha256: entrySha256 });
     for (const phase of ['control-before', 'capture', 'control-after'] as const) {

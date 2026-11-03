@@ -21,11 +21,10 @@
           "platforms": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["node", "bun", "deno", "workers", "next"],
+            "required": ["node", "bun", "workers", "next"],
             "properties": {
               "node": { "enum": ["native", "host-evidence", "not-applicable"] },
               "bun": { "enum": ["native", "host-evidence", "not-applicable"] },
-              "deno": { "enum": ["native", "host-evidence", "not-applicable"] },
               "workers": { "enum": ["native", "host-evidence", "not-applicable"] },
               "next": { "enum": ["native", "host-evidence", "not-applicable"] }
             }

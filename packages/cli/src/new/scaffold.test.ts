@@ -21,7 +21,6 @@ const LOCAL_PACKAGE_DIRECTORY_BY_NAME = {
   '@fluojs/di': 'di',
   '@fluojs/http': 'http',
   '@fluojs/platform-cloudflare-workers': 'platform-cloudflare-workers',
-  '@fluojs/platform-deno': 'platform-deno',
   '@fluojs/microservices': 'microservices',
   '@fluojs/platform-express': 'platform-express',
   '@fluojs/platform-fastify': 'platform-fastify',
@@ -778,60 +777,6 @@ describe('scaffoldBootstrapApp', () => {
     expect(mainFile).toContain('shutdownRegistration: createNodeShutdownSignalRegistration()');
     expect(mainFile).not.toContain('runNodejsApplication');
     expect(mainFile).not.toContain('logger,');
-  });
-
-  it('generates the Deno application starter scaffold', async () => {
-    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-deno-'));
-    temporaryDirectories.push(targetDirectory);
-
-    await scaffoldBootstrapApp({
-      packageManager: 'pnpm',
-      platform: 'deno',
-      projectName: 'starter-deno',
-      runtime: 'deno',
-      shape: 'application',
-      skipInstall: true,
-      targetDirectory,
-      tooling: 'standard',
-      topology: {
-        deferred: true,
-        mode: 'single-package',
-      },
-      transport: 'http',
-    });
-
-    const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
-      dependencies?: Record<string, string>;
-      scripts?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
-    const appFile = readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8');
-    const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
-    const appTestFile = readFileSync(join(targetDirectory, 'src', 'app.test.ts'), 'utf8');
-
-    expect(packageJson.dependencies).toMatchObject({
-      '@fluojs/platform-deno': expect.any(String),
-      '@fluojs/runtime': expect.any(String),
-    });
-    expect(packageJson.scripts?.build).toBe('deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts');
-    expect(packageJson.scripts?.dev).toBe('fluo dev');
-    expect(packageJson.scripts?.test).toBe('deno test --allow-env --allow-net --allow-read=.env');
-    expect(packageJson.scripts?.start).toBe('./dist/app');
-    expect(packageJson.devDependencies).not.toHaveProperty('vitest');
-    expect(readme).toContain('Deno runtime + Deno native HTTP via `FluoFactory.create(..., { adapter, shutdownRegistration })` then `app.listen()`');
-    expect(readme).toContain('defaulting to Deno\'s native watch loop');
-    expect(readme).toContain('fluo dev --runner fluo');
-    expect(readme).toContain('Deno-native production commands');
-    expect(readme).toContain('./dist/app');
-    expect(appFile).toContain("Deno.env.toObject()");
-    expect(appFile).toContain("'./greeting/greeting.module.ts'");
-    expect(mainFile).toContain("import { AppModule } from './app.ts';");
-    expect(mainFile).toContain("import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';");
-    expect(mainFile).toContain('adapter: DenoHttpApplicationAdapter.create({ port })');
-    expect(mainFile).toContain('shutdownRegistration: createDenoShutdownSignalRegistration()');
-    expect(mainFile).toContain('await app.listen();');
-    expect(appTestFile).toContain('Deno.test');
   });
 
   it('generates the Cloudflare Workers application starter scaffold', async () => {

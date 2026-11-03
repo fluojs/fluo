@@ -60,7 +60,7 @@ test('captureCondition: final control shutdown overflows raw limit -> journals f
   const environment: EnvironmentSummary = {
     capturedAt: new Date().toISOString(), arch: process.arch, platform: process.platform,
     osRelease: 'fixture', cpuModel: 'fixture', cpuCount: 1, node: process.version,
-    nodeExecutable: process.execPath, bun: null, deno: null, pnpm: 'fixture',
+    nodeExecutable: process.execPath, bun: null, pnpm: 'fixture',
     dependencies: {}, adapterFastify: {}, adapterExpress: {}, lockfiles: {},
     git: { sha: 'fixture', dirty: true, status: 'fixture' },
     benchmarkSource: { sha256: sha256('fixture'), files: {} },

@@ -161,9 +161,9 @@ The Book is the primary learning path; the short HTTP exercise is a companion. T
 
 **Upgrading an existing project?** Follow the Node, packages, then imports order in the [Node 24 migration guide](./docs/getting-started/migrate-node24.md). Upgrading the CLI does not automatically rewrite an existing app's configuration. Also check the [Node.js support policy](./docs/reference/node-support.md) and [HTTP dependency security update](./docs/reference/dependency-security-update.md).
 
-> **Deno: Deprecated.** Not recommended for new projects. No new features, performance work, or new runtime compatibility; critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths and examples remain usable; removal is planned for the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). Follow the [Deno migration guide](./docs/getting-started/migrate-from-deno.md).
+> **Deno: Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno targets are removed from the active workspace ([#3938](https://github.com/fluojs/fluo/issues/3938)). npm registry observation on 2026-11-03 confirmed every published `@fluojs/platform-deno` version (all 18) deprecated; `2.0.2` is the final release. The prior implementation remains in Git history and npm tarballs, and removal reaches published packages with the next CLI and WebSockets majors (CLI 5 and WebSockets 3 per the removal changesets; Changesets is the authoritative version source). Follow the [Deno migration guide](./docs/getting-started/migrate-from-deno.md).
 
-Existing Deno API usage remains documented in the [Deno adapter README](./packages/platform-deno/README.md).
+Archived Deno API usage remains available through the [Deno adapter README](./packages/platform-deno/README.md) archive notice; the prior implementation remains in Git history and npm tarballs.
 
 ## Community
 

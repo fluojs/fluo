@@ -180,24 +180,24 @@
     },
     {
       "id": "bootstrap.deno-static-adapter",
-      "kind": "recipe",
+      "kind": "migration",
       "owner": {
-        "en": "packages/platform-deno/README.md",
-        "ko": "packages/platform-deno/README.ko.md"
+        "en": "docs/getting-started/migrate-from-deno.md",
+        "ko": "docs/getting-started/migrate-from-deno.ko.md"
       },
       "packages": [
         "@fluojs/runtime",
-        "@fluojs/platform-deno"
+        "@fluojs/platform-fastify",
+        "@fluojs/platform-cloudflare-workers"
       ],
       "sourcePaths": [
-        "packages/platform-deno/src/adapter.ts",
-        "packages/platform-deno/src/shutdown.ts",
+        "packages/platform-fastify/src/adapter.ts",
+        "packages/platform-cloudflare-workers/src/adapter.ts",
         "packages/runtime/src/bootstrap.ts"
       ],
       "testPaths": [
-        "packages/platform-deno/src/adapter.test.ts",
-        "packages/platform-deno/src/fetch-handler.test.ts",
-        "tooling/governance/deno-host-owned-lifecycle-source.test.ts"
+        "packages/platform-fastify/src/adapter.test.ts",
+        "packages/platform-cloudflare-workers/src/adapter.test.ts"
       ]
     },
     {

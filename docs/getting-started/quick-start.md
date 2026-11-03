@@ -65,7 +65,6 @@ fluo new my-app --shape application --transport http --runtime node --platform f
 fluo new my-express-app --shape application --transport http --runtime node --platform express
 fluo new my-node-app --shape application --transport http --runtime node --platform nodejs
 fluo new my-bun-app --shape application --transport http --runtime bun --platform bun
-fluo new my-deno-app --shape application --transport http --runtime deno --platform deno
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 fluo new my-microservice --shape microservice --transport tcp --runtime node --platform none
 fluo new my-redis-streams-service --shape microservice --transport redis-streams --runtime node --platform none
@@ -153,7 +152,7 @@ Generated project start command from the project root:
 pnpm dev
 ```
 
-The default Node.js + Fastify starter generates lifecycle scripts that run `fluo dev`, `fluo build`, and `fluo start`. Those CLI lifecycle runners select the starter's runtime commands and default `NODE_ENV` to `development` for dev and `production` for build/start unless the caller already set it. Bun, Deno, and Cloudflare Workers starters still use the `fluo dev` abstraction, but default to each runtime's native watch loop to reduce Node-supervised dev processes; `fluo dev --runner fluo` restores the fluo-owned restart-on-watch boundary when you need its debounce/hash reporter contract. Their generated production/deployment scripts use runtime-native commands: Bun builds with `bun build` and starts with `bun dist/main.js`, Deno compiles with `deno compile` and starts the compiled `./dist/app`, and Workers exposes Wrangler `preview`/`deploy` scripts instead of a `start` script.
+The default Node.js + Fastify starter generates lifecycle scripts that run `fluo dev`, `fluo build`, and `fluo start`. Those CLI lifecycle runners select the starter's runtime commands and default `NODE_ENV` to `development` for dev and `production` for build/start unless the caller already set it. Bun and Cloudflare Workers starters still use the `fluo dev` abstraction, but default to each runtime's native watch loop to reduce Node-supervised dev processes; `fluo dev --runner fluo` restores the fluo-owned restart-on-watch boundary when you need its debounce/hash reporter contract. Their generated production/deployment scripts use runtime-native commands: Bun builds with `bun build` and starts with `bun dist/main.js`, and Workers exposes Wrangler `preview`/`deploy` scripts instead of a `start` script.
 
 Expected output pattern:
 
@@ -180,8 +179,8 @@ Expected output:
 - `tsconfig.json` keeps `experimentalDecorators` disabled.
 - `tsconfig.json` keeps `emitDecoratorMetadata` disabled.
 - The default generated Node.js application listens on port `3000` during `pnpm dev`, which delegates to `fluo dev`; its generated build/start scripts likewise delegate to `fluo build` and `fluo start`.
-- Generated Bun, Deno, and Cloudflare Workers applications keep the `fluo dev` command abstraction, default to runtime-owned watch/reload behavior, and expose `fluo dev --runner fluo` for the fluo-owned restart-on-watch contract.
-- Generated Bun and Deno application production scripts are runtime-native after build, and generated Cloudflare Workers applications use Wrangler `preview`/`deploy` scripts instead of `start`.
+- Generated Bun and Cloudflare Workers applications keep the `fluo dev` command abstraction, default to runtime-owned watch/reload behavior, and expose `fluo dev --runner fluo` for the fluo-owned restart-on-watch contract.
+- Generated Bun application production scripts are runtime-native after build, and generated Cloudflare Workers applications use Wrangler `preview`/`deploy` scripts instead of `start`. Deno generation is removed; explicit Deno requests fail with migration guidance (see the [Deno migration guide](./migrate-from-deno.md)).
 - The default generated application exposes runtime `/health` plus starter-owned `/greeting`.
 - `fluo new` starter variants map to the maintained starter matrix documented in the CLI README and the support matrix.
 - `fluo new --dry-run` is a read-only preview path. It resolves the starter plan and dependency sets without writing project files, running dependency installation, initializing git, or checking for CLI updates.

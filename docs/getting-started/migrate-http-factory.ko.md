@@ -84,29 +84,29 @@ Factory로 옮기지 마세요.
 | Express | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication` | `ExpressHttpApplicationAdapter.create(options)` |
 | Node | `bootstrapNodeApplication`, `bootstrapNodejsApplication`, `runNodeApplication`, `runNodejsApplication` | `NodeHttpApplicationAdapter.create(options)` |
 | Bun | `createBunAdapter`, `bootstrapBunApplication`, `runBunApplication` | `BunHttpApplicationAdapter.create(options)` |
-| Deno | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication` | `DenoHttpApplicationAdapter.create(options)` |
+| Deno (제거됨) | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication` | 아카이브된 `@fluojs/platform-deno`. [Deno 이전 가이드](./migrate-from-deno.ko.md) 참고 |
 
 Adapter를 Factory에 전달합니다. Bootstrap-only 생성을 대체할 때는 listen을
 생략하고, run 호출을 대체할 때는 `app.listen()`까지 명시적으로 await합니다.
 Helper 전용 `Bootstrap*ApplicationOptions`, `Run*ApplicationOptions`, platform
 signal alias 대신 adapter options, `CreateApplicationOptions`, `NodeShutdownSignal`,
-`BunShutdownSignal`, `DenoShutdownSignal`을 사용합니다. Static factory는 concrete
+`BunShutdownSignal`을 사용합니다(Deno type은 아카이브). Static factory는 concrete
 class를 반환하므로 adapter 고유 기능에 접근하기 위한 cast가 필요하지 않습니다.
 
 - Fastify/Express의 이전 두 번째 multipart 인자는 `options.multipart`로 옮깁니다.
   TLS, raw-body, body limit, native middleware, drain 설정은 adapter에 유지하고,
   CORS, prefix, application middleware, security headers, logger는 Factory로 옮깁니다.
 - Node/Fastify/Express는 `createNodeShutdownSignalRegistration(signals?)`, Bun은
-  `createBunShutdownSignalRegistration(signals?)`, Deno는
-  `createDenoShutdownSignalRegistration(signals?)`을 `shutdownRegistration`에 전달합니다.
+  `createBunShutdownSignalRegistration(signals?)`을 `shutdownRegistration`에 전달합니다.
+  제거된 Deno helper는 아카이브입니다.
   이전 `shutdownSignals: false`처럼 host가 직접 소유하려면 callback을 생략합니다.
 - Bun direct adapter의 `shutdownTimeoutMs` 기본값은 10초입니다. 이전 managed
   run의 기본 drain을 유지하려면 `shutdownTimeoutMs: 30_000`을 명시합니다.
   이전 `forceExitTimeoutMs: t`를 보존하려면 adapter의 `shutdownTimeoutMs: t`와
   Factory의 `forceExitTimeoutMs: t`를 각각 설정합니다. 두 bound는 별개입니다.
-  Node-family drain은 기본 10초, signal 완료는 30초이며 Deno drain은 10초입니다.
-  Deno의 `hostname`은 계속 `host`보다 우선합니다.
-- Bun/Deno standalone fetch handler와 Workers/Next.js host bridge는 유지하며
+  Node-family drain은 기본 10초, signal 완료는 30초입니다. 아카이브된 Deno adapter의
+  drain은 10초이고 `hostname`이 `host`보다 우선했습니다.
+- Bun standalone fetch handler와 Workers/Next.js host bridge는 유지하며(Deno fetch handler는 아카이브)
   socket을 여는 managed starter로 바꾸지 않습니다.
 
 ## Defaults, order, and failures

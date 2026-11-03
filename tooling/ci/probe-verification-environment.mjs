@@ -21,16 +21,13 @@ const evidencePath = resolve(root, '.omo/verification/ci-parity/arm64/probe.json
 const exec = (binary, args) => execFileSync(binary, args, { encoding: 'utf8' }).trim();
 
 function observedVersions(lock) {
-  const versions = { os: platform(), arch: arch(), node: {}, bun: {}, deno: {} };
+  const versions = { os: platform(), arch: arch(), node: {}, bun: {} };
   for (const [key, item] of Object.entries(lock.node)) {
     versions.node[key] = exec(`/opt/node/${item.version}/bin/node`, ['--version']).replace(/^v/, '');
   }
   versions.pnpm = exec('/usr/local/bin/pnpm', ['--version']);
   for (const [key, item] of Object.entries(lock.bun)) {
     versions.bun[key] = exec(`/opt/bun/${item.version}/bun`, ['--version']);
-  }
-  for (const [key, item] of Object.entries(lock.deno)) {
-    versions.deno[key] = exec(`/opt/deno/${item.version}/deno`, ['--version']).match(/^deno (\d+\.\d+\.\d+)\b/)?.[1];
   }
   const chrome = exec('google-chrome', ['--version']);
   versions.browser = { channel: 'chrome', version: chrome.match(/\d+\.\d+\.\d+\.\d+/)?.[0] };

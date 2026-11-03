@@ -7,7 +7,6 @@
   "@fluojs/microservices": "2.5.1",
   "@fluojs/platform-bun": "3.6.2",
   "@fluojs/platform-cloudflare-workers": "2.7.3",
-  "@fluojs/platform-deno": "2.8.4",
   "@fluojs/platform-express": "2.9.5",
   "@fluojs/platform-fastify": "2.10.6",
   "@fluojs/platform-nodejs": "2.11.7",

@@ -137,7 +137,7 @@ lazy하게 resolve되며 Node.js, Vite, browser, matcher, RSC, file-routing depe
   constraint, 406, provider failure, `HEAD`, abort, commit guard, request scope를 검증한다.
 - React integration test가 buffered document, 무시되는 entry status/header, unmatched-route ownership,
   route-policy isolation, provider failure fallback, shell-phase separation을 검증한다.
-- Shared network/Web portability harness가 Node.js, Express, Fastify, Bun, Deno, Cloudflare Workers에서 JSON,
+- Shared network/Web portability harness가 Node.js, Express, Fastify, Bun, Cloudflare Workers에서 JSON,
   HTML, `HEAD`, 406, already-committed response 동작을 검증한다.
 
 
