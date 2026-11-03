@@ -416,7 +416,40 @@ test('real Docker: two task-local workspaces at the same relative dist path neve
   // Given: two isolated tasks writing the same relative dist path in their own Linux workspaces.
   assert.equal(spawnSync('docker', ['info'], { stdio: 'ignore' }).status, 0, 'isolation fixture requires an available daemon');
   const root = mkdtempSync(join(tmpdir(), 'fluo-isolated-workspaces-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const ids = ['native-bun', 'native-web'];
+  mkdirSync(evidenceParent, { recursive: true });
+  const evidence = mkdtempSync(join(evidenceParent, 'isolated-workspaces-'));
+  const barrierName = `fluo-isolation-${process.pid}-${root.split('/').at(-1).toLowerCase()}`;
+  const barrierEvents = [];
+  const outputs = new Map();
+  let coordinator;
+  let coordinatorClosed;
+  let barrierStdout = '';
+  let barrierStderr = '';
+  t.after(async () => {
+    try {
+      if (coordinator) {
+        if (coordinator.exitCode === null) run('docker', ['rm', '--force', barrierName], root);
+        const terminal = await coordinatorClosed;
+        const inspected = spawnSync('docker', ['container', 'inspect', barrierName], { encoding: 'utf8' });
+        writeFileSync(join(evidence, 'barrier-cleanup.json'), JSON.stringify({
+          name: barrierName, terminal, inspectExit: inspected.status,
+          stdout: inspected.stdout, stderr: inspected.stderr,
+        }, null, 2));
+        assert.equal(inspected.status, 1);
+        assert.match(inspected.stderr, /No such (object|container)/u);
+      }
+    } finally {
+      writeFileSync(join(evidence, 'barrier.stdout'), barrierStdout);
+      writeFileSync(join(evidence, 'barrier.stderr'), barrierStderr);
+      writeFileSync(join(evidence, 'barrier-events.json'), JSON.stringify(barrierEvents, null, 2));
+      if (existsSync(join(root, '.git/plan.json'))) copyFileSync(join(root, '.git/plan.json'), join(evidence, 'plan.json'));
+      for (const [id, output] of outputs) {
+        if (existsSync(output)) cpSync(output, join(evidence, id), { recursive: true });
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   for (const file of [
     'tooling/ci/verification-runner.mjs', 'tooling/ci/local-verification.mjs',
     'tooling/ci/detect-pr-verification-scope.mjs', 'tooling/ci/test-catalog.mjs', 'tooling/ci/prepared-build.mjs',
@@ -428,12 +461,107 @@ test('real Docker: two task-local workspaces at the same relative dist path neve
     mkdirSync(dirname(join(root, file)), { recursive: true });
     copyFileSync(new URL(`../../${file}`, import.meta.url), join(root, file));
   }
+  const prepared = prepareVerificationEnvironment();
+  // The coordinator shares only the existing Docker host network, never either workspace.
+  const coordinatorCode = `
+    const assert = require('node:assert/strict');
+    const ready = new Map();
+    const results = new Set();
+    const emit = (event, id, files) => console.log(JSON.stringify({event, id, files}));
+    const deadline = setTimeout(() => { throw Error('isolation barrier timed out'); }, 60000);
+    const server = require('node:net').createServer(socket => {
+      socket.setEncoding('utf8');
+      socket.on('error', error => { throw error; });
+      let buffered = '';
+      socket.on('data', chunk => {
+        buffered += chunk;
+        let boundary;
+        while ((boundary = buffered.indexOf('\\n')) !== -1) {
+          const message = JSON.parse(buffered.slice(0, boundary));
+          buffered = buffered.slice(boundary + 1);
+          assert.ok(['native-bun', 'native-web'].includes(message.id));
+          if (message.event === 'ready') {
+            assert.ok(!ready.has(message.id));
+            ready.set(message.id, socket);
+            emit('ready', message.id);
+            if (ready.size === 2) {
+              for (const [id, peer] of ready) {
+                emit('release', id);
+                peer.write(JSON.stringify({event:'release', id}) + '\\n');
+              }
+            }
+          } else {
+            assert.equal(message.event, 'result');
+            assert.equal(ready.get(message.id), socket);
+            assert.equal(ready.size, 2);
+            assert.ok(!results.has(message.id));
+            assert.deepEqual(message.files, [message.id + '.txt']);
+            results.add(message.id);
+            emit('result', message.id, message.files);
+            if (results.size === 2) server.close(() => { clearTimeout(deadline); emit('closed'); });
+          }
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({event:'listening', port:server.address().port})));
+  `;
+  const port = await new Promise((resolvePort, reject) => {
+    coordinator = spawn('docker', ['run', '--rm', '--init', '--name', barrierName,
+      '--platform', 'linux/arm64', '--network', 'host', prepared.tag, 'node', '-e', coordinatorCode]);
+    coordinatorClosed = new Promise((resolveClose) => {
+      coordinator.on('close', (code, signal) => {
+        if (!barrierEvents.some(({ event }) => event === 'listening')) reject(new Error(barrierStderr));
+        resolveClose({ code, signal });
+      });
+    });
+    coordinator.on('error', reject);
+    coordinator.stderr.on('data', (chunk) => { barrierStderr += chunk.toString(); });
+    let buffered = '';
+    coordinator.stdout.on('data', (chunk) => {
+      barrierStdout += chunk.toString();
+      buffered += chunk.toString();
+      let boundary;
+      while ((boundary = buffered.indexOf('\n')) !== -1) {
+        const event = JSON.parse(buffered.slice(0, boundary));
+        buffered = buffered.slice(boundary + 1);
+        barrierEvents.push(event);
+        if (event.event === 'listening') resolvePort(event.port);
+      }
+    });
+  });
   const manifest = readVerificationManifest();
   manifest.scope.companionEdges = [{ owners: ['fixture-leaf'], tasks: ['native-bun', 'native-web'] }];
-  const marker = (task) => ['const fs=require("node:fs");fs.mkdirSync("packages/leaf/dist",{recursive:true});',
-    `fs.writeFileSync("packages/leaf/dist/${task}.txt","${task}");`,
-    'console.log("DIST_CONTENTS",fs.readdirSync("packages/leaf/dist").join(","));'].join('');
-  for (const id of ['native-bun', 'native-web']) {
+  const marker = (id) => `
+    const fs = require('node:fs');
+    const assert = require('node:assert/strict');
+    const id = ${JSON.stringify(id)};
+    const socket = new (require('node:net').Socket)();
+    socket.setEncoding('utf8');
+    socket.setTimeout(60000, () => { throw Error('task release timed out: ' + id); });
+    socket.on('error', error => { throw error; });
+    let buffered = '';
+    socket.on('data', chunk => {
+      buffered += chunk;
+      const boundary = buffered.indexOf('\\n');
+      if (boundary === -1) return;
+      const message = JSON.parse(buffered.slice(0, boundary));
+      assert.deepEqual(message, {event:'release', id});
+      console.log(JSON.stringify({event:'release', id}));
+      const files = fs.readdirSync('packages/leaf/dist').sort();
+      assert.deepEqual(files, [id + '.txt']);
+      console.log('DIST_CONTENTS', files.join(','));
+      console.log(JSON.stringify({event:'result', id, files}));
+      socket.end(JSON.stringify({event:'result', id, files}) + '\\n');
+    });
+    socket.once('connect', () => {
+      console.log(JSON.stringify({event:'ready', id}));
+      socket.write(JSON.stringify({event:'ready', id}) + '\\n');
+    });
+    fs.mkdirSync('packages/leaf/dist', {recursive:true});
+    fs.writeFileSync('packages/leaf/dist/' + id + '.txt', id);
+    socket.connect(${port}, '127.0.0.1');
+  `;
+  for (const id of ids) {
     const task = manifest.tasks.find((candidate) => candidate.id === id);
     task.dependencies = [];
     task.inputs = [];
@@ -459,32 +587,43 @@ test('real Docker: two task-local workspaces at the same relative dist path neve
   const path = join(root, '.git', 'plan.json');
   writeFileSync(path, JSON.stringify(plan));
 
-  // When: both task runners execute concurrently; synchronization happens on explicit exit events only.
-  prepareVerificationEnvironment();
+  // When: all ready/release subscriptions exist before either real task writes its marker.
   const execution = (id) => new Promise((resolveTask, reject) => {
     const output = join(root, '.git', `${id}-results`);
+    outputs.set(id, output);
     const artifacts = join(root, '.git', `${id}-artifacts`);
     const child = spawn(process.execPath, [script, '--plan', path, '--task', id,
       '--output', output, '--artifacts', artifacts], { cwd: root });
+    let stdout = '';
     let diagnostics = '';
-    child.stderr.on('data', (chunk) => { diagnostics = (diagnostics + chunk.toString()).slice(-2_000); });
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk) => { diagnostics += chunk.toString(); });
     child.on('error', reject);
-    child.on('close', (code, signal) => (code === 0 && signal === null
-      ? resolveTask(output) : reject(new Error(`${id} exited ${code ?? 'without code'}: ${diagnostics}`))));
+    child.on('close', (code, signal) => {
+      writeFileSync(join(evidence, `${id}-runner.stdout`), stdout);
+      writeFileSync(join(evidence, `${id}-runner.stderr`), diagnostics);
+      return code === 0 && signal === null
+        ? resolveTask(output) : reject(new Error(`${id} exited ${code ?? 'without code'}: ${diagnostics}`));
+    });
   });
-  const outputs = await Promise.all([execution('native-bun'), execution('native-web')]);
+  const results = await Promise.allSettled(ids.map(execution));
+  for (const result of results) if (result.status === 'rejected') throw result.reason;
+  assert.deepEqual(await coordinatorClosed, { code: 0, signal: null });
 
-  // Then: each task-local dist path contains exactly its own marker.
-  for (const [id, output] of [['native-bun', outputs[0]], ['native-web', outputs[1]]]) {
+  // Then: both tokens existed before either inspection, and neither task sees the other's token.
+  const positions = (event) => barrierEvents.flatMap((item, index) => item.event === event ? [index] : []);
+  for (const event of ['ready', 'release', 'result']) {
+    assert.deepEqual(barrierEvents.filter((item) => item.event === event).map(({ id }) => id).sort(), [...ids].sort());
+  }
+  assert.ok(Math.max(...positions('ready')) < Math.min(...positions('release')));
+  assert.ok(Math.max(...positions('release')) < Math.min(...positions('result')));
+  for (const [id, output] of outputs) {
     const log = readFileSync(join(output, `${id}-0.log`), 'utf8');
+    const events = log.split('\n').filter((line) => line.startsWith('{')).map((line) => JSON.parse(line));
+    assert.deepEqual(events.map(({ event }) => event), ['ready', 'release', 'result']);
+    assert.deepEqual(events.at(-1), { event: 'result', id, files: [`${id}.txt`] });
     assert.match(log, new RegExp(`DIST_CONTENTS ${id}\\.txt\\b`));
     assert.ok(!log.includes(id === 'native-bun' ? 'native-web.txt' : 'native-bun.txt'),
       `cross-task visibility detected: ${log}`);
-  }
-  mkdirSync(evidenceParent, { recursive: true });
-  const evidence = mkdtempSync(join(evidenceParent, 'isolated-workspaces-'));
-  copyFileSync(path, join(evidence, 'plan.json'));
-  for (const [id, output] of [['native-bun', outputs[0]], ['native-web', outputs[1]]]) {
-    cpSync(output, join(evidence, id), { recursive: true });
   }
 });
