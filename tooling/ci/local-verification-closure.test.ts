@@ -44,7 +44,8 @@ describe('local verification companion closure', () => {
     expect(commands).toContain('verify:docs');
     expect(plan.tasks.find((task) => task.id === 'native-web')?.commands.some((command) =>
       command.argv.includes('packages/testing/src/portability/web-runtime-adapter-portability.test.ts'))).toBe(true);
-    expect(plan.tasks.some((task) => task.commands.some((command) => command.executable === 'deno'))).toBe(false);
+    const executables = plan.tasks.flatMap((task) => task.commands.map((command) => command.executable));
+    expect(executables).not.toContain('deno');
     expect(commands).toContain('lint');
     expect(plan.capabilityTasks['declaration-importers']).toContain('static');
   });
