@@ -7,7 +7,7 @@ import { PassThrough } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { createGunzip, gzipSync, gunzipSync } from 'node:zlib';
 
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 
 import { runReactViteDevApp } from './react-vite-dev-app.js';
 
@@ -170,10 +170,39 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const directory of directories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
   }
 });
+
+it('publishes the bound public gateway URL when test readiness is enabled on port zero', async () => {
+  const { directory, state } = await createFixture();
+  state.realHttp = true;
+  state.httpHandler = (_incoming, response) => response.end('public gateway');
+  vi.stubEnv('FLUO_REACT_TEST_READY', '1');
+  const signals = new EventEmitter();
+  const stdout = new PassThrough();
+  let output = '';
+  stdout.on('data', (chunk) => { output += String(chunk); });
+  const ready = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
+  const running = runReactViteDevApp(directory, { port: 0, signalTarget: signals, stdout });
+  state.createGate.resolve();
+  state.appGate.resolve();
+
+  try {
+    await ready;
+    const match = /^FLUO_REACT_DEV_READY (http:\/\/127\.0\.0\.1:[1-9]\d*)$/mu.exec(output);
+    expect(match).not.toBeNull();
+    const address = state.websocketServer?.address();
+    if (!address || typeof address === 'string' || !match?.[1]) throw new Error('Expected the bound gateway URL.');
+    expect(match[1]).toBe(`http://127.0.0.1:${address.port}`);
+    expect(await requestGateway(match[1])).toMatchObject({ body: Buffer.from('public gateway'), status: 200 });
+  } finally {
+    signals.emit('SIGTERM');
+    await expect(running).resolves.toBe(0);
+  }
+}, 10_000);
 
 async function startHttpGateway(handler: NonNullable<FixtureState['httpHandler']>) {
   const { directory, state } = await createFixture();

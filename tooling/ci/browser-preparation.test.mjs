@@ -1,14 +1,81 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertBrowserObservation, browserObservationPolicy, prepareBrowserCommand, runBrowserOwnedCommand } from './browser-preparation.mjs';
 import { productDomainPlan } from './react-product-acceptance.mjs';
 import { createCommandRunner } from '../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
+
+test('browser config: port zero uses bound readiness and fixed overrides retain their URLs', (t) => {
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const example = join(root, 'examples/react-vite-ssr');
+  const cache = join(example, 'node_modules/.cache');
+  mkdirSync(cache, { recursive: true });
+  const directory = mkdtempSync(join(cache, 'browser-config-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  writeFileSync(join(directory, 'package.json'), '{"type":"module"}');
+  const require = createRequire(join(root, 'packages/cli/package.json'));
+  const generated = join(directory, 'playwright.config.ts');
+  const files = JSON.parse(execFileSync(process.execPath, ['--import', require.resolve('tsx'),
+    '--input-type=module', '-e', `
+      const { createReactViteSsrScaffoldFiles } = await import(${JSON.stringify(pathToFileURL(join(root,
+        'packages/cli/src/new/react-vite-ssr-scaffold.ts')).href)});
+      console.log(JSON.stringify(createReactViteSsrScaffoldFiles({ packageManager: 'pnpm', projectName: 'browser-config' })));
+    `], { cwd: root, encoding: 'utf8' }));
+  writeFileSync(generated, files.find((file) => file.path === 'playwright.config.ts').content);
+  const configs = [
+    { path: join(example, 'playwright.config.ts'), variable: 'REACT_VITE_EXAMPLE_TEST_PORT',
+      marker: 'REACT_VITE_EXAMPLE_READY', route: '/products/sku-42' },
+    { path: join(example, 'playwright.reliability.config.ts'), variable: 'REACT_VITE_EXAMPLE_TEST_PORT',
+      marker: 'REACT_VITE_EXAMPLE_READY', route: '/catalog/background' },
+    ...[undefined, 'dev', 'direct'].map((mode) => ({
+      path: generated, variable: 'FLUO_REACT_STARTER_TEST_PORT', mode,
+      marker: mode ? 'FLUO_REACT_DEV_READY' : 'FLUO_REACT_READY',
+      route: mode ? '/src/entry-client.tsx' : '/products/sku-42',
+    })),
+  ];
+  for (const config of configs) {
+    for (const port of [undefined, '0', '43217']) {
+      const env = { ...process.env };
+      delete env.REACT_VITE_EXAMPLE_TEST_PORT;
+      delete env.FLUO_REACT_STARTER_TEST_PORT;
+      delete env.FLUO_REACT_STARTER_SERVER_COMMAND;
+      if (port !== undefined) env[config.variable] = port;
+      if (config.mode) env.FLUO_REACT_STARTER_SERVER_COMMAND = config.mode;
+
+      const runtime = JSON.parse(execFileSync(process.execPath, ['--import', require.resolve('tsx'),
+        '--input-type=module', '-e', `
+          const { default: config } = await import(${JSON.stringify(pathToFileURL(config.path).href)});
+          console.log(JSON.stringify({ baseURL: config.use.baseURL, server: config.webServer,
+            stdout: config.webServer.wait?.stdout.source }));
+        `], { cwd: root, env, encoding: 'utf8' }));
+
+      const dynamic = port !== '43217';
+      assert.equal(runtime.baseURL, dynamic ? undefined : 'http://127.0.0.1:43217');
+      assert.equal(runtime.server.env[config.variable === 'REACT_VITE_EXAMPLE_TEST_PORT'
+        ? 'REACT_VITE_EXAMPLE_PORT' : 'PORT'], dynamic ? '0' : port);
+      assert.equal(runtime.server.env[config.variable === 'REACT_VITE_EXAMPLE_TEST_PORT'
+        ? 'REACT_VITE_EXAMPLE_TEST_READY' : 'FLUO_REACT_TEST_READY'], '1');
+      if (dynamic) {
+        assert.equal(runtime.server.url, undefined);
+        const ready = new RegExp(runtime.stdout, 'u');
+        assert.equal(ready.exec(`${config.marker} http://127.0.0.1:48239`)?.groups?.playwright_test_base_url,
+          'http://127.0.0.1:48239');
+        assert.equal(ready.test(`${config.marker} http://127.0.0.1:0`), false);
+        if (config.mode) assert.equal(ready.test('FLUO_REACT_READY http://127.0.0.1:48239'), false);
+      } else {
+        assert.equal(runtime.server.url, `http://127.0.0.1:43217${config.route}`);
+        assert.equal(runtime.stdout, undefined);
+      }
+    }
+  }
+});
 
 function evidenceFixture(t, prefix) {
   const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();

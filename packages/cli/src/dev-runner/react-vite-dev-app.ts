@@ -183,6 +183,12 @@ export async function runReactViteDevApp(
         return;
       }
       stdout.write('[fluo] React dev app ready\n');
+      if (process.env.FLUO_REACT_TEST_READY === '1') {
+        const address = gateway.address();
+        if (address && typeof address !== 'string') {
+          stdout.write(`FLUO_REACT_DEV_READY http://127.0.0.1:${address.port}\n`);
+        }
+      }
       process.send?.({ type: 'fluo:react-vite-app-ready', generation });
       vite.ws.send({ type: 'custom', event: 'fluo:server-status', data: { status: 'ready', generation } });
       if (reloadDocument) {

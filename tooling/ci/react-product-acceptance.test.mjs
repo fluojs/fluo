@@ -700,7 +700,7 @@ function domainFixture(root, domain) {
           FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked', FLUO_CLI_SANDBOX_PROFILE: 'smoke' }
         : report ? { FLUO_PRODUCT_ACCEPTANCE: '1',
           ...(label === 'packed-dev' ? { FLUO_REACT_STARTER_SERVER_COMMAND: 'dev' } : {}),
-          FLUO_REACT_STARTER_TEST_PORT: label === 'packed-dev' ? '44981' : label === 'packed-production' ? '44982' : '44983',
+          FLUO_REACT_STARTER_TEST_PORT: '0',
           PLAYWRIGHT_JSON_OUTPUT_NAME: join(root, report.path) } : {};
       packed.commands.push({ label, command: [label === 'starter-provision' ? process.execPath : 'pnpm', ...args],
         cwd: packed.directory, env,
