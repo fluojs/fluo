@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 
-import { buildVerificationPlan } from './local-verification.mjs';
+import { buildVerificationPlan, semanticPlanDigest } from './local-verification.mjs';
 
 const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
 const taskWorkflow = readFileSync(new URL('../../.github/workflows/node-verification.yml', import.meta.url), 'utf8');
@@ -32,10 +32,10 @@ function job(source: string, id: string): string {
   return source.slice(start).split(/\n(?= {2}[a-z][a-z-]*:\n)/u)[0] ?? '';
 }
 
-for (const mode of ['full', 'scoped', 'docs'] as const) it(`workflow matrix resolver: ${mode} -> exact selected groups`, () => {
+for (const [mode, profile] of [['full', 'pr'], ['scoped', 'pr'], ['docs', 'pr'], ['full', 'extended']] as const) it(`workflow matrix resolver: ${profile}/${mode} -> exact selected groups`, () => {
   // Given
   const plan = buildVerificationPlan({ changedFiles: [mode === 'full' ? 'package.json'
-    : mode === 'scoped' ? 'packages/email/src/index.ts' : 'docs/reference/node-support.md'], identity });
+    : mode === 'scoped' ? 'packages/email/src/index.ts' : 'docs/reference/node-support.md'], identity, profile });
   const script = job(workflow, 'plan').match(/node --input-type=module <<'EOF'\n([\s\S]+?)\n {10}EOF/u)?.[1];
   if (!script) throw new Error('Missing executable workflow matrix resolver');
   const root = mkdtempSync(join(tmpdir(), 'fluo-ci-plan-'));
@@ -46,7 +46,7 @@ for (const mode of ['full', 'scoped', 'docs'] as const) it(`workflow matrix reso
   try {
     // When
     const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-      cwd: root, env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8',
+      cwd: root, env: { ...process.env, PROFILE: profile, GITHUB_OUTPUT: output }, encoding: 'utf8',
     });
 
     // Then
@@ -57,9 +57,12 @@ for (const mode of ['full', 'scoped', 'docs'] as const) it(`workflow matrix reso
     }));
     expect(fields.source_sha).toBe(identity.headSha);
     const tasks: unknown = JSON.parse(fields.tasks ?? 'null');
-    expect(tasks).toEqual(plan.tasks.map(({ id }) => id).filter((id) =>
-      !['build', 'compatibility-floor', 'compatibility-next'].includes(id)));
-    expect(tasks).toHaveLength(plan.tasks.length - (mode === 'full' ? 3 : mode === 'scoped' ? 3 : 0));
+    const postBuild = plan.tasks.map(({ id }) => id).filter((id) => id !== 'build' && !id.startsWith('compatibility-'));
+    expect(tasks).toEqual([
+      ...postBuild.filter((id) => id === 'react-product'),
+      ...postBuild.filter((id) => id !== 'react-product'),
+    ]);
+    expect(tasks).toHaveLength(plan.tasks.length - (mode === 'full' && profile === 'pr' ? 11 : mode !== 'docs' ? 3 : 0));
     expect(fields.has_build).toBe(String(plan.tasks.some(({ id }) => id === 'build')));
     expect(fields.has_docs).toBe(String(plan.tasks.some(({ outputs }) => outputs.includes('docs-site'))));
     expect(JSON.parse(fields.compatibility ?? 'null')).toEqual(plan.tasks.map(({ id }) => id).filter((id) => id.startsWith('compatibility-')));
@@ -70,12 +73,56 @@ for (const mode of ['full', 'scoped', 'docs'] as const) it(`workflow matrix reso
     expect(job(workflow, 'compatibility')).toContain(`task: \${{ fromJSON(needs.plan.outputs.compatibility) }}`);
     const reusableJobs = taskWorkflow.slice(taskWorkflow.indexOf('\njobs:\n'));
     expect([...reusableJobs.matchAll(/^ {2}([a-zA-Z_][\w-]*):\n/gm)].map((match) => match[1])).toEqual(['task']);
-    if (mode === 'full') expect(plan.tasks.length + 2).toBe(18);
+    if (mode === 'full') {
+      expect(plan.tasks.length + 2).toBe(profile === 'pr' ? 27 : 19);
+      expect(tasks).toContain('react-product');
+      expect(JSON.parse(fields.compatibility)).toEqual(profile === 'extended' ? ['compatibility-floor', 'compatibility-next'] : [
+        'compatibility-floor-1', 'compatibility-floor-2', 'compatibility-floor-3', 'compatibility-floor-4',
+        'compatibility-floor-smoke', 'compatibility-next-1', 'compatibility-next-2', 'compatibility-next-3',
+        'compatibility-next-4', 'compatibility-next-smoke',
+      ]);
+    }
     expect(job(workflow, 'verification')).toContain('always()');
     expect(job(workflow, 'verification')).toContain("needs.build.result == 'skipped'");
     expect(job(workflow, 'verify')).toContain(`if: \${{ always() }}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('workflow matrix resolver rejects a plan that removes or duplicates one compatibility shard', () => {
+  // Given: the full PR resolver script embedded in ci.yml and a valid canonical plan.
+  const script = job(workflow, 'plan').match(/node --input-type=module <<'EOF'\n([\s\S]+?)\n {10}EOF/u)?.[1];
+  if (!script) throw new Error('Missing executable workflow matrix resolver');
+  const canonical = buildVerificationPlan({ changedFiles: ['package.json'], identity });
+  expect(canonical.tasks).toHaveLength(25);
+
+  for (const defect of [
+    (tasks: typeof canonical.tasks) => tasks.filter(({ id }) => id !== 'compatibility-floor-3'),
+    (tasks: typeof canonical.tasks) => {
+      return tasks.flatMap((task) => task.id === 'compatibility-next-2' ? [task, task] : [task]);
+    },
+  ]) {
+    const root = mkdtempSync(join(tmpdir(), 'fluo-ci-plan-defect-'));
+    try {
+      const changed = { ...canonical, tasks: defect(canonical.tasks) };
+      // Keep the semantic digest consistent so only the partition/inventory guard can reject it.
+      const plan = { ...changed, semanticDigest: semanticPlanDigest(changed) };
+      mkdirSync(join(root, '.omo/ci-plan'), { recursive: true });
+      writeFileSync(join(root, '.omo/ci-plan/plan.json'), JSON.stringify(plan));
+      const output = join(root, 'output');
+
+      // When
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+        cwd: root, env: { ...process.env, PROFILE: 'pr', GITHUB_OUTPUT: output }, encoding: 'utf8',
+      });
+
+      // Then: a missing or duplicated shard is never a passing partition.
+      expect(result.status, result.stderr).not.toBe(0);
+      expect(result.stderr).toMatch(/partition|inventory|disjoint|exhaustive|Unexpected/u);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   }
 });
 
@@ -108,6 +155,18 @@ it('retains all primary shards and examples while explicitly excluding absent ap
   }
   expect(commands.filter(({ argv }) => argv.includes('--project') && argv.includes('examples'))).toHaveLength(1);
   expect(commands.filter(({ argv }) => argv.includes('--project') && argv.includes('apps'))).toHaveLength(0);
+  const captures = commands.filter(({ executable, argv }) => executable === 'node'
+    && argv.includes('tooling/ci/react-product-acceptance.mjs') && argv[2] === 'tooling');
+  expect(captures).toHaveLength(1);
+  expect(plan.tasks.find(({ id }) => id === 'react-product')?.commands).toContain(captures[0]);
+  for (const base of ['compatibility-floor', 'compatibility-next']) {
+    for (let shard = 1; shard <= 4; shard += 1) {
+      const shardCommand = plan.tasks.find(({ id }) => id === `${base}-${shard}`)?.commands
+        .find(({ argv }) => argv.includes('vitest') && argv.includes('packages'));
+      expect(shardCommand?.argv).toContain(`--shard=${shard}/4`);
+      expect(shardCommand?.argv).toContain(`--outputFile=/evidence/${base}-${shard}-vitest.json`);
+    }
+  }
   expect(plan.notApplicableCapabilities.apps).toMatch(/^no-suite:/u);
   expect(commands.filter(({ argv }) => argv.join(' ') === 'verify:docs')).toHaveLength(1);
   expect(workflow).not.toContain('deterministic-preflight:');
@@ -207,7 +266,7 @@ it('keeps the separate two-hour soak out of normal PR job expansion', () => {
   expect(soakWorkflow).toMatch(/^ {2}schedule:/mu);
   expect(soakWorkflow).toContain("FLUO_RELIABILITY_SOAK_MS: '7200000'");
   expect(buildVerificationPlan({ changedFiles: ['examples/react-vite-ssr/tests/long-session.spec.ts'], identity, forceFull: true }).tasks)
-    .toHaveLength(16);
+    .toHaveLength(25);
 });
 
 it('registers the new Node regression suites without recursively executing them from tooling tests', () => {

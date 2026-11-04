@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import test from 'node:test';
 
-import { buildVerificationPlan, digest, readVerificationManifest, receiptMatchesPlan,
-  receiptIsCurrent, validateReceiptEvidence, validateReceipt } from './local-verification.mjs';
+import { buildVerificationPlan, digest, readVerificationManifest,
+  receiptIsCurrent, receiptMatchesPlan, validateReceipt, validateReceiptEvidence } from './local-verification.mjs';
 
 const identity = {
   baseRef: 'b'.repeat(40), baseSha: 'b'.repeat(40), changedFilesDigest: 'c'.repeat(64),
@@ -86,7 +86,7 @@ test('React comparison uses a distinct conditional capability in the existing ca
   const react = buildVerificationPlan({
     changedFiles: ['tooling/benchmarks/react-app-comparison/src/evaluate.ts'], identity,
   });
-  assert.equal(react.tasks.length, 16);
+  assert.equal(react.tasks.length, 25);
   assert.deepEqual(react.capabilityTasks['react-app-benchmark'], ['static']);
   assert.ok(react.tasks.find((task) => task.id === 'static')?.commands.some((command) =>
     command.argv.includes('test:smoke')));
@@ -193,5 +193,50 @@ test('v2 schema keeps typed clean source and task artifact evidence', () => {
   assert.equal(schema.$defs.identity.properties.clean.const, true);
   for (const field of ['taskResults', 'capabilityTasks', 'environmentLockDigest', 'imageIdentity', 'artifacts', 'logs']) {
     assert.ok(schema.required.includes(field), field);
+  }
+});
+
+test('full PR receipts require every shard result and reject stale, wrong-runtime or duplicated evidence', () => {
+  // Given: a complete successful fixture for the expanded 25-task plan.
+  const plan = buildVerificationPlan({ changedFiles: [], identity });
+  assert.equal(plan.tasks.length, 25);
+  const receipt = receiptFor(plan);
+  assert.equal(validateReceipt(receipt).valid, true);
+  assert.equal(receiptMatchesPlan(receipt, identity, plan), true);
+
+  // When / Then: one mutated machine-consumed field each.
+  const missing = structuredClone(receipt);
+  missing.taskResults.splice(missing.taskResults.findIndex((result) => result.taskId === 'compatibility-floor-3'), 1);
+  assert.equal(receiptMatchesPlan(missing, identity, plan), false);
+
+  const duplicated = structuredClone(receipt);
+  duplicated.taskResults.find((result) => result.taskId === 'compatibility-floor-4').taskId = 'compatibility-floor-3';
+  assert.equal(validateReceipt(duplicated).valid, false);
+
+  const wrongRuntime = structuredClone(receipt);
+  wrongRuntime.taskResults.find((result) => result.taskId === 'compatibility-next-2').environment.node.compat26 = '24.21.0';
+  assert.equal(validateReceipt(wrongRuntime).valid, false);
+
+  const stale = structuredClone(receipt);
+  stale.taskResults.find((result) => result.taskId === 'compatibility-floor-smoke').headSha = '9'.repeat(40);
+  assert.equal(receiptMatchesPlan(stale, identity, plan), false);
+});
+
+test('the extended profile executes full secondary verification exactly once per runtime', () => {
+  // Given / When
+  const plan = buildVerificationPlan({ changedFiles: [], identity, profile: 'extended' });
+
+  // Then
+  assert.equal(plan.tasks.length, 17);
+  assert.deepEqual(plan.tasks.map(({ id }) => id).filter((id) => id.startsWith('compatibility-')),
+    ['compatibility-floor', 'compatibility-next']);
+  for (const id of ['compatibility-floor', 'compatibility-next']) {
+    const task = plan.tasks.find((candidate) => candidate.id === id);
+    const count = (argv) => task.commands.filter(({ argv: candidate }) => candidate.join(' ') === argv).length;
+    assert.equal(count('typecheck'), 1, id);
+    assert.equal(count('lint'), 1, id);
+    assert.equal(count('test:verify'), 1, id);
+    assert.equal(task.commands.filter(({ env }) => env?.FLUO_CLI_SANDBOX_PROFILE === 'full').length, 1, id);
+    assert.equal(task.commands.filter(({ argv }) => argv.some((arg) => arg.startsWith('--shard='))).length, 0, id);
   }
 });

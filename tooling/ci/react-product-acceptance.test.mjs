@@ -577,7 +577,7 @@ function externalFixture(t) {
   const binding = localCheckBinding(review, acceptedAt);
   const remote = {
     run: { head_sha: head, status: 'completed', path: '.github/workflows/ci.yml', conclusion: 'success' },
-    jobs: { jobs: ['Verify', 'Primary build / build', 'Verify task (tooling-1) / tooling-1',
+    jobs: { jobs: ['Verify', 'Primary build / build', 'Verify task (react-product) / react-product',
       'Verify task (starters) / starters'].map((name) => ({ name, status: 'completed', conclusion: 'success' })) },
   };
   value.receipt.stage = 'final';
@@ -677,6 +677,18 @@ function domainFixture(root, domain) {
       'authoring-duplicate-route-rejection', 'authoring-invalid-route-rejection', 'authoring-negative-types',
       'authoring-positive-types', 'authoring-positive-compile', 'packed-dev', 'starter-tests', 'starter-build',
       'packed-production', 'packed-deployment'];
+    const productionUrl = 'http://127.0.0.1:43127';
+    const productionConfig = '/consumer/.fluo-packed-production-fixture.config.mjs';
+    const config = save('packed-product/packed-production-config-fixture.mjs',
+      `import config from './playwright.config.ts';\n`
+      + `export default { ...config, metadata: { ...config.metadata, ownedProductionURL: ${JSON.stringify(productionUrl)} }, webServer: undefined, use: { ...config.use, baseURL: ${JSON.stringify(productionUrl)} } };\n`);
+    packed.productionServer = {
+      command: [process.execPath, 'dist/server/main.js'], cwd: packed.directory,
+      env: { PORT: '0', FLUO_REACT_TEST_READY: '1', FLUO_REACT_FORM_TEST_SERVER: '1' },
+      pid: 12345, ready: { pid: 12345, url: productionUrl }, active: false, close: true,
+      stopRequested: true, cancelled: false, forced: false, exit: 0, signal: null,
+      config: { path: productionConfig, artifact: join(root, config.path), sha256: config.sha256 },
+    };
     for (const label of labels) {
       const rejection = Object.keys(rejectionDiagnostics).find((kind) => label === `authoring-${kind}-rejection`
         || kind === 'negative-types' && label === 'authoring-negative-types');
@@ -685,7 +697,8 @@ function domainFixture(root, domain) {
       const args = label === 'starter-provision'
         ? ['packages/cli/scripts/local-test-env.mjs', 'create', 'starter-react-vite-ssr']
         : label === 'authoring-negative-types' ? ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit']
-        : report ? ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=1', '--reporter=json',
+        : report ? ['exec', 'playwright', 'test', '--config',
+          label === 'packed-production' ? productionConfig : 'playwright.config.ts', '--workers=1', '--reporter=json',
           `--output=${join(root, 'packed-product', `${label}-${packed.attempt}`)}`,
           ...(label === 'packed-deployment' ? ['tests/deployment-transition.spec.ts']
             : ['tests/production-hydration.spec.ts', 'tests/background-interactions.spec.ts',
@@ -700,13 +713,47 @@ function domainFixture(root, domain) {
           FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked', FLUO_CLI_SANDBOX_PROFILE: 'smoke' }
         : report ? { FLUO_PRODUCT_ACCEPTANCE: '1',
           ...(label === 'packed-dev' ? { FLUO_REACT_STARTER_SERVER_COMMAND: 'dev' } : {}),
-          FLUO_REACT_STARTER_TEST_PORT: '0',
+          FLUO_REACT_STARTER_TEST_PORT: label === 'packed-production' ? new URL(productionUrl).port : '0',
+          ...(label === 'packed-production' ? { FLUO_REACT_READY_URL: productionUrl } : {}),
           PLAYWRIGHT_JSON_OUTPUT_NAME: join(root, report.path) } : {};
+      if (label === 'packed-production') {
+        const data = reportFixture(label);
+        data.config = {
+          argv: [process.execPath, '/consumer/node_modules/@playwright/test/cli.js', ...args.slice(2)],
+          configFile: productionConfig,
+          metadata: { actualWorkers: 1, ownedProductionURL: productionUrl },
+        };
+        const bytes = Buffer.from(JSON.stringify(data));
+        writeFileSync(join(root, report.path), bytes);
+        report.sha256 = digest(bytes);
+      }
       packed.commands.push({ label, command: [label === 'starter-provision' ? process.execPath : 'pnpm', ...args],
         cwd: packed.directory, env,
         exit: rejection ? rejection === 'negative-types' ? 2 : 1 : 0, signal: null,
         expectedRejection: Boolean(rejection), elapsedMs: 1, log: join(root, log.path), logSha256: log.sha256,
         ...(report ? { browserReport: join(root, report.path), browserReportSha256: report.sha256 } : {}) });
+    }
+    for (const [name, entry] of [
+      ['packed-production-server', packed.productionServer],
+      ['packed-production', packed.commands.find((entry) => entry.label === 'packed-production')],
+    ]) {
+      const stdout = save(`packed-product/${name}.stdout.raw.log`,
+        name === 'packed-production-server' ? `FLUO_REACT_READY ${productionUrl}\n` : '46 passed\n');
+      const stderr = save(`packed-product/${name}.stderr.raw.log`, '');
+      stderr.bytes = 0;
+      const log = name === 'packed-production-server'
+        ? save(`packed-product/${name}.log`, `FLUO_REACT_READY ${productionUrl}\n`)
+        : artifacts.find((reference) => reference.path === `packed-product/${name}.log`);
+      const streams = Object.fromEntries(Object.entries({ stdout, stderr, log }).map(([key, reference]) =>
+        [key, { path: join(root, reference.path), sha256: reference.sha256, bytes: statBytes(reference) }]));
+      const execution = save(`packed-product/${name}.command-receipt.json`, {
+        version: 1, complete: true, executable: entry.command[0], args: entry.command.slice(1),
+        cwd: entry.cwd, env: entry.env, exit_code: entry.exit, signal: entry.signal,
+        closed: true, cancelled: false, forced: false, duration_ms: 1, ...streams,
+      });
+      Object.assign(entry, { close: true, log: streams.log.path, logSha256: streams.log.sha256,
+        evidence: { receipt: { path: join(root, execution.path), sha256: execution.sha256,
+          bytes: statBytes(execution) }, ...streams } });
     }
     const reference = save('packed-product/pack-release-fixture.json', packed);
     commands.find((command) => command.id === 'packed-product').packagedReceipt = reference;
@@ -812,6 +859,182 @@ for (const domain of ['tooling', 'starters']) {
           : field === 'log' ? /Artifact digest mismatch/u : /canonical command\/check/u);
     });
   }
+}
+
+test('final CI packed production: owned dynamic origin and all 46 cases -> accepts complete fixture', (t) => {
+  const value = externalFixture(t);
+  const domain = value.domains[1];
+  const reference = domain.commands.find((entry) => entry.id === 'packed-product').packagedReceipt;
+  const packed = JSON.parse(readFileSync(join(value.root, 'starters', reference.path)));
+  const entry = packed.commands.find((entry) => entry.label === 'packed-production');
+  const report = JSON.parse(readFileSync(entry.browserReport));
+
+  assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+
+  assert.equal(packed.commands.length, 14);
+  assert.equal(browserReport(report, browserFiles['packed-production'], 'packed-production'), 46);
+});
+
+test('final CI packed production: relocated evidence without producer directory -> accepts empty raw stderr', (t) => {
+  const value = externalFixture(t);
+  const domain = value.domains[1];
+  const reference = domain.commands.find((entry) => entry.id === 'packed-product').packagedReceipt;
+  const packed = JSON.parse(readFileSync(join(value.root, 'starters', reference.path)));
+  const original = dirname(packed.authoring.generatedArtifact);
+  const relocated = join(value.root, 'starters', 'relocated-packed');
+  for (const entry of [packed.productionServer,
+    packed.commands.find((entry) => entry.label === 'packed-production')]) {
+    assert.equal(entry.evidence.stderr.bytes, 0);
+    assert.equal(readFileSync(entry.evidence.stderr.path).length, 0);
+  }
+  assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+  cpSync(original, relocated, { recursive: true });
+  rmSync(original, { recursive: true });
+  for (const entry of [...domain.commands, ...domain.checks]) {
+    for (const key of ['log', 'browserReport', 'packagedReceipt']) {
+      const artifact = entry[key];
+      if (artifact?.path.startsWith('packed-product/')) {
+        artifact.path = artifact.path.replace('packed-product/', 'relocated-packed/');
+      }
+    }
+  }
+  for (const artifact of domain.artifacts) {
+    if (artifact.path.startsWith('packed-product/')) {
+      artifact.path = artifact.path.replace('packed-product/', 'relocated-packed/');
+    }
+  }
+  value.receipt.external.ciDomains[1] = value.save('starters/starters-receipt.json', domain);
+
+  assert.throws(() => readFileSync(packed.productionServer.config.artifact), { code: 'ENOENT' });
+  assert.throws(() => readFileSync(packed.productionServer.evidence.receipt.path), { code: 'ENOENT' });
+  assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+});
+
+for (const [defect, message] of [
+  ['missing-config', 'Packed production report config identity mismatch'],
+  ['missing-config-file', 'Packed production report config identity mismatch'],
+  ['wrong-config-file', 'Packed production report config identity mismatch'],
+  ['missing-metadata-url', 'Packed production report owned origin mismatch'],
+  ['wrong-metadata-url', 'Packed production report owned origin mismatch'],
+  ['missing-argv', 'Packed production report argv mismatch'],
+  ['wrong-argv', 'Packed production report argv mismatch'],
+]) {
+  test(`final CI packed production: ${defect} with 46 passing cases -> rejects report binding defect`, (t) => {
+    const value = externalFixture(t);
+    assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+    const domain = value.domains[1];
+    const reference = domain.commands.find((entry) => entry.id === 'packed-product').packagedReceipt;
+    const packed = JSON.parse(readFileSync(join(value.root, 'starters', reference.path)));
+    const production = packed.commands.find((entry) => entry.label === 'packed-production');
+    const report = JSON.parse(readFileSync(production.browserReport));
+    if (defect === 'missing-config') delete report.config;
+    if (defect === 'missing-config-file') delete report.config.configFile;
+    if (defect === 'wrong-config-file') report.config.configFile = '/consumer/playwright.config.ts';
+    if (defect === 'missing-metadata-url') delete report.config.metadata.ownedProductionURL;
+    if (defect === 'wrong-metadata-url') report.config.metadata.ownedProductionURL = 'http://127.0.0.1:44982';
+    if (defect === 'missing-argv') delete report.config.argv;
+    if (defect === 'wrong-argv') report.config.argv[3] = '--wrong-config';
+    const bytes = Buffer.from(JSON.stringify(report));
+    writeFileSync(production.browserReport, bytes);
+    production.browserReportSha256 = digest(bytes);
+    domain.artifacts.find((entry) => join(value.root, 'starters', entry.path) === production.browserReport)
+      .sha256 = production.browserReportSha256;
+    for (const entry of [...domain.commands, ...domain.checks]) {
+      if (entry.browserReport
+        && join(value.root, 'starters', entry.browserReport.path) === production.browserReport) {
+        entry.browserReport.sha256 = production.browserReportSha256;
+      }
+    }
+    const updated = { ...value.save(`starters/${reference.path}`, packed), path: reference.path };
+    for (const entry of [...domain.commands, ...domain.checks]) {
+      if (entry.packagedReceipt) entry.packagedReceipt = updated;
+    }
+    domain.artifacts.find((entry) => entry.path === reference.path).sha256 = updated.sha256;
+    value.receipt.external.ciDomains[1] = value.save('starters/starters-receipt.json', domain);
+
+    assert.equal(browserReport(report, browserFiles['packed-production'], 'packed-production'), 46);
+    assert.throws(() => externalEvidence(value.root, value.receipt, head), { name: 'TypeError', message });
+  });
+}
+
+for (const defect of ['missing-server', 'active-server', 'missing-close', 'wrong-owner',
+  'missing-readiness', 'arbitrary-origin', 'zero-port', 'wrong-config-command',
+  'fixed-port-metadata', 'wrong-config-bytes', 'missing-readiness-log',
+  'wrong-actual-command', 'open-actual-command', 'wrong-server-log-hash']) {
+  test(`final CI packed production: ${defect} with 46 passing cases -> rejects single contract defect`, (t) => {
+    const value = externalFixture(t);
+    assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+    const domain = value.domains[1];
+    const reference = domain.commands.find((entry) => entry.id === 'packed-product').packagedReceipt;
+    const packed = JSON.parse(readFileSync(join(value.root, 'starters', reference.path)));
+    const server = packed.productionServer;
+    const production = packed.commands.find((entry) => entry.label === 'packed-production');
+    if (defect === 'missing-server') delete packed.productionServer;
+    if (defect === 'active-server') server.active = true;
+    if (defect === 'missing-close') server.close = false;
+    if (defect === 'wrong-owner') server.ready.pid++;
+    if (defect === 'missing-readiness') delete server.ready;
+    if (defect === 'arbitrary-origin') server.ready.url = 'http://example.com:43127';
+    if (defect === 'zero-port') server.ready.url = 'http://127.0.0.1:0';
+    if (defect === 'wrong-config-command') production.command[5] = 'playwright.config.ts';
+    if (defect === 'fixed-port-metadata') production.env.FLUO_REACT_STARTER_TEST_PORT = '44982';
+    if (['wrong-config-command', 'fixed-port-metadata'].includes(defect)) {
+      const execution = JSON.parse(readFileSync(production.evidence.receipt.path));
+      execution.args = production.command.slice(1);
+      execution.env = structuredClone(production.env);
+      const bytes = Buffer.from(JSON.stringify(execution));
+      writeFileSync(production.evidence.receipt.path, bytes);
+      Object.assign(production.evidence.receipt, { sha256: digest(bytes), bytes: bytes.length });
+      Object.assign(domain.artifacts.find((entry) =>
+        join(value.root, 'starters', entry.path) === production.evidence.receipt.path),
+      { sha256: digest(bytes), bytes: bytes.length });
+      const check = domain.checks.find((entry) => entry.id === 'packed-production');
+      check.command = production.command.join(' ');
+      check.env = structuredClone(production.env);
+    }
+    if (defect === 'wrong-server-log-hash') server.logSha256 = '0'.repeat(64);
+    if (defect === 'wrong-config-bytes') {
+      const bytes = Buffer.from("export default { use: { baseURL: 'http://127.0.0.1:44982' } };\n");
+      writeFileSync(server.config.artifact, bytes);
+      server.config.sha256 = digest(bytes);
+      domain.artifacts.find((entry) => join(value.root, 'starters', entry.path) === server.config.artifact)
+        .sha256 = server.config.sha256;
+    }
+    if (['missing-readiness-log', 'wrong-actual-command', 'open-actual-command'].includes(defect)) {
+      const execution = JSON.parse(readFileSync(server.evidence.receipt.path));
+      if (defect === 'missing-readiness-log') {
+        const bytes = Buffer.from('listener started without the required readiness record\n');
+        writeFileSync(server.evidence.stdout.path, bytes);
+        server.evidence.stdout.sha256 = digest(bytes);
+        server.evidence.stdout.bytes = bytes.length;
+        execution.stdout = structuredClone(server.evidence.stdout);
+        domain.artifacts.find((entry) => join(value.root, 'starters', entry.path) === execution.stdout.path)
+          .sha256 = execution.stdout.sha256;
+      }
+      if (defect === 'wrong-actual-command') execution.args = ['different-entry.js'];
+      if (defect === 'open-actual-command') execution.closed = false;
+      const bytes = Buffer.from(JSON.stringify(execution));
+      writeFileSync(server.evidence.receipt.path, bytes);
+      server.evidence.receipt.sha256 = digest(bytes);
+      server.evidence.receipt.bytes = bytes.length;
+      domain.artifacts.find((entry) => join(value.root, 'starters', entry.path) === server.evidence.receipt.path)
+        .sha256 = server.evidence.receipt.sha256;
+    }
+    const updated = { ...value.save(`starters/${reference.path}`, packed), path: reference.path };
+    for (const entry of [...domain.commands, ...domain.checks]) {
+      if (entry.packagedReceipt) entry.packagedReceipt = updated;
+    }
+    domain.artifacts.find((entry) => entry.path === reference.path).sha256 = updated.sha256;
+    value.receipt.external.ciDomains[1] = value.save('starters/starters-receipt.json', domain);
+
+    if (['wrong-config-command', 'fixed-port-metadata'].includes(defect)) {
+      assert.throws(() => externalEvidence(value.root, value.receipt, head), {
+        name: 'TypeError', message: 'Unverified packed execution: packed-production',
+      });
+    } else {
+      assert.throws(() => externalEvidence(value.root, value.receipt, head), /Packed|packed/u);
+    }
+  });
 }
 
 for (const collection of ['tarballs', 'installedFiles', 'installedTemplates', 'commands', 'authoring-files']) {
@@ -1531,7 +1754,7 @@ test('final external evidence: relocated producer checkout -> preserves canonica
   await assert.rejects(consumeProduct(value.matrix, value.receipt, value.root, head, tree), /engine inventory/u);
 });
 
-for (const name of ['Verify', 'Primary build / build', 'Verify task (tooling-1) / tooling-1',
+for (const name of ['Verify', 'Primary build / build', 'Verify task (react-product) / react-product',
   'Verify task (starters) / starters']) {
   test(`final external evidence: removed ${name} -> rejects at required job guard`, (t) => {
     const value = externalFixture(t);
@@ -1541,6 +1764,18 @@ for (const name of ['Verify', 'Primary build / build', 'Verify task (tooling-1) 
     assert.throws(() => externalEvidence(value.root, value.receipt, head), /product domain jobs/u);
   });
 }
+
+test('final external evidence: a retired tooling-1 producer success cannot satisfy the react-product domain guard', (t) => {
+  // Given: complete successful jobs whose product domain is still named after the retired owner.
+  const value = externalFixture(t);
+  assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+  value.remote.jobs.jobs = value.remote.jobs.jobs.map((job) => (job.name === 'Verify task (react-product) / react-product'
+    ? { ...job, name: 'Verify task (tooling-1) / tooling-1' } : job));
+  value.receipt.external.remoteCi = value.save('remote.json', value.remote);
+
+  // When / Then: the renamed required producer is missing, not satisfied by the old name.
+  assert.throws(() => externalEvidence(value.root, value.receipt, head), /product domain jobs/u);
+});
 
 for (const id of Object.keys(browserFiles)) {
   test(`browser inventory: complete applicable ${id} cases and projects -> accepted`, () => {

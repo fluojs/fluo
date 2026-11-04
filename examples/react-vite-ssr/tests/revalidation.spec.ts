@@ -115,7 +115,29 @@ test('a second refresh supersedes a held older HTTP approval without losing the 
   const path = '/products/sku-race-3873?preview=true';
   await page.goto(path);
   await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
-  const resourceId = await page.evaluate(() => window.__reactResource?.id);
+  const resourceId = await page.evaluate(() => {
+    if (window.__reactResource?.id) return window.__reactResource.id;
+    return new Promise<string>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        delete window.__reactResource;
+        reject(new Error('Initial shell resource was not registered'));
+      }, 5_000);
+      Object.defineProperty(window, '__reactResource', {
+        configurable: true,
+        set(resource: Window['__reactResource']) {
+          if (!resource?.id) return;
+          Object.defineProperty(window, '__reactResource', {
+            configurable: true,
+            enumerable: true,
+            value: resource,
+            writable: true,
+          });
+          window.clearTimeout(timeout);
+          resolve(resource.id);
+        },
+      });
+    });
+  });
   const update = (name: string) => page.request.post('/products/sku-race-3873', {
     data: { name },
     headers: { 'x-example-user': 'catalog-editor' },

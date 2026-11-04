@@ -601,12 +601,13 @@ function packedEvidence(root, reference, head, tree) {
   // bytes together, without requiring that original CI mount on the consumer.
   const originalRoot = dirname(packed.authoring?.generatedArtifact ?? '');
   requireValue(isAbsolute(originalRoot), 'Missing packed artifact root');
-  const relocate = (path, sha256) => {
+  const relocate = (path, sha256, bytes) => {
     requireValue(typeof path === 'string' && isAbsolute(path), 'Missing packed artifact path');
     const inside = relative(originalRoot, path);
     requireValue(inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside),
       'Packed artifact escaped producer root');
-    return artifact(root, { path: relative(root, resolve(dirname(file.path), inside)), sha256 });
+    return artifact(root, { path: relative(root, resolve(dirname(file.path), inside)), sha256,
+      ...(bytes === undefined ? {} : { bytes }) });
   };
   for (const [collection, key, required] of [
     ['tarballs', 'name', ['core', 'http', 'platform-fastify', 'react', 'runtime', 'validation', 'cli', 'testing', 'vite']
@@ -640,6 +641,59 @@ function packedEvidence(root, reference, head, tree) {
     }), 'Missing packed authoring file/journey inventory');
   for (const entry of authoring.files) relocate(entry.artifact, entry.sha256);
   relocate(authoring.generatedArtifact, authoring.generatedSha256);
+  const server = packed.productionServer;
+  requireValue(server && typeof server.ready?.url === 'string'
+    && /^http:\/\/127\.0\.0\.1:\d+$/u.test(server.ready.url),
+  'Packed production requires owned loopback readiness');
+  const productionUrl = new URL(server.ready.url);
+  requireValue(productionUrl.origin === server.ready.url && Number(productionUrl.port) > 0
+    && Number(productionUrl.port) <= 65535
+    && Number.isSafeInteger(server.pid) && server.pid > 0 && server.ready.pid === server.pid
+    && server.active === false && server.close === true && server.stopRequested === true
+    && server.cancelled === false && server.forced === false
+    && (server.exit === 0 && server.signal === null || server.exit === null && server.signal === 'SIGTERM')
+    && Array.isArray(server.command) && server.command.length === 2 && isAbsolute(server.command[0])
+    && server.command[1] === 'dist/server/main.js' && server.cwd === packed.directory
+    && isDeepStrictEqual(server.env, {
+      PORT: '0', FLUO_REACT_TEST_READY: '1', FLUO_REACT_FORM_TEST_SERVER: '1',
+    }),
+  'Packed production requires closed same-owned-child startup identity');
+  const productionConfig = resolve(packed.directory, `.fluo-packed-production-${packed.attempt}.config.mjs`);
+  requireValue(server.config?.path === productionConfig
+    && server.config.artifact === resolve(originalRoot, `packed-production-config-${packed.attempt}.mjs`),
+  'Packed production config identity mismatch');
+  const configBytes = relocate(server.config.artifact, server.config.sha256).bytes.toString();
+  requireValue(configBytes === `import config from './playwright.config.ts';\n`
+    + `export default { ...config, metadata: { ...config.metadata, ownedProductionURL: ${JSON.stringify(server.ready.url)} }, webServer: undefined, use: { ...config.use, baseURL: ${JSON.stringify(server.ready.url)} } };\n`,
+  'Packed production config bytes/origin mismatch');
+  const production = packed.commands?.find((entry) => entry.label === 'packed-production');
+  requireValue(production, 'Missing packed production validation command');
+  for (const entry of [server, production]) {
+    requireValue(entry.close === true && entry.evidence?.receipt,
+      'Packed production requires a closed actual command receipt');
+    const execution = JSON.parse(relocate(entry.evidence.receipt.path,
+      entry.evidence.receipt.sha256, entry.evidence.receipt.bytes).bytes);
+    requireValue(execution.version === 1 && execution.complete === true && execution.closed === true
+      && execution.executable === entry.command[0] && isDeepStrictEqual(execution.args, entry.command.slice(1))
+      && execution.cwd === entry.cwd && isDeepStrictEqual(execution.env, entry.env)
+      && execution.exit_code === entry.exit && execution.signal === entry.signal
+      && execution.cancelled === false && execution.forced === false && execution.error === undefined
+      && Number.isFinite(execution.duration_ms) && execution.duration_ms >= 0,
+    'Packed production actual command identity/closure mismatch');
+    for (const name of ['stdout', 'stderr', 'log']) {
+      const reference = entry.evidence[name];
+      requireValue(reference && isDeepStrictEqual(reference, execution[name]),
+        'Packed production raw stream identity mismatch');
+      const raw = relocate(reference.path, reference.sha256, reference.bytes);
+      if (name === 'log') requireValue(entry.log === reference.path && entry.logSha256 === reference.sha256,
+        'Packed production log identity mismatch');
+      if (entry === server && name === 'stdout') {
+        requireValue(isDeepStrictEqual(raw.bytes.toString().split('\n')
+          .filter((line) => line.startsWith('FLUO_REACT_READY ')),
+        [`FLUO_REACT_READY ${server.ready.url}`]), 'Packed production readiness/log mismatch');
+      }
+    }
+  }
   const labels = ['starter-provision', 'starter-typegen', 'starter-types', 'authoring-missing-module-rejection',
     'authoring-duplicate-route-rejection', 'authoring-invalid-route-rejection', 'authoring-negative-types',
     'authoring-positive-types', 'authoring-positive-compile', 'packed-dev', 'starter-tests', 'starter-build',
@@ -654,7 +708,8 @@ function packedEvidence(root, reference, head, tree) {
     const args = entry.label === 'starter-provision'
       ? ['packages/cli/scripts/local-test-env.mjs', 'create', 'starter-react-vite-ssr']
       : entry.label === 'authoring-negative-types' ? ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit']
-      : browser ? ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=1', '--reporter=json',
+      : browser ? ['exec', 'playwright', 'test', '--config',
+        entry.label === 'packed-production' ? productionConfig : 'playwright.config.ts', '--workers=1', '--reporter=json',
         `--output=${resolve(originalRoot, `${entry.label}-${packed.attempt}`)}`,
         ...(entry.label === 'packed-deployment' ? ['tests/deployment-transition.spec.ts']
           : ['tests/production-hydration.spec.ts', 'tests/background-interactions.spec.ts',
@@ -669,7 +724,8 @@ function packedEvidence(root, reference, head, tree) {
         FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked', FLUO_CLI_SANDBOX_PROFILE: 'smoke' }
       : browser ? { FLUO_PRODUCT_ACCEPTANCE: '1',
         ...(entry.label === 'packed-dev' ? { FLUO_REACT_STARTER_SERVER_COMMAND: 'dev' } : {}),
-        FLUO_REACT_STARTER_TEST_PORT: '0',
+        FLUO_REACT_STARTER_TEST_PORT: entry.label === 'packed-production' ? productionUrl.port : '0',
+        ...(entry.label === 'packed-production' ? { FLUO_REACT_READY_URL: server.ready.url } : {}),
         PLAYWRIGHT_JSON_OUTPUT_NAME: resolve(originalRoot, `${entry.label}-${packed.attempt}.json`) }
       : {};
     requireValue(entry.signal === null && entry.expectedRejection === Boolean(kind)
@@ -697,8 +753,17 @@ function packedEvidence(root, reference, head, tree) {
     }
     if (browser) {
       requireValue(entry.browserReport === env.PLAYWRIGHT_JSON_OUTPUT_NAME, 'Packed report command identity mismatch');
-      browserReport(JSON.parse(relocate(entry.browserReport, entry.browserReportSha256).bytes),
-        browserFiles[entry.label], entry.label);
+      const report = JSON.parse(relocate(entry.browserReport, entry.browserReportSha256).bytes);
+      if (entry.label === 'packed-production') {
+        requireValue(report.config?.configFile === productionConfig,
+          'Packed production report config identity mismatch');
+        requireValue(report.config.metadata?.ownedProductionURL === server.ready.url,
+          'Packed production report owned origin mismatch');
+        requireValue(Array.isArray(report.config.argv)
+          && isDeepStrictEqual(report.config.argv.slice(2), entry.command.slice(3)),
+        'Packed production report argv mismatch');
+      }
+      browserReport(report, browserFiles[entry.label], entry.label);
     }
   }
   return packed;
@@ -1176,7 +1241,7 @@ export function externalEvidence(root, receipt, head) {
     && Array.isArray(remote.jobs?.jobs) && remote.jobs.jobs.length > 0
     && remote.jobs.jobs.every((job) => job.status === 'completed'
       && ['success', 'skipped'].includes(job.conclusion)), 'Missing or failed exact-head full GitHub CI');
-  requireValue(['Verify', 'Primary build / build', 'Verify task (tooling-1) / tooling-1',
+  requireValue(['Verify', 'Primary build / build', 'Verify task (react-product) / react-product',
     'Verify task (starters) / starters'].every((name) =>
     remote.jobs.jobs.some((job) => job.name === name && job.conclusion === 'success')),
   'Full canonical CI and product domain jobs are required');

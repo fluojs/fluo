@@ -151,7 +151,127 @@ async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedReje
   }
   return diagnostics;
 }
-return { run, dispose() {
+async function withProductionServer(cwd, binding, consume) {
+  if (cancelled) throw new Error(`Production startup cancelled by ${cancelled}; no command started.`);
+  const manifest = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8'));
+  if (manifest.scripts?.start !== 'node dist/server/main.js') {
+    throw new Error('Packed production requires the installed direct Node start script.');
+  }
+  const executable = process.execPath;
+  const args = ['dist/server/main.js'];
+  const env = { PORT: '0', FLUO_REACT_TEST_READY: '1', FLUO_REACT_FORM_TEST_SERVER: '1' };
+  const capture = createCommandEvidence(evidenceRoot, `packed-production-server-${attempt}`,
+    { executable, args, env }, { cwd });
+  Object.assign(binding, { command: [executable, ...args], cwd, env, active: true,
+    close: false, stopRequested: false });
+  let resolveReady;
+  let rejectReady;
+  let resolveClosed;
+  const ready = new Promise((done, reject) => { resolveReady = done; rejectReady = reject; });
+  const closed = new Promise((done) => { resolveClosed = done; });
+  void ready.catch(() => {});
+  let owned;
+  let pending = '';
+  let failure;
+  let commandError;
+  let timeout;
+  let stopping = false;
+  let result;
+  const fail = (error) => {
+    failure ??= error;
+    rejectReady(error);
+    terminate('owned production server failure');
+    owned?.stop();
+  };
+  const onError = (error) => {
+    commandError ??= error;
+    fail(error);
+  };
+  const onStdout = (chunk) => {
+    pending += chunk.toString();
+    const lines = pending.split('\n');
+    pending = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('FLUO_REACT_READY ')) continue;
+      const value = line.slice('FLUO_REACT_READY '.length);
+      if (binding.ready || !/^http:\/\/127\.0\.0\.1:\d+$/u.test(value)) {
+        fail(new Error('Invalid or duplicate owned production readiness.'));
+        return;
+      }
+      const port = Number(value.slice('http://127.0.0.1:'.length));
+      if (!Number.isSafeInteger(port) || port <= 0 || port > 65535) {
+        fail(new Error('Owned production readiness requires a nonzero loopback origin.'));
+        return;
+      }
+      const url = new URL(value);
+      if (url.origin !== value) {
+        fail(new Error('Owned production readiness requires a nonzero loopback origin.'));
+        return;
+      }
+      binding.ready = { url: value, pid: owned.child.pid };
+      clearTimeout(timeout);
+      resolveReady(value);
+    }
+  };
+  const onClose = (exit, signal) => {
+    clearTimeout(timeout);
+    if (!stopping) fail(new Error('Owned production server closed before requested cleanup.'));
+    resolveClosed({ exit, signal });
+  };
+  try {
+    owned = spawnOwnedCommand(executable, args, { cwd, env: { ...process.env, ...env } });
+  } catch (error) {
+    binding.active = false;
+    binding.evidence = capture.finish({ exitCode: null, signal: null, closed: false, error });
+    throw error;
+  }
+  const { child } = owned;
+  binding.pid = child.pid;
+  activeChildren.add(owned);
+  child.once('error', onError);
+  child.once('close', onClose);
+  child.stdout.on('data', onStdout);
+  capture.attach(child);
+  timeout = setTimeout(() => fail(new Error('Owned production readiness exceeded 30000ms.')), 30_000);
+  try {
+    const url = await ready;
+    if (cancelled || failure) throw failure ?? new Error(`Production cancelled by ${cancelled}.`);
+    const path = join(cwd, `.fluo-packed-production-${attempt}.config.mjs`);
+    const bytes = `import config from './playwright.config.ts';\n`
+      + `export default { ...config, metadata: { ...config.metadata, ownedProductionURL: ${JSON.stringify(url)} }, webServer: undefined, use: { ...config.use, baseURL: ${JSON.stringify(url)} } };\n`;
+    writeFileSync(path, bytes, { flag: 'wx' });
+    const artifact = join(evidenceRoot.root, `packed-production-config-${attempt}.mjs`);
+    copyFileSync(path, artifact);
+    binding.config = { path, artifact, sha256: sha(path) };
+    result = await consume({ url, config: path });
+  } catch (error) {
+    failure ??= error;
+  } finally {
+    stopping = true;
+    binding.stopRequested = true;
+    owned.stop();
+    const { exit, signal } = await closed;
+    child.off('error', onError);
+    child.stdout.off('data', onStdout);
+    activeChildren.delete(owned);
+    clearTimeout(timeout);
+    const evidence = capture.finish({ exitCode: exit, signal, closed: true,
+      cancelled: cancelled !== null, forced: owned.forced, error: commandError });
+    Object.assign(binding, { active: false, close: true, exit, signal,
+      cancelled: cancelled !== null, forced: owned.forced, evidence,
+      log: evidence.log.path, logSha256: evidence.log.sha256 });
+    if (binding.config && sha(binding.config.path) !== binding.config.sha256) {
+      failure ??= new Error('Actual packed production config changed during execution.');
+    }
+    if (cancelled || owned.forced || commandError
+      || !(exit === 0 && signal === null || exit === null && signal === 'SIGTERM')) {
+      failure ??= new Error(`Owned production cleanup failed: exit ${exit}, signal ${signal}, cancellation ${cancelled}.`);
+    }
+  }
+  if (failure) throw failure;
+  return result;
+}
+return { run, withProductionServer, dispose() {
   process.off('SIGTERM', onTerm); process.off('SIGINT', onInt);
 } };
 }
@@ -164,7 +284,7 @@ const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: '
 if ((reliability || product) && execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' }).trim() !== '') {
   throw new Error('Packaged reliability requires a clean committed source head');
 }
-const { run, dispose } = createCommandRunner(output, commands, attempt);
+const { run, withProductionServer, dispose } = createCommandRunner(output, commands, attempt);
 try {
 const directory = join(tmpdir(), `fluo-issue-${product ? '3879' : '3881'}-${attempt}`);
 await run('starter-provision', ['packages/cli/scripts/local-test-env.mjs', 'create', target.projectName], repo, {
@@ -368,11 +488,14 @@ void props; void saved; void serverOnlyProps;
     if (existsSync(join(directory, 'dist/server/main.js'))) throw new Error('Development journey created application dist.');
     await run('starter-tests', ['test'], directory);
     await run('starter-build', ['build'], directory);
-    await run('packed-production', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=1',
-      '--reporter=json', `--output=${join(output, `packed-production-${attempt}`)}`, ...files, '--grep-invert',
-      'updates a React component|retains the document and worker|reloads a shared graph|rebuilds the installed dev process'],
-    directory, { FLUO_PRODUCT_ACCEPTANCE: '1', FLUO_REACT_STARTER_TEST_PORT: '0',
-      PLAYWRIGHT_JSON_OUTPUT_NAME: join(output, `packed-production-${attempt}.json`) });
+    receipt.productionServer = {};
+    await withProductionServer(directory, receipt.productionServer, ({ url, config }) =>
+      run('packed-production', ['exec', 'playwright', 'test', '--config', config, '--workers=1',
+        '--reporter=json', `--output=${join(output, `packed-production-${attempt}`)}`, ...files, '--grep-invert',
+        'updates a React component|retains the document and worker|reloads a shared graph|rebuilds the installed dev process'],
+      directory, { FLUO_PRODUCT_ACCEPTANCE: '1', FLUO_REACT_STARTER_TEST_PORT: new URL(url).port,
+        FLUO_REACT_READY_URL: url,
+        PLAYWRIGHT_JSON_OUTPUT_NAME: join(output, `packed-production-${attempt}.json`) }));
     await run('packed-deployment', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=1',
       '--reporter=json', `--output=${join(output, `packed-deployment-${attempt}`)}`, 'tests/deployment-transition.spec.ts'],
     directory, { FLUO_PRODUCT_ACCEPTANCE: '1', FLUO_REACT_STARTER_TEST_PORT: '0',

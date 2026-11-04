@@ -14,7 +14,19 @@ Node floors are classified by role. The 34 Node-bound public packages that are p
 | Locked Node `26.x` | PR: independent frozen install/fresh build and affected package tests, relevant four-starter smoke; full PR: all packages; extended: full verification and browser journeys | Forward verification only; never publish |
 | Bun, Cloudflare Workers | Their existing independent adapter/native-runtime lanes | Runtime-native deployment contracts |
 
-The full `.github/workflows/ci.yml` plan expands to 18 jobs including plan resolution and the required `Verify` aggregate. Sixteen execution tasks use the shared catalog in `tooling/ci/local-verification-manifest.json` and the runner in `tooling/ci/verification-runner.mjs`; `.github/workflows/node-verification.yml` hosts one task per invocation. Full primary package tests retain four shards, tooling retains two, and apps/examples run once in the first tooling shard. The primary build supplies selected package artifacts and, when required, the runtime-floor bundle. Exact Node `24.0.0` executes that bundle without installing workspace dependencies or loading Babel.
+The shared catalog in `tooling/ci/local-verification-manifest.json` retains 17 task definitions. Definition counts differ from profile-specific execution task counts. `tooling/ci/local-verification.mjs` freezes the plan, `tooling/ci/verification-runner.mjs` executes it, and `.github/workflows/node-verification.yml` hosts one task per invocation. Job counts for `.github/workflows/ci.yml` include plan resolution and the required `Verify` aggregate.
+
+| Plan | Manifest definitions | Execution tasks | Expanded jobs | Secondary compatibility |
+| --- | --- | --- | --- | --- |
+| Full PR (`profile=pr`, `mode=full`) | 17 | 25 | 27 | Four package shards + one starter smoke task per runtime |
+| Extended (`profile=extended`, `mode=full`) | 17 | 17 | 19 | One composite task with full verification per runtime |
+| Scoped PR (`profile=pr`, `mode=scoped`) | 17 | Selection-dependent | Selection-dependent | Existing composite tasks when selected; no full PR shard expansion |
+
+Only full PR plans expand the `compatibility-floor` and `compatibility-next` definitions into `compatibility-floor-1`–`compatibility-floor-4` plus `compatibility-floor-smoke`, and `compatibility-next-1`–`compatibility-next-4` plus `compatibility-next-smoke`. Each task independently runs `pnpm install --frozen-lockfile` and a fresh `pnpm build` under its secondary Node. Package tasks run with `--shard=i/4 --maxWorkers=1`, JSON/default reporters and `/evidence/<task-id>-vitest.json`. Smoke tasks run the existing locked four-starter smoke once per runtime. This means ten independent installs/builds across the secondary runtimes; primary build artifacts do not replace secondary compiler verification. Scoped PRs retain affected package tests and conditional starter smoke in the same composite task. Extended retains full typecheck, lint, `test:verify` and the full starter matrix once per secondary runtime. Workflow partitions for build, compatibility and remaining verification tasks must be disjoint and cover every planned task.
+
+Full primary package tests retain four shards and tooling retains two. Selected apps/examples and direct Node regressions remain in `tooling-1`; an apps command with no matching suite is explicitly recorded as not applicable. `react-product`, which depends on the primary build, exclusively owns browser installation and the entire `capture tooling`, and is the required producer of the tooling domain receipt. A successful `tooling-1` cannot replace a missing product receipt. Scoped PRs select the product task exactly once only when the existing React/example selection condition holds. Capture's internal build/browser/fault/recovery order and normal deployment restoration remain intact, as does the separate `capture starters` in `starters`. The primary build supplies selected package artifacts and, when required, the runtime-floor bundle. Exact Node `24.0.0` executes that bundle without installing workspace dependencies or loading Babel.
+
+Selected `react-product` is emitted first in the existing post-build task matrix, preserving the relative order of all other tasks and the frozen plan order. This is a matrix creation preference, not a guarantee of GitHub start times. Speed improvement remains unverified until fresh CI measurement.
 
 This replaces the previous full three-version PR matrix with a full primary profile and two compatibility profiles. Supported package engine ranges do not change, but per-PR assurance on secondary versions is narrower: full secondary typecheck, lint, tooling, apps/examples and browser verification moves to `.github/workflows/extended-verification.yml` and the exact-source prerequisite of `.github/workflows/release.yml`. A previous scheduled success never substitutes for the publishing commit's extended verification.
 
@@ -26,6 +38,8 @@ The plan job and canonical local command both execute the real Docker runner fix
 
 Tasks reuse pnpm's integrity-checked package store, but retain separate checkouts and `node_modules` layouts. Workspace build outputs cross task boundaries only through the verified build archive. Retried jobs update canonical artifact aliases only after saving attempt-specific task evidence, so earlier failure logs and browser traces remain available.
 
+Compatibility tasks do not share workspaces, `dist` or `node_modules`. The concurrent isolation check at the same relative `dist` path writes each task's token, waits for both ready events before release, then checks that each task sees only its own token. Fixed sleeps or coincidentally overlapping completion times do not prove isolation. The immutable image cache is keyed by the environment lock and Dockerfile recipe; cache hits still require each job's image restore/load and runtime probe. Additional tasks do not eliminate repeated image preparation, installation or build costs.
+
 `pnpm verify:local --base-ref <sha>` runs the same PR tasks in isolated Linux/arm64
 containers and records an exact-head receipt. `--plan` prints the frozen plan
 without passing evidence; `--profile extended` also runs full secondary coverage.
@@ -35,13 +49,29 @@ access and host-network fixture connections. Apple Silicon and GitHub
 Linux volumes rather than macOS bind mounts. An unavailable environment fails;
 native macOS or Linux/amd64 execution never silently replaces canonical verification.
 
-The repeated-development PR verification budget is 15 minutes locally and a
-further 15 minutes on GitHub, including source installation, builds, tests and
-final aggregation. Initial provisioning of the locked environment is measured
-separately; GitHub queue time is reported separately from execution. A lower job
-count alone is not evidence of meeting these budgets. Prepared outputs may be
-reused only after source and output-inventory validation; standalone preparation
-and tests whose subject is a fresh build still execute their builds.
+The repeated-development PR verification budgets are 15 minutes (900 seconds)
+locally and a further 15 minutes (900 seconds) on GitHub, judged separately from
+completed canonical runs. The GitHub budget interval is the earliest job's
+`started_at` through the required `Verify` job's `completed_at`. Retain overall
+run creation-to-completion time as well. Report initial queue time and
+dependency-release-to-runner wait separately without subtracting them from
+user-visible overall elapsed time. Only initial provisioning of the locked
+environment is classified separately. Recurring image restore/load/probe,
+artifact transfer, source installation, builds, tests, evidence upload and final
+aggregation remain in the repeated-execution budget.
+
+Parallelization is intended to reduce waiting, not proof of speed or cost savings.
+Additional jobs and repeated runtime builds may increase summed runner elapsed
+time, which must be reported separately. Summed job elapsed is neither CPU usage
+nor billed cost. Job counts or successful `--plan` output do not establish budget
+compliance. For example, an actual final verdict of 17 minutes (1020 seconds)
+is a FAIL against the 15-minute budget even if faster than before. A budget miss
+requires the measured result and a separate owner decision before completion or
+merge. Without a completed canonical local run, the local 15-minute budget is
+NOT MEASURED; GitHub success or host-native checks cannot prove it. Speed
+improvement remains unknown until measured. Prepared outputs may be reused only
+after source and output-inventory validation; standalone preparation and tests
+whose subject is a fresh build still execute their builds.
 
 Receipts bind the source tree, base/diff, profile, catalog, environment lock,
 actual runtime/browser versions, required task results and log/artifact digests.

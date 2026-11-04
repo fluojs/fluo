@@ -78,8 +78,9 @@ FLUO_PRODUCT_ACCEPTANCE=1 FLUO_BACKGROUND_EVIDENCE="$PACKED_OUTPUT" \
 ```
 
 It does not replace full canonical CI or authorize remote operations. The
-existing CI `starters` and `tooling-1` tasks produce domain receipts and raw
-artifacts through the same commands. Domain completion is not whole-product
+CI `react-product` task produces the `tooling` domain receipt and raw artifacts;
+the `starters` task continues producing its existing `starters` domain through
+the same commands. Domain completion is not whole-product
 completion; normal CI does not collect historical benchmarks or enable Frida.
 
 The executable consumer interface is:

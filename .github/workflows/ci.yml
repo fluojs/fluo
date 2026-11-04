@@ -60,9 +60,27 @@ jobs:
           node --input-type=module <<'EOF'
           import { readFileSync, appendFileSync } from 'node:fs';
           const plan = JSON.parse(readFileSync('.omo/ci-plan/plan.json', 'utf8'));
-          const tasks = plan.tasks.map(({ id }) => id).filter(id => !['build', 'compatibility-floor', 'compatibility-next'].includes(id));
-          const compatibility = plan.tasks.map(({ id }) => id).filter(id => id.startsWith('compatibility-'));
-          if (plan.mode === 'full' && (tasks.length !== 13 || plan.tasks.length !== 16)) throw new Error('Unexpected full CI job count');
+          const taskIds = plan.tasks.map(({ id }) => id);
+          const buildTasks = taskIds.filter((id) => id === 'build');
+          const compatibility = taskIds.filter((id) => id.startsWith('compatibility-'));
+          const tasks = [
+            ...taskIds.filter((id) => id === 'react-product'),
+            ...taskIds.filter((id) => id !== 'react-product' && id !== 'build' && !id.startsWith('compatibility-')),
+          ];
+          if (new Set([...buildTasks, ...compatibility, ...tasks]).size !== taskIds.length
+            || buildTasks.length + compatibility.length + tasks.length !== taskIds.length) {
+            throw new Error('workflow task partition is not disjoint or exhaustive');
+          }
+          if (plan.mode === 'full') {
+            const compatibilityIds = process.env.PROFILE === 'extended'
+              ? ['compatibility-floor', 'compatibility-next']
+              : ['compatibility-floor-1', 'compatibility-floor-2', 'compatibility-floor-3', 'compatibility-floor-4', 'compatibility-floor-smoke',
+                 'compatibility-next-1', 'compatibility-next-2', 'compatibility-next-3', 'compatibility-next-4', 'compatibility-next-smoke'];
+            const expected = ['build', 'static', 'packages-1', 'packages-2', 'packages-3', 'packages-4',
+              'tooling-1', 'tooling-2', 'react-product', 'starters', 'studio', ...compatibilityIds,
+              'runtime-floor', 'native-bun', 'native-web', 'packed'];
+            if (JSON.stringify(taskIds) !== JSON.stringify(expected)) throw new Error('Unexpected full CI task inventory');
+          }
           const hasBuild = plan.tasks.some(({ id }) => id === 'build');
           const hasDocs = plan.tasks.some(({ outputs }) => outputs.includes('docs-site'));
           appendFileSync(process.env.GITHUB_OUTPUT, `source_sha=${plan.identity.headSha}\ntasks=${JSON.stringify(tasks)}\ncompatibility=${JSON.stringify(compatibility)}\nhas_build=${hasBuild}\nhas_docs=${hasDocs}\n`);

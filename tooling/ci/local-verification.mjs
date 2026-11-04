@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 import { schemaFailure } from '../../.agents/workflow-contracts/schema-validator.mjs';
 import { isProsePath, resolveVerificationScope } from './detect-pr-verification-scope.mjs';
-import { imageKeyFor, loadEnvironmentLock, validateVerificationEnvironment } from './verification-environment.mjs';
 import { readTestCatalog } from './test-catalog.mjs';
+import { imageKeyFor, loadEnvironmentLock, validateVerificationEnvironment } from './verification-environment.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -94,6 +94,27 @@ function companionChecks(changedFiles, manifest) {
     .sort();
 }
 
+const isCompatibilityBootstrap = ({ executable, argv }) => executable === 'pnpm'
+  && (argv.join(' ') === 'install --frozen-lockfile' || argv[0] === 'build');
+
+/** Full-PR only: split one composite secondary definition into four package shards plus one smoke task. */
+function expandCompatibilityTask(task) {
+  const bootstrap = task.commands.filter(isCompatibilityBootstrap);
+  const packagesIndex = task.commands.findIndex(({ executable, argv }) =>
+    executable === 'pnpm' && argv.includes('vitest') && argv.includes('--project') && argv.includes('packages'));
+  if (packagesIndex === -1) throw new TypeError(`compatibility task ${task.id} omits package tests`);
+  const packagesCommand = task.commands[packagesIndex];
+  const smoke = task.commands.filter((_, index) => index !== packagesIndex && !isCompatibilityBootstrap(task.commands[index]));
+  if (!smoke.length) throw new TypeError(`compatibility task ${task.id} omits smoke/locked coverage`);
+  return [1, 2, 3, 4].map((shard) => {
+    const id = `${task.id}-${shard}`;
+    return { ...task, id, dependencies: [], inputs: [], outputs: [],
+      commands: [...bootstrap, { ...packagesCommand, argv: [...packagesCommand.argv,
+        `--shard=${shard}/4`, '--reporter=json', '--reporter=default', `--outputFile=/evidence/${id}-vitest.json`] }] };
+  }).concat([{ ...task, id: `${task.id}-smoke`, dependencies: [], inputs: [], outputs: [],
+    commands: [...bootstrap, ...smoke] }]);
+}
+
 export function buildVerificationPlan({ changedFiles, identity, manifest = readVerificationManifest(), profile = 'pr',
   lock = loadEnvironmentLock(), root = fileURLToPath(new URL('../../', import.meta.url)), forceFull = false }) {
   if (!Array.isArray(changedFiles) || changedFiles.some((file) => typeof file !== 'string')) {
@@ -115,9 +136,9 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
   const mode = selection.mode;
   const cleanDist = changedFiles.some(isCleanDistChange);
   const taskIds = new Set(manifest.tasks.map((task) => task.id));
-  if (taskIds.size !== 16 || manifest.tasks.length !== 16) throw new TypeError('missing or duplicate required verification task');
+  if (taskIds.size !== 17 || manifest.tasks.length !== 17) throw new TypeError('missing or duplicate required verification task');
   const required = ['build', 'static', ...Array.from({ length: 4 }, (_, i) => `packages-${i + 1}`),
-    'tooling-1', 'tooling-2', 'starters', 'studio', 'compatibility-floor', 'compatibility-next',
+    'tooling-1', 'tooling-2', 'react-product', 'starters', 'studio', 'compatibility-floor', 'compatibility-next',
     'runtime-floor', 'native-bun', 'native-web', 'packed'];
   if (required.some((id) => !taskIds.has(id))) throw new TypeError('missing required capability task');
   const applicableBenchmark = changedFiles.some((file) => file.startsWith('tooling/benchmarks/http-comparison/'));
@@ -241,9 +262,8 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
       if (product) {
         const original = manifest.tasks.find((item) => item.id === 'tooling-1');
         tooling.commands.push(...original.commands.filter((item) =>
-          item.argv.includes('tooling/ci/react-product-acceptance.mjs')
-          || item.argv.includes('playwright')
-          || item.argv.some((arg) => arg.startsWith('examples/react-vite-ssr/tests/'))));
+          item.argv.some((arg) => arg.startsWith('examples/react-vite-ssr/tests/'))));
+        selected.add('react-product');
       }
     }
     tasks = tasks.filter(({ id }) => selected.has(id));
@@ -253,6 +273,9 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
         item.inputs = [];
       }
     }
+  }
+  if (profile === 'pr' && mode === 'full') {
+    tasks = tasks.flatMap((task) => task.id.startsWith('compatibility-') ? expandCompatibilityTask(task) : [task]);
   }
   if (!testCatalog.apps.length) {
     const reason = 'no-suite: apps has no matching test files in target checkout';

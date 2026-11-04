@@ -119,8 +119,10 @@ framework API or a default production setting.
 `.github/workflows/react-reliability-soak.yml` is a separate scheduled/manual job
 bound to the checked-out SHA. It operates for at least two real hours, measures
 each event-settled cycle and keeps failure artifacts. Duration itself is under
-test; no sleep synchronizes correctness. Normal PR coverage joins the existing
-`tooling-1` task, without adding a task or expanded job to the 18-job plan.
+test; no sleep synchronizes correctness. Normal PR browser installation and
+`capture tooling` belong to `react-product`; direct Node companion regressions
+remain in `tooling-1`. Profile-specific task/job counts follow
+[Node.js Support](../reference/node-support.md).
 The locked runner mounts its raw browser receipts/traces under `/evidence`.
 No elapsed-time budget has been proven by this source pass.
 

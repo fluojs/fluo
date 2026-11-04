@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { digest, buildVerificationPlan, readVerificationManifest } from './local-verification.mjs';
+import { buildVerificationPlan, digest, readVerificationManifest } from './local-verification.mjs';
+import { prepareVerificationEnvironment } from './verification-environment.mjs';
 import { aggregateResults, runHostChecks, runTask, validateTaskResult } from './verification-runner.mjs';
 import { collectIdentity } from './verify-local.mjs';
 
@@ -44,6 +45,12 @@ test('real Docker Vitest: apps and separate benchmark Node coverage -> authentic
   put('apps/docs/package.json', '{"name":"fixture-docs","private":true}');
   put('apps/docs/index.test.ts', 'import {test,expect} from "vitest";test("fixture arithmetic",()=>expect(2+2).toBe(4));');
   put('tooling/ci/fixture.test.ts', 'import {test,expect} from "vitest";test("tooling arithmetic",()=>expect(2+2).toBe(4));');
+  for (let index = 2; index <= 4; index += 1) {
+    for (const directory of ['apps/docs', 'tooling/ci']) {
+      put(`${directory}/fixture-${index}.test.ts`,
+        `import {test,expect} from "vitest";test("fixture ${index}",()=>expect(${index}+1).toBe(${index + 1}));`);
+    }
+  }
   const nodeTest = 'tooling/benchmarks/react-app-comparison/tests/evaluate.test.ts';
   for (const file of [nodeTest, 'tooling/benchmarks/react-app-comparison/src/evaluate.ts']) {
     put(file, readFileSync(new URL(`../../${file}`, import.meta.url)));
@@ -63,6 +70,7 @@ test('real Docker Vitest: apps and separate benchmark Node coverage -> authentic
     if (filter.endsWith('empty.test.ts')) put(filter, 'export const noTests = true;');
     const manifest = readVerificationManifest();
     const project = filter.startsWith('apps/') ? 'apps' : 'tooling';
+    const passes = filter === 'apps/docs/' || filter === 'tooling/';
     const benchmark = project === 'tooling'
       ? manifest.tasks.find(({ id }) => id === 'tooling-2').commands.filter(({ executable }) => executable === 'node') : [];
     const task = manifest.tasks.find(({ id }) => id === 'tooling-1');
@@ -71,13 +79,14 @@ test('real Docker Vitest: apps and separate benchmark Node coverage -> authentic
     task.commands = [
       { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
       ...benchmark,
-      { executable: 'pnpm', argv: ['vitest', 'run', '--project', project, filter, '--maxWorkers=1'], cwd: '.' },
+      { executable: 'pnpm', argv: ['vitest', 'run', '--project', project, filter, '--maxWorkers=1',
+        ...(passes ? ['--shard=1/4'] : []),
+        '--reporter=json', '--reporter=default', '--outputFile=/evidence/tooling-1-vitest.json'], cwd: '.' },
     ];
     put('tooling/ci/local-verification-manifest.json', JSON.stringify(manifest));
     const head = commit();
     const identity = collectIdentity(root, head);
     const plan = buildVerificationPlan({ changedFiles: [], identity, root, manifest });
-    const passes = filter === 'apps/docs/' || filter === 'tooling/';
     const outcome = `${project}-${passes ? 'passed' : filter.endsWith('empty.test.ts') ? 'empty' : 'missing'}`;
     const path = join(root, '.git', `${outcome}-plan.json`);
     const output = join(root, '.git', outcome);
@@ -91,6 +100,15 @@ test('real Docker Vitest: apps and separate benchmark Node coverage -> authentic
       assert.equal(result.status, 'passed');
       validateTaskResult(plan, plan.tasks.find(({ id }) => id === 'tooling-1'), result, output, artifacts);
       assert.match(readFileSync(join(output, `tooling-1-${vitestIndex}.log`), 'utf8'), /1 passed/u);
+      // Then: the installed Vitest build emits the JSON evidence sidecar alongside default reporting.
+      const report = JSON.parse(readFileSync(join(output, 'tooling-1-vitest.json'), 'utf8'));
+      assert.ok(report.numTotalTests >= 1);
+      assert.ok(report.success === true);
+      assert.equal(report.testResults.length, 1);
+      assert.equal(report.testResults[0].status, 'passed');
+      assert.match(report.testResults[0].name, project === 'apps'
+        ? /\/apps\/docs\/(?:index|fixture-[2-4])\.test\.ts$/u
+        : /\/tooling\/ci\/fixture(?:-[2-4])?\.test\.ts$/u);
     } else {
       assert.throws(() => runTask(plan, 'tooling-1', output, artifacts, path, root), (error) => {
         assert.ok(error instanceof Error);
@@ -122,7 +140,8 @@ test('real Docker Vitest: apps and separate benchmark Node coverage -> authentic
   // Given: a pre-existing absent apps suite and a real docs-only execution plan.
   rmSync(join(root, 'apps/docs/index.test.ts'));
   rmSync(join(root, 'apps/docs/empty.test.ts'));
-  const check = 'import assert from "node:assert/strict";import {readFileSync} from "node:fs";assert.equal(JSON.parse(readFileSync("tooling/ci/local-verification-manifest.json")).tasks.length,16);';
+  for (let index = 2; index <= 4; index += 1) rmSync(join(root, `apps/docs/fixture-${index}.test.ts`));
+  const check = 'import assert from "node:assert/strict";import {readFileSync} from "node:fs";assert.equal(JSON.parse(readFileSync("tooling/ci/local-verification-manifest.json")).tasks.length,17);';
   put('check.mjs', check);
   put('docs.mjs', `${check}import {mkdirSync,writeFileSync} from "node:fs";mkdirSync(".artifacts/docs-site",{recursive:true});writeFileSync(".artifacts/docs-site/index.html","verified docs fixture");`);
   put('tooling/release/verify-changeset-release-lane.mjs',
@@ -289,7 +308,10 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   const failingTask = manifest.tasks.find(({ id }) => id === 'packages-1');
   for (const id of ['compatibility-floor', 'compatibility-next']) {
     const task = manifest.tasks.find((candidate) => candidate.id === id);
-    task.commands = [{ executable: 'pnpm', argv: ['run', 'probe-runtime'], cwd: '.' }];
+    task.commands = [
+      { executable: 'pnpm', argv: ['vitest', 'run', '--project', 'packages', '--maxWorkers=1'], cwd: '.' },
+      { executable: 'pnpm', argv: ['run', 'probe-runtime'], cwd: '.' },
+    ];
   }
   failingTask.commands = [
     { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
@@ -319,13 +341,19 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
     identity: { ...fixtureIdentity, root, baseRef: headSha, baseSha: headSha, mergeBase: headSha,
       headSha, treeSha, worktreeStatusDigest: digest('') },
     manifest, root });
+  // Then: the empty diff is a full PR plan with the expanded sharded secondary inventory.
+  assert.equal(plan.tasks.length, 25);
+  assert.deepEqual(plan.tasks.map(({ id }) => id).filter((id) => id.startsWith('compatibility-')),
+    ['compatibility-floor-1', 'compatibility-floor-2', 'compatibility-floor-3', 'compatibility-floor-4',
+      'compatibility-floor-smoke', 'compatibility-next-1', 'compatibility-next-2', 'compatibility-next-3',
+      'compatibility-next-4', 'compatibility-next-smoke']);
   const path = join(root, '.git', 'plan.json');
   writeFileSync(path, JSON.stringify(plan));
   const output = join(root, '.git', 'results');
   const artifacts = join(root, '.git', 'artifacts');
 
-  // When: Package scripts recursively invoke pnpm under each secondary Node.
-  for (const [id, runtime] of [['compatibility-floor', 'compat24'], ['compatibility-next', 'compat26']]) {
+  // When: Package scripts recursively invoke pnpm under each secondary Node smoke task.
+  for (const [id, runtime] of [['compatibility-floor-smoke', 'compat24'], ['compatibility-next-smoke', 'compat26']]) {
     const result = runTask(plan, id, output, artifacts, path, root);
     assert.equal(result.status, 'passed');
     assert.equal(readFileSync(join(output, `${id}-0.log`), 'utf8').trim().split('\n').at(-1),
@@ -382,4 +410,220 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
     headSha, treeSha, imageKey: plan.environment.imageKey,
     passed: ['build', 'static'], failed: 'packages-1',
   }, null, 2)}\n`);
+});
+
+test('real Docker: two task-local workspaces at the same relative dist path never see each other', { timeout: 240_000 }, async (t) => {
+  // Given: two isolated tasks writing the same relative dist path in their own Linux workspaces.
+  assert.equal(spawnSync('docker', ['info'], { stdio: 'ignore' }).status, 0, 'isolation fixture requires an available daemon');
+  const root = mkdtempSync(join(tmpdir(), 'fluo-isolated-workspaces-'));
+  const ids = ['native-bun', 'native-web'];
+  mkdirSync(evidenceParent, { recursive: true });
+  const evidence = mkdtempSync(join(evidenceParent, 'isolated-workspaces-'));
+  const barrierName = `fluo-isolation-${process.pid}-${root.split('/').at(-1).toLowerCase()}`;
+  const barrierEvents = [];
+  const outputs = new Map();
+  let coordinator;
+  let coordinatorClosed;
+  let barrierStdout = '';
+  let barrierStderr = '';
+  t.after(async () => {
+    try {
+      if (coordinator) {
+        if (coordinator.exitCode === null) run('docker', ['rm', '--force', barrierName], root);
+        const terminal = await coordinatorClosed;
+        const inspected = spawnSync('docker', ['container', 'inspect', barrierName], { encoding: 'utf8' });
+        writeFileSync(join(evidence, 'barrier-cleanup.json'), JSON.stringify({
+          name: barrierName, terminal, inspectExit: inspected.status,
+          stdout: inspected.stdout, stderr: inspected.stderr,
+        }, null, 2));
+        assert.equal(inspected.status, 1);
+        assert.match(inspected.stderr, /No such (object|container)/u);
+      }
+    } finally {
+      writeFileSync(join(evidence, 'barrier.stdout'), barrierStdout);
+      writeFileSync(join(evidence, 'barrier.stderr'), barrierStderr);
+      writeFileSync(join(evidence, 'barrier-events.json'), JSON.stringify(barrierEvents, null, 2));
+      if (existsSync(join(root, '.git/plan.json'))) copyFileSync(join(root, '.git/plan.json'), join(evidence, 'plan.json'));
+      for (const [id, output] of outputs) {
+        if (existsSync(output)) cpSync(output, join(evidence, id), { recursive: true });
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  for (const file of [
+    'tooling/ci/verification-runner.mjs', 'tooling/ci/local-verification.mjs',
+    'tooling/ci/detect-pr-verification-scope.mjs', 'tooling/ci/test-catalog.mjs', 'tooling/ci/prepared-build.mjs',
+    'tooling/ci/local-verification-manifest.json', 'tooling/ci/local-verification-receipt.schema.json',
+    'tooling/ci/verification-environment.mjs', 'tooling/ci/probe-verification-environment.mjs',
+    'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
+    '.agents/workflow-contracts/schema-validator.mjs',
+  ]) {
+    mkdirSync(dirname(join(root, file)), { recursive: true });
+    copyFileSync(new URL(`../../${file}`, import.meta.url), join(root, file));
+  }
+  const prepared = prepareVerificationEnvironment();
+  // The coordinator shares only the existing Docker host network, never either workspace.
+  const coordinatorCode = `
+    const assert = require('node:assert/strict');
+    const ready = new Map();
+    const results = new Set();
+    const emit = (event, id, files) => console.log(JSON.stringify({event, id, files}));
+    const deadline = setTimeout(() => { throw Error('isolation barrier timed out'); }, 60000);
+    const server = require('node:net').createServer(socket => {
+      socket.setEncoding('utf8');
+      socket.on('error', error => { throw error; });
+      let buffered = '';
+      socket.on('data', chunk => {
+        buffered += chunk;
+        let boundary;
+        while ((boundary = buffered.indexOf('\\n')) !== -1) {
+          const message = JSON.parse(buffered.slice(0, boundary));
+          buffered = buffered.slice(boundary + 1);
+          assert.ok(['native-bun', 'native-web'].includes(message.id));
+          if (message.event === 'ready') {
+            assert.ok(!ready.has(message.id));
+            ready.set(message.id, socket);
+            emit('ready', message.id);
+            if (ready.size === 2) {
+              for (const [id, peer] of ready) {
+                emit('release', id);
+                peer.write(JSON.stringify({event:'release', id}) + '\\n');
+              }
+            }
+          } else {
+            assert.equal(message.event, 'result');
+            assert.equal(ready.get(message.id), socket);
+            assert.equal(ready.size, 2);
+            assert.ok(!results.has(message.id));
+            assert.deepEqual(message.files, [message.id + '.txt']);
+            results.add(message.id);
+            emit('result', message.id, message.files);
+            if (results.size === 2) server.close(() => { clearTimeout(deadline); emit('closed'); });
+          }
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({event:'listening', port:server.address().port})));
+  `;
+  const port = await new Promise((resolvePort, reject) => {
+    coordinator = spawn('docker', ['run', '--rm', '--init', '--name', barrierName,
+      '--platform', 'linux/arm64', '--network', 'host', prepared.tag, 'node', '-e', coordinatorCode]);
+    coordinatorClosed = new Promise((resolveClose) => {
+      coordinator.on('close', (code, signal) => {
+        if (!barrierEvents.some(({ event }) => event === 'listening')) reject(new Error(barrierStderr));
+        resolveClose({ code, signal });
+      });
+    });
+    coordinator.on('error', reject);
+    coordinator.stderr.on('data', (chunk) => { barrierStderr += chunk.toString(); });
+    let buffered = '';
+    coordinator.stdout.on('data', (chunk) => {
+      barrierStdout += chunk.toString();
+      buffered += chunk.toString();
+      let boundary;
+      while ((boundary = buffered.indexOf('\n')) !== -1) {
+        const event = JSON.parse(buffered.slice(0, boundary));
+        buffered = buffered.slice(boundary + 1);
+        barrierEvents.push(event);
+        if (event.event === 'listening') resolvePort(event.port);
+      }
+    });
+  });
+  const manifest = readVerificationManifest();
+  manifest.scope.companionEdges = [{ owners: ['fixture-leaf'], tasks: ['native-bun', 'native-web'] }];
+  const marker = (id) => `
+    const fs = require('node:fs');
+    const assert = require('node:assert/strict');
+    const id = ${JSON.stringify(id)};
+    const socket = new (require('node:net').Socket)();
+    socket.setEncoding('utf8');
+    socket.setTimeout(60000, () => { throw Error('task release timed out: ' + id); });
+    socket.on('error', error => { throw error; });
+    let buffered = '';
+    socket.on('data', chunk => {
+      buffered += chunk;
+      const boundary = buffered.indexOf('\\n');
+      if (boundary === -1) return;
+      const message = JSON.parse(buffered.slice(0, boundary));
+      assert.deepEqual(message, {event:'release', id});
+      console.log(JSON.stringify({event:'release', id}));
+      const files = fs.readdirSync('packages/leaf/dist').sort();
+      assert.deepEqual(files, [id + '.txt']);
+      console.log('DIST_CONTENTS', files.join(','));
+      console.log(JSON.stringify({event:'result', id, files}));
+      socket.end(JSON.stringify({event:'result', id, files}) + '\\n');
+    });
+    socket.once('connect', () => {
+      console.log(JSON.stringify({event:'ready', id}));
+      socket.write(JSON.stringify({event:'ready', id}) + '\\n');
+    });
+    fs.mkdirSync('packages/leaf/dist', {recursive:true});
+    fs.writeFileSync('packages/leaf/dist/' + id + '.txt', id);
+    socket.connect(${port}, '127.0.0.1');
+  `;
+  for (const id of ids) {
+    const task = manifest.tasks.find((candidate) => candidate.id === id);
+    task.dependencies = [];
+    task.inputs = [];
+    task.commands = [{ executable: 'node', argv: ['-e', marker(id)], cwd: '.' }];
+  }
+  writeFileSync(join(root, 'tooling/ci/local-verification-manifest.json'), JSON.stringify(manifest));
+  copyFileSync(new URL('../../.gitignore', import.meta.url), join(root, '.gitignore'));
+  writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+  writeFileSync(join(root, 'package.json'), '{"name":"isolated-fixture","private":true,"packageManager":"pnpm@10.4.1"}');
+  mkdirSync(join(root, 'packages/leaf/src'), { recursive: true });
+  writeFileSync(join(root, 'packages/leaf/package.json'), '{"name":"fixture-leaf","version":"1.0.0"}');
+  writeFileSync(join(root, 'packages/leaf/src/index.ts'), 'export const value = 1;\n');
+  run('git', ['init', '-q'], root);
+  run('git', ['add', '.'], root);
+  run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'base'], root);
+  const base = run('git', ['rev-parse', 'HEAD'], root);
+  writeFileSync(join(root, 'packages/leaf/src/index.ts'), 'export const value = 2;\n');
+  run('git', ['add', '.'], root);
+  run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'leaf'], root);
+  const identity = collectIdentity(root, base);
+  const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity, root, manifest });
+  assert.equal(plan.mode, 'scoped');
+  const path = join(root, '.git', 'plan.json');
+  writeFileSync(path, JSON.stringify(plan));
+
+  // When: all ready/release subscriptions exist before either real task writes its marker.
+  const execution = (id) => new Promise((resolveTask, reject) => {
+    const output = join(root, '.git', `${id}-results`);
+    outputs.set(id, output);
+    const artifacts = join(root, '.git', `${id}-artifacts`);
+    const child = spawn(process.execPath, [script, '--plan', path, '--task', id,
+      '--output', output, '--artifacts', artifacts], { cwd: root });
+    let stdout = '';
+    let diagnostics = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk) => { diagnostics += chunk.toString(); });
+    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      writeFileSync(join(evidence, `${id}-runner.stdout`), stdout);
+      writeFileSync(join(evidence, `${id}-runner.stderr`), diagnostics);
+      return code === 0 && signal === null
+        ? resolveTask(output) : reject(new Error(`${id} exited ${code ?? 'without code'}: ${diagnostics}`));
+    });
+  });
+  const results = await Promise.allSettled(ids.map(execution));
+  for (const result of results) if (result.status === 'rejected') throw result.reason;
+  assert.deepEqual(await coordinatorClosed, { code: 0, signal: null });
+
+  // Then: both tokens existed before either inspection, and neither task sees the other's token.
+  const positions = (event) => barrierEvents.flatMap((item, index) => item.event === event ? [index] : []);
+  for (const event of ['ready', 'release', 'result']) {
+    assert.deepEqual(barrierEvents.filter((item) => item.event === event).map(({ id }) => id).sort(), [...ids].sort());
+  }
+  assert.ok(Math.max(...positions('ready')) < Math.min(...positions('release')));
+  assert.ok(Math.max(...positions('release')) < Math.min(...positions('result')));
+  for (const [id, output] of outputs) {
+    const log = readFileSync(join(output, `${id}-0.log`), 'utf8');
+    const events = log.split('\n').filter((line) => line.startsWith('{')).map((line) => JSON.parse(line));
+    assert.deepEqual(events.map(({ event }) => event), ['ready', 'release', 'result']);
+    assert.deepEqual(events.at(-1), { event: 'result', id, files: [`${id}.txt`] });
+    assert.match(log, new RegExp(`DIST_CONTENTS ${id}\\.txt\\b`));
+    assert.ok(!log.includes(id === 'native-bun' ? 'native-web.txt' : 'native-bun.txt'),
+      `cross-task visibility detected: ${log}`);
+  }
 });
