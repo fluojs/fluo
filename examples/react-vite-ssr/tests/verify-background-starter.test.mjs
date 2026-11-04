@@ -19,6 +19,168 @@ const diagnostics = {
   'negative-types': 'src/acceptance-negative.ts(12,17): error TS2345: Argument is not assignable.',
 };
 
+async function productionLifecycle(t, mode) {
+  mkdirSync(root, { recursive: true });
+  const output = mkdtempSync(join(root, 'production-'));
+  const directory = join(output, 'consumer');
+  mkdirSync(join(directory, 'dist/server'), { recursive: true });
+  writeFileSync(join(directory, 'package.json'), JSON.stringify({
+    type: 'module', scripts: { start: 'node dist/server/main.js' },
+  }));
+  writeFileSync(join(directory, 'playwright.config.ts'), 'export default {};\n');
+  const events = [];
+  let foreign;
+  let foreignRequests = 0;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error('Production lifecycle did not settle')),
+    mode === 'malformed-readiness' ? 5_000 : 30_000);
+  let child;
+  let terminalClosed;
+  let raw;
+  t.after(async () => {
+    clearTimeout(timeout);
+    child?.kill('SIGTERM');
+    if (terminalClosed) await terminalClosed;
+    if (raw) { raw.end(); await finished(raw); }
+    if (foreign?.listening) {
+      const closed = once(foreign, 'close');
+      foreign.close();
+      await closed;
+    }
+    writeFileSync(join(output, 'events.json'), JSON.stringify({ mode, events, foreignRequests }, null, 2));
+  });
+  if (mode === 'occupied') {
+    foreign = createServer((socket) => {
+      foreignRequests++;
+      socket.resume();
+      socket.end('HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nforeign');
+    });
+    const listening = once(foreign, 'listening', { signal: controller.signal });
+    foreign.listen(44982, '127.0.0.1');
+    await listening;
+    events.push({ state: 'foreign-listening', port: foreign.address().port });
+  }
+  const source = mode === 'early-close' ? 'process.exit(0);\n'
+    : mode === 'early-error' ? 'throw new Error("startup failure");\n'
+    : `
+      import { createServer } from 'node:http';
+      const server = createServer((request, response) => {
+        response.end('owned');
+        if (request.url === '/exit') setImmediate(() => server.close(() => process.exit(0)));
+      });
+      process.on('SIGTERM', () => server.close(() => process.exit(0)));
+      server.listen(Number(process.env.PORT), '127.0.0.1', () => {
+        const url = ${JSON.stringify(mode)} === 'malformed-readiness'
+          ? 'http://127.0.0.1:65536'
+          : 'http://127.0.0.1:' + server.address().port;
+        process.stdout.write('FLUO_REACT_RE');
+        setImmediate(() => process.stdout.write('ADY ' + url + '\\n'));
+      });
+    `;
+  writeFileSync(join(directory, 'dist/server/main.js'), source);
+  const driver = `
+    import assert from 'node:assert/strict';
+    import cp from 'node:child_process';
+    import { once } from 'node:events';
+    import { readFileSync } from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
+    const mode = ${JSON.stringify(mode)};
+    const directory = ${JSON.stringify(directory)};
+    const spawn = cp.spawn;
+    let listenerClosed;
+    cp.spawn = (executable, args, options) => {
+      const child = spawn(mode === 'spawn-error' ? directory + '/absent-node' : executable, args, options);
+      listenerClosed = new Promise((done) => child.once('close', done));
+      return child;
+    };
+    syncBuiltinESMExports();
+    const { createCommandRunner } = await import(${JSON.stringify(harness)});
+    const commands = [];
+    const runner = createCommandRunner(${JSON.stringify(join(output, 'capture'))}, commands);
+    const binding = {};
+    let consumed = false;
+    let failure;
+    try {
+      await runner.withProductionServer(directory, binding, async ({ url, config }) => {
+        consumed = true;
+        assert.equal(new URL(url).hostname, '127.0.0.1');
+        assert.notEqual(new URL(url).port, '0');
+        if (mode === 'occupied') assert.notEqual(new URL(url).port, '44982');
+        assert.equal(readFileSync(config, 'utf8'),
+          "import config from './playwright.config.ts';\\n"
+          + 'export default { ...config, metadata: { ...config.metadata, ownedProductionURL: '
+          + JSON.stringify(url) + ' }, webServer: undefined, use: { ...config.use, baseURL: '
+          + JSON.stringify(url) + ' } };\\n');
+        if (mode === 'SIGINT' || mode === 'SIGTERM') {
+          const received = once(process, mode);
+          process.kill(process.pid, mode);
+          await received;
+        } else {
+          const response = await fetch(url + (mode === 'close-after-ready' ? '/exit' : '/'));
+          assert.equal(await response.text(), 'owned');
+          if (mode === 'close-after-ready') await listenerClosed;
+        }
+      });
+    } catch (error) { failure = error.message; }
+    finally { runner.dispose(); }
+    if (listenerClosed) await listenerClosed;
+    process.send({ consumed, failure, binding, commands });
+    process.disconnect();
+  `;
+  child = spawn(process.execPath, ['--input-type=module', '-e', driver],
+    { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  terminalClosed = new Promise((done) => child.once('close', done));
+  const closed = once(child, 'close', { signal: controller.signal });
+  const observed = new Promise((done, reject) => {
+    child.once('message', done);
+    child.once('error', reject);
+    child.once('close', () => reject(new Error('Production driver closed without a lifecycle result')));
+    controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
+  });
+  raw = createWriteStream(join(output, 'driver.log'));
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => raw.write(chunk));
+
+  const [result, [exit, signal]] = await Promise.all([observed, closed]);
+
+  events.push(result);
+  assert.equal(exit, 0);
+  assert.equal(signal, null);
+  assert.deepEqual(result.commands, []);
+  assert.equal(result.binding.close, true);
+  assert.equal(result.binding.active, false);
+  const success = mode === 'occupied' || mode === 'split';
+  assert.equal(Boolean(result.failure), !success);
+  assert.equal(result.consumed,
+    !['early-close', 'early-error', 'spawn-error', 'malformed-readiness'].includes(mode));
+  if (mode === 'malformed-readiness') {
+    assert.equal(result.binding.ready, undefined);
+    assert.equal(result.binding.config, undefined);
+    assert.equal(result.binding.stopRequested, true);
+    assert.equal(result.binding.forced, false);
+  }
+  if (success) {
+    assert.equal(result.binding.ready.pid, result.binding.pid);
+    assert.equal(result.binding.env.PORT, '0');
+    assert.equal(result.binding.env.FLUO_REACT_TEST_READY, '1');
+    assert.equal(result.binding.cancelled, false);
+    assert.equal(result.binding.forced, false);
+    assert.equal(result.binding.exit, 0);
+  }
+  if (foreign) {
+    assert.equal(foreign.listening, true);
+    assert.equal(foreignRequests, 0);
+    const response = await fetch('http://127.0.0.1:44982');
+    assert.equal(await response.text(), 'foreign');
+    assert.equal(foreignRequests, 1);
+  }
+}
+
+for (const mode of ['occupied', 'split', 'early-close', 'early-error', 'spawn-error', 'malformed-readiness',
+  'close-after-ready', 'SIGINT', 'SIGTERM']) {
+  test(`withProductionServer: ${mode} -> authenticates readiness and closes only the owned direct listener`,
+    (t) => productionLifecycle(t, mode));
+}
+
 async function descendantLifecycle(t, signal, mode) {
   mkdirSync(root, { recursive: true });
   const output = mkdtempSync(join(root, 'descendants-'));
