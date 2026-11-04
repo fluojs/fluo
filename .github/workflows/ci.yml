@@ -63,7 +63,10 @@ jobs:
           const taskIds = plan.tasks.map(({ id }) => id);
           const buildTasks = taskIds.filter((id) => id === 'build');
           const compatibility = taskIds.filter((id) => id.startsWith('compatibility-'));
-          const tasks = taskIds.filter((id) => id !== 'build' && !id.startsWith('compatibility-'));
+          const tasks = [
+            ...taskIds.filter((id) => id === 'react-product'),
+            ...taskIds.filter((id) => id !== 'react-product' && id !== 'build' && !id.startsWith('compatibility-')),
+          ];
           if (new Set([...buildTasks, ...compatibility, ...tasks]).size !== taskIds.length
             || buildTasks.length + compatibility.length + tasks.length !== taskIds.length) {
             throw new Error('workflow task partition is not disjoint or exhaustive');

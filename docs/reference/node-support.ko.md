@@ -26,6 +26,8 @@ Full PR에서만 `compatibility-floor`와 `compatibility-next` 정의를 각각 
 
 Full primary package test는 4개 shard, tooling은 2개 shard를 유지합니다. 선택된 apps/examples와 직접 Node 회귀는 `tooling-1`에 남고, matching suite가 없는 apps 명령은 명시적인 not-applicable로 기록합니다. Browser 설치와 전체 `capture tooling`은 primary build에 의존하는 `react-product`가 유일하게 소유하며 tooling domain receipt의 필수 producer도 `react-product`입니다. `tooling-1` 성공은 누락된 제품 receipt를 대신하지 않습니다. Scoped PR도 기존 React/example 선택 조건이 참일 때만 제품 task를 한 번 선택합니다. Capture 내부 build/browser/fault/복구 순서와 정상 배포 복원은 유지하고 `starters`의 별도 `capture starters`도 유지합니다. Primary build는 선택 package artifact와 필요한 경우 runtime-floor bundle을 제공합니다. Exact Node `24.0.0`은 workspace dependency 설치와 Babel 로딩 없이 bundle을 실행합니다.
 
+선택된 `react-product`는 기존 post-build task matrix에서 먼저 내보내며 나머지 task의 상대 순서와 고정된 plan 순서는 유지합니다. 이는 matrix 생성 순서의 우선 배치이며 GitHub의 실제 시작 시각을 보장하지 않습니다. 속도 개선 여부는 새로운 CI 실측 전까지 미확인입니다.
+
 이 정책은 기존의 세 버전 전체 PR matrix를 전체 primary profile과 두 compatibility profile로 대체합니다. Package engine 지원 범위는 바꾸지 않지만 보조 버전의 PR 검증 범위는 좁아집니다. 보조 버전의 전체 typecheck, lint, tooling, apps/examples, browser 검증은 `.github/workflows/extended-verification.yml`과 `.github/workflows/release.yml`의 exact-source 선행 검증으로 이동합니다. 이전 정기 실행의 성공은 publishing commit의 extended 검증을 대신하지 않습니다.
 
 `tooling/ci/environment.lock.json`은 runner마다 floating Node tag를 독립적으로 해석하는 대신 정확한 버전과 다운로드 checksum을 고정합니다. 새 버전을 채택할 때는 리뷰된 변경으로 lock을 갱신합니다. 로컬과 원격 task는 같은 Debian Linux/arm64 image recipe, browser, native runtime 버전을 사용합니다.

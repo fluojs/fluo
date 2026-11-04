@@ -57,7 +57,11 @@ for (const [mode, profile] of [['full', 'pr'], ['scoped', 'pr'], ['docs', 'pr'],
     }));
     expect(fields.source_sha).toBe(identity.headSha);
     const tasks: unknown = JSON.parse(fields.tasks ?? 'null');
-    expect(tasks).toEqual(plan.tasks.map(({ id }) => id).filter((id) => id !== 'build' && !id.startsWith('compatibility-')));
+    const postBuild = plan.tasks.map(({ id }) => id).filter((id) => id !== 'build' && !id.startsWith('compatibility-'));
+    expect(tasks).toEqual([
+      ...postBuild.filter((id) => id === 'react-product'),
+      ...postBuild.filter((id) => id !== 'react-product'),
+    ]);
     expect(tasks).toHaveLength(plan.tasks.length - (mode === 'full' && profile === 'pr' ? 11 : mode !== 'docs' ? 3 : 0));
     expect(fields.has_build).toBe(String(plan.tasks.some(({ id }) => id === 'build')));
     expect(fields.has_docs).toBe(String(plan.tasks.some(({ outputs }) => outputs.includes('docs-site'))));
