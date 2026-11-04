@@ -6,7 +6,7 @@ description: Build routes, bind requests, choose adapters, and publish API contr
 fluo's HTTP model has two separate responsibilities:
 
 - `@fluojs/http` owns controller routing, request binding, guards, interceptors, middleware, and exception behavior.
-- Platform packages adapt that HTTP contract to Fastify, raw Node.js, Express, Bun, Deno, or Cloudflare Workers.
+- Platform packages adapt that HTTP contract to Fastify, raw Node.js, Express, Bun, or Cloudflare Workers.
 
 Keep this split in mind: application code should depend on HTTP contracts, not on runtime globals.
 
@@ -65,7 +65,7 @@ Pick one adapter for the runtime you deploy to.
 | Raw Node.js HTTP | `@fluojs/platform-nodejs` |
 | Existing Express stack | `@fluojs/platform-express` |
 | Bun | `@fluojs/platform-bun` |
-| Deno (Deprecated; [migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md)) | `@fluojs/platform-deno` |
+| Deno (Removed; [migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md)) | `@fluojs/platform-deno` (archived, final `2.0.2`) |
 | Cloudflare Workers | `@fluojs/platform-cloudflare-workers` |
 
 Use the adapter README when you need runtime-specific setup such as multipart, WebSocket upgrade, or Workers request handling.

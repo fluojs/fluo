@@ -8,8 +8,6 @@ const tutorialPaths = [
   '../../../book/intermediate/ch13-websockets.ko.md',
   '../../../book/intermediate/ch22-bun.md',
   '../../../book/intermediate/ch22-bun.ko.md',
-  '../../../book/intermediate/ch23-deno.md',
-  '../../../book/intermediate/ch23-deno.ko.md',
   '../../../book/intermediate/ch24-cloudflare.md',
   '../../../book/intermediate/ch24-cloudflare.ko.md',
 ] as const;
@@ -31,7 +29,6 @@ describe('@fluojs/websockets tutorial API alignment', () => {
   it('keeps fetch-style runtime tutorials wired to their runtime modules', () => {
     const cases = [
       { chapter: 'ch22-bun', module: 'BunWebSocketModule', subpath: 'bun', decorators: ['OnConnect', 'WebSocketGateway'] },
-      { chapter: 'ch23-deno', module: 'DenoWebSocketModule', subpath: 'deno', decorators: ['OnMessage', 'WebSocketGateway'] },
       { chapter: 'ch24-cloudflare', module: 'CloudflareWorkersWebSocketModule', subpath: 'cloudflare-workers', decorators: ['WebSocketGateway'] },
     ];
     for (const testCase of cases) {
@@ -83,12 +80,10 @@ describe('@fluojs/websockets tutorial API alignment', () => {
 
     expect(chapter).not.toContain('request instanceof Request');
     expect(chapter).toContain('request.headers.authorization');
-    expect(chapter).toContain("Fetch-style subpaths such as `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers` receive a Web-standard `Request`");
     expect(chapter).toContain("request.headers.get('authorization')");
 
     expect(chapterKo).not.toContain('request instanceof Request');
     expect(chapterKo).toContain('request.headers.authorization');
-    expect(chapterKo).toContain('`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` 같은 fetch-style subpath는 Web standard `Request`를 받습니다');
     expect(chapterKo).toContain("request.headers.get('authorization')");
   });
 

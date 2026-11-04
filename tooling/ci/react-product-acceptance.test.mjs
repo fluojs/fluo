@@ -713,8 +713,7 @@ function domainFixture(root, domain) {
           FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked', FLUO_CLI_SANDBOX_PROFILE: 'smoke' }
         : report ? { FLUO_PRODUCT_ACCEPTANCE: '1',
           ...(label === 'packed-dev' ? { FLUO_REACT_STARTER_SERVER_COMMAND: 'dev' } : {}),
-          FLUO_REACT_STARTER_TEST_PORT: label === 'packed-dev' ? '44981'
-            : label === 'packed-production' ? new URL(productionUrl).port : '44983',
+          FLUO_REACT_STARTER_TEST_PORT: label === 'packed-production' ? new URL(productionUrl).port : '0',
           ...(label === 'packed-production' ? { FLUO_REACT_READY_URL: productionUrl } : {}),
           PLAYWRIGHT_JSON_OUTPUT_NAME: join(root, report.path) } : {};
       if (label === 'packed-production') {

@@ -2,17 +2,17 @@
 
 <p><a href="./fluo-new-support-matrix.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-> **Deno: Deprecated.** 신규 프로젝트에는 권장하지 않습니다. 새 기능, 성능 개선, 새로운 런타임 호환성을 추가하지 않으며 중대한 보안·회귀 수정은 건별 검토로 patch/LTS를 보장하지 않습니다. 기존 Deno 경로와 아래 예제는 유지하고 각 Deno 관련 패키지의 다음 major에서 제거합니다([#3938](https://github.com/fluojs/fluo/issues/3938)). [Deno 이전 가이드](../getting-started/migrate-from-deno.ko.md)를 따르세요.
+> **Deno: 제거됨.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, CLI Deno 대상을 활성 워크스페이스에서 제거했습니다([#3938](https://github.com/fluojs/fluo/issues/3938)). 공개된 `@fluojs/platform-deno` 18개 버전 전체(최종 `2.0.2`)가 deprecated입니다(2026-11-03 관측). 아래 Deno 자료는 아카이브 기록이며 유지보수되는 API가 아닙니다. [Deno 이전 가이드](../getting-started/migrate-from-deno.ko.md)를 따르세요.
 
 ## 현재 스타터 범위 vs 더 넓은 생태계 지원
 
 | 표면 | 현재 상태 | `fluo new`에 실제로 연결된 항목 | 다음 단계 |
 | --- | --- | --- | --- |
-| **애플리케이션 스타터** | **스캐폴딩됨** | `--shape application --transport http --runtime node --platform fastify|express|nodejs`로 생성되는 Node.js + HTTP, `--runtime bun --platform bun`으로 생성되는 Bun, `--runtime deno --platform deno`로 생성되는 Deno, `--runtime cloudflare-workers --platform cloudflare-workers`로 생성되는 Cloudflare Workers | `--platform`을 생략하면 Fastify가 기본 스타터 기준선으로 유지되며, Express, raw Node.js, Bun, Cloudflare Workers를 새 애플리케이션 선택지로 권장하며 기존 Deno 스타터는 Deprecated로 유지 관리 기준선이 아닙니다. |
+| **애플리케이션 스타터** | **스캐폴딩됨** | `--shape application --transport http --runtime node --platform fastify|express|nodejs`로 생성되는 Node.js + HTTP, `--runtime bun --platform bun`으로 생성되는 Bun, `--runtime cloudflare-workers --platform cloudflare-workers`로 생성되는 Cloudflare Workers | `--platform`을 생략하면 Fastify가 기본 스타터 기준선으로 유지되며, Express, raw Node.js, Bun, Cloudflare Workers를 새 애플리케이션 선택지로 권장합니다. 명시적 `--runtime deno`/`--platform deno` 요청은 제거되어 다른 런타임을 자동 선택하지 않고 이전 안내와 함께 실패합니다(제거 changeset 기준 CLI 5. Changesets가 권위적). |
 | **React SSR + Vite 스타터** | **스캐폴딩됨** | `--starter react-vite-ssr`로 생성되는 Node.js + Fastify HTTP. 명시적인 client/server entry, 분리된 Vite config, manifest-fed hydration, HTTP-owned page router, 집중된 SSR/hydration/browser test를 생성합니다. | 검증된 HTTP-first React 경로에는 이 named starter를 사용합니다. Manifest loading과 데코레이터 선언은 각각 `src/main.ts`, `src/app.ts`에 유지하고, JSX 렌더링은 `.tsx` 모듈에 두며, real anchor와 full-document navigation을 생성합니다. RSC, Server Functions, file routing, client route table, prefetch, data cache는 제외합니다. |
 | **마이크로서비스 스타터** | **스캐폴딩됨** | `--shape microservice --transport tcp --runtime node --platform none`으로 생성되는 Node.js + 비HTTP 플랫폼 + TCP, `--transport redis-streams`로 생성되는 Redis Streams, `--transport nats`로 생성되는 NATS, `--transport kafka`로 생성되는 Kafka, `--transport rabbitmq`로 생성되는 RabbitMQ, `--transport mqtt`로 생성되는 MQTT, `--transport grpc`로 생성되는 gRPC | `--transport`를 생략하면 TCP가 가장 단순한 기본 스타터 기준선으로 유지됩니다. Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC는 transport별 dependency/env/proto 구성을 갖춘 runnable starter로 제공되며, `@fluojs/redis` 같은 더 넓은 메시징 패키지는 스캐폴딩 이후에 선택하는 생태계 옵션으로 남고 추가 `fluo new --transport` 값은 아닙니다. |
 | **mixed 스타터** | **스캐폴딩됨** | `--shape mixed --transport tcp --runtime node --platform fastify`로 생성되는 Node.js + Fastify HTTP 앱 + 연결된 TCP microservice | 이것이 공개된 유일한 혼합 스타터 변형입니다. |
-| **더 넓은 어댑터/런타임 생태계** | **일부는 스캐폴딩됨, 일부는 문서 전용** | `@fluojs/platform-fastify`, `@fluojs/platform-express`, `@fluojs/platform-nodejs`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers`는 기존 애플리케이션 스타터 경로를 가지며 Deno는 Deprecated입니다. 그 외 런타임/패키지 조합은 더 넓은 생태계 문서 범주에 남습니다. | 남아 있는 문서 전용 어댑터는 스캐폴딩 이후나 수동 구성에서 아래 런타임/패키지 문서를 사용해 채택하세요. |
+| **더 넓은 어댑터/런타임 생태계** | **일부는 스캐폴딩됨, 일부는 문서 전용** | `@fluojs/platform-fastify`, `@fluojs/platform-express`, `@fluojs/platform-nodejs`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`는 기존 애플리케이션 스타터 경로를 가지며 `@fluojs/platform-deno`는 아카이브되었습니다(제거, 공개 버전 전체 deprecated). 그 외 런타임/패키지 조합은 더 넓은 생태계 문서 범주에 남습니다. | 남아 있는 문서 전용 어댑터는 스캐폴딩 이후나 수동 구성에서 아래 런타임/패키지 문서를 사용해 채택하세요. |
 
 ## 생성 toolchain
 
@@ -26,21 +26,21 @@
 | --- | --- |
 | **스타터 문서** | `fluo new` 범위는 현재 제공되는 스타터 계약으로만 읽습니다. |
 | **참조 문서** | 런타임/패키지 참조 문서는 shipped starter preset 바깥의 더 넓은 생태계 지도로 읽습니다. |
-| **애플리케이션 명령** | Fastify, Express, raw Node.js, Bun, Deno, Cloudflare Workers에 대한 명시적 `fluo new --shape application --transport http --runtime ... --platform ...` 명령을 runnable starter 계약으로 읽습니다. |
+| **애플리케이션 명령** | Fastify, Express, raw Node.js, Bun, Cloudflare Workers에 대한 명시적 `fluo new --shape application --transport http --runtime ... --platform ...` 명령을 runnable starter 계약으로 읽습니다. |
 | **Named starter 명령** | `fluo new my-app --starter react-vite-ssr`를 runnable Node.js + Fastify React SSR 계약으로 읽습니다. `--starter`를 생략하거나 `--starter standard`를 사용하면 기존 backend matrix가 보존됩니다. |
 | **마이크로서비스 명령** | 문서화된 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc` 변형을 runnable starter 계약으로 읽습니다. 그 밖의 어댑터/패키지 언급은 더 넓은 생태계를 설명합니다. |
 | **plan preview** | `fluo new ... --dry-run`은 같은 resolved starter 계약을 사용하는 non-writing preview로 읽습니다. 선택된 named starter와 recipe, package manager, install/git 선택, dependency 세트를 출력하지만 파일 생성, dependency 설치, git 초기화, CLI update 확인은 수행하지 않습니다. |
 
 ## 명시적 지원 스타터 값
 
-- `--shape application --transport http`는 위에 적힌 runtime/platform 조합을 통해 `fastify`, `express`, `nodejs`, `bun`, `deno`, `cloudflare-workers` 스타터를 지원합니다.
+- `--shape application --transport http`는 위에 적힌 runtime/platform 조합을 통해 `fastify`, `express`, `nodejs`, `bun`, `cloudflare-workers` 스타터를 지원하며 `deno`는 이전 안내와 함께 거부됩니다.
 - `--starter`는 정확히 `standard`, `react-vite-ssr`를 지원합니다. React 변형은 `application/node/http/fastify/standard/single-package`로 고정되며, 호환되지 않는 shape/runtime/platform/transport 선택은 starter 범위를 조용히 넓히지 않고 실패합니다.
 - `--shape microservice --transport`는 정확히 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc`만 지원합니다.
 - 지원되는 `fluo new --transport` 스타터 값에는 `redis`가 포함되지 않습니다. 유지보수되는 Redis 기반 스타터가 필요하면 `redis-streams`를 사용하고, 더 넓은 Redis 통합 선택지가 필요하면 스캐폴딩 후 `@fluojs/redis`를 추가하세요.
 - `--shape mixed`는 `--transport tcp --runtime node --platform fastify` 조합 하나만 공식 지원합니다.
 - `--topology`는 현재 application, microservice, mixed shape 모두에서 single-package starter 계약입니다. Multi-package monorepo 생성은 현재 `fluo new` 범위가 아닙니다.
 - `--tooling`은 현재 유지보수되는 `standard` preset으로 해석됩니다. 다른 build/test preset은 더 넓은 로드맵 항목이며 accepted starter contract가 아닙니다.
-- Runtime/platform 쌍은 정확해야 합니다. 예를 들어 Node.js application starter는 `--runtime node --platform fastify|express|nodejs`를 사용하고, Bun, Deno, Cloudflare Workers application starter는 각각 matching runtime/platform 쌍을 사용하며 Node platform과 섞어 쓰는 alias가 아닙니다.
+- Runtime/platform 쌍은 정확해야 합니다. 예를 들어 Node.js application starter는 `--runtime node --platform fastify|express|nodejs`를 사용하고, Bun, Cloudflare Workers application starter는 각각 matching runtime/platform 쌍을 사용하며 Node platform과 섞어 쓰는 alias가 아닙니다.
 
 ## NestJS 마이그레이션에서 읽는 법
 

@@ -16,7 +16,7 @@
 
 색인은 문서 권위·부트스트랩·라이프사이클의 담당 EN/KO 문서와 소스·테스트 경로를 연결하는 작은 pilot 참조 색인입니다. 계약 본문을 대체하지 않으며 43개 패키지 전체 coverage나 문서 의미·동작 정확성의 증명이 아닙니다. 아직 색인에 없는 계약은 아래 원본 책임 표와 패키지 선택기로 찾으세요.
 
-Deno 지원은 Deprecated입니다. 기존 Deno 앱을 옮기려면 [Deno 이전 가이드](./getting-started/migrate-from-deno.ko.md)를, 새 앱의 호스트를 선택하려면 [런타임 지원 표](./reference/package-surface.ko.md)를 확인하세요.
+Deno 지원은 제거되었습니다(공개된 `@fluojs/platform-deno` 버전 전체가 deprecated이며 최종 릴리스는 `2.0.2`). 기존 Deno 앱은 [Deno 이전 가이드](./getting-started/migrate-from-deno.ko.md)로 옮기고, 새 앱의 호스트는 [런타임 지원 표](./reference/package-surface.ko.md)에서 선택하세요.
 
 ## 원본 책임
 

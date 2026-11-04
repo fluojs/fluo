@@ -85,13 +85,13 @@ These are removed historical APIs, not compatibility aliases:
 | Express | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication` | `ExpressHttpApplicationAdapter.create(options)` |
 | Node | `bootstrapNodeApplication`, `bootstrapNodejsApplication`, `runNodeApplication`, `runNodejsApplication` | `NodeHttpApplicationAdapter.create(options)` |
 | Bun | `createBunAdapter`, `bootstrapBunApplication`, `runBunApplication` | `BunHttpApplicationAdapter.create(options)` |
-| Deno | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication` | `DenoHttpApplicationAdapter.create(options)` |
+| Deno (removed) | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication` | Archived `@fluojs/platform-deno`; see the [Deno migration guide](./migrate-from-deno.md) |
 
 Pass the adapter to Factory. Omit listen when replacing bootstrap-only creation;
 explicitly await `app.listen()` when replacing a run call. Replace helper-only
 `Bootstrap*ApplicationOptions`, `Run*ApplicationOptions`, and platform signal aliases
 with adapter options, `CreateApplicationOptions`, `NodeShutdownSignal`,
-`BunShutdownSignal`, or `DenoShutdownSignal`. Static factories return concrete
+`BunShutdownSignal` (the archived Deno types are removed). Static factories return concrete
 classes, so their adapter-specific capabilities do not require casts.
 
 - Move the former second Fastify/Express multipart argument to `options.multipart`.
@@ -99,15 +99,15 @@ classes, so their adapter-specific capabilities do not require casts.
   Move CORS, prefix, application middleware, security headers, and logger to Factory.
 - Supply `createNodeShutdownSignalRegistration(signals?)` for Node/Fastify/Express,
   `createBunShutdownSignalRegistration(signals?)` for Bun, or
-  `createDenoShutdownSignalRegistration(signals?)` for Deno as `shutdownRegistration`.
+  the archived `createDenoShutdownSignalRegistration(signals?)` for Deno as `shutdownRegistration` (removed package).
   Omit that callback for the host-owned behavior formerly selected by `shutdownSignals: false`.
 - Direct Bun adapters default `shutdownTimeoutMs` to 10 seconds. Select
   `shutdownTimeoutMs: 30_000` to preserve the former managed run's default drain.
   To preserve an old `forceExitTimeoutMs: t`, set both adapter `shutdownTimeoutMs: t`
   and Factory `forceExitTimeoutMs: t`; these are now independent bounds.
   Node-family drain defaults to 10 seconds and signal completion to 30 seconds.
-  Deno drain defaults to 10 seconds, and `hostname` continues to override `host`.
-- Retain standalone Bun/Deno fetch handlers and Workers/Next.js host bridges;
+  the archived Deno adapter drained for 10 seconds with `hostname` overriding `host`.
+- Retain standalone Bun fetch handlers and Workers/Next.js host bridges (the Deno fetch handler is archived);
   do not replace them with managed starters that open sockets.
 
 ## Defaults, order, and failures

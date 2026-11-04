@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const BROWSER_TEST_PORT = Number(process.env.FLUO_REACT_STARTER_TEST_PORT ?? '43006');
+const BROWSER_TEST_PORT = Number(process.env.FLUO_REACT_STARTER_TEST_PORT ?? '0');
 const serverMode = process.env.FLUO_REACT_STARTER_SERVER_COMMAND;
 const development = serverMode === 'dev' || serverMode === 'direct';
 const reliability = process.env.FLUO_REACT_RELIABILITY === '1';
@@ -19,7 +19,7 @@ export default defineConfig({
   ],
   timeout: 30_000,
   use: {
-    baseURL: `http://127.0.0.1:${BROWSER_TEST_PORT}`,
+    baseURL: BROWSER_TEST_PORT === 0 ? undefined : `http://127.0.0.1:${BROWSER_TEST_PORT}`,
     ...(reliability ? {} : { channel: 'chrome', launchOptions: { args: ['--disable-gpu'] } }),
     headless: true,
   },
@@ -30,11 +30,15 @@ export default defineConfig({
   ] : [{ name: 'chrome', use: { browserName: 'chromium' } }],
   webServer: {
     command: serverCommand,
-    env: { PORT: String(BROWSER_TEST_PORT), FLUO_REACT_FORM_TEST_SERVER: '1' },
+    env: { PORT: String(BROWSER_TEST_PORT), FLUO_REACT_FORM_TEST_SERVER: '1', FLUO_REACT_TEST_READY: '1' },
     gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
     reuseExistingServer: false,
     timeout: 30_000,
-    url: `http://127.0.0.1:${BROWSER_TEST_PORT}${development ? '/src/entry-client.tsx' : '/products/sku-42'}`,
+    ...(BROWSER_TEST_PORT === 0
+      ? { wait: { stdout: development
+        ? /FLUO_REACT_DEV_READY (?<playwright_test_base_url>http:\/\/127\.0\.0\.1:[1-9]\d*)/u
+        : /FLUO_REACT_READY (?<playwright_test_base_url>http:\/\/127\.0\.0\.1:[1-9]\d*)/u } }
+      : { url: `http://127.0.0.1:${BROWSER_TEST_PORT}${development ? '/src/entry-client.tsx' : '/products/sku-42'}` }),
   },
   workers: 1,
 });

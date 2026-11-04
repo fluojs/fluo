@@ -483,7 +483,7 @@ void props; void saved; void serverOnlyProps;
       '--reporter=json', `--output=${join(output, `packed-dev-${attempt}`)}`, ...files, '--grep-invert',
       'retains the approved shell after a mapped page import fails until explicit document exit'], directory, {
       FLUO_PRODUCT_ACCEPTANCE: '1', FLUO_REACT_STARTER_SERVER_COMMAND: 'dev',
-      FLUO_REACT_STARTER_TEST_PORT: '44981', PLAYWRIGHT_JSON_OUTPUT_NAME: join(output, `packed-dev-${attempt}.json`),
+      FLUO_REACT_STARTER_TEST_PORT: '0', PLAYWRIGHT_JSON_OUTPUT_NAME: join(output, `packed-dev-${attempt}.json`),
     });
     if (existsSync(join(directory, 'dist/server/main.js'))) throw new Error('Development journey created application dist.');
     await run('starter-tests', ['test'], directory);
@@ -498,7 +498,7 @@ void props; void saved; void serverOnlyProps;
         PLAYWRIGHT_JSON_OUTPUT_NAME: join(output, `packed-production-${attempt}.json`) }));
     await run('packed-deployment', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=1',
       '--reporter=json', `--output=${join(output, `packed-deployment-${attempt}`)}`, 'tests/deployment-transition.spec.ts'],
-    directory, { FLUO_PRODUCT_ACCEPTANCE: '1', FLUO_REACT_STARTER_TEST_PORT: '44983',
+    directory, { FLUO_PRODUCT_ACCEPTANCE: '1', FLUO_REACT_STARTER_TEST_PORT: '0',
       PLAYWRIGHT_JSON_OUTPUT_NAME: join(output, `packed-deployment-${attempt}.json`) });
     if (execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim() !== head) {
       throw new Error('Source head changed during packaged product verification.');
@@ -515,10 +515,10 @@ void props; void saved; void serverOnlyProps;
   const browserRuns = [
     () => run('starter-dev-browser', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', reliability ? '--workers=1' : '--workers=12',
       `--output=${join(output, `starter-dev-browser-${attempt}`)}`, ...focusedBrowserFiles],
-    directory, { FLUO_REACT_FORM_TEST_SERVER: '1', ...reliabilityEnv, FLUO_REACT_STARTER_SERVER_COMMAND: 'dev', FLUO_REACT_STARTER_TEST_PORT: '44981' }),
+    directory, { FLUO_REACT_FORM_TEST_SERVER: '1', ...reliabilityEnv, FLUO_REACT_STARTER_SERVER_COMMAND: 'dev', FLUO_REACT_STARTER_TEST_PORT: '0' }),
     () => run('starter-prod-browser', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', reliability ? '--workers=1' : '--workers=12',
       `--output=${join(output, `starter-prod-browser-${attempt}`)}`, ...focusedBrowserFiles],
-    directory, { FLUO_REACT_FORM_TEST_SERVER: '1', ...reliabilityEnv, FLUO_REACT_STARTER_TEST_PORT: '44982' }),
+    directory, { FLUO_REACT_FORM_TEST_SERVER: '1', ...reliabilityEnv, FLUO_REACT_STARTER_TEST_PORT: '0' }),
   ];
   if (reliability) for (const runBrowser of browserRuns) await runBrowser();
   else {

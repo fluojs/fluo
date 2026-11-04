@@ -14,7 +14,7 @@ Slack - exactly the same shape as [`@fluojs/email`](/docs/packages/email) and
 [`@fluojs/discord`](/docs/packages/discord).
 
 Use it when Slack is one of several notification channels, when delivery must
-stay portable across Node, Bun, Deno, and Cloudflare-compatible runtimes (the
+stay portable across Node, Bun, and Cloudflare-compatible runtimes (the
 transport only assumes `fetch`), and when bootstrap verification should gate
 readiness. Do not use it as a Slack SDK replacement: there is no socket-mode
 client, no events API receiver, no multi-workspace registry (one module, one

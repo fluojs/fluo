@@ -12,7 +12,7 @@ type RestartRunnerStream = {
 
 type RestartChildSpawner = (command: string, args: string[], options: { cwd: string; detached: boolean; env: NodeJS.ProcessEnv; stdio: 'inherit' }) => ChildProcess;
 /** Runtime target handled by the fluo-owned development restart runner. */
-export type DevRunnerRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
+export type DevRunnerRuntime = 'bun' | 'cloudflare-workers' | 'node';
 
 type RestartSignal = 'SIGINT' | 'SIGTERM';
 
@@ -72,7 +72,7 @@ const SHOW_NODE_RESTART_NOTICE_ENV = 'FLUO_DEV_SHOW_RESTART_NOTICE';
 const CLEAR_SCREEN = '\u001B[2J\u001B[3J\u001B[H';
 const STUDIO_EPOCH_ENV = 'FLUO_STUDIO_EPOCH';
 
-type StudioRuntimeName = 'bun' | 'deno' | 'node' | 'unknown' | 'worker';
+type StudioRuntimeName = 'bun' | 'node' | 'unknown' | 'worker';
 
 function isEnabledEnvironmentFlag(value: string | undefined): boolean {
   return value === '1' || value === 'true' || value === 'yes';
@@ -362,8 +362,6 @@ function buildAppCommand(runtime: DevRunnerRuntime, env: NodeJS.ProcessEnv, appA
       return { command: 'bun', args: buildBunAppArgs(env, appArgs) };
     case 'cloudflare-workers':
       return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...appArgs] };
-    case 'deno':
-      return { command: 'deno', args: ['run', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts', ...appArgs] };
     default:
       return { command: process.execPath, args: buildNodeAppArgs(env, appArgs, reactVite) };
   }

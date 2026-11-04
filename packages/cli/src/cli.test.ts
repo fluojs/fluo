@@ -1346,10 +1346,10 @@ void bootstrap();
     expect(mainFile).not.toContain('runBunApplication');
   });
 
-  it('scaffolds the Deno HTTP starter when the deno runtime is selected explicitly', async () => {
+  it('rejects explicit Deno generation flags with the support-ended migration direction', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
-    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
 
     const exitCode = await runCli([
       'new',
@@ -1369,21 +1369,14 @@ void bootstrap();
     ], {
       cwd: workspaceDirectory,
       skipInstall: true,
-      stderr: { write: () => undefined },
-      stdout: { write: (message) => stdoutBuffer.push(message) },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
     });
 
-    const projectDirectory = join(workspaceDirectory, 'starter-deno');
-    const packageJson = readFileSync(join(projectDirectory, 'package.json'), 'utf8');
-    const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
-
-    expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
-    expect(packageJson).toContain('@fluojs/platform-deno');
-    expect(mainFile).toContain('adapter: DenoHttpApplicationAdapter.create({ port })');
-    expect(mainFile).toContain('shutdownRegistration: createDenoShutdownSignalRegistration()');
-    expect(mainFile).toContain('await app.listen();');
-    expect(mainFile).not.toContain('runDenoApplication');
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('--runtime deno');
+    expect(stderrBuffer.join('')).toContain('https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md');
+    expect(existsSync(join(workspaceDirectory, 'starter-deno'))).toBe(false);
   });
 
   it('scaffolds the Cloudflare Workers HTTP starter when the cloudflare-workers runtime is selected explicitly', async () => {
@@ -2522,7 +2515,7 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('Watch mode: runtime-native-watch');
   });
 
-  it('runs Deno dev through the runtime-native watch loop by default in dry-runs', async () => {
+  it('rejects Deno dev for legacy platform-deno manifests with the support-ended migration direction', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(
@@ -2530,17 +2523,19 @@ void bootstrap();
       JSON.stringify({ dependencies: { '@fluojs/platform-deno': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
     );
     const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
 
     const exitCode = await runCli(['dev', '--dry-run'], {
       cwd: workspaceDirectory,
       env: {},
-      stderr: { write: () => undefined },
+      stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
-    expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Would run: deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts');
-    expect(stdoutBuffer.join('')).toContain('Watch mode: runtime-native-watch');
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('@fluojs/platform-deno');
+    expect(stderrBuffer.join('')).toContain('https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md');
+    expect(stdoutBuffer.join('')).not.toContain('Would run:');
   });
 
   it('runs Workers dev through the runtime-native watch loop by default in dry-runs', async () => {
@@ -2585,27 +2580,6 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
   });
 
-  it('preserves opt-in fluo restart supervision for Deno dev dry-runs through the environment', async () => {
-    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
-    createdDirectories.push(workspaceDirectory);
-    writeFileSync(
-      join(workspaceDirectory, 'package.json'),
-      JSON.stringify({ dependencies: { '@fluojs/platform-deno': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
-    );
-    const stdoutBuffer: string[] = [];
-
-    const exitCode = await runCli(['dev', '--dry-run'], {
-      cwd: workspaceDirectory,
-      env: { FLUO_DEV_RUNNER: 'fluo' },
-      stderr: { write: () => undefined },
-      stdout: { write: (message) => stdoutBuffer.push(message) },
-    });
-
-    expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime deno --');
-    expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
-  });
-
   it.each([
     { argv: ['dev', '--dry-run', '--runner', 'native'], env: { FLUO_DEV_RUNNER: 'fluo' }, expectedMode: 'runtime-native-watch' },
     { argv: ['dev', '--dry-run'], env: { FLUO_DEV_RUNNER: 'fluo' }, expectedMode: 'fluo-restart' },
@@ -2615,7 +2589,7 @@ void bootstrap();
     createdDirectories.push(workspaceDirectory);
     writeFileSync(
       join(workspaceDirectory, 'package.json'),
-      JSON.stringify({ dependencies: { '@fluojs/platform-deno': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+      JSON.stringify({ dependencies: { '@fluojs/platform-bun': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
     );
     const stdoutBuffer: string[] = [];
 
@@ -3622,10 +3596,9 @@ void bootstrap();
     await expect(runPromise).resolves.toBe(0);
   });
 
-  it('uses the same restart runner boundary for Bun, Deno, and Workers app children', async () => {
-    const cases: Array<{ args: string[]; command: string; runtime: 'bun' | 'cloudflare-workers' | 'deno' }> = [
+  it('uses the same restart runner boundary for Bun and Workers app children', async () => {
+    const cases: Array<{ args: string[]; command: string; runtime: 'bun' | 'cloudflare-workers' }> = [
       { args: ['src/main.ts', '--port', '4000'], command: 'bun', runtime: 'bun' },
-      { args: ['run', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts', '--port', '4000'], command: 'deno', runtime: 'deno' },
       { args: ['dev', '--show-interactive-dev-session=false', '--port', '4000'], command: 'wrangler', runtime: 'cloudflare-workers' },
     ];
 
@@ -3893,30 +3866,6 @@ void bootstrap();
     expect(spawned[0]?.args[0]).toBe('--preload');
     expect(spawned[0]?.args[1]?.endsWith('preserve-color-tty.js')).toBe(true);
     expect(spawned[0]?.args.slice(2)).toEqual(['--watch', 'src/main.ts']);
-  });
-
-  it('passes forced color environment through runtime-native Deno dev runs', async () => {
-    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
-    createdDirectories.push(workspaceDirectory);
-    writeFileSync(
-      join(workspaceDirectory, 'package.json'),
-      JSON.stringify({ dependencies: { '@fluojs/platform-deno': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
-    );
-    const spawned: Array<{ args: string[]; command: string; forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
-
-    const exitCode = await runCli(['dev'], {
-      cwd: workspaceDirectory,
-      env: {},
-      spawnCommand: async (command, args, options) => {
-        spawned.push({ args, command, forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
-        return 0;
-      },
-      stderr: { isTTY: true, write: () => undefined },
-      stdout: { isTTY: true, write: () => undefined },
-    });
-
-    expect(exitCode).toBe(0);
-    expect(spawned).toEqual([{ args: ['run', '--watch', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts'], command: 'deno', forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
   });
 
   it('passes forced color environment through runtime-native Workers dev runs', async () => {
@@ -4394,8 +4343,8 @@ exit 7
     expect(stdoutBuffer.join('')).toContain('--shape <application|microservice|mixed>');
     expect(stdoutBuffer.join('')).toContain('--starter <standard|react-vite-ssr>');
     expect(stdoutBuffer.join('')).toContain('--transport <http|tcp|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>');
-    expect(stdoutBuffer.join('')).toContain('--runtime <node|bun|deno|cloudflare-workers>');
-    expect(stdoutBuffer.join('')).toContain('--platform <fastify|express|nodejs|bun|deno|cloudflare-workers|none>');
+    expect(stdoutBuffer.join('')).toContain('--runtime <node|bun|cloudflare-workers>');
+    expect(stdoutBuffer.join('')).toContain('--platform <fastify|express|nodejs|bun|cloudflare-workers|none>');
     expect(stdoutBuffer.join('')).toContain('--tooling <standard>');
     expect(stdoutBuffer.join('')).toContain('--topology <single-package>');
     expect(stdoutBuffer.join('')).toContain('--package-manager <pnpm|npm|yarn|bun>');

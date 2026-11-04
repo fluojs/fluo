@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { SCENARIOS } from './scenarios.ts';
-import { TARGETS } from './targets.ts';
+import { ARCHIVED_BASELINE_TARGET_NAMES } from './targets.ts';
 
 const directory = `${process.argv[2] ?? fileURLToPath(new URL('../results/', import.meta.url))}/`;
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -49,7 +49,7 @@ for (const configuration of manifest.conditions.configurations) {
     for (const run of sweep.rawRuns) {
       assert.deepEqual(run.map((scenario) => scenario.name).sort(), SCENARIOS.map((scenario) => scenario.name).sort());
       for (const scenario of run) {
-        assert.deepEqual(scenario.targets.map((target) => target.label).sort(), TARGETS.map((target) => target.name).sort());
+        assert.deepEqual(scenario.targets.map((target) => target.label).sort(), [...ARCHIVED_BASELINE_TARGET_NAMES].sort());
         for (const target of scenario.targets) {
           for (const key of ['errors', 'timeouts', 'non2xx', 'mismatches']) assert.equal(target.result[key], 0);
           assert.equal(target.statusMismatches, 0);
@@ -61,10 +61,10 @@ for (const configuration of manifest.conditions.configurations) {
         }
       }
     }
-    for (const scenario of SCENARIOS) for (const target of TARGETS) {
-      const samples = sweep.rawRuns.map((run) => run.find((item) => item.name === scenario.name).targets.find((item) => item.label === target.name));
+    for (const scenario of SCENARIOS) for (const target of ARCHIVED_BASELINE_TARGET_NAMES) {
+      const samples = sweep.rawRuns.map((run) => run.find((item) => item.name === scenario.name).targets.find((item) => item.label === target));
       manifest.summaries.push({
-        configuration, connections: sweep.connections, scenario: scenario.name, target: target.name,
+        configuration, connections: sweep.connections, scenario: scenario.name, target,
         requestsPerSecond: summary(samples.map((sample) => sample.result.requests.average)),
         p95Ms: summary(samples.map((sample) => sample.latencyPercentilesMs.p95)),
         p99Ms: summary(samples.map((sample) => sample.latencyPercentilesMs.p99)),

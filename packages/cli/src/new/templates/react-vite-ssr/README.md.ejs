@@ -36,8 +36,9 @@ uncertain POSTs are never automatically retried.
 Select the explicit `FLUO_REACT_FORM_TEST_SERVER=1` test entry to install its
 started/release/cleaned barriers, then run it in development with
 `FLUO_REACT_STARTER_SERVER_COMMAND=dev` or after the production build. Set
-`FLUO_REACT_STARTER_TEST_PORT` per run when checking independent dev/prod servers
-in parallel; the default remains 43006. Normal
+`FLUO_REACT_STARTER_TEST_PORT` to a nonzero port for a fixed listener override.
+By default, browser tests bind port 0 and use the actual ready URL, including
+independent dev/prod servers in parallel. Normal
 startup installs no fault routes. Existing consumers must add the updated
 catalog/page companion and keep their native actions and existing provider.
 

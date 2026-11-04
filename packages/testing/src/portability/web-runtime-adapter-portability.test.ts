@@ -13,8 +13,6 @@ import {
   CloudflareWorkerApplicationHost,
   type CloudflareWorkerExecutionContext,
 } from '@fluojs/platform-cloudflare-workers';
-import type { DenoServeController, DenoServeHandler, DenoServeOptions } from '@fluojs/platform-deno';
-import * as FixtureDenoPlatform from '@fluojs/platform-deno';
 import * as FixtureRuntime from '@fluojs/runtime';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
@@ -157,46 +155,6 @@ type BunBootstrap = (
 function createExecutionContext(): CloudflareWorkerExecutionContext {
   return {
     waitUntil() {},
-  };
-}
-
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-
-  return { promise, reject, resolve };
-}
-
-function createServeStub() {
-  const finished = createDeferred<void>();
-  const shutdown = vi.fn(async () => {
-    finished.resolve();
-  });
-  let capturedHandler: DenoServeHandler | undefined;
-
-  return {
-    get handler() {
-      return capturedHandler;
-    },
-    serve: vi.fn((options: DenoServeOptions, handler: DenoServeHandler): DenoServeController => {
-      capturedHandler = handler;
-
-      if (options.onListen) {
-        options.onListen({
-          hostname: options.hostname ?? '0.0.0.0',
-          port: options.port ?? 3000,
-        });
-      }
-
-      return {
-        finished: finished.promise,
-        shutdown,
-      };
-    }),
   };
 }
 
@@ -534,69 +492,6 @@ describe('bun web runtime adapter cleanup', () => {
 });
 
 registerWebRuntimePortabilitySuite(
-  'deno',
-  WebRuntimeHttpAdapterPortabilityHarness.create({
-    async bootstrap(rootModule, options) {
-      const server = createServeStub();
-      const app = await createDenoTestApplication(rootModule, {
-        ...options,
-        serve: server.serve,
-      });
-
-      await app.listen();
-
-      return {
-        close() {
-          return app.close();
-        },
-        async dispatch(request: Request) {
-          return await server.handler!(request);
-        },
-      };
-    },
-    createErrorRepresentationBootstrapOptions: (options) => options,
-    createConditionalRequestBootstrapOptions: (options) => options,
-    name: 'deno',
-  }),
-);
-registerWebRuntimeHeaderHelperPortabilitySuite('deno', async (rootModule, options) => {
-  const server = createServeStub();
-  const app = await createDenoTestApplication(rootModule, {
-    ...options,
-    serve: server.serve,
-  });
-
-  await app.listen();
-
-  return {
-    close() {
-      return app.close();
-    },
-    async dispatch(request: Request) {
-      return await server.handler!(request);
-    },
-  };
-});
-registerWebRuntimeStaticAssetsPortabilitySuite('deno', async (rootModule, options) => {
-  const server = createServeStub();
-  const app = await createDenoTestApplication(rootModule, {
-    ...options,
-    serve: server.serve,
-  });
-
-  await app.listen();
-
-  return {
-    close() {
-      return app.close();
-    },
-    async dispatch(request: Request) {
-      return await server.handler!(request);
-    },
-  };
-});
-
-registerWebRuntimePortabilitySuite(
   'cloudflare-workers',
   WebRuntimeHttpAdapterPortabilityHarness.create({
     async bootstrap(rootModule, options) {
@@ -656,19 +551,5 @@ function createBunTestApplication(
   return FixtureRuntime.FluoFactory.create(rootModule, {
     ...options,
     adapter: FixtureBunPlatform.BunHttpApplicationAdapter.create(options),
-  });
-}
-
-type DenoTestApplicationOptions = Omit<FixtureRuntime.CreateApplicationOptions, 'adapter'> & FixtureDenoPlatform.DenoAdapterOptions & {
-  shutdownSignals?: false | readonly FixtureDenoPlatform.DenoShutdownSignal[];
-};
-
-function createDenoTestApplication(
-  rootModule: FixtureRuntime.ModuleType,
-  options: DenoTestApplicationOptions = {},
-) {
-  return FixtureRuntime.FluoFactory.create(rootModule, {
-    ...options,
-    adapter: FixtureDenoPlatform.DenoHttpApplicationAdapter.create(options),
   });
 }

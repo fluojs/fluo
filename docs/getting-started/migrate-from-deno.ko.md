@@ -4,9 +4,9 @@
 
 ## 상태와 범위
 
-**Deno 지원은 Deprecated입니다.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, CLI의 Deno 경로에는 새 기능, 성능 개선, 새로운 런타임 버전 호환성을 추가하지 않습니다. 중대한 보안 문제와 회귀 수정은 건별로 검토하며 patch 또는 LTS 제공을 보장하지 않습니다. 신규 프로젝트에는 기본 Node.js + Fastify 경로를 권장하고, edge 배포가 필요하면 Cloudflare Workers를 검토하세요.
+**Deno 지원은 제거되었습니다.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, CLI의 Deno 경로를 활성 워크스페이스에서 삭제했으며 추가 릴리스는 없습니다. 2026-11-03 npm registry 관측에서 공개된 `@fluojs/platform-deno` 18개 버전 전체가 deprecated로 확인되었고 `2.0.2`가 최종 릴리스이며, 이전 구현은 Git history와 npm tarball에 남습니다. 신규 프로젝트에는 기본 Node.js + Fastify 경로를 권장하고, edge 배포가 필요하면 Cloudflare Workers를 검토하세요.
 
-기존 Deno adapter/WebSocket `2.x`와 CLI `3.x` 경로 및 예제는 계속 사용할 수 있습니다. 제거는 각 Deno 관련 패키지의 다음 major에서 진행하며 [#3938](https://github.com/fluojs/fluo/issues/3938)에서 추적합니다. 마지막 advisory 릴리스의 정확한 버전은 Changesets 릴리스 결과로 결정됩니다. 이 문서는 특정 마지막 버전이나 npm registry deprecation 완료를 선언하지 않습니다.
+제거는 각 패키지의 다음 major로 공개 패키지에 반영되며 [#3938](https://github.com/fluojs/fluo/issues/3938)에서 추적합니다. 제거 전 workspace는 CLI `4.0.1`과 WebSockets `2.0.3`을 선언했고, MAJOR 제거 changeset은 `@fluojs/cli`를 5로, `@fluojs/websockets`를 3으로 올리며 Changesets가 버전의 권위적 원천입니다. 명시적 `--runtime deno`/`--platform deno` 생성과 Deno 생성 프로젝트의 `fluo dev`/`build`/`start`는 이전 안내와 함께 실패하고 다른 런타임을 자동 선택하지 않습니다.
 
 [2026-10-09 공식 발표](https://deno.com/blog/cloudflare)에 따르면 Deno runtime은 1년간 매월 bug/security fix를 제공한 뒤 팀의 개발이 종료되며 open source로 남습니다. Deno Deploy는 6개월 후 종료되고 JSR은 계속 운영됩니다. 이 일정은 Fluo의 patch/LTS 약속이 아니며 runtime, Deploy, JSR을 같은 서비스로 취급하지 않습니다.
 
@@ -118,7 +118,7 @@ Gateway decorator, room contract, 명시적 reply 또는 opt-in event-envelope �
 
 ## CLI, configuration, scripts와 lockfile
 
-CLI process 자체는 Node.js `>=24.11.0 <27`에서 실행됩니다. Deno target이 Deprecated여도 기존 명시적 `--runtime deno --platform deno` 값과 생성 경로는 이번 단계에서 제거하지 않습니다. [Starter matrix](../reference/fluo-new-support-matrix.ko.md)와 [toolchain matrix](../reference/toolchain-contract-matrix.ko.md)를 기준으로 새 대상 프로젝트와 비교하세요.
+CLI process 자체는 Node.js `>=24.11.0 <27`에서 실행됩니다. CLI의 Deno 대상은 제거되었습니다. 명시적 `--runtime deno`/`--platform deno` 요청과 기존 Deno 생성 프로젝트의 lifecycle 명령은 다른 런타임을 자동 선택하지 않고 이전 안내와 함께 실패하며, 공개 CLI `4.x`가 Deno 경로를 포함하는 마지막 라인입니다. [Starter matrix](../reference/fluo-new-support-matrix.ko.md)와 [toolchain matrix](../reference/toolchain-contract-matrix.ko.md)를 기준으로 새 대상 프로젝트와 비교하세요.
 
 1. `deno.json`/`deno.jsonc`의 import map, `npm:`/URL/JSR import와 task를 목록화하고 대상 `package.json` dependency와 bundler resolution으로 옮깁니다. 같은 파일을 무조건 삭제하지 말고 잔존 Deno consumer를 확인합니다. `./app.ts` 같은 local import는 선택한 starter의 TypeScript/bundler 규칙에 맞춥니다.
 2. CLI는 `package.json` dependency의 platform package로 runtime을 감지합니다. 이전 완료한 target manifest에서는 `@fluojs/platform-deno`를 대상 adapter로 교체하고 명시적 runtime override도 맞춥니다. 기존 `fluo dev`가 자동으로 Node target으로 바뀐다고 가정하지 않습니다.
@@ -129,4 +129,4 @@ CLI process 자체는 Node.js `>=24.11.0 <27`에서 실행됩니다. Deno target
 
 ## 근거와 검증 범위
 
-공개 API와 예제는 [Fastify](../../packages/platform-fastify/README.ko.md), [Deno](../../packages/platform-deno/README.ko.md), [Workers](../../packages/platform-cloudflare-workers/README.ko.md), [WebSockets](../../packages/websockets/README.ko.md) 계약에서 가져옵니다. 구현 근거는 `packages/platform-fastify/src/adapter.ts`, `packages/platform-deno/src/fetch-handler.ts`, `packages/platform-cloudflare-workers/src/adapter.ts`, `packages/cli/src/new/scaffold.ts`, `packages/cli/src/commands/scripts.ts`입니다. 이 문서는 배포나 registry 상태의 증명이 아닙니다. 실제 이전 검증은 애플리케이션 소유입니다.
+공개 API와 예제는 [Fastify](../../packages/platform-fastify/README.ko.md), [Deno](../../packages/platform-deno/README.ko.md), [Workers](../../packages/platform-cloudflare-workers/README.ko.md), [WebSockets](../../packages/websockets/README.ko.md) 계약에서 가져옵니다. 구현 근거는 `packages/platform-fastify/src/adapter.ts`와 `packages/platform-cloudflare-workers/src/adapter.ts`입니다. Deno adapter source는 worktree에서 삭제되었으며 아카이브 구현은 Git history와 공개 `@fluojs/platform-deno` `2.0.2` npm tarball에 보존됩니다. 이 문서는 배포나 registry 상태의 증명이 아닙니다. 실제 이전 검증은 애플리케이션 소유입니다.

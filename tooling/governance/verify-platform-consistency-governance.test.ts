@@ -31,7 +31,7 @@ import {
   enforceHttpCustomMethodContract,
   enforceMandatoryFirstPartyDependencyEngineAlignment,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
-  enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
+  enforceNoNodeGlobalBufferInCloudflareWorkerServices,
   enforceOpenApiNullableNormalizationContract,
   enforcePassportJsBridgeNestjsMigration,
   enforcePersistenceTransactionInterceptorCompatibility,
@@ -1016,7 +1016,6 @@ async function loadGovernanceInternals() {
       changedFiles: string[],
       migrationGuideSnapshots?: Readonly<Record<string, { base: string; head: string }>>,
     ) => void;
-    enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
     enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
     enforceOpenApiMigrationDocumentStructure: (readText?: (relativePath: string) => string) => void;
     enforcePlatformFastifyEngineDocumentation: (readText?: (relativePath: string) => string) => void;
@@ -2474,15 +2473,13 @@ describe('enforceNoDirectProcessEnvInOrdinaryPackageSource', () => {
 });
 
 describe('collectNodeGlobalBufferViolations', () => {
-  it('reports Buffer usage only in deno and cloudflare-workers service source files', () => {
+  it('reports Buffer usage only in the cloudflare-workers service source file', () => {
     const files = [
-      'packages/websockets/src/deno/deno-service.ts',
       'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
       'packages/core/src/module.ts',
     ];
 
     const sources = new Map([
-      ['packages/websockets/src/deno/deno-service.ts', 'const data = Buffer.from("hello");\n'],
       [
         'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
         'export const size = Buffer.byteLength(payload);\n',
@@ -2492,11 +2489,6 @@ describe('collectNodeGlobalBufferViolations', () => {
 
     expect(collectNodeGlobalBufferViolations(files, (path: string) => sources.get(path) ?? '')).toEqual([
       {
-        excerpt: 'const data = Buffer.from("hello");',
-        line: 1,
-        path: 'packages/websockets/src/deno/deno-service.ts',
-      },
-      {
         excerpt: 'export const size = Buffer.byteLength(payload);',
         line: 1,
         path: 'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
@@ -2505,115 +2497,23 @@ describe('collectNodeGlobalBufferViolations', () => {
   });
 });
 
-describe('enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices', () => {
+describe('enforceNoNodeGlobalBufferInCloudflareWorkerServices', () => {
   it('throws with actionable context when Buffer is used in a service file', () => {
     expect(() =>
-      enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
-        ['packages/websockets/src/deno/deno-service.ts'],
+      enforceNoNodeGlobalBufferInCloudflareWorkerServices(
+        ['packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts'],
         () => 'const data = Buffer.from(payload);\n',
       ),
-    ).toThrowError(/packages\/websockets\/src\/deno\/deno-service\.ts:1/);
+    ).toThrowError(/packages\/websockets\/src\/cloudflare-workers\/cloudflare-workers-service\.ts:1/);
   });
 
   it('passes when service files use Web-standard alternatives instead of Buffer', () => {
     expect(() =>
-      enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
-        [
-          'packages/websockets/src/deno/deno-service.ts',
-          'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
-        ],
+      enforceNoNodeGlobalBufferInCloudflareWorkerServices(
+        ['packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts'],
         () => 'const encoded = new TextEncoder().encode(payload);\n',
       ),
     ).not.toThrow();
-  });
-});
-
-describe('enforceDenoPermissionGuidance', () => {
-  it('reports the first governed surface when Deno permission guidance is missing', async () => {
-    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
-
-    expect(() => enforceDenoPermissionGuidance(() => '')).toThrowError(
-      /packages\/platform-deno\/README\.md/,
-    );
-  });
-
-  it('governs managed and CLI permission surfaces in both locales', async () => {
-    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
-    const requestedPaths = new Set<string>();
-
-    enforceDenoPermissionGuidance((relativePath) => {
-      requestedPaths.add(relativePath);
-      return readFileSync(join(repoRoot, relativePath), 'utf8');
-    });
-
-    expect([...requestedPaths]).toEqual(expect.arrayContaining([
-      'packages/platform-deno/README.md',
-      'packages/platform-deno/README.ko.md',
-      'apps/docs/content/docs/guides/runtime-adapters.mdx',
-      'book/intermediate/ch23-deno.md',
-      'book/intermediate/ch23-deno.ko.md',
-      'docs/CONTEXT.md',
-      'docs/CONTEXT.ko.md',
-      'packages/cli/src/new/scaffold.ts',
-      'packages/cli/README.md',
-      'packages/cli/README.ko.md',
-      'docs/reference/toolchain-contract-matrix.md',
-      'docs/reference/toolchain-contract-matrix.ko.md',
-      'docs/architecture/dev-reload-architecture.md',
-      'docs/architecture/dev-reload-architecture.ko.md',
-    ]));
-  });
-
-  it('rejects the nonexistent Deno signal permission flag', async () => {
-    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
-    const targetPath = 'packages/platform-deno/README.md';
-    const nonexistentSignalPermission = ['--allow', 'signal'].join('-');
-
-    expect(() => enforceDenoPermissionGuidance((relativePath) => {
-      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
-      return relativePath === targetPath
-        ? content.replace(
-          'deno run --allow-net main.ts',
-          `deno run --allow-net ${nonexistentSignalPermission} main.ts`,
-        )
-        : content;
-    })).toThrowError(/packages\/platform-deno\/README\.md.*permission guidance synchronized/u);
-  });
-
-  it('rejects narrowed environment access for the generated Deno application', async () => {
-    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
-    const targetPath = 'packages/cli/README.md';
-
-    expect(() => enforceDenoPermissionGuidance((relativePath) => {
-      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
-      return relativePath === targetPath
-        ? content.replace(
-          'deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts',
-          'deno run --watch --allow-env=PORT --allow-net src/main.ts',
-        )
-        : content;
-    })).toThrowError(/packages\/cli\/README\.md.*permission guidance synchronized/u);
-  });
-
-  it('rejects unrestricted filesystem permission for generated Deno dev', async () => {
-    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
-    const targetPath = 'packages/cli/src/new/scaffold.ts';
-
-    expect(() => enforceDenoPermissionGuidance((relativePath) => {
-      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
-      return relativePath === targetPath
-        ? content.replace(
-          'deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts',
-          'deno run --watch --allow-env --allow-net --allow-read src/main.ts',
-        )
-        : content;
-    })).toThrowError(/packages\/cli\/src\/new\/scaffold\.ts.*permission guidance synchronized/u);
-  });
-
-  it('accepts synchronized managed startup, application env, and host-owned signal guidance', async () => {
-    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
-
-    expect(() => enforceDenoPermissionGuidance()).not.toThrow();
   });
 });
 
@@ -4642,23 +4542,19 @@ describe('repository governance contracts', () => {
     const websocketsReadmeKo = readFileSync(resolve(repoRoot, 'packages/websockets/README.ko.md'), 'utf8');
 
     expect(websocketsReadme).toContain('@fluojs/websockets/bun');
-    expect(websocketsReadme).toContain('@fluojs/websockets/deno');
     expect(websocketsReadme).toContain('@fluojs/websockets/cloudflare-workers');
     expect(websocketsReadme).toContain('close tracked websocket clients during application shutdown');
     expect(websocketsReadme).toContain('bounded chance to finish within `shutdown.timeoutMs`');
     expect(websocketsReadme).not.toContain('Across Node.js, Bun, Deno, and Cloudflare Workers');
     expect(websocketsReadme).toContain('packages/websockets/src/bun/bun.test.ts');
-    expect(websocketsReadme).toContain('packages/websockets/src/deno/deno.test.ts');
     expect(websocketsReadme).toContain('packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts');
 
     expect(websocketsReadmeKo).toContain('@fluojs/websockets/bun');
-    expect(websocketsReadmeKo).toContain('@fluojs/websockets/deno');
     expect(websocketsReadmeKo).toContain('@fluojs/websockets/cloudflare-workers');
     expect(websocketsReadmeKo).toContain('애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고');
     expect(websocketsReadmeKo).toContain('`shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup');
     expect(websocketsReadmeKo).not.toContain('Node.js, Bun, Deno, Cloudflare Workers 전반에서');
     expect(websocketsReadmeKo).toContain('packages/websockets/src/bun/bun.test.ts');
-    expect(websocketsReadmeKo).toContain('packages/websockets/src/deno/deno.test.ts');
     expect(websocketsReadmeKo).toContain('packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts');
   });
 
@@ -4680,7 +4576,7 @@ describe('repository governance contracts', () => {
     expect(nodeWorkflow).toContain('verification-runner.mjs --plan');
     expect(nodeWorkflow).toContain('fetch-depth: 0');
     expect(capabilities).toEqual(expect.arrayContaining([
-      'platform-governance', 'deno-native', 'studio-browser',
+      'platform-governance', 'studio-browser',
       'packages-1', 'packages-2', 'packages-3', 'packages-4',
       'tooling-1', 'tooling-2', 'apps', 'examples', 'runtime-floor',
     ]));
@@ -5999,7 +5895,6 @@ describe('WebSockets runtime subpath discoverability', () => {
   it('keeps fetch-style authoring primitives discoverable from the context hub', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
       expect(content).toContain('@fluojs/websockets/bun');
-      expect(content).toContain('@fluojs/websockets/deno');
       expect(content).toContain('@fluojs/websockets/cloudflare-workers');
       expect(content).toMatch(/metadata authoring primitive|metadata helper|Metadata helper/);
     }

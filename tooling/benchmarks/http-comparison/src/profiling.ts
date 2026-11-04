@@ -175,7 +175,7 @@ export class RuntimeCapture {
       }
       const expression = target.platform === 'workers'
         ? `JSON.stringify({pid:null,runtime:{host:"workerd"},workerRuntime:typeof WebSocketPair!=="undefined"&&typeof caches!=="undefined",servingMs:performance.now(),uptimeMs:null})`
-        : `JSON.stringify({pid:typeof Deno!=="undefined"?Deno.pid:process.pid,runtime:typeof Deno!=="undefined"?Deno.version:process.versions,servingMs:performance.now(),uptimeMs:typeof process!=="undefined"&&typeof process.uptime==="function"?process.uptime()*1000:null})`;
+        : `JSON.stringify({pid:process.pid,runtime:process.versions,servingMs:performance.now(),uptimeMs:typeof process!=="undefined"&&typeof process.uptime==="function"?process.uptime()*1000:null})`;
       const runtime = await capture.evaluate(expression);
       if (target.platform === 'workers' && runtime.workerRuntime !== true) throw new ProfileFailure('subject', 'Workers inspector points to a launcher, not an application isolate');
       const tree = await processTreeSample(launcherPid);
@@ -278,7 +278,7 @@ export class RuntimeCapture {
         }
         break;
       case 'gc-eventloop':
-        profile = { ...await this.evaluate(wallStop), gcEvents: this.gcEvents, gcTraceSource: this.target.platform === 'bun' ? 'Heap.garbageCollected' : this.target.platform === 'deno' ? '--v8-flags=--trace-gc' : '--trace-gc' };
+        profile = { ...await this.evaluate(wallStop), gcEvents: this.gcEvents, gcTraceSource: this.target.platform === 'bun' ? 'Heap.garbageCollected' : '--trace-gc' };
         if (['fastify', 'express', 'nodejs', 'nextjs'].includes(this.target.platform)) profile = { ...object(profile), node: await this.evaluate(nodeStop) };
         this.format = 'gc-eventloop';
         break;

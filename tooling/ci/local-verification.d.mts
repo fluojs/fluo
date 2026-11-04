@@ -12,7 +12,7 @@ export type VerificationIdentity = {
 };
 
 export type VerificationCommand = {
-  readonly executable: 'pnpm' | 'node' | 'bun' | 'deno';
+  readonly executable: 'pnpm' | 'node' | 'bun';
   readonly argv: readonly string[];
   readonly cwd: string;
   readonly env?: Readonly<Record<string, string>>;

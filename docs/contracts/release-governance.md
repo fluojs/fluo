@@ -69,13 +69,13 @@ Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`
 
 ## Deno deprecation advisory and registry metadata
 
-Deno support is Deprecated: no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case with no patch/LTS guarantee. Existing 2.x APIs and explicit CLI paths remain usable; removal is planned for the next major of the respective Deno-related packages under [#3938](https://github.com/fluojs/fluo/issues/3938). Follow the [canonical migration guide](../getting-started/migrate-from-deno.md). This status does not remove `@fluojs/platform-deno` from the publish catalog below or replace existing behavioral ownership.
+Deno support is Removed: `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno targets are deleted from the active workspace under [#3938](https://github.com/fluojs/fluo/issues/3938), and `@fluojs/platform-deno` is removed from the publish catalog below. Its README URLs remain as archive notices; prior implementation remains in Git history and npm tarballs. Follow the [canonical migration guide](../getting-started/migrate-from-deno.md).
 
-Phase 1 records a backward-compatible patch advisory for `@fluojs/platform-deno`, `@fluojs/websockets`, and `@fluojs/cli`. Changesets determines the exact advisory versions through the canonical release workflow; do not infer a final advisory version from the unrelated contents of the current Version Packages PR.
+Phase 1 provided a backward-compatible deprecation advisory; the final published `@fluojs/platform-deno` release is `2.0.2`. At the pre-removal source revision, WebSockets and CLI were `2.0.3` and `4.0.1`; those workspace versions alone do not establish which release executed the advisory. Phase 2 removes the Deno surfaces and requires **MAJOR** Changesets for `@fluojs/websockets` and `@fluojs/cli` (WebSockets 3 and CLI 5), because public subpaths, starter inputs, and lifecycle execution contracts are removed. Neither shared package is deprecated as a whole.
 
-The canonical `.github/workflows/release.yml` runs `node tooling/release/deprecate-platform-deno.mjs` after the Changesets action. The helper is intended to apply npm deprecation metadata to `@fluojs/platform-deno@*` only once the public npm `latest` version and description match the advisory workspace manifest. A mismatch returns `pending-advisory-release` without writing metadata. Before a write, the helper verifies that the canonical migration guide is publicly reachable through its raw GitHub URL. It uses `NODE_AUTH_TOKEN` from the existing `secrets.NPM_TOKEN`, not a local publish path.
+The phase-1 canonical release workflow ran `node tooling/release/deprecate-platform-deno.mjs` after the Changesets action. The helper applied npm deprecation metadata to `@fluojs/platform-deno@*` only once the public npm `latest` version and description matched the advisory workspace manifest; a mismatch returned `pending-advisory-release` without writing metadata. Before a write, it verified that the canonical migration guide was publicly reachable through its raw GitHub URL, and it used `NODE_AUTH_TOKEN` from the existing `secrets.NPM_TOKEN`, never a local publish path.
 
-The helper reads a fresh full npm packument after the operation and requires the exact deprecation message on every returned version, including prereleases. Read, guide-access, write, or verification failures fail the workflow. If all versions already have the exact message, reruns skip the metadata write but still verify fresh registry state. This is policy and automation, not proof of execution: report registry deprecation as complete only after an actual confirming npm observation. Do not deprecate the entire shared WebSockets or CLI package merely because its Deno surface is Deprecated.
+The phase-1 canonical Changesets workflow included a one-time npm deprecation helper after publication. It was designed to check the actual advisory version, public migration guide, and every published version including prereleases. A separate npm registry observation on 2026-11-03 confirmed deprecation metadata on all 18 versions. That observation proves the resulting registry state, not which workflow or actor performed the write. With that state confirmed, phase 2 removes the completed one-time helper and release step. No local publish or unpublish is introduced.
 
 ## intended publish surface
 
@@ -108,7 +108,6 @@ The helper reads a fresh full npm packument after the operation and requires the
 - `@fluojs/persistence`
 - `@fluojs/platform-bun`
 - `@fluojs/platform-cloudflare-workers`
-- `@fluojs/platform-deno`
 - `@fluojs/platform-express`
 - `@fluojs/platform-fastify`
 - `@fluojs/platform-nextjs`

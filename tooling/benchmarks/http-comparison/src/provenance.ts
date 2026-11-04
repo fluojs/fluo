@@ -79,12 +79,6 @@ export async function environmentSummary() {
     if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
     bun = null;
   }
-  let deno: string | null;
-  try { deno = (await execute('deno', ['--version'])).stdout.trim(); }
-  catch (error) {
-    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
-    deno = null;
-  }
   const gitSha = (await execute('git', ['rev-parse', 'HEAD'], { cwd: WORKSPACE_ROOT })).stdout.trim();
   const gitStatus = (await execute('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd: WORKSPACE_ROOT })).stdout;
   const source = await sourceSnapshot(WDIR);
@@ -96,7 +90,6 @@ export async function environmentSummary() {
     capturedAt: new Date().toISOString(), arch: arch(), platform: platform(), osRelease: release(),
     cpuModel: cpus()[0]?.model ?? 'unknown', cpuCount: cpus().length,
     node: process.version, nodeExecutable: process.execPath, bun,
-    deno,
     pnpm: (await execute('pnpm', ['--version'])).stdout.trim(),
     dependencies, adapterFastify, adapterExpress, lockfiles,
     git: { sha: gitSha, dirty: gitStatus.length > 0, status: gitStatus },

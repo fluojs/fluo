@@ -8,7 +8,6 @@
 | --- | --- | --- | --- |
 | 생성된 Node 스타터의 소스 코드 변경 | 기본 생성 `dev` 스크립트는 `fluo dev`이며, `--raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`로 native Node watch mode를 선택하지 않는 한 fluo가 소유한 restart runner를 통과합니다. 공식 Node React/Vite starter는 변환된 client graph의 `.tsx`/CSS 갱신을 Vite에 위임합니다. | 일반 Node 소스/config는 child를 재시작합니다. React 변경은 아래 graph 소유권 표를 따릅니다. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | 생성된 Bun 스타터의 소스 코드 변경 | 기본 생성 `dev` 스크립트는 `fluo dev`이며, Bun native watch loop(`bun --watch src/main.ts`)를 기본값으로 사용합니다. `fluo dev --runner fluo`는 fluo 소유 restart runner를 복원합니다. | Bun 런타임이 기본 watch/reload를 소유하므로 Node-supervised dev process를 줄이고, 명시적 fluo restart fallback은 유지합니다. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
-| 생성된 Deno 스타터의 소스 코드 변경 | 기본 생성 `dev` 스크립트는 `fluo dev`이며, Deno native watch loop(`deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts`)를 기본값으로 사용합니다. Broad env access는 generated `Deno.env.toObject()` snapshot이 소비하는 모든 application-owned key를 보존하며 signal listener에는 별도의 Deno permission이 필요하지 않습니다. `fluo dev --runner fluo`는 같은 env, network 및 제한된 .env read permission을 사용하는 fluo 소유 restart runner를 복원합니다. | Deno 런타임이 기본 watch/reload를 소유하므로 Node-supervised dev process를 줄이고, 명시적 fluo restart fallback은 유지합니다. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | 생성된 Workers 스타터의 소스 코드 변경 | 기본 생성 `dev` 스크립트는 `fluo dev`이며, Wrangler native dev loop(`wrangler dev --show-interactive-dev-session=false`)를 기본값으로 사용합니다. `fluo dev --runner fluo`는 fluo 소유 restart runner를 복원합니다. | Wrangler가 기본 watch/reload를 소유하므로 fluo Node supervisor boundary를 줄이고, 명시적 fluo restart fallback은 유지합니다. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | config reload가 활성화된 설정 파일 변경 | `ConfigModule.forRoot({ watch: true, ... })`가 하나의 injectable `CONFIG_RELOADER`를 소유하고 `onApplicationBootstrap()`에서 watcher를 활성화합니다. `ConfigReloadManager.create(...)`는 별도의 standalone manager입니다. watcher는 최종 순서형 env-file content가 마지막으로 commit된 watch baseline과 같으면 reload를 건너뜁니다. | content가 바뀌고 검증이 성공하면 기존 `ConfigService` 스냅샷이 프로세스 내부에서 교체됩니다. | `packages/config/src/load.ts`, `packages/config/src/module.ts` |
 | 수동 config refresh | `ConfigReloader.reload()`는 파일 시스템 watch 없이 같은 reload 경로를 실행합니다. | 호출자는 새로 검증된 스냅샷을 명시적으로 요청할 수 있습니다. | `packages/config/src/load.ts:770-785` |
@@ -28,7 +27,7 @@ Gateway가 공개 port와 WebSocket을 유지하는 동안 새 Fastify app은 �
 Bootstrap 실패 후에도 gateway와 watcher가 살아 있어 수정 저장으로 회복할 수
 있습니다. App 종료 실패는 terminal 오류입니다.
 macOS/Windows의 native Node raw watch는 process-restart escape hatch이며 Linux에서는
-fluo runner를 계속 사용합니다. Bun, Deno, Workers는 기존 native-watch 선택을 유지하고
+fluo runner를 계속 사용합니다. Bun, Workers는 기존 native-watch 선택을 유지하고
 React Fast Refresh 지원 범위가 아닙니다. 별도로
 `ConfigModule.forRoot({ watch: true })`는 검증된 env-file snapshot을 in-process에서
 교체할 수 있고, 잘못된 업데이트에서는 마지막 정상 snapshot을 유지합니다. CLI watcher가
@@ -71,9 +70,9 @@ non-React starter의 기존 process boundary는 그대로 유지됩니다.
 
 - 기본 lifecycle 출력은 fluo lifecycle UI 없이 child `stdout`/`stderr`를 전달합니다. 앱 로그 전용 출력은 fluo runner가 process boundary를 소유하는 경로에 적용됩니다.
 - fluo lifecycle UI와 `app │` prefix 출력은 `--reporter pretty`에서만 opt-in으로 노출됩니다.
-- fluo 소유 runner 경로에서 런타임/도구 watcher 원본 출력은 `--verbose` 또는 `FLUO_VERBOSE=1`로 opt-in할 때 노출됩니다. runtime-native Bun, Deno, Workers watch loop는 자체 도구 출력을 기본으로 표시할 수 있습니다.
+- fluo 소유 runner 경로에서 런타임/도구 watcher 원본 출력은 `--verbose` 또는 `FLUO_VERBOSE=1`로 opt-in할 때 노출됩니다. runtime-native Bun, Workers watch loop는 자체 도구 출력을 기본으로 표시할 수 있습니다.
 - Node restart notice는 기본으로 숨겨지고, opt-in 모드에서만 출력됩니다.
-- Node dev 명령은 기본적으로 fluo 소유 restart boundary를 사용합니다. Bun, Deno, Workers dev 명령은 runtime-native watch loop를 기본값으로 사용하며, 앱 로그 전용 출력, 색상 보존, 재시작 clear/header 동작을 fluo restart runner에서 받아야 할 때는 `--runner fluo`를 사용합니다.
+- Node dev 명령은 기본적으로 fluo 소유 restart boundary를 사용합니다. Bun, Workers dev 명령은 runtime-native watch loop를 기본값으로 사용하며, 앱 로그 전용 출력, 색상 보존, 재시작 clear/header 동작을 fluo restart runner에서 받아야 할 때는 `--runner fluo`를 사용합니다.
 
 ## 관련 문서
 

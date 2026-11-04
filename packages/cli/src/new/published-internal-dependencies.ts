@@ -8,7 +8,6 @@ export const PUBLISHED_INTERNAL_DEPENDENCIES = {
   "@fluojs/microservices": "^3.0.0",
   "@fluojs/platform-bun": "^3.1.0",
   "@fluojs/platform-cloudflare-workers": "^2.1.2",
-  "@fluojs/platform-deno": "^2.0.2",
   "@fluojs/platform-express": "^2.0.3",
   "@fluojs/platform-fastify": "^2.0.6",
   "@fluojs/platform-nodejs": "^2.0.3",

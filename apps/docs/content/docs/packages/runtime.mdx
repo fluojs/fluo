@@ -6,7 +6,7 @@ package: "@fluojs/runtime"
 
 `@fluojs/runtime` is the assembly layer. It takes the static description your modules declare - `@Module` metadata from [`@fluojs/core`](/docs/packages/core) - compiles it into a validated module graph, registers the graph into a [`@fluojs/di`](/docs/fundamentals/dependency-injection) container, runs the application lifecycle, and (for HTTP applications) wires the `@fluojs/http` dispatcher to a host adapter. `FluoFactory` is its facade: one call turns modules into either a listening server or a standalone context.
 
-Runtime is deliberately not three things. It is not the container - resolution, scopes, and disposal belong to `@fluojs/di`. It is not the decorator vocabulary - declaring providers and scopes belongs to `@fluojs/core`. And it is not the Node host - listeners, loggers, filesystem access, and process-signal registration belong to `@fluojs/platform-nodejs`, because the runtime root is shared by Bun, Deno, Cloudflare Workers, and other Web-standard hosts.
+Runtime is deliberately not three things. It is not the container - resolution, scopes, and disposal belong to `@fluojs/di`. It is not the decorator vocabulary - declaring providers and scopes belongs to `@fluojs/core`. And it is not the Node host - listeners, loggers, filesystem access, and process-signal registration belong to `@fluojs/platform-nodejs`, because the runtime root is shared by Bun, Cloudflare Workers, and other Web-standard hosts.
 
 ## Installation
 
@@ -14,7 +14,7 @@ Runtime is deliberately not three things. It is not the container - resolution, 
 npm install @fluojs/runtime
 ```
 
-The package depends on `@fluojs/core`, `@fluojs/di`, and `@fluojs/http`, so installing it brings the declaration layer and the DI container with it. The published package intentionally declares no package-wide `engines.node`: the root and `./web` subpath are runtime-neutral. Node-specific responsibilities require [`@fluojs/platform-nodejs`](https://github.com/fluojs/fluo/blob/main/packages/platform-nodejs/README.md), which declares the verified Node.js engine range (`>=24.0.0 <27`). On Bun, Deno, or Cloudflare Workers, pair the runtime with `@fluojs/runtime/web` helpers and a host-owned adapter instead.
+The package depends on `@fluojs/core`, `@fluojs/di`, and `@fluojs/http`, so installing it brings the declaration layer and the DI container with it. The published package intentionally declares no package-wide `engines.node`: the root and `./web` subpath are runtime-neutral. Node-specific responsibilities require [`@fluojs/platform-nodejs`](https://github.com/fluojs/fluo/blob/main/packages/platform-nodejs/README.md), which declares the verified Node.js engine range (`>=24.0.0 <27`). On Bun or Cloudflare Workers, pair the runtime with `@fluojs/runtime/web` helpers and a host-owned adapter instead.
 
 ## When to use it, and when not
 
@@ -217,7 +217,7 @@ Every teardown path funnels through `app.close()` / `context.close()`. The shutd
 | Subpath | Purpose |
 | --- | --- |
 | `@fluojs/runtime` (root) | `FluoFactory`, `Application`, `ApplicationContext`, lifecycle types, `HealthModule`, graph options, diagnostics, multipart contracts, platform shell contracts |
-| `@fluojs/runtime/web` | Web-standard request/response utilities, buffered `parseMultipart` and streaming `parseMultipartStream` for Bun/Deno/Workers hosts |
+| `@fluojs/runtime/web` | Web-standard request/response utilities, buffered `parseMultipart` and streaming `parseMultipartStream` for Bun/Workers hosts |
 | `@fluojs/runtime/devtools` | `StudioDevtoolsRuntime` bridge contracts for host-owned Studio instrumentation, passed as `studioDevtools` at bootstrap |
 | `@fluojs/runtime/internal` and friends | Package-integration seams for first-party adapters and runtime-aware packages; not user APIs |
 

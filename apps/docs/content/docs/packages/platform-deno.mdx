@@ -1,14 +1,13 @@
 ---
-title: Deno platform (Deprecated)
-description: Deprecated Deno adapter reference for existing 2.x applications and migration to Node.js or Cloudflare Workers.
-package: "@fluojs/platform-deno"
+title: Deno platform (Removed)
+description: Archived reference for the removed Deno adapter (@fluojs/platform-deno, final 2.0.2) and migration to Node.js or Cloudflare Workers.
 ---
 
-> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+> **Deno support is Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno target are deleted from the active workspace; npm registry observation on 2026-11-03 confirmed all 18 published `@fluojs/platform-deno` versions deprecated, with `2.0.2` as the final release. The prior implementation remains in Git history and npm tarballs, and removal reaches published packages with the next CLI and WebSockets majors (CLI 5 and WebSockets 3 per the removal changesets; Changesets is authoritative), tracked in [#3938](https://github.com/fluojs/fluo/issues/3938). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
 
-`@fluojs/platform-deno` is the HTTP adapter that runs a fluo application on the [Deno](https://deno.com/) runtime. It implements the framework's `HttpApplicationAdapter` contract on native `Deno.serve`, translating Deno's standard `Request`/`Response` objects into the same shared fluo dispatch pipeline that every other fetch-style adapter uses.
+`@fluojs/platform-deno` was the HTTP adapter that ran a fluo application on the [Deno](https://deno.com/) runtime; this page is an archived reference for existing `<= 2.0.2` deployments. It implemented the framework's `HttpApplicationAdapter` contract on native `Deno.serve`, translating Deno's standard `Request`/`Response` objects into the same shared fluo dispatch pipeline that every other fetch-style adapter uses.
 
-Keep this reference for existing Deno deployments; new projects should choose Node.js + Fastify or evaluate Workers. Use [`@fluojs/platform-bun`](/docs/packages/platform-bun) for Bun, the Node.js adapters for Node, and [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) for Workers. Like the other platform adapters it is not a module: there is no `forRoot`/`forRootAsync` registration and nothing to import into a provider list. You construct the adapter, pass it to `FluoFactory.create(...)`, and call `app.listen()`.
+Keep this archived reference for existing Deno deployments; new projects should choose Node.js + Fastify or evaluate Workers. Use [`@fluojs/platform-bun`](/docs/packages/platform-bun) for Bun, the Node.js adapters for Node, and [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) for Workers. Like the other platform adapters it is not a module: there is no `forRoot`/`forRootAsync` registration and nothing to import into a provider list. You construct the adapter, pass it to `FluoFactory.create(...)`, and call `app.listen()`.
 
 The package depends on `@fluojs/http` and `@fluojs/runtime` and requires `globalThis.Deno.serve` when the managed server starts. It declares no `engines.node` constraint because its runtime contract is Deno; the repository's Node.js requirement applies only to the maintainer toolchain.
 
@@ -220,7 +219,7 @@ The mechanics behind that registration:
 
 ## Testing at this seam
 
-The package's regression targets are `packages/platform-deno/src/adapter.test.ts` (managed contract: option normalization, HTTPS forwarding, signal registration and rollback, websocket gating, 500/503 handling, drain and shutdown-failure ownership) and `packages/platform-deno/src/fetch-handler.test.ts` (host-owned handler portability). `packages/platform-deno/deno/native-adapter.test.js` runs the *built* package natively under Deno, and the shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` keeps Deno aligned with Bun and Cloudflare Workers.
+The archived regression targets at `packages/platform-deno/src/adapter.test.ts`, `packages/platform-deno/src/fetch-handler.test.ts`, and `packages/platform-deno/deno/native-adapter.test.js` remain in Git history. The published `2.0.2` npm tarball retains the built implementation, not those source tests. The maintained shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` now keeps Bun and Cloudflare Workers aligned.
 
 For your own tests, use the injected `serve` seam to run the managed adapter without a network listener, or boot on port `0` and read the resolved target from `adapter.getListenTarget()`. Always `await app.close()` in a `finally` block so lifecycle hooks release. For request-level assertions without a transport, use [`Test.createApp(...)`](/docs/guides/testing) and reserve this adapter for transport-specific tests.
 
@@ -230,4 +229,4 @@ For your own tests, use the injected `serve` seam to run the managed adapter wit
 - [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) - the edge fetch adapter and its lazy Worker host.
 - [Dependency injection](/docs/fundamentals/dependency-injection) - how the providers behind your controllers compose.
 - [Runtime Adapters](/docs/guides/runtime-adapters) - choosing between adapters and the portability matrix.
-- [`packages/platform-deno/README.md`](https://github.com/fluojs/fluo/blob/main/packages/platform-deno/README.md) - the owning package contract.
+- [`packages/platform-deno/README.md`](https://github.com/fluojs/fluo/blob/main/packages/platform-deno/README.md) - the archived package contract notice (final `2.0.2`).

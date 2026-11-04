@@ -15,7 +15,6 @@ export type StarterEmitterType = 'http' | 'microservice' | 'mixed' | 'react-vite
 export type StarterScaffoldRecipeId =
   | 'application-bun-bun-http'
   | 'application-cloudflare-workers-cloudflare-workers-http'
-  | 'application-deno-deno-http'
   | 'application-node-express-http'
   | 'application-node-fastify-http'
   | 'application-node-fastify-react-vite-ssr'
@@ -124,34 +123,6 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     platformPromptLabel: 'Bun native HTTP',
     promptLabel: 'Application (HTTP starter)',
     schema: createSchema('application', 'bun', 'bun', 'http'),
-    starter: 'standard',
-  },
-  {
-    dependencies: {
-      dependencies: [
-        '@fluojs/config',
-        '@fluojs/core',
-        '@fluojs/validation',
-        '@fluojs/di',
-        '@fluojs/http',
-        '@fluojs/platform-deno',
-        '@fluojs/runtime',
-      ],
-      devDependencies: [
-        '@fluojs/cli',
-      ],
-    },
-    emitter: {
-      platform: 'deno',
-      preset: 'standard',
-      runtime: 'deno',
-      transport: 'http',
-      type: 'http',
-    },
-    id: 'application-deno-deno-http',
-    platformPromptLabel: 'Deno native HTTP',
-    promptLabel: 'Application (HTTP starter)',
-    schema: createSchema('application', 'deno', 'deno', 'http'),
     starter: 'standard',
   },
   {
@@ -543,12 +514,11 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
 /** Supported scaffold shapes accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_SHAPES: readonly BootstrapShape[] = STARTER_PROFILE_REGISTRY.map((profile) => profile.schema.shape);
 /** Supported runtime families accepted by the current starter matrix. */
-export const SUPPORTED_BOOTSTRAP_RUNTIMES: readonly BootstrapRuntime[] = ['bun', 'cloudflare-workers', 'deno', 'node'];
+export const SUPPORTED_BOOTSTRAP_RUNTIMES: readonly BootstrapRuntime[] = ['bun', 'cloudflare-workers', 'node'];
 /** Supported platform adapters accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_PLATFORMS: readonly BootstrapPlatform[] = [
   'bun',
   'cloudflare-workers',
-  'deno',
   'express',
   'fastify',
   'nodejs',
@@ -570,7 +540,7 @@ export const DEFAULT_BOOTSTRAP_PROFILE = STARTER_PROFILE_REGISTRY.find((profile)
  * Resolves the default starter profile for one shape/runtime branch.
  *
  * @param shape Shape requested by the caller.
- * @param runtime Optional runtime override used to pick Bun/Deno/Workers application defaults.
+ * @param runtime Optional runtime override used to pick Bun/Workers application defaults.
  * @returns The starter profile that defines the default contract for that branch.
  */
 export function getStarterProfileForShape(shape: BootstrapShape, runtime?: BootstrapRuntime): StarterProfile {

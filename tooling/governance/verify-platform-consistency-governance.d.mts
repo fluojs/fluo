@@ -38,7 +38,7 @@ export function enforceNoDirectProcessEnvInOrdinaryPackageSource(
   relativePaths?: readonly string[],
   readSource?: (relativePath: string) => string,
 ): void;
-export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
+export function enforceNoNodeGlobalBufferInCloudflareWorkerServices(
   relativePaths?: readonly string[],
   readSource?: (relativePath: string) => string,
 ): void;

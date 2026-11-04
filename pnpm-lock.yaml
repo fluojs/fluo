@@ -1010,22 +1010,6 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(happy-dom@20.9.0)(vite@8.2.2(@types/node@22.19.15)(esbuild@0.28.1)(tsx@4.23.1))
 
-  packages/platform-deno:
-    dependencies:
-      '@fluojs/http':
-        specifier: workspace:^
-        version: link:../http
-      '@fluojs/runtime':
-        specifier: workspace:^
-        version: link:../runtime
-    devDependencies:
-      '@fluojs/testing':
-        specifier: workspace:^
-        version: link:../testing
-      vitest:
-        specifier: ^4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(happy-dom@20.9.0)(vite@8.2.2(@types/node@22.19.15)(esbuild@0.28.1)(tsx@4.23.1))
-
   packages/platform-express:
     dependencies:
       '@fluojs/http':
@@ -1433,9 +1417,6 @@ importers:
       '@fluojs/platform-cloudflare-workers':
         specifier: workspace:^
         version: link:../platform-cloudflare-workers
-      '@fluojs/platform-deno':
-        specifier: workspace:^
-        version: link:../platform-deno
       '@fluojs/platform-express':
         specifier: workspace:^
         version: link:../platform-express
@@ -1547,9 +1528,6 @@ importers:
       '@fluojs/platform-cloudflare-workers':
         specifier: workspace:^
         version: link:../platform-cloudflare-workers
-      '@fluojs/platform-deno':
-        specifier: workspace:^
-        version: link:../platform-deno
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -4293,6 +4271,7 @@ packages:
 
   libsql@0.5.29:
     resolution: {integrity: sha512-8lMP8iMgiBzzoNbAPQ59qdVcj6UaE/Vnm+fiwX4doX4Narook0a4GPKWBEv+CR8a1OwbfkgL18uBfBjWdF0Fzg==}
+    cpu: [x64, arm64, wasm32, arm]
     os: [darwin, linux, win32]
 
   light-my-request@6.6.0:

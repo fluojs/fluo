@@ -12,7 +12,7 @@ Node floor는 역할별로 분류됩니다. 순수 runtime인 34개 Node-bound p
 | Exact Node `24.11.0` | PR: 독립 frozen install/fresh build와 영향받는 package test, 관련 4종 starter smoke; full PR: 모든 package; extended: 전체 검증과 browser journey | Babel 8의 최소 compiler toolchain floor |
 | Locked Node `24.x` | 선택된 primary PR 검증, 관련 docs와 생성 starter dev/production browser matrix; full PR과 extended는 모든 primary 검사 유지 | Canonical 개발 검증 및 Changesets release runtime |
 | Locked Node `26.x` | PR: 독립 frozen install/fresh build와 영향받는 package test, 관련 4종 starter smoke; full PR: 모든 package; extended: 전체 검증과 browser journey | Forward verification 전용이며 publish에 사용하지 않음 |
-| Bun, Deno, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
+| Bun, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
 
 `tooling/ci/local-verification-manifest.json`의 공통 catalog는 17개 task 정의를 유지합니다. 정의 수와 profile별 실행 task 수는 다릅니다. `tooling/ci/local-verification.mjs`가 계획을 고정하고 `tooling/ci/verification-runner.mjs`가 실행하며, `.github/workflows/node-verification.yml`은 호출마다 task 하나를 실행합니다. `.github/workflows/ci.yml`의 job 수에는 plan 확정과 필수 `Verify` 집계가 포함됩니다.
 
@@ -81,7 +81,7 @@ Authentication, 일반 authorization, malformed metadata, expired artifact, dige
 
 전체 검증의 package build는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. Runtime-floor bundle은 compiler Node에서 exact Node `24.0.0`으로 의도적으로 전달하되 같은 run, commit, artifact identity, digest 검증을 유지합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
 
-두 native task가 모든 runtime별 검증을 보존합니다. `native-bun`은 각자 고정된 버전으로 Bun routing/lifecycle과 Drizzle을 실행합니다. `native-web`은 Deno adapter, 모든 Bun/Deno/Workers portability 사례와 세 native cookie 명령을 실행합니다. Job을 묶어도 floor runtime을 최신 버전으로 대체하지 않습니다. 필수 명령 실패, 증거 누락, 취소, 예상치 못한 skip은 `Verify`를 차단합니다.
+두 native task가 유지되는 모든 runtime별 검증을 보존합니다. `native-bun`은 각자 고정된 버전으로 Bun routing/lifecycle과 Drizzle을 실행합니다. `native-web`은 모든 Bun/Workers portability 사례와 두 native cookie 명령을 실행합니다. Job을 묶어도 floor runtime을 최신 버전으로 대체하지 않습니다. 필수 명령 실패, 증거 누락, 취소, 예상치 못한 skip은 `Verify`를 차단합니다.
 
 집중 검증 명령인 `test:node-floor`는 로컬 확인용으로 유지하며 전체 CI 검증을 대체하지 않습니다. 이 명령은 manifest 분류, 모든 scaffold profile, config env-file/watch 동작, 배포 portable runtime import, Node HTTP listener, adapter portability, 기존 Vite compatibility seam을 검증합니다. 필수 runtime-only lane은 exact Node `24.0.0`에서 실행되므로 CI는 runtime floor 검증을 더 최신인 24.x patch로 대체하지 않습니다.
 
@@ -113,13 +113,13 @@ artifact 생성·획득과 집계는 같은 plan을 따릅니다. 선택되지 �
 
 ## Portable package boundaries
 
-다음 10개 public root는 의도적으로 `engines.node`를 생략합니다: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/platform-deno`, `@fluojs/react`, `@fluojs/runtime`. 이웃 manifest와 모양을 맞추려고 engines를 복원하지 마세요.
+다음 9개 public root는 의도적으로 `engines.node`를 생략합니다: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/react`, `@fluojs/runtime`. 이웃 manifest와 모양을 맞추려고 engines를 복원하지 마세요.
 
 Diagnostics root와 모든 public subpath는 host builtin, runtime 구현, Studio UI 및 import-time resource 없는 데이터 계약/reader입니다. Studio Node `>=24.0.0 <27`, CLI Node `>=24.11.0 <27`은 유지하며 선언 소유권 이전이 consumer 지원을 좁히지 않습니다.
 
-Package-wide Node metadata는 모든 conditional export나 runtime-native adapter에 대한 주장이 아닙니다. 기존 Bun, Deno, Workers 동작은 각 package README의 계약을 따릅니다. Config의 in-memory root는 portable하게 유지됩니다. Env-file/기본 `.env` loading과 watch mode는 `>=24.0.0 <27`에서 지원하는 Node 전용 기능입니다. 기존 capability guard는 host가 builtin 경계를 제공하지 못할 때 계속 `CONFIG_RUNTIME_UNAVAILABLE`을 발생시킵니다. Import나 feature 호출에 새 Node version 검사는 없습니다.
+Package-wide Node metadata는 모든 conditional export나 runtime-native adapter에 대한 주장이 아닙니다. 기존 Bun, Workers 동작은 각 package README의 계약을 따릅니다. Config의 in-memory root는 portable하게 유지됩니다. Env-file/기본 `.env` loading과 watch mode는 `>=24.0.0 <27`에서 지원하는 Node 전용 기능입니다. 기존 capability guard는 host가 builtin 경계를 제공하지 못할 때 계속 `CONFIG_RUNTIME_UNAVAILABLE`을 발생시킵니다. Import나 feature 호출에 새 Node version 검사는 없습니다.
 
-생성된 Node HTTP(Fastify, Express, raw Node), mixed, 7개 microservice transport, React SSR + Fastify starter는 compiler toolchain engine range인 `>=24.11.0 <27`을 선언하고 `node24`로 빌드하며 `@types/node@^24.0.0`을 사용하고 Babel 8 의존성과 호환되는 Babel 8 config를 생성합니다. Bun과 Deno의 engine 및 native build/start 명령은 유지됩니다. Workers의 기존 Node engine은 배포 isolate가 아니라 로컬 CLI/Wrangler tooling을 설명합니다.
+생성된 Node HTTP(Fastify, Express, raw Node), mixed, 7개 microservice transport, React SSR + Fastify starter는 compiler toolchain engine range인 `>=24.11.0 <27`을 선언하고 `node24`로 빌드하며 `@types/node@^24.0.0`을 사용하고 Babel 8 의존성과 호환되는 Babel 8 config를 생성합니다. Bun의 engine 및 native build/start 명령은 유지됩니다. Workers의 기존 Node engine은 배포 isolate가 아니라 로컬 CLI/Wrangler tooling을 설명합니다.
 
 ## Migration
 

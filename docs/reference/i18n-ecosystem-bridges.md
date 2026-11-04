@@ -31,7 +31,7 @@ A bridge helper can graduate from guidance to first-party runtime surface only w
 
 1. It is published under a dedicated subpath or dedicated package, never from the `@fluojs/i18n` root export.
 2. It has no import-time registration side effects and no direct `process.env` reads.
-3. Its dependencies are optional or isolated so the root package stays portable across Node.js, Bun, Deno, Cloudflare Workers, and browser-oriented bundles.
+3. Its dependencies are optional or isolated so the root package stays portable across Node.js, Bun, Cloudflare Workers, and browser-oriented bundles.
 4. Its README section documents the runtime behavior, unsupported assumptions, and migration limits.
 5. Regression tests cover catalog conversion, locale fallback behavior, invalid input handling, and dependency isolation.
 6. Public exports follow the repository TSDoc baseline.

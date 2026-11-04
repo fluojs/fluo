@@ -724,8 +724,7 @@ function packedEvidence(root, reference, head, tree) {
         FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked', FLUO_CLI_SANDBOX_PROFILE: 'smoke' }
       : browser ? { FLUO_PRODUCT_ACCEPTANCE: '1',
         ...(entry.label === 'packed-dev' ? { FLUO_REACT_STARTER_SERVER_COMMAND: 'dev' } : {}),
-        FLUO_REACT_STARTER_TEST_PORT: entry.label === 'packed-dev' ? '44981'
-          : entry.label === 'packed-production' ? productionUrl.port : '44983',
+        FLUO_REACT_STARTER_TEST_PORT: entry.label === 'packed-production' ? productionUrl.port : '0',
         ...(entry.label === 'packed-production' ? { FLUO_REACT_READY_URL: server.ready.url } : {}),
         PLAYWRIGHT_JSON_OUTPUT_NAME: resolve(originalRoot, `${entry.label}-${packed.attempt}.json`) }
       : {};

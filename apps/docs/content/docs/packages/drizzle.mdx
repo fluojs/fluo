@@ -23,7 +23,7 @@ Use this package when an application on Node.js `>=24.0.0 <27` wants Drizzle to
 participate in the same module, DI, and lifecycle model as the rest of the app.
 Drizzle itself can target non-Node drivers (Bun SQL, Cloudflare D1), but those
 runtimes are outside this wrapper: the ambient transaction context is built on
-`node:async_hooks`, and the root package hard-imports it. On Bun, Deno, or
+`node:async_hooks`, and the root package hard-imports it. On Bun or
 Workers, register the raw Drizzle handle behind an application-owned provider
 (`{ provide, useValue }`) instead of importing `@fluojs/drizzle`.
 

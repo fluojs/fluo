@@ -3,13 +3,13 @@ title: Realtime
 description: Add WebSocket and Socket.IO gateways with runtime-aware limits, guards, rooms, and shutdown behavior.
 ---
 
-> **Deno support is Deprecated, not recommended for new projects.** The Deno adapter, WebSocket binding, and CLI target receive no new features, performance work, or new runtime compatibility. Critical security/regression fixes are considered case-by-case without a patch/LTS guarantee. Existing Deno paths remain usable until removal at the next major of the respective Deno-related packages ([#3938](https://github.com/fluojs/fluo/issues/3938)). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
+> **Deno support is Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno target are deleted from the active workspace; npm registry observation on 2026-11-03 confirmed all 18 published `@fluojs/platform-deno` versions deprecated, with `2.0.2` as the final release. The prior implementation remains in Git history and npm tarballs, and removal reaches published packages with the next CLI and WebSockets majors (CLI 5 and WebSockets 3 per the removal changesets; Changesets is authoritative), tracked in [#3938](https://github.com/fluojs/fluo/issues/3938). See the [canonical Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md) and [website migration walkthrough](/docs/getting-started/migrate-from-deno).
 
 Realtime features sit beside the HTTP request/response model. Use them when clients need persistent connections, event-style messages, rooms, namespaces, or low-latency server push.
 
 fluo exposes two official realtime paths:
 
-- `@fluojs/websockets` for decorator-based WebSocket gateways across Node.js, Bun, Deno, and Cloudflare Workers.
+- `@fluojs/websockets` for decorator-based WebSocket gateways across Node.js, Bun, and Cloudflare Workers.
 - `@fluojs/socket.io` for Socket.IO v4 features such as rooms, namespaces, broadcasting, and automatic reconnection.
 
 ## Cloudflare Worker close ownership
@@ -21,7 +21,7 @@ Cloudflare Workers does not send a shutdown callback through the exported `fetch
 | Need | Choose | Reason |
 | --- | --- | --- |
 | Raw WebSocket protocol control | `@fluojs/websockets` | Small protocol surface and runtime-specific subpaths. |
-| Runtime portability across Node, Bun, Deno, Workers | `@fluojs/websockets` | Official subpaths expose runtime-specific modules. |
+| Runtime portability across Node, Bun, Workers | `@fluojs/websockets` | Official subpaths expose runtime-specific modules. |
 | Rooms, namespaces, broadcasting, Socket.IO clients | `@fluojs/socket.io` | Uses Socket.IO v4 while sharing fluo gateway decorators. |
 | Node/Fastify/Express dedicated realtime listener | `@fluojs/websockets/node` | Raw WebSockets support `serverBacked`; Socket.IO gateways always share the application listener. |
 | Deno or Workers Socket.IO | Not supported | Socket.IO docs currently support Node and Bun only. |
@@ -83,7 +83,7 @@ For server-backed Node adapters such as raw Node.js, Express, and Fastify, a gat
 class DedicatedChatGateway {}
 ```
 
-Fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) reject `serverBacked`.
+Fetch-style runtimes (`@fluojs/websockets/bun` and `@fluojs/websockets/cloudflare-workers`) reject `serverBacked`.
 
 ## Pre-upgrade guards and bounded defaults
 
@@ -114,7 +114,7 @@ NodeWebSocketModule.forRoot({
 
 When omitted, WebSocket defaults are bounded: `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior.
 
-Shutdown is terminal for upgrade admission: the Node runtime rechecks the shutdown gate immediately before `ws` accepts a matching request, even when no upgrade guard is configured. If a socket close has already queued `@OnDisconnect()` cleanup when shutdown starts, its lifecycle state remains in the same bounded drain until cleanup settles or `shutdown.timeoutMs` expires. Bun, Deno, and Workers preserve this disconnect-drain guarantee on their fetch-style bindings.
+Shutdown is terminal for upgrade admission: the Node runtime rechecks the shutdown gate immediately before `ws` accepts a matching request, even when no upgrade guard is configured. If a socket close has already queued `@OnDisconnect()` cleanup when shutdown starts, its lifecycle state remains in the same bounded drain until cleanup settles or `shutdown.timeoutMs` expires. Bun and Workers preserve this disconnect-drain guarantee on their fetch-style bindings.
 
 Gateway message handlers receive one normalized payload contract across runtimes. Text frames are parsed as JSON when possible and otherwise delivered as strings. Binary frames are decoded as UTF-8 before the same dispatch step. Oversized accepted sockets are closed with close code `1009`.
 
@@ -126,7 +126,7 @@ Use runtime subpaths when you want an explicit runtime binding instead of the ro
 | --- | --- | --- | --- |
 | Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
 | Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
-| Deno (Deprecated) | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Deno (removed) | `@fluojs/websockets/deno` - archived through WebSockets 2.x | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
 | Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
 
 On Bun, the runtime-specific module installs a pre-listen binding on `@fluojs/platform-bun`. The adapter exposes only an `upgrade(...)` host to that binding, so adapter-owned shutdown and raw fetch control stay on the managed Bun adapter instead of the realtime seam.
@@ -269,7 +269,7 @@ Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime. Existi
 | Using Socket.IO when raw WebSockets are enough | Start with `@fluojs/websockets` unless rooms/namespaces/client compatibility are required. |
 | Accepting every upgrade and authenticating later | Use pre-upgrade guards or Socket.IO connection guards. |
 | Assuming Socket.IO supports `serverBacked` on any runtime | Use the shared application listener, migrate to `@fluojs/websockets/node`, or own a separate Socket.IO server. |
-| Assuming fetch-style raw WebSocket runtimes support `serverBacked` | Use runtime subpath modules and avoid server-backed options on Bun/Deno/Workers raw WebSocket paths. |
+| Assuming fetch-style raw WebSocket runtimes support `serverBacked` | Use runtime subpath modules and avoid server-backed options on Bun/Workers raw WebSocket paths. |
 | Leaving CORS open by default | Configure allowed origins explicitly for Socket.IO. |
 | Ignoring payload bounds | Keep `maxPayloadBytes` or `engine.maxHttpBufferSize` bounded. |
 | Manually closing shared HTTP listeners from Socket.IO cleanup | Let the platform adapter own the HTTP server. |

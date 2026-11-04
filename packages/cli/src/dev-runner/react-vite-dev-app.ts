@@ -13,7 +13,7 @@ import { STUDIO_DEVTOOLS_GLOBAL_CONFIG_KEY } from '../studio/runtime-config.js';
  * Keeps the React development WebSocket and public listener alive across app generations.
  *
  * @param projectDirectory Installed React application directory.
- * @param options Signal source and output streams for the supervised child.
+ * @param options Signal source, output streams and optional bound-listener readiness for the supervised child.
  * @returns Zero after clean shutdown, or one when setup or cleanup fails.
  */
 export async function runReactViteDevApp(
@@ -24,6 +24,7 @@ export async function runReactViteDevApp(
     signalTarget?: EventEmitter;
     stderr?: Pick<NodeJS.WriteStream, 'write'>;
     stdout?: Pick<NodeJS.WriteStream, 'write'>;
+    testReady?: boolean;
   } = {},
 ): Promise<number> {
   const signals = options.signalTarget ?? process;
@@ -183,6 +184,12 @@ export async function runReactViteDevApp(
         return;
       }
       stdout.write('[fluo] React dev app ready\n');
+      if (options.testReady) {
+        const address = gateway.address();
+        if (address && typeof address !== 'string') {
+          stdout.write(`FLUO_REACT_DEV_READY http://127.0.0.1:${address.port}\n`);
+        }
+      }
       process.send?.({ type: 'fluo:react-vite-app-ready', generation });
       vite.ws.send({ type: 'custom', event: 'fluo:server-status', data: { status: 'ready', generation } });
       if (reloadDocument) {

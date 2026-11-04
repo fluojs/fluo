@@ -27,7 +27,6 @@ test('timing bootstrap: serving digests bound individual and cumulative hash buf
       BENCH_TIMING_ENTRY: fixture,
       BENCH_TIMING_NONCE: 'bounded-hash-regression',
       BENCH_TARGET: 'native-nodejs',
-      BENCH_TIMING_IMPORT_ENTRY: '0',
     },
     timeout: 15_000,
   });

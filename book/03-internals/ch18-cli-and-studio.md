@@ -164,7 +164,7 @@ A static report alone cannot support the claim that "this customer's request cal
 
 In a Node development environment, use `pnpm exec fluo dev --studio`. The CLI starts a local sidecar and prints a URL containing a token. It passes explicit Studio configuration to the child process before the app imports the runtime. The runtime source does not read environment variables directly and independently decide to enable observation. This early injection boundary prevents combining it with an arbitrary native watcher.
 
-Live Studio requires Fluo's own Node restart runner. Its contract rejects combinations with `--raw-watch`, `--runner native`, or `FLUO_DEV_RUNNER=native`. Do not describe Bun, Deno, and Workers as already having the same live bridge. Their alternative is a static/report artifact produced under a supported configuration. This is another reason the book fixes its execution baseline at Node24.
+Live Studio requires Fluo's own Node restart runner. Its contract rejects combinations with `--raw-watch`, `--runner native`, or `FLUO_DEV_RUNNER=native`. Do not describe Bun and Workers as already having the same live bridge. Their alternative is a static/report artifact produced under a supported configuration. This is another reason the book fixes its execution baseline at Node24.
 
 Reproduce the behavior based on state rather than guessed delays. Open the token URL and, after the connection state becomes `connected`, request `/orders/order-42` using the existing test account. Find the request's method/path and request ID, then correlate them with the route, handler, and status code. If a code edit triggers a restart, distinguish `restarting` from the new run's snapshot. Do not read the old request list as requests handled by the new process.
 

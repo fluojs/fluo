@@ -143,7 +143,7 @@ or file-routing dependency is added.
   specific `q=0`, constraints, 406, provider failure, `HEAD`, abort, commit guards, and request scope.
 - React integration tests cover buffered documents, ignored entry status/headers, unmatched-route
   ownership, route-policy isolation, provider failure fallback, and shell-phase separation.
-- Shared network and Web portability harnesses cover Node.js, Express, Fastify, Bun, Deno, and
+- Shared network and Web portability harnesses cover Node.js, Express, Fastify, Bun, and
   Cloudflare Workers behavior for JSON, HTML, `HEAD`, 406, and already-committed responses.
 
 

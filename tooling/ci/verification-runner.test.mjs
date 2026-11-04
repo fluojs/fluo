@@ -147,7 +147,6 @@ function syntheticEnvironment(lock) {
     os: 'linux', arch: 'arm64',
     node: Object.fromEntries(Object.entries(lock.node).map(([name, value]) => [name, value.version])),
     bun: Object.fromEntries(Object.entries(lock.bun).map(([name, value]) => [name, value.version])),
-    deno: Object.fromEntries(Object.entries(lock.deno).map(([name, value]) => [name, value.version])),
     pnpm: lock.pnpm.version,
     browser: { channel: lock.browser.channel, version: lock.browser.version, launched: true },
     docker: { reachable: true, version: '28.3.3', cliVersion: lock.docker.version },

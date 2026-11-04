@@ -12,7 +12,7 @@ if (!output || relative(join(WDIR, 'results/issue-3914'), output).startsWith('..
   throw new Error('BENCH_TIMING_CHECK_OUTPUT must be inside results/issue-3914');
 }
 const names = process.env.BENCH_TARGETS?.split(',') ?? [
-  'native-nodejs', 'fluo-nodejs', 'native-bun', 'fluo-bun', 'native-deno', 'fluo-deno',
+  'native-nodejs', 'fluo-nodejs', 'native-bun', 'fluo-bun',
   'native-nextjs', 'fluo-nextjs', 'native-nextjs-pages', 'fluo-nextjs-pages',
   'native-workers', 'fluo-workers',
 ];
@@ -23,7 +23,7 @@ const targets = names.map((name) => {
 });
 const scenario = STAGE_SCENARIOS.find((scenario) => scenario.name === 'stage-minimal');
 assert.ok(scenario);
-assert.equal(AVAILABLE_TARGETS.length, 18);
+assert.equal(AVAILABLE_TARGETS.length, 16);
 const completed: { target: string; samples: TargetResult[] }[] = [];
 const journal = new EvidenceJournal(output, () => ({
   kind: 'bounded-serving-identity-and-finite-HTTP', notPerformanceBaseline: true,

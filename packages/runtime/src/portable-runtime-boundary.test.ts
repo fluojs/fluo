@@ -72,7 +72,6 @@ describe('@fluojs/runtime portable package boundary', () => {
       'i18n',
       'platform-bun',
       'platform-cloudflare-workers',
-      'platform-deno',
       'react',
     ]) {
       const manifest = JSON.parse(

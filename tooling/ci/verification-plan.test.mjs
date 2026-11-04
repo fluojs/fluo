@@ -96,6 +96,49 @@ for (const operation of ['delete', 'owner-rename', 'pattern-rename']) {
   });
 }
 
+for (const archive of [true, false]) {
+  test(`catalog: package retirement ${archive ? 'with archive docs' : 'with no remaining files'} -> no coverage-loss`, (t) => {
+    const { root, put, commit, manifest } = catalogFixture(t);
+    put('packages/retired-platform/package.json', JSON.stringify({ name: '@fluojs/retired-platform' }));
+    put('packages/retired-platform/src/adapter.test.ts', 'export const retired = true;');
+    const base = commit();
+    rmSync(join(root, 'packages/retired-platform/src'), { recursive: true, force: true });
+    rmSync(join(root, 'packages/retired-platform/package.json'));
+    if (archive) put('packages/retired-platform/README.md', '# Archived package\n');
+    commit();
+    const actual = collectIdentity(root, base);
+
+    const plan = buildVerificationPlan({ changedFiles: actual.changedFiles, identity: actual, root, manifest });
+
+    assert.equal(plan.mode, 'full');
+    assert.equal(plan.tasks.length, 25);
+    assert.deepEqual(plan.testCatalog.packages, []);
+  });
+}
+
+for (const scenario of [
+  { name: 'unknown owner without a base manifest', baseManifest: false, targetManifest: false, remainingSource: false },
+  { name: 'active package losing its last test', baseManifest: true, targetManifest: true, remainingSource: false },
+  { name: 'removed manifest with remaining source', baseManifest: true, targetManifest: false, remainingSource: true },
+]) {
+  test(`catalog: package retirement ${scenario.name} -> keeps coverage-loss`, (t) => {
+    const { root, put, commit, manifest } = catalogFixture(t);
+    if (scenario.baseManifest) put('packages/retired-platform/package.json', JSON.stringify({ name: '@fluojs/retired-platform' }));
+    put('packages/retired-platform/src/index.test.ts', 'export const tested = true;');
+    if (scenario.remainingSource) put('packages/retired-platform/src/index.ts', 'export const live = true;');
+    const base = commit();
+    rmSync(join(root, 'packages/retired-platform/src/index.test.ts'));
+    if (scenario.baseManifest && !scenario.targetManifest) rmSync(join(root, 'packages/retired-platform/package.json'));
+    put('packages/retired-platform/README.md', '# Archive notice\n');
+    commit();
+    const actual = collectIdentity(root, base);
+
+    const buildPlan = () => buildVerificationPlan({ changedFiles: actual.changedFiles, identity: actual, root, manifest });
+
+    assert.throws(buildPlan, /coverage-loss: packages\/retired-platform/u);
+  });
+}
+
 test('Vitest: zero-match selected command -> nonzero real process exit', () => {
   const repository = new URL('../../', import.meta.url).pathname;
   const run = (filter) => spawnSync('pnpm', ['vitest', 'run', '--project', 'tooling', filter, '--maxWorkers=1'], {

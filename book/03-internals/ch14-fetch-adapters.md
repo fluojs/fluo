@@ -2,6 +2,8 @@
 
 <!-- book:volume=03-internals;chapter=14 -->
 
+> **Deno parts are archived.** `@fluojs/platform-deno` is removed from the active workspace; all 18 published versions are deprecated on npm and `2.0.2` is the final release. Bun and Cloudflare Workers remain the maintained fetch-style runtimes. See the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md) for existing Deno deployments; Deno examples in this chapter are historical material for `<= 2.0.2` deployments.
+
 [Previous: Comparing Node.js Adapters](./ch13-node-adapters.md) | [Contents](./toc.md) | [Next: Running Fluo Inside Next.js](./ch15-nextjs-hosting.md)
 
 ## Moving Public Products Closer Does Not Move Order Authority
@@ -324,7 +326,7 @@ The next chapter explores hosting in another direction. We keep Node24 rather th
 ## Evidence and Reproduction Scope
 
 - [Bun README](../../packages/platform-bun/README.md), [public exports](../../packages/platform-bun/src/index.ts), [Fetch handler and managed adapter implementation](../../packages/platform-bun/src/adapter.ts), [adapter tests](../../packages/platform-bun/src/adapter.test.ts).
-- [Deno README](../../packages/platform-deno/README.md), [public exports](../../packages/platform-deno/src/index.ts), [host-owned Fetch handler](../../packages/platform-deno/src/fetch-handler.ts), [handler tests](../../packages/platform-deno/src/fetch-handler.test.ts), [managed lifecycle tests](../../packages/platform-deno/src/adapter.test.ts).
+- [Deno README](../../packages/platform-deno/README.md) - the archived package contract notice (final `2.0.2`). Deno source and tests remain in Git history under `packages/platform-deno/src/`; the published `2.0.2` npm tarball retains the built implementation in `dist/`, not those source tests.
 - [Workers README](../../packages/platform-cloudflare-workers/README.md), [public exports](../../packages/platform-cloudflare-workers/src/index.ts), [env-aware factory and lifecycle implementation](../../packages/platform-cloudflare-workers/src/adapter.ts), [shutdown regression tests](../../packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts).
 - [Shared Web request and response implementation](../../packages/runtime/src/web.ts), [portability tests for the three Web runtimes](../../packages/testing/src/portability/web-runtime-adapter-portability.test.ts).
 

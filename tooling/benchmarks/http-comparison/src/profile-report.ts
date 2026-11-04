@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { monitorServer } from './resources';
 import { SCENARIOS, STAGE_SCENARIOS } from './scenarios';
 import type { Platform } from './targets';
-import { TARGETS } from './targets';
+import { ARCHIVED_BASELINE_TARGET_NAMES } from './targets';
 import type { Measurement } from './traffic';
 
 export const PROFILE_MODES = ['cpu', 'allocation', 'gc-eventloop'] as const;
@@ -355,9 +355,9 @@ export function timingCompleteness(samples: readonly StageTimingSample[], proven
   const expected = new Set<string>();
   const key = (sample: Pick<StageTimingSample, 'target' | 'scenario' | 'configuration' | 'connections' | 'repeat'>) =>
     JSON.stringify([sample.target, sample.scenario, sample.configuration, sample.connections, sample.repeat]);
-  for (const target of TARGETS) for (const scenario of [...SCENARIOS, ...STAGE_SCENARIOS])
+  for (const target of ARCHIVED_BASELINE_TARGET_NAMES) for (const scenario of [...SCENARIOS, ...STAGE_SCENARIOS])
     for (const configuration of ['default', 'equivalent'] as const) for (const connections of [1, 64])
-      for (let repeat = 0; repeat < 3; repeat++) expected.add(key({ target: target.name, scenario: scenario.name, configuration, connections, repeat }));
+      for (let repeat = 0; repeat < 3; repeat++) expected.add(key({ target, scenario: scenario.name, configuration, connections, repeat }));
   const observed = new Set(samples.map(key));
   const errors: string[] = [];
   if (!/^[a-f0-9]{64}$/.test(provenanceSha256) || samples.some((sample) => sample.provenanceSha256 !== provenanceSha256)) errors.push('provenance');

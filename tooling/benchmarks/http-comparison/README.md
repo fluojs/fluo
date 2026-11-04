@@ -1,10 +1,16 @@
 # HTTP runtime benchmark
 
-Runs HTTP comparisons for seven platforms: Fastify, Express, Node.js, Bun,
-Deno, Cloudflare Workers, and Next.js. Every platform has a `native-*` and
+Runs HTTP comparisons for six platforms: Fastify, Express, Node.js, Bun,
+Cloudflare Workers, and Next.js. Every platform has a `native-*` and
 `fluo-*` target; Fastify and Express additionally have a `nestjs-*` target.
 Nest comparisons stay within the same Node host engine. Cross-runtime results
 must not be described as framework overhead alone.
+
+Deno targets are archived with the `@fluojs/platform-deno` removal: the
+harness no longer builds, launches, or requires the Deno runtime, and no
+active code depends on that package. Historical Deno rows remain in the
+existing `results/` records and stay interpretable through the frozen
+archived target inventory; they cannot be re-measured here.
 
 ## Scenarios
 
@@ -55,8 +61,8 @@ BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OU
 BENCH_TARGETS=fluo-bun BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=benchmark-results-bun-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
 ```
 
-`BENCH_TARGETS` accepts a comma-separated subset of the 16 target names.
-Platform suffixes are `fastify`, `express`, `nodejs`, `bun`, `deno`, `workers`,
+`BENCH_TARGETS` accepts a comma-separated subset of the 14 target names.
+Platform suffixes are `fastify`, `express`, `nodejs`, `bun`, `workers`,
 and `nextjs`. Unknown names fail rather than silently skipping a target.
 
 `BENCH_CONCURRENCY_SWEEP=1,16,64,256` selects several concurrency levels.
@@ -172,6 +178,6 @@ Client CPU is measured around each autocannon invocation using process user + sy
 
 Throughput deltas are descriptive mean differences, not significance tests.
 Short smoke runs validate execution and correctness only. A complete baseline
-requires all seven platforms, both configurations, repeated concurrency
+requires all six platforms, both configurations, repeated concurrency
 conditions, valid responses, and separately established generator headroom.
 Missing or inconclusive evidence must remain incomplete.

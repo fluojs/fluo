@@ -4,11 +4,10 @@ const manifestUrl = new URL('../../packages/websockets/package.json', import.met
 const manifest = JSON.parse(await readFile(manifestUrl, 'utf8'));
 const load = async (entrypoint) => await import(new URL(manifest.exports[entrypoint].import, manifestUrl).href);
 
-const [root, node, bun, deno, workers] = await Promise.all([
+const [root, node, bun, workers] = await Promise.all([
   load('.'),
   load('./node'),
   load('./bun'),
-  load('./deno'),
   load('./cloudflare-workers'),
 ]);
 
@@ -24,7 +23,7 @@ for (const name of forbiddenRootExports) {
   }
 }
 
-for (const [entrypoint, exports_] of Object.entries({ bun, deno, node, workers })) {
+for (const [entrypoint, exports_] of Object.entries({ bun, node, workers })) {
   for (const name of runtimeAuthoringExports) {
     if (name in exports_) {
       throw new Error(`Final ${entrypoint} entrypoint still re-exports root authoring API ${name}.`);
@@ -34,7 +33,6 @@ for (const [entrypoint, exports_] of Object.entries({ bun, deno, node, workers }
 
 for (const [name, adapterName] of [
   ['platform-bun', 'BunHttpApplicationAdapter'],
-  ['platform-deno', 'DenoHttpApplicationAdapter'],
   ['platform-cloudflare-workers', 'CloudflareWorkerHttpApplicationAdapter'],
 ]) {
   const packageUrl = new URL(`../../packages/${name}/package.json`, import.meta.url);

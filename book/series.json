@@ -745,7 +745,6 @@
           "part": 4,
           "packages": [
             "@fluojs/platform-bun",
-            "@fluojs/platform-deno",
             "@fluojs/platform-cloudflare-workers"
           ],
           "kind": "chapter"

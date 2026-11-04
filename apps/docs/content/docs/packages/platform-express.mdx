@@ -29,7 +29,7 @@ Use it when Express-specific operational surface (reverse-proxy conventions,
 existing deployment scripts, native handler reuse during a staged migration)
 matters more than raw throughput. For high-concurrency services with no
 Express investment, [Fastify](/docs/packages/platform-fastify) is the
-recommended production adapter. For Bun, Deno, or Cloudflare Workers hosts, use
+recommended production adapter. For Bun or Cloudflare Workers hosts, use
 the fetch-style adapters — this package declares `engines.node >=24.0.0 <27`
 so listener-level RFC `QUERY` requests reach Express and fluo dispatch on the
 supported range only.
@@ -100,7 +100,7 @@ const app = await FluoFactory.create(AppModule, {
 
 A native Express/Connect function such as `compression()` cannot be passed
 there — it does not implement `handle(context, next)` and would break
-portability to Fastify, raw Node, Bun, Deno, and Workers. When a migration must
+portability to Fastify, raw Node, Bun, and Workers. When a migration must
 retain a native handler, register it explicitly at construction time:
 
 ```ts title="fragment: migration-only native handler"
