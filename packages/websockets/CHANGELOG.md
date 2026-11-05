@@ -11,6 +11,43 @@
 - Raise the package-owned Node.js `ws` runtime to `^8.21.0`.
 - Preserve fetch-style host binding ownership and terminal disconnect cleanup, and isolate inherited handler metadata.
 
+## 3.0.0
+
+### Major Changes
+
+- [#4007](https://github.com/fluojs/fluo/pull/4007) [`c3110b6`](https://github.com/fluojs/fluo/commit/c3110b6737144be4383c3f4d684ffbb9bf57278e) Thanks [@ayden94](https://github.com/ayden94)! - Remove the `@fluojs/websockets/deno` export, declarations, Deno runtime binding, and dependency on `@fluojs/platform-deno` in the next major. Deno's final supported line is `2.x`. The package itself, runtime-neutral root, and Node.js, Bun, and Cloudflare Workers bindings remain supported.
+
+  Migrate Deno gateways to `@fluojs/websockets/node` or `@fluojs/websockets/cloudflare-workers`:
+
+  - Replace `DenoWebSocketModule.forRoot(...)` with `NodeWebSocketModule.forRoot(...)` or `CloudflareWorkersWebSocketModule.forRoot(...)` from the corresponding subpath.
+  - Replace injected `DenoWebSocketGatewayLifecycleService` tokens with the selected runtime's lifecycle service token.
+  - Select a supported HTTP adapter and update native socket types and runtime-specific option/guard projections. Node guards receive `IncomingMessage`; Workers guards receive a Web-standard `Request`. Keep shared gateway decorators and contracts imported from `@fluojs/websockets`.
+
+  See the [Deno migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md). Historical implementations remain available in Git history and published `2.x` tarballs; the removed subpath has no compatibility export.
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@3.1.4
+  - @fluojs/di@3.1.4
+  - @fluojs/http@3.2.1
+
 ## 2.0.3
 
 ### Patch Changes

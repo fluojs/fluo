@@ -1,5 +1,14 @@
 # @fluojs/example-react-stable-ssr
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [[`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@3.1.4
+  - @fluojs/http@3.2.1
+
 ## 0.0.9
 
 ### Patch Changes

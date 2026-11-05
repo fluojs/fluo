@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## 3.2.1
+
+### Patch Changes
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/auth@0.2.1
+  - @fluojs/di@3.1.4
+  - @fluojs/validation@2.1.3
+
 ## 3.2.0
 
 ### Minor Changes
