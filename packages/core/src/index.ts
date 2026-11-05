@@ -8,6 +8,13 @@ export {
   isFluoError,
   setFluoErrorContract,
 } from './errors.js';
+export type {
+  LifecycleHooks,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+  OnModuleDestroy,
+  OnModuleInit,
+} from './lifecycle.js';
 export { ensureMetadataSymbol, getModuleMetadata } from './metadata.js';
 export { type PublicToken, publicToken } from './public-token.js';
 export {
