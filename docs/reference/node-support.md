@@ -4,7 +4,7 @@
 
 ## Support matrix
 
-Node floors are classified by role. The 34 Node-bound public packages that are pure runtime — including [`@fluojs/platform-fastify`](../../packages/platform-fastify/README.md) — keep `engines.node: ">=24.0.0 <27"`. The Babel 8 compiler tooling packages — [`@fluojs/cli`](../../packages/cli/README.md), [`@fluojs/vite`](../../packages/vite/README.md), and [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.md) — plus the private root workspace, the examples, and generated Node-toolchain projects raise to `engines.node: ">=24.11.0 <27"`, because Babel 8 requires Node `^22.18.0 || >=24.11.0` upstream and fluo keeps excluding Node 22. Exact Node `24.0.0` remains a supported runtime floor for packages that do not compile. Adopting Node 24 LTS is a lifecycle and support-policy decision, not a claim that a dependency or a new runtime API requires Node 24. Node 20 and Node 22 are not supported by the upcoming major release.
+Node floors are classified by role. The 15 Node-bound public packages that are pure runtime — including [`@fluojs/platform-fastify`](../../packages/platform-fastify/README.md) — keep `engines.node: ">=24.0.0 <27"`. The Babel 8 compiler tooling packages — [`@fluojs/cli`](../../packages/cli/README.md), [`@fluojs/vite`](../../packages/vite/README.md), and [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.md) — plus the private root workspace, the examples, and generated Node-toolchain projects raise to `engines.node: ">=24.11.0 <27"`, because Babel 8 requires Node `^22.18.0 || >=24.11.0` upstream and fluo keeps excluding Node 22. Exact Node `24.0.0` remains a supported runtime floor for packages that do not compile. Adopting Node 24 LTS is a lifecycle and support-policy decision, not a claim that a dependency or a new runtime API requires Node 24. Node 20 and Node 22 are not supported by the upcoming major release.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
@@ -122,7 +122,22 @@ Documentation execution remains eligible when the unselected build job is skippe
 
 ## Portable package boundaries
 
-These nine public roots intentionally omit `engines.node`: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/react`, and `@fluojs/runtime`. Do not restore engines merely to match neighboring manifests.
+`engines.node` is installation metadata for Node versions, not a runtime selector. npm normally warns on an incompatible version; `engine-strict` can reject installation, including transitive dependencies. It does not execute a Node version check inside a Worker or make a package portable. Bun currently does not enforce this field. Do not add both `node` and `bun` expecting an either/or runtime expression, or invent a Workers engine version: Workers deployment compatibility belongs to its host configuration.
+
+All 46 public packages are classified below. Names in the table use the `@fluojs/` prefix.
+
+| Installation policy | Packages | Reason |
+| --- | --- | --- |
+| No package-wide Node engine: shared roots (23) | `auth`, `cache-manager`, `config`, `core`, `cqrs`, `cron`, `di`, `diagnostics`, `discord`, `email`, `event-bus`, `http`, `i18n`, `notifications`, `openapi`, `persistence`, `react`, `runtime`, `serialization`, `slack`, `terminus`, `throttler`, `validation` | Shared contracts, runtime-neutral composition or explicit host-specific feature boundaries. Keep mandatory first-party dependencies free of Node installation gates. |
+| No package-wide Node engine: native/mixed hosts (5) | `drizzle`, `platform-bun`, `platform-cloudflare-workers`, `socket.io`, `websockets` | Existing Bun or Workers paths must remain installable without a first-party Node gate. Drizzle supports only the documented async Bun driver path; Socket.IO supports Node/Bun, not Workers. |
+| Node runtime engine `>=24.0.0 <27` (15) | `auth-http`, `graphql`, `jwt`, `metrics`, `microservices`, `mongoose`, `passport`, `platform-express`, `platform-fastify`, `platform-nodejs`, `prisma`, `queue`, `redis`, `studio`, `testing` | Retain their existing package-owned Node support contracts. Import safety or absence of eager Node imports alone does not establish a complete native-runtime contract. |
+| Node compiler engine `>=24.11.0 <27` (3) | `cli`, `platform-nextjs`, `vite` | Babel-dependent Node tooling. The private root, examples and generated developer toolchains retain their existing engines. |
+
+The 28 shared/native-host packages omit `engines.node`; they do not declare universal runtime compatibility. When running on Node, the supported runtime window remains `>=24.0.0 <27`. Optional peers, external dependencies, drivers and runtime-specific subpaths retain their own installation and execution requirements. The recursive manifest regression follows mandatory first-party dependencies only; it does not certify optional integrations or third-party runtime behavior.
+
+For example, Workers HTTP depends on `http` → `auth`, `core`, `di`, `validation`, plus `runtime` → `diagnostics`, `persistence`. A Node gate anywhere in this shared closure would still affect a strict installer even when the Workers adapter itself omits it. Node-only tools may be installed separately under their required Node version.
+
+References: [npm engines semantics](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#engines), [Bun installer engine handling](https://github.com/oven-sh/bun/blob/main/src/install/PackageManager/CommandLineArguments.rs), and [Workers Node compatibility](https://developers.cloudflare.com/workers/runtime-apis/nodejs/).
 
 Diagnostics root and all public subpaths are data contracts/readers without host builtins, runtime implementation, Studio UI or import-time resources. Studio remains Node `>=24.0.0 <27`; CLI remains Node `>=24.11.0 <27`. Moving declaration ownership does not narrow consumer support.
 

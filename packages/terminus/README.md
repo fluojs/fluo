@@ -1,4 +1,6 @@
 # @fluojs/terminus
+
+The shared health/readiness root omits `engines.node`. Node-only memory/disk checks remain opt-in through `@fluojs/terminus/node` on Node.js `>=24.0.0 <27`; database and Redis indicators retain their driver-specific requirements.
 <!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>

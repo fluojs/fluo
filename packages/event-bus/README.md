@@ -24,7 +24,7 @@ npm install @fluojs/event-bus
 npm install @fluojs/event-bus ioredis
 ```
 
-`@fluojs/event-bus` supports Node.js `>=24.0.0 <27` as its package-owned support contract.
+`@fluojs/event-bus` retains Node.js `>=24.0.0 <27` support but omits `engines.node` for its in-process, runtime-neutral root. Optional Redis transports retain their client and host requirements; installation metadata does not certify those integrations on Workers.
 
 ## When to Use
 

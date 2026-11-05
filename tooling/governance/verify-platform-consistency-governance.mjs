@@ -607,8 +607,8 @@ export function enforceSocketIoNodeEngineAlignment(readText = read) {
   ]) {
     const manifest = JSON.parse(readText(manifestPath));
     assert(
-      manifest.engines?.node === canonicalNodeRange,
-      `${packageName} engines.node must equal the canonical @fluojs/platform-nodejs range ${canonicalNodeRange}.`,
+      manifest.engines?.node === undefined,
+      `${packageName} must omit engines.node because it supports both Node.js and Bun; the Node listener range remains ${canonicalNodeRange}.`,
     );
   }
 }

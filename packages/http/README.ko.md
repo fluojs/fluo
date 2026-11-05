@@ -1,5 +1,7 @@
 # @fluojs/http
 
+이 공통 런타임 패키지는 Bun/Workers consumer에 Node 설치 제약을 전파하지 않도록 `engines.node`를 생략합니다. 기능별 지원과 Node 버전 범위는 [런타임 정책](../../docs/reference/node-support.ko.md#portable-package-boundaries)을 따릅니다.
+
 `Principal`의 선언 소유자는 `@fluojs/auth`이며 HTTP는 같은 mutable 계약을 re-export합니다. 인증 guard·credential·challenge는 `@fluojs/auth-http`가 소유하므로 HTTP에서 integration으로 역의존하지 않습니다.
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>

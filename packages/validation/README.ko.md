@@ -1,5 +1,7 @@
 # @fluojs/validation
 
+이 공통 런타임 패키지는 Bun/Workers consumer에 Node 설치 제약을 전파하지 않도록 `engines.node`를 생략합니다. 기능별 지원과 Node 버전 범위는 [런타임 정책](../../docs/reference/node-support.ko.md#portable-package-boundaries)을 따릅니다.
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Node.js 지원 및 마이그레이션](../../docs/reference/node-support.ko.md)을 참조하세요.

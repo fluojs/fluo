@@ -27,7 +27,7 @@ Webhook-first, transport-agnostic Slack delivery core for fluo. It provides a Ne
 npm install @fluojs/slack @fluojs/notifications
 ```
 
-This package requires Node.js `>=24.0.0 <27` as its package-owned support contract. Upgrade Node 20 and Node 22 hosts to Node.js `>=24.0.0 <27`; Node versions below 24 and Node 27+ are unsupported, so move the process to a supported line. Its delivery contract remains transport-agnostic at runtime through explicit fetch-compatible boundaries.
+On Node.js, the supported range remains `>=24.0.0 <27`. The manifest omits `engines.node` because delivery also uses explicit fetch-compatible boundaries on Bun and Cloudflare-compatible hosts; it does not impose a Node installation gate on those consumers. This does not broaden provider or host support beyond the contracts below.
 
 ## When to Use
 

@@ -4,6 +4,8 @@
 
 Decorator-based WebSocket gateway authoring for the fluo runtime.
 
+The manifest omits `engines.node` for the shared root and Bun/Workers subpaths. The Node subpath retains Node.js `>=24.0.0 <27` support; choose the subpath for your actual host. The omission does not make Node-specific features available in Workers.
+
 > **Deno subpath removed in the next major.** This source implements the removal of `@fluojs/websockets/deno` planned in [#3938](https://github.com/fluojs/fluo/issues/3938). Deno's final supported line is `2.x`; the package itself and its root, Node.js, Bun, and Workers paths remain supported. Migrate to `@fluojs/websockets/node` or `@fluojs/websockets/cloudflare-workers` using the [Deno migration guide](../../docs/getting-started/migrate-from-deno.md). Historical implementations remain in Git history and published `2.x` tarballs, not as compatibility exports in this source.
 
 ## Table of Contents

@@ -25,7 +25,7 @@ npm install @fluojs/cqrs
 
 ### Node.js 지원
 
-`@fluojs/cqrs`는 패키지 자체의 지원 계약으로 Node.js `>=24.0.0 <27`을 지원합니다. Node.js 24 미만과 Node.js 27+는 지원하지 않습니다.
+`@fluojs/cqrs`의 Node.js 지원 범위는 계속 `>=24.0.0 <27`이며, in-process bus와 명시적인 runtime-neutral dispatch context를 위해 `engines.node`를 생략합니다. Node 지원 버전을 확장하거나 선택적 event transport의 Workers 지원을 보장하지 않습니다.
 
 ## 사용 시점
 

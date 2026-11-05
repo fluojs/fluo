@@ -1,5 +1,7 @@
 # @fluojs/auth
 
+This shared runtime package omits `engines.node` to avoid imposing a Node installation gate on Bun/Workers consumers. Feature and Node version support remain governed by the [runtime policy](../../docs/reference/node-support.md#portable-package-boundaries).
+
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 Transport-neutral identity, authentication results, strategy contracts and account-linking policy. Node.js support is `>=24.0.0 <27`; the root depends only on `@fluojs/core` and does not load HTTP, JWT, Passport.js or runtime orchestration.

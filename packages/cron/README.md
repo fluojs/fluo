@@ -49,7 +49,7 @@ npm install @fluojs/cron
 
 ## Node.js Compatibility
 
-`@fluojs/cron` requires Node.js `>=24.0.0 <27` as its package-owned support policy. Node.js versions below 24 and Node.js 27+ are not supported. The portable `@fluojs/runtime` engine omission is a separate contract.
+`@fluojs/cron` retains Node.js `>=24.0.0 <27` support but omits `engines.node` because local scheduling uses shared runtime contracts and host timers. Distributed mode retains its Redis client's runtime requirements. A host must keep scheduled work alive: this is not a Cloudflare scheduled-event adapter, and request-scoped Worker lifetime does not guarantee background timers will run.
 
 ### Migration to 3
 

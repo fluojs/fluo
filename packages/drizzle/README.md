@@ -41,7 +41,7 @@ npm install pg
 
 ## Runtime Support
 
-The full Node.js support window for the root `@fluojs/drizzle` package is `>=24.0.0 <27`. Its `engines.node` declaration specifies supported Node versions, not a prohibition on Bun imports. It imports `node:async_hooks` for ambient transaction context. Upgrade Node 20 and Node 22 hosts to Node.js `>=24.0.0 <27`; Node versions below 24 and Node 27+ are unsupported.
+The full Node.js support window for the root `@fluojs/drizzle` package is `>=24.0.0 <27`. The manifest omits `engines.node` to avoid imposing a Node installation gate on the supported Bun path. It still imports `node:async_hooks` for ambient transaction context. Upgrade Node 20 and Node 22 hosts to Node.js `>=24.0.0 <27`; Node versions below 24 and Node 27+ are unsupported. This metadata change does not add Workers support or change the driver limitations below.
 
 Bun 1.4 can import the root wrapper, bootstrap `DrizzleModule`, and select a transaction-scoped `current()` handle when the driver **awaits the asynchronous transaction callback through commit or rollback**. An example is `drizzle-orm/libsql` with `@libsql/client` and a local `file:` SQLite database. Install both packages and register the async handle as usual:
 

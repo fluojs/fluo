@@ -306,12 +306,13 @@ describe('published Node engine manifest enforcement', () => {
     expect(result.checkedStableNodeEngineRangeNarrowings).toEqual([]);
   });
 
-  it('keeps CQRS within the Event Bus and canonical Node platform support window', () => {
+  it('keeps CQRS and Event Bus free of Node gates while the Node listener retains its floor', () => {
     const cqrsManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/cqrs/package.json'), 'utf8'));
     const eventBusManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/event-bus/package.json'), 'utf8'));
     const nodePlatformManifest = JSON.parse(readFileSync(join(process.cwd(), 'packages/platform-nodejs/package.json'), 'utf8'));
 
-    expect(cqrsManifest.engines.node).toBe(eventBusManifest.engines.node);
-    expect(cqrsManifest.engines.node).toBe(nodePlatformManifest.engines.node);
+    expect(cqrsManifest.engines?.node).toBeUndefined();
+    expect(eventBusManifest.engines?.node).toBeUndefined();
+    expect(nodePlatformManifest.engines.node).toBe('>=24.0.0 <27');
   });
 });

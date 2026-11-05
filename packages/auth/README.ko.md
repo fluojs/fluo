@@ -1,5 +1,7 @@
 # @fluojs/auth
 
+이 공통 런타임 패키지는 Bun/Workers consumer에 Node 설치 제약을 전파하지 않도록 `engines.node`를 생략합니다. 기능별 지원과 Node 버전 범위는 [런타임 정책](../../docs/reference/node-support.ko.md#portable-package-boundaries)을 따릅니다.
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 transport-neutral identity, 인증 결과, 전략 계약과 account-linking 정책을 소유합니다. Node.js 지원 범위는 `>=24.0.0 <27`이며 root는 `@fluojs/core`만 의존하고 HTTP, JWT, Passport.js나 runtime orchestration을 로드하지 않습니다.

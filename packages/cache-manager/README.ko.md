@@ -32,7 +32,7 @@
 npm install @fluojs/cache-manager
 ```
 
-`@fluojs/cache-manager`는 Node.js `>=24.0.0 <27`을 지원하며 `engines.node`로 정확히 이 범위를 선언합니다. 이 package-owned 지원 계약에 따라 Node 24 미만과 Node 27 이상은 제외됩니다. 이전 1.x 릴리스는 `engines.node >=20.0.0`을 광고했지만, 이는 실제 dependency floor와 일치한 적이 없습니다.
+`@fluojs/cache-manager`의 Node.js 지원 범위는 계속 `>=24.0.0 <27`이며, 공통 memory/custom-store root에 Node 설치 제약을 두지 않도록 `engines.node`를 생략합니다. Redis mode는 선택한 client의 runtime 요구사항을 따릅니다. 이 metadata 변경은 모든 store의 Workers 지원을 보장하거나 Node 지원 버전을 확장하지 않습니다.
 
 root `@fluojs/cache-manager` import는 memory-only 설치에서도 안전합니다. Redis client는 Redis 저장소 경로를 명시적으로 선택할 때만 필요합니다.
 

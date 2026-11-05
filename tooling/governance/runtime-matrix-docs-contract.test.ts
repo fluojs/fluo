@@ -209,12 +209,10 @@ describe('runtime matrix docs contract', () => {
     ]);
   });
 
-  it('keeps the cache-manager runtime boundary aligned to its mandatory runtime dependency range', () => {
+  it('keeps cache-manager Node support documented without a Node gate on memory-only consumers', () => {
     const nodeListenerEngine = '>=24.0.0 <27';
 
-    expect(JSON.parse(read('packages/cache-manager/package.json'))).toMatchObject({
-      engines: { node: nodeListenerEngine },
-    });
+    expect(JSON.parse(read('packages/cache-manager/package.json')).engines?.node).toBeUndefined();
 
     for (const path of [
       'packages/cache-manager/README.md',
@@ -228,12 +226,10 @@ describe('runtime matrix docs contract', () => {
     }
   });
 
-  it('keeps Drizzle runtime support aligned to its mandatory runtime dependency range', () => {
+  it('keeps Drizzle Node support documented without imposing a Node gate on its Bun path', () => {
     const nodePlatformEngine = JSON.parse(read('packages/platform-nodejs/package.json')).engines.node;
 
-    expect(JSON.parse(read('packages/drizzle/package.json'))).toMatchObject({
-      engines: { node: nodePlatformEngine },
-    });
+    expect(JSON.parse(read('packages/drizzle/package.json')).engines?.node).toBeUndefined();
 
     for (const path of drizzleRuntimeDocumentationPaths) {
       expectDrizzleRuntimeClaim(read(path), nodePlatformEngine);
@@ -257,15 +253,13 @@ describe('runtime matrix docs contract', () => {
     expect(() => expectDrizzleRuntimeClaim(documentWithStaleDrizzleClaim, nodePlatformEngine)).toThrow();
   });
 
-  it('keeps the openapi runtime boundary aligned to its mandatory runtime dependency range', () => {
+  it('keeps OpenAPI generation free of a Node gate while its Node example retains its floor', () => {
     const nodeListenerEngine = '>=24.0.0 <27';
 
-    for (const manifestPath of [
-      'packages/openapi/package.json',
-      'examples/openapi-multiple-documents/package.json',
-    ]) {
-      expect(JSON.parse(read(manifestPath))).toMatchObject({ engines: { node: nodeListenerEngine } });
-    }
+    expect(JSON.parse(read('packages/openapi/package.json')).engines?.node).toBeUndefined();
+    expect(JSON.parse(read('examples/openapi-multiple-documents/package.json'))).toMatchObject({
+      engines: { node: nodeListenerEngine },
+    });
 
     for (const path of ['packages/openapi/README.md', 'packages/openapi/README.ko.md']) {
       expect(read(path)).toContain(nodeListenerEngine);

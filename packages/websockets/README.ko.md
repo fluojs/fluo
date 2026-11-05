@@ -1,5 +1,7 @@
 # @fluojs/websockets
 
+공통 root와 Bun/Workers subpath를 위해 manifest는 `engines.node`를 생략합니다. Node subpath의 Node.js 지원 범위는 계속 `>=24.0.0 <27`이며 실제 host에 맞는 subpath를 선택해야 합니다. 이 생략이 Node 전용 기능을 Workers에 제공하는 것은 아닙니다.
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 fluo 런타임을 위한 데코레이터 기반 WebSocket 게이트웨이 작성 패키지입니다.

@@ -19,7 +19,7 @@ Decorator-based rate limiting for fluo applications with in-memory and Redis sto
 
 ## Installation
 
-`@fluojs/throttler` declares `engines.node >=24.0.0 <27` in its published package manifest as its package-owned support contract. Upgrade Node 20 and Node 22 hosts to Node.js `>=24.0.0 <27`; Node versions below 24 and Node 27+ are unsupported.
+`@fluojs/throttler` retains Node.js `>=24.0.0 <27` support but omits `engines.node` for the shared in-memory guard/store path. Redis mode retains the selected client's runtime requirements. Per-process state is not durable or shared between Worker isolates; metadata omission does not change that limitation.
 
 ```bash
 npm install @fluojs/throttler
