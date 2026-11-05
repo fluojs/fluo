@@ -2,45 +2,15 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-const nodeEngineFloorPattern = /"engines"\s*:\s*\{\s*"node"\s*:\s*">=(\d+)\.(\d+)\.(\d+)(?=\s|")/u;
+import { enforceMandatoryFirstPartyDependencyEngineAlignment } from '../../../tooling/governance/verify-platform-consistency-governance.mjs';
+
 const nodeListenerEngine = '>=24.0.0 <27';
-const mandatoryFluoDependencyManifests = [
-  '../../core/package.json',
-  '../../di/package.json',
-] as const;
-
-function extractNodeEngineFloor(manifest: string): readonly [number, number, number] {
-  const match = nodeEngineFloorPattern.exec(manifest);
-  if (match === null) {
-    throw new TypeError('Expected the package manifest to declare a >=x.y.z Node.js engine floor.');
-  }
-
-  return [
-    Number.parseInt(match[1] ?? '', 10),
-    Number.parseInt(match[2] ?? '', 10),
-    Number.parseInt(match[3] ?? '', 10),
-  ];
-}
-
-function compareNodeEngineFloors(
-  left: readonly [number, number, number],
-  right: readonly [number, number, number],
-): number {
-  for (const index of [0, 1, 2] as const) {
-    const difference = left[index] - right[index];
-    if (difference !== 0) {
-      return difference;
-    }
-  }
-
-  return 0;
-}
 
 describe('@fluojs/microservices runtime support metadata', () => {
   it('declares the Node.js range required by the published package contract', () => {
     // Given: the published @fluojs/microservices manifest.
     // When: its declared Node.js engine range is read.
-    // Then: it matches the Node range owned by its mandatory @fluojs/runtime dependency.
+    // Then: it keeps the package-owned Node runtime range.
     const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
     expect(JSON.parse(manifest)).toMatchObject({ engines: { node: nodeListenerEngine } });
@@ -57,14 +27,9 @@ describe('@fluojs/microservices runtime support metadata', () => {
     // Given: every mandatory @fluojs dependency of the root entrypoint.
     // When: their engine floors are compared with the microservices floor.
     // Then: no dependency requires a newer Node.js release than microservices advertises.
-    const microservicesManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
-    const microservicesFloor = extractNodeEngineFloor(microservicesManifest);
-
-    for (const relativePath of mandatoryFluoDependencyManifests) {
-      const manifest = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
-
-      expect(compareNodeEngineFloors(extractNodeEngineFloor(manifest), microservicesFloor)).toBeLessThanOrEqual(0);
-    }
+    expect(() => enforceMandatoryFirstPartyDependencyEngineAlignment(
+      undefined, new Set(['@fluojs/microservices']),
+    )).not.toThrow();
   });
 
   it('documents the supported Node.js range in both README mirrors', () => {
