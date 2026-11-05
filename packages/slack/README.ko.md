@@ -27,7 +27,7 @@ fluo를 위한 webhook-first, transport-agnostic Slack 전달 코어 패키지�
 npm install @fluojs/slack @fluojs/notifications
 ```
 
-이 패키지는 패키지 자체의 지원 계약에 따라 Node.js `>=24.0.0 <27`을 요구합니다. Node 20 및 Node 22 host를 Node.js `>=24.0.0 <27`로 올리세요. Node 24 미만과 Node 27 이상은 지원하지 않으므로 process를 지원되는 line으로 옮겨야 합니다. 런타임 전달 계약 자체는 명시적인 fetch-compatible 경계를 통해 계속 transport-agnostic하게 유지됩니다.
+Node.js 지원 범위는 계속 `>=24.0.0 <27`입니다. Bun과 Cloudflare-compatible host에서도 명시적인 fetch-compatible 경계를 사용하므로 manifest는 `engines.node`를 생략해 해당 consumer에 Node 설치 제약을 부과하지 않습니다. 아래의 provider 및 host 지원 계약을 확장하는 변경은 아닙니다.
 
 ## 사용 시점
 

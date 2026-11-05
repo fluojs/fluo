@@ -19,7 +19,7 @@
 
 ## 설치
 
-`@fluojs/throttler`는 패키지 자체의 지원 계약으로 배포 package manifest에서 `engines.node >=24.0.0 <27`을 선언합니다. Node 20 및 Node 22 host를 Node.js `>=24.0.0 <27`로 올리세요. Node 24 미만과 Node 27 이상은 지원하지 않습니다.
+`@fluojs/throttler`의 Node.js 지원 범위는 계속 `>=24.0.0 <27`이며, 공통 in-memory guard/store 경로를 위해 `engines.node`를 생략합니다. Redis mode는 선택한 client의 runtime 요구사항을 따릅니다. Process별 상태는 Worker isolate 사이에 공유되거나 영속화되지 않으며 metadata 생략도 이 제한을 바꾸지 않습니다.
 
 ```bash
 npm install @fluojs/throttler

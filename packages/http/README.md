@@ -1,5 +1,7 @@
 # @fluojs/http
 
+This shared runtime package omits `engines.node` to avoid imposing a Node installation gate on Bun/Workers consumers. Feature and Node version support remain governed by the [runtime policy](../../docs/reference/node-support.md#portable-package-boundaries).
+
 `Principal` is declared by `@fluojs/auth` and re-exported here with the same mutable contract. Authentication guards, credentials and challenges belong to `@fluojs/auth-http`; HTTP does not depend back on that integration.
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>

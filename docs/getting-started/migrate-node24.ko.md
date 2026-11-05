@@ -40,7 +40,7 @@ production 경로는 최신 Node 24 LTS를 사용합니다. Node 20과 Node 22 �
   명시한다면 각 대상을 검증하세요. Fluo release automation은 최신 Node `24.x`를
   사용하며 Node 26은 publish runtime이 아닙니다.
 
-아래 9개 engine omission은 의도적으로 유지합니다. Bun, Cloudflare Workers
+공통/native-host package의 engine omission은 의도적으로 유지합니다. Bun, Cloudflare Workers
 배포는 native runtime metadata와 deployment 명령을 유지하세요. Node-hosted
 CLI/build tooling은 별도로 업그레이드합니다. Workers starter의 Node engine은
 배포 isolate가 아니라 로컬 CLI/Wrangler tooling을 설명합니다.
@@ -119,11 +119,10 @@ Portable bootstrap은 `@fluojs/runtime`, fetch-style helper는
 
 ## 4. Preserve portable configuration boundaries
 
-이웃 패키지와 맞추기 위해 다음 9개 public root에 `engines.node`를 추가하지 마세요.
-
-`@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`,
-`@fluojs/platform-cloudflare-workers`, `@fluojs/react`,
-`@fluojs/runtime`.
+이웃 패키지와 맞추기 위해 공통/native-host package의 `engines.node`를 복원하지 마세요.
+Bun과 Workers adapter의 필수 공통 의존성도 포함하는 전체
+[패키지 분류](../reference/node-support.ko.md#portable-package-boundaries)를 따릅니다.
+Node 전용 subpath와 선택적 통합의 기존 요구사항은 유지합니다.
 
 Config의 in-memory load, merge, validation, clone, service access는 portable하게
 유지됩니다. Portable host에서는 application-owned map을 전달하고 env file을

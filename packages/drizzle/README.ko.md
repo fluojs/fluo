@@ -41,7 +41,7 @@ npm install pg
 
 ## 런타임 지원
 
-루트 `@fluojs/drizzle` 패키지의 전체 Node.js 지원 범위는 `>=24.0.0 <27`입니다. `engines.node` 선언은 지원하는 Node 버전을 지정하며 Bun import 금지가 아닙니다. Ambient transaction context에는 `node:async_hooks`를 사용합니다. Node 20 및 Node 22 host를 Node.js `>=24.0.0 <27`로 올리세요. Node 24 미만과 Node 27 이상은 지원하지 않습니다.
+루트 `@fluojs/drizzle` 패키지의 전체 Node.js 지원 범위는 `>=24.0.0 <27`입니다. 지원하는 Bun 경로에 Node 설치 제약을 부과하지 않도록 manifest는 `engines.node`를 생략합니다. Ambient transaction context에는 계속 `node:async_hooks`를 사용합니다. Node 20 및 Node 22 host를 Node.js `>=24.0.0 <27`로 올리세요. Node 24 미만과 Node 27 이상은 지원하지 않습니다. 이 metadata 변경은 Workers 지원을 추가하거나 아래의 driver 제한을 바꾸지 않습니다.
 
 Bun 1.4에서는 드라이버가 **비동기 transaction callback을 commit 또는 rollback까지 await할 때** 루트 wrapper import, `DrizzleModule` bootstrap, 트랜잭션 범위의 `current()` 선택을 사용할 수 있습니다. 예를 들어 로컬 `file:` SQLite database와 `@libsql/client`를 사용하는 `drizzle-orm/libsql` 드라이버가 있습니다. 두 패키지를 설치하고 비동기 handle을 일반적인 방식으로 등록합니다.
 

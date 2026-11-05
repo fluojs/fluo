@@ -25,7 +25,7 @@ npm install @fluojs/cqrs
 
 ### Node.js Support
 
-`@fluojs/cqrs` supports Node.js `>=24.0.0 <27` as its package-owned support contract. Node.js versions below 24 and Node.js 27+ are not supported.
+`@fluojs/cqrs` retains Node.js `>=24.0.0 <27` support but omits `engines.node` for its in-process buses and explicit runtime-neutral dispatch context. This does not broaden Node version support or certify optional event transports on Workers.
 
 ## When to Use
 

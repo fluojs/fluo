@@ -4,6 +4,8 @@
 
 Socket.IO v4 gateway adapter for the fluo runtime.
 
+The manifest omits `engines.node` because the package supports Node.js and Bun. Node-backed adapters still require `>=24.0.0 <27`; Workers remain unsupported. The omission changes installation metadata, not the runtime contracts below.
+
 On Bun, Socket.IO and raw WebSocket gateways install their distinct protocols through the same version-1 realtime binding capability before `app.listen()`. This shares only the host installation boundary: Socket.IO namespaces, ACKs, and Engine.IO behavior remain separate from raw WebSocket framing.
 
 ## Table of Contents

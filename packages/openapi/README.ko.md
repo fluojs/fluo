@@ -20,7 +20,7 @@ fluo를 위한 descriptor-driven OpenAPI 3.1.0 문서 생성 패키지입니다.
 pnpm add @fluojs/openapi
 ```
 
-`@fluojs/openapi`는 Node.js `>=24.0.0 <27`을 지원하며 `engines.node`로 정확히 이 범위를 선언합니다. 이 package-owned 지원 계약은 Node 24 미만과 Node 27 이상을 제외하며 portable `@fluojs/runtime`에는 package-wide Node engine이 없습니다. 이전 1.x 릴리스는 `engines.node >=20.0.0`을 광고했습니다.
+`@fluojs/openapi`는 Node.js `>=24.0.0 <27` 지원을 유지하며 `engines.node`를 생략합니다. 문서 생성과 HTTP 등록은 Node 전용 host가 아니라 공통 metadata/runtime 계약을 사용합니다. 배포 호환성은 선택한 HTTP adapter가 소유합니다. 이 metadata 변경은 모든 adapter의 Workers 지원을 보장하거나 Node 지원 버전을 확장하지 않습니다.
 
 ## 사용 시점
 

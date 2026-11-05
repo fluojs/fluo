@@ -4,7 +4,7 @@
 
 ## Support matrix
 
-Node floor는 역할별로 분류됩니다. 순수 runtime인 34개 Node-bound public package([`@fluojs/platform-fastify`](../../packages/platform-fastify/README.ko.md) 포함)는 `engines.node: ">=24.0.0 <27"`을 유지합니다. Babel 8 compiler tooling package인 [`@fluojs/cli`](../../packages/cli/README.ko.md), [`@fluojs/vite`](../../packages/vite/README.ko.md), [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.ko.md)와 private root workspace, examples, 생성 Node toolchain 프로젝트는 `engines.node: ">=24.11.0 <27"`으로 올립니다. Babel 8은 upstream에서 Node `^22.18.0 || >=24.11.0`을 요구하고 fluo는 Node 22를 계속 제외하기 때문입니다. 컴파일하지 않는 package에 대해 exact Node `24.0.0`은 여전히 지원되는 runtime floor입니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
+Node floor는 역할별로 분류됩니다. 순수 runtime인 15개 Node-bound public package([`@fluojs/platform-fastify`](../../packages/platform-fastify/README.ko.md) 포함)는 `engines.node: ">=24.0.0 <27"`을 유지합니다. Babel 8 compiler tooling package인 [`@fluojs/cli`](../../packages/cli/README.ko.md), [`@fluojs/vite`](../../packages/vite/README.ko.md), [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.ko.md)와 private root workspace, examples, 생성 Node toolchain 프로젝트는 `engines.node: ">=24.11.0 <27"`으로 올립니다. Babel 8은 upstream에서 Node `^22.18.0 || >=24.11.0`을 요구하고 fluo는 Node 22를 계속 제외하기 때문입니다. 컴파일하지 않는 package에 대해 exact Node `24.0.0`은 여전히 지원되는 runtime floor입니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
@@ -115,7 +115,22 @@ artifact 생성·획득과 집계는 같은 plan을 따릅니다. 선택되지 �
 
 ## Portable package boundaries
 
-다음 9개 public root는 의도적으로 `engines.node`를 생략합니다: `@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`, `@fluojs/platform-cloudflare-workers`, `@fluojs/react`, `@fluojs/runtime`. 이웃 manifest와 모양을 맞추려고 engines를 복원하지 마세요.
+`engines.node`는 Node 버전에 관한 설치 metadata이며 runtime selector가 아닙니다. npm은 보통 버전 불일치 경고를 내지만 `engine-strict`에서는 전이 의존성을 포함해 설치를 거부할 수 있습니다. Worker 안에서 Node 버전을 검사하거나 패키지를 portable하게 만들지는 않습니다. Bun은 현재 이 필드를 강제하지 않습니다. `node`와 `bun`을 함께 넣어 둘 중 하나라는 의미로 사용하거나 Workers engine 버전을 새로 만들지 마세요. Workers 배포 호환성은 host 설정이 소유합니다.
+
+전체 공개 패키지 46개를 아래와 같이 분류합니다. 표의 패키지 이름에는 `@fluojs/` prefix가 붙습니다.
+
+| Installation policy | Packages | Reason |
+| --- | --- | --- |
+| Package-wide Node engine 생략: 공통 root (23) | `auth`, `cache-manager`, `config`, `core`, `cqrs`, `cron`, `di`, `diagnostics`, `discord`, `email`, `event-bus`, `http`, `i18n`, `notifications`, `openapi`, `persistence`, `react`, `runtime`, `serialization`, `slack`, `terminus`, `throttler`, `validation` | 공통 계약, runtime-neutral 조합 또는 명시적인 host별 기능 경계입니다. 필수 first-party 의존성에도 Node 설치 제약을 두지 않습니다. |
+| Package-wide Node engine 생략: native/mixed host (5) | `drizzle`, `platform-bun`, `platform-cloudflare-workers`, `socket.io`, `websockets` | 기존 Bun 또는 Workers 경로에 first-party Node 설치 제약을 부과하지 않습니다. Drizzle은 문서화된 비동기 Bun driver 경로만 지원하고 Socket.IO는 Node/Bun을 지원하며 Workers는 지원하지 않습니다. |
+| Node runtime engine `>=24.0.0 <27` (15) | `auth-http`, `graphql`, `jwt`, `metrics`, `microservices`, `mongoose`, `passport`, `platform-express`, `platform-fastify`, `platform-nodejs`, `prisma`, `queue`, `redis`, `studio`, `testing` | 기존 package-owned Node 지원 계약을 유지합니다. Import 안전성이나 eager Node import가 없다는 사실만으로 완전한 native runtime 계약이 성립하지 않습니다. |
+| Node compiler engine `>=24.11.0 <27` (3) | `cli`, `platform-nextjs`, `vite` | Babel을 사용하는 Node tooling입니다. Private root, examples, 생성 개발 toolchain의 기존 engines도 유지합니다. |
+
+공통/native-host 패키지 28개는 `engines.node`를 생략하지만 모든 runtime의 호환성을 선언하지는 않습니다. Node 실행 지원 범위는 계속 `>=24.0.0 <27`입니다. 선택적 peer, 외부 의존성, driver, runtime별 subpath의 설치 및 실행 요구사항은 유지됩니다. 재귀 manifest 회귀 검사는 필수 first-party 의존성만 추적하며, 선택적 통합이나 외부 의존성의 runtime 동작을 보장하지 않습니다.
+
+예를 들어 Workers HTTP는 `http` → `auth`, `core`, `di`, `validation`과 `runtime` → `diagnostics`, `persistence`에 의존합니다. 이 공통 경로에 Node 제약이 하나라도 남으면 Workers adapter가 생략해도 strict 설치에 영향을 줍니다. Node 전용 도구는 요구되는 Node 버전에서 별도로 설치할 수 있습니다.
+
+근거: [npm engines 의미](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#engines), [Bun installer의 engine 처리](https://github.com/oven-sh/bun/blob/main/src/install/PackageManager/CommandLineArguments.rs), [Workers Node 호환성](https://developers.cloudflare.com/workers/runtime-apis/nodejs/).
 
 Diagnostics root와 모든 public subpath는 host builtin, runtime 구현, Studio UI 및 import-time resource 없는 데이터 계약/reader입니다. Studio Node `>=24.0.0 <27`, CLI Node `>=24.11.0 <27`은 유지하며 선언 소유권 이전이 consumer 지원을 좁히지 않습니다.
 

@@ -32,24 +32,22 @@ function readDocumentationScope([documentPath, scopeStart, scopeEnd]: (typeof do
 }
 
 describe('@fluojs/cqrs Node engine contract', () => {
-  it('matches the canonical Node platform support window', () => {
+  it('omits a CQRS Node installation gate while the Node listener retains its support window', () => {
     const cqrsManifest = readPackageManifest('cqrs');
     const nodePlatformManifest = readPackageManifest('platform-nodejs');
 
-    expect(cqrsManifest.engines.node).toBe(supportedNodeRange);
+    expect(cqrsManifest.engines?.node).toBeUndefined();
     expect(nodePlatformManifest.engines.node).toBe(supportedNodeRange);
   });
 
-  it('keeps the manifest Node engine token in every scoped CQRS documentation surface', () => {
-    // Given: CQRS manifests its Node.js support contract for package consumers.
-    const cqrsManifest = readPackageManifest('cqrs');
-
+  it('keeps the supported Node window documented independently of installation metadata', () => {
+    // Given: the supported Node runtime range remains unchanged.
     // When: documentation surfaces describe CQRS runtime support.
     const documentedScopes = documentationScopes.map(readDocumentationScope);
 
-    // Then: every CQRS-specific scope contains the exact published engine token.
+    // Then: every CQRS-specific scope retains the supported runtime range.
     for (const documentedScope of documentedScopes) {
-      expect(documentedScope).toContain(cqrsManifest.engines.node);
+      expect(documentedScope).toContain(supportedNodeRange);
     }
   });
 });

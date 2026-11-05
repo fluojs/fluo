@@ -2011,17 +2011,17 @@ describe('enforcePassportJsBridgeNestjsMigration', () => {
 });
 
 describe('enforceSocketIoNodeEngineAlignment', () => {
-  it('aligns the Socket.IO engine range with canonical runtime manifests', async () => {
+  it('accepts Socket.IO without a package-wide Node installation gate', async () => {
     const { enforceSocketIoNodeEngineAlignment } = await loadGovernanceInternals();
 
     expect(() => enforceSocketIoNodeEngineAlignment()).not.toThrow();
   });
 
-  it('rejects Socket.IO engine drift and remains wired into central governance', async () => {
+  it.each(['>=22.0.0', '>=24.0.0 <27'])('rejects a Socket.IO Node installation gate %s and remains wired into central governance', async (nodeRange) => {
     const { enforceSocketIoNodeEngineAlignment } = await loadGovernanceInternals();
     const readText = (relativePath: string) => {
       if (relativePath === 'packages/socket.io/package.json') {
-        return JSON.stringify({ engines: { node: '>=22.0.0' } });
+        return JSON.stringify({ engines: { node: nodeRange } });
       }
 
       return readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -2031,7 +2031,7 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
       'utf8',
     );
 
-    expect(() => enforceSocketIoNodeEngineAlignment(readText)).toThrow(/@fluojs\/socket\.io engines\.node/u);
+    expect(() => enforceSocketIoNodeEngineAlignment(readText)).toThrow(/@fluojs\/socket\.io must omit engines\.node/u);
     expect(governanceSource).toContain('enforceSocketIoNodeEngineAlignment();');
   });
 });
@@ -6401,7 +6401,7 @@ describe('mandatory first-party dependency Node engine alignment', () => {
     const readText = (relativePath: string): string => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
 
-      if (relativePath !== 'packages/discord/package.json') {
+      if (relativePath !== 'packages/queue/package.json') {
         return content;
       }
 
@@ -6414,7 +6414,7 @@ describe('mandatory first-party dependency Node engine alignment', () => {
 
     expect(() =>
       enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/runtime'])))
-      .toThrow(/@fluojs\/discord engines\.node >=20\.0\.0 permits Node 20\.0\.0/u);
+      .toThrow(/@fluojs\/queue engines\.node >=20\.0\.0 permits Node 20\.0\.0/u);
   });
 
   it('accepts a selected public package without an advertised Node engine floor', () => {
@@ -6448,6 +6448,6 @@ describe('mandatory first-party dependency Node engine alignment', () => {
     // Then: an unchanged public dependent's Node 24 advertisement is rejected.
     expect(() =>
       enforceMandatoryFirstPartyDependencyEngineAlignment(readText, new Set(['@fluojs/core'])))
-      .toThrow(/@fluojs\/auth engines\.node .*permits Node 24\.0\.0.*@fluojs\/core/u);
+      .toThrow(/@fluojs\/auth-http engines\.node .*permits Node 24\.0\.0.*@fluojs\/core/u);
   });
 });

@@ -1,4 +1,6 @@
 # @fluojs/terminus
+
+공통 health/readiness root는 `engines.node`를 생략합니다. Node 전용 memory/disk 검사는 Node.js `>=24.0.0 <27`에서 `@fluojs/terminus/node`를 통해 선택하며, database와 Redis indicator의 driver별 요구사항은 유지됩니다.
 <!-- fluo-terminus-contract: registration=application-owned-TerminusModule.forRoot;health=aggregated-diagnostics;ready-admission=binary;ready-body=ready|starting|unavailable;default-liveness=absent;unhealthy-status=503;route-protection=path-scoped-external-boundary;indicator-readiness=opt-out;readiness-checks=additive -->
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>

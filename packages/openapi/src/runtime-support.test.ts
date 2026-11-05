@@ -2,62 +2,30 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-const nodeEngineFloorPattern = /"engines"\s*:\s*\{\s*"node"\s*:\s*">=(\d+)\.(\d+)\.(\d+)(?=\s|")/u;
 const nodeListenerEngine = '>=24.0.0 <27';
-const mandatoryFluoDependencyManifests = [
-  '../../core/package.json',
-  '../../http/package.json',
-  '../../validation/package.json',
-] as const;
-
-function extractNodeEngineFloor(manifest: string): readonly [number, number, number] {
-  const match = nodeEngineFloorPattern.exec(manifest);
-  if (match === null) {
-    throw new TypeError('Expected the package manifest to declare a >=x.y.z Node.js engine floor.');
-  }
-
-  return [
-    Number.parseInt(match[1] ?? '', 10),
-    Number.parseInt(match[2] ?? '', 10),
-    Number.parseInt(match[3] ?? '', 10),
-  ];
-}
-
-function compareNodeEngineFloors(
-  left: readonly [number, number, number],
-  right: readonly [number, number, number],
-): number {
-  for (const index of [0, 1, 2] as const) {
-    const difference = left[index] - right[index];
-    if (difference !== 0) {
-      return difference;
-    }
-  }
-
-  return 0;
-}
 
 describe('@fluojs/openapi runtime support metadata', () => {
-  it('declares the Node.js range required by the published package contract', () => {
+  it('omits a package-wide Node installation gate for shared document generation', () => {
     // Given: the published @fluojs/openapi manifest.
-    // When: its declared Node.js engine range is read.
-    // Then: it keeps its explicitly documented Node support window.
+    // When: its installation metadata is read.
+    // Then: selecting the shared HTTP path does not impose a Node gate.
     const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
-    expect(JSON.parse(manifest)).toMatchObject({ engines: { node: nodeListenerEngine } });
+    expect(JSON.parse(manifest).engines?.node).toBeUndefined();
   });
 
-  it('covers the highest Node.js floor in the mandatory fluo dependency graph', () => {
+  it('keeps mandatory first-party dependencies free of transitive Node installation gates', () => {
     // Given: every mandatory @fluojs dependency of the root entrypoint.
-    // When: their engine floors are compared with the openapi floor.
-    // Then: no dependency requires a newer Node.js release than openapi advertises.
-    const openapiManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
-    const openapiFloor = extractNodeEngineFloor(openapiManifest);
+    // When: their installation metadata is read.
+    // Then: no shared dependency reintroduces a package-wide Node gate.
+    const openapiManifest: { readonly dependencies: Readonly<Record<string, string>> } = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    );
 
-    for (const relativePath of mandatoryFluoDependencyManifests) {
-      const manifest = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    for (const dependency of Object.keys(openapiManifest.dependencies).filter((name) => name.startsWith('@fluojs/'))) {
+      const manifest = readFileSync(new URL(`../../${dependency.slice(8)}/package.json`, import.meta.url), 'utf8');
 
-      expect(compareNodeEngineFloors(extractNodeEngineFloor(manifest), openapiFloor)).toBeLessThanOrEqual(0);
+      expect(JSON.parse(manifest).engines?.node, dependency).toBeUndefined();
     }
   });
 

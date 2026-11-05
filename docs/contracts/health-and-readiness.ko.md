@@ -7,7 +7,7 @@
 
 이 문서와 영어 대응 문서는 `@fluojs/terminus` 등록, runtime health 응답, HTTP readiness 판정의 canonical Docs owner입니다. [패키지 README](../../packages/terminus/README.ko.md)는 설치와 패키지별 API 사용법을 유지하고 이 계약을 요약합니다. [문서 권한 규칙](./documentation-authority.ko.md)에 따라 Book, CONTEXT, migration map의 설명은 이 owner를 따릅니다.
 
-범위는 현재 checkout의 `@fluojs/terminus` 2.x와 `@fluojs/runtime` HTTP dispatcher입니다. Node.js 지원 범위는 package manifest의 `>=24.0.0 <27`입니다. Host-owned HTTP에서도 해당 host가 dispatcher를 연결해야 route에 도달할 수 있습니다. Root import가 안전하다는 사실은 모든 host에서 Node filesystem, process memory, Redis driver를 사용할 수 있다는 보장이 아닙니다. 이 문서는 배포된 최신 패키지나 외부 DB에서 실행 검증했다는 뜻이 아닙니다.
+범위는 현재 checkout의 `@fluojs/terminus` 2.x와 `@fluojs/runtime` HTTP dispatcher입니다. Node.js 지원 범위는 계속 `>=24.0.0 <27`이며, 공통 root는 package-wide `engines.node`를 생략하고 Node 전용 probe는 명시적인 `/node` subpath에 유지합니다. Host-owned HTTP에서도 해당 host가 dispatcher를 연결해야 route에 도달할 수 있습니다. Root import가 안전하다는 사실은 모든 host에서 Node filesystem, process memory, Redis driver를 사용할 수 있다는 보장이 아닙니다. 이 문서는 배포된 최신 패키지나 외부 DB에서 실행 검증했다는 뜻이 아닙니다.
 
 Terminus는 dependency 진단과 readiness 조건을 구성합니다. Socket listen, signal 등록, drain 시간, DB client 생성·종료, process 종료, orchestrator의 rotation·restart 정책을 소유하지 않습니다. 전체 시작·종료 계약은 [Lifecycle & Shutdown](../architecture/lifecycle-and-shutdown.ko.md)을 따릅니다.
 

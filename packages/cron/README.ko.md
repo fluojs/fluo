@@ -49,7 +49,7 @@ npm install @fluojs/cron
 
 ## Node.js 호환성
 
-`@fluojs/cron`은 패키지 자체의 지원 정책으로 Node.js `>=24.0.0 <27`을 요구합니다. Node.js 24 미만과 Node.js 27+는 지원하지 않습니다. Portable `@fluojs/runtime`의 engine omission은 별도 계약입니다.
+`@fluojs/cron`의 Node.js 지원 범위는 계속 `>=24.0.0 <27`이며, 로컬 scheduling이 공통 runtime 계약과 host timer를 사용하므로 `engines.node`를 생략합니다. Distributed mode는 Redis client의 runtime 요구사항을 유지합니다. Host는 예약 작업의 수명을 유지해야 합니다. 이 패키지는 Cloudflare scheduled-event adapter가 아니며 request 범위의 Worker 수명은 background timer 실행을 보장하지 않습니다.
 
 ### 3으로 마이그레이션
 

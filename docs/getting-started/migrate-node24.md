@@ -41,7 +41,7 @@ Node 24.
   application advertises the full range. Latest Node `24.x` owns Fluo release
   automation; Node 26 is never a publish runtime.
 
-The nine engine omissions below remain intentional. Bun and Cloudflare
+The shared/native-host engine omissions remain intentional. Bun and Cloudflare
 Workers deployments keep their native runtime metadata and deployment commands.
 Upgrade Node-hosted CLI/build tooling separately; Workers' starter Node engine
 describes local CLI/Wrangler tooling, not the deployed isolate.
@@ -117,12 +117,10 @@ use the final Node 24 support range, not the earlier listener-only Node 20/22 fl
 
 ## 4. Preserve portable configuration boundaries
 
-Do not add `engines.node` to these nine public package roots merely to match
-their neighbors:
-
-`@fluojs/config`, `@fluojs/diagnostics`, `@fluojs/email`, `@fluojs/i18n`, `@fluojs/persistence`, `@fluojs/platform-bun`,
-`@fluojs/platform-cloudflare-workers`, `@fluojs/react`,
-and `@fluojs/runtime`.
+Do not restore `engines.node` on shared/native-host packages merely to match
+their neighbors. Follow the complete [package classification](../reference/node-support.md#portable-package-boundaries),
+including the mandatory shared dependencies of Bun and Workers adapters.
+Node-specific subpaths and optional integrations keep their existing requirements.
 
 Config's in-memory load, merge, validation, clone, and service access remain
 portable. Pass application-owned maps and explicitly opt out of env files on
