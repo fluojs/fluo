@@ -1,0 +1,28 @@
+import type * as Core from '@fluojs/core';
+import type * as Runtime from '@fluojs/runtime';
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends
+  (<T>() => T extends B ? 1 : 2) ? true : false;
+type Assert<T extends true> = T;
+type C = [Core.OnModuleInit, Core.OnApplicationBootstrap, Core.OnModuleDestroy, Core.OnApplicationShutdown, Core.LifecycleHooks];
+type R = [Runtime.OnModuleInit, Runtime.OnApplicationBootstrap, Runtime.OnModuleDestroy, Runtime.OnApplicationShutdown, Runtime.LifecycleHooks];
+type Forward = Assert<Equal<C, R>>;
+type Backward = Assert<Equal<R, C>>;
+declare const core: C;
+declare const runtime: R;
+const fromCore: R = core;
+const fromRuntime: C = runtime;
+type Init = Assert<Equal<Core.OnModuleInit['onModuleInit'], () => Core.MaybePromise<void>>>;
+type Bootstrap = Assert<Equal<Core.OnApplicationBootstrap['onApplicationBootstrap'], () => Core.MaybePromise<void>>>;
+type Destroy = Assert<Equal<Core.OnModuleDestroy['onModuleDestroy'], () => Core.MaybePromise<void>>>;
+type Shutdown = Assert<Equal<Core.OnApplicationShutdown['onApplicationShutdown'], (signal?: string) => Core.MaybePromise<void>>>;
+const init: Core.OnModuleInit = { async onModuleInit() {} };
+const bootstrap: Core.OnApplicationBootstrap = { onApplicationBootstrap() {} };
+const destroy: Core.OnModuleDestroy = { async onModuleDestroy() {} };
+const shutdown: Core.OnApplicationShutdown = { onApplicationShutdown(signal?: string) {} };
+const singleHooks: Core.LifecycleHooks[] = [init, bootstrap, destroy, shutdown];
+const compatible: Runtime.LifecycleHooks[] = singleHooks;
+shutdown.onApplicationShutdown();
+shutdown.onApplicationShutdown('SIGTERM');
+declare const oldShutdown: Runtime.OnApplicationShutdown;
+oldShutdown.onApplicationShutdown();
+oldShutdown.onApplicationShutdown('SIGTERM');
