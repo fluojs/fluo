@@ -178,6 +178,24 @@ class TransactionContext {}
 class Logger {}
 ```
 
+### Provider lifecycle hook 계약
+
+`@fluojs/core`가 공개 provider lifecycle 타입 `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`과 네 interface의 `LifecycleHooks` union을 소유합니다. 새 코드에서는 이 타입을 core root에서 import하세요. 다음 fragment는 provider의 종료 hook을 선언합니다.
+
+```ts
+import type { OnModuleDestroy } from '@fluojs/core';
+
+class CacheService implements OnModuleDestroy {
+  readonly values = new Map<string, string>();
+
+  onModuleDestroy(): void {
+    this.values.clear();
+  }
+}
+```
+
+훅은 `MaybePromise<void>` (`void` 또는 `Promise<void>`)를 반환하고, `onApplicationShutdown(signal?: string)`은 생략 가능한 문자열 signal을 받습니다. 실제 hook 실행에는 provider를 runtime module에 등록해야 합니다. `@fluojs/runtime`이 bootstrap과 shutdown을 실행하며 다섯 타입을 직접 재수출하므로 기존 runtime type import는 그대로 호환됩니다. core는 이 계약만 선언하며 runtime 의존성을 추가하거나 훅을 실행하지 않습니다. NestJS `beforeApplicationShutdown`은 지원하지 않습니다. 순서와 실패 처리는 [라이프사이클 및 종료 보장](../../docs/architecture/lifecycle-and-shutdown.ko.md)을 따릅니다.
+
 ### Typed public token
 
 `publicToken<T>(namespace)`는 `Symbol.for(namespace)`와 동일한 symbol에
@@ -243,6 +261,7 @@ driver가 소유하며 공통 observation 선언은 persistence에 있습니다.
 - **메타데이터 런타임**: `ensureMetadataSymbol`, `getModuleMetadata`
 - **Typed public token**: `publicToken<T>(namespace)`, `PublicToken<T>`
 - **타입**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`, `AfterCommitCallback`, `TransactionBoundaryOptions<T>`
+- **Lifecycle hook 타입**: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `LifecycleHooks`
 - **Request-pipeline 통합 seam**: `@fluojs/core/request-pipeline`을 통한 DTO validation/binding 메타데이터 헬퍼와 표준 데코레이터 metadata bag reader
 - **내부 서브패스**: `@fluojs/core/internal`을 통한 더 넓은 메타데이터 헬퍼, 컨트롤러/라우트 헬퍼, injection 헬퍼, clone 유틸리티
 

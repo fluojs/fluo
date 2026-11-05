@@ -94,6 +94,8 @@ The `@Controller('/posts')` and `@Get()` decorators come from `@fluojs/http`, no
 
 ## Lifecycle hooks: the whole contract
 
+Import lifecycle hook types from `@fluojs/core` in new code. Core owns the four interfaces and the `LifecycleHooks` union; runtime executes the hooks and directly re-exports the types for existing runtime imports.
+
 The runtime lifecycle is exactly four hooks:
 
 | Hook | Phase | Order |
@@ -104,7 +106,7 @@ The runtime lifecycle is exactly four hooks:
 | `onApplicationShutdown(signal?)` | Shutdown | Reverse provider order |
 
 ```ts title="fragment: a pool that participates in lifecycle"
-import type { OnApplicationBootstrap, OnModuleDestroy } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnModuleDestroy } from '@fluojs/core';
 
 export class DatabasePool implements OnApplicationBootstrap, OnModuleDestroy {
   async onApplicationBootstrap(): Promise<void> {

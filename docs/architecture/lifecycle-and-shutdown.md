@@ -10,7 +10,7 @@ This EN/KO pair owns the runtime lifecycle, shutdown admission, and cleanup retr
 | --- | --- |
 | Environment | The verification commands below use a repository checkout with installed dependencies, Node `>=24 <27`, and `pnpm@10.4.1`. Generated apps retain registry dependencies and generated scripts; repository examples such as `examples/fluo-blog` follow workspace dependencies and their own build prerequisites. This is not a recipe for overwriting one app directory with the other. |
 | Modules and DI | Use `defineModule`, `FluoFactory` from `@fluojs/runtime`. Register the root module and providers, and expose cross-module dependencies through imports/exports. Constructor dependencies need `Inject` from `@fluojs/core` or an explicit provider `inject` list. Decorator code requires `Symbol.metadata` preparation before module evaluation and standard decorator transformation; follow the [metadata contract](./decorators-and-metadata.md). |
-| Lifecycle API | Import the types `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `Application`, and `ApplicationContext` from `@fluojs/runtime`. Hooks return synchronous `void` or `Promise<void>`. Declaring an interface does not register a provider. Hook-bearing `useValue` and eligible singleton class/factory providers participate; `useExisting` aliases and request/transient providers are not independently root-resolved for startup hooks. |
+| Lifecycle API | Import the hook types `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, and `OnApplicationShutdown` from `@fluojs/core`; `Application` and `ApplicationContext` come from `@fluojs/runtime`. Runtime directly re-exports the hook types to preserve existing runtime imports. Hooks return synchronous `void` or `Promise<void>`. Declaring an interface does not register a provider. Hook-bearing `useValue` and eligible singleton class/factory providers participate; `useExisting` aliases and request/transient providers are not independently root-resolved for startup hooks. |
 | HTTP paths | Use each platform concrete `AdapterClass.create(options)`, `FluoFactory.create(...)` from `@fluojs/runtime`, then `app.listen()`. Custom adapters implement `HttpApplicationAdapter` from `@fluojs/http/portable`. `src/` paths are implementation evidence, not consumer imports. |
 | External resources | The DI-only example needs no server, environment file, or external service. Adding databases, queues, sockets, or background jobs also requires assigning connection configuration, error handling, drain, and close ownership to the application or the relevant package. |
 
@@ -105,7 +105,7 @@ This TypeScript fragment demonstrates only registered provider hook order and ad
 
 ```ts
 import { defineModule, FluoFactory } from '@fluojs/runtime';
-import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@fluojs/core';
 
 const events: string[] = [];
 class Resource implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown {

@@ -268,7 +268,7 @@ await context.close();
 
 ### NestJS 라이프사이클 훅 마이그레이션
 
-공개 runtime lifecycle 계약에는 네 개의 hook만 있습니다. Startup은 `onModuleInit()` 다음 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. 적격 singleton `multi: true` contribution은 각각 별도의 lifecycle instance이며, startup은 contribution 순서를 따르고 shutdown은 이를 뒤집습니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 fluo가 탐지하거나 호출하지 않습니다.
+공개 runtime lifecycle 계약에는 네 개의 hook만 있습니다. Startup은 `onModuleInit()` 다음 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. 적격 singleton `multi: true` contribution은 각각 별도의 lifecycle instance이며, startup은 contribution 순서를 따르고 shutdown은 이를 뒤집습니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 fluo가 탐지하거나 호출하지 않습니다. 네 hook interface와 `LifecycleHooks` union의 선언 소유자는 `@fluojs/core`입니다. 새 코드는 core에서 hook 타입을 import하세요. runtime은 hook 실행과 기존 runtime type import의 직접 재수출 호환성을 유지합니다.
 
 종료 준비 작업은 소유하는 문서화된 phase로 옮기세요. Application-wide signal phase보다 먼저 끝나야 하는 module resource teardown에는 `onModuleDestroy()`를 사용하고, signal-aware application cleanup에는 `onApplicationShutdown(signal?)`을 사용합니다. `@fluojs/runtime`은 `beforeApplicationShutdown` compatibility shim, alias, fallback 또는 추가 runtime hook을 제공하지 않습니다.
 
@@ -465,7 +465,7 @@ class UsersModule {}
 - `FluoFactory`: 명시적 static 접근을 제공하는 클래스 기반 런타임 부트스트랩 파사드입니다.
 - `Application`: `ApplicationContext`를 확장하며 `listen()`, `dispatch()`, `state`를 포함합니다.
 - `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`, `modules`, bootstrap diagnostics에 접근할 수 있습니다.
-- `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`를 묶는 편의 union 타입입니다.
+- `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`를 묶는 편의 union 타입입니다. 새 코드는 선언 소유자인 `@fluojs/core`에서 import하세요. runtime root의 직접 재수출은 기존 type import 호환성을 유지합니다.
 - `MicroserviceRuntime`: `FluoFactory.createMicroservice(...)`가 해석하는 transport 계약입니다. 구현체는 `listen()`, 선택적 `send()`/`emit()`, 선택적 `close(signal?)`을 노출합니다. 선택적 `markShutdownStarted()` hook은 소유 shell이 종료를 시작할 때 동기적으로 호출되므로, 구현체는 어떤 awaited cleanup보다 먼저 자체 ingress gate를 닫을 수 있고, 경쟁 중인 `listen()`이 아직 settle되는 동안에도 새 `send()`/`emit()`/`listen()` 시도가 계속 reject됩니다.
 - `HealthModule.forRoot(options)`: bootstrap 및 shutdown 라이프사이클 전이에 맞춰 readiness marker를 관리하는 런타임 소유 `/health`, `/ready` 모듈 파사드입니다. `RuntimeHealthModule`을 반환하므로 first-party runtime-aware package가 internal runtime seam을 import하지 않고 `ReadinessCheck` function을 등록할 수 있습니다.
 - `RuntimeHealthModule`: `HealthModule.forRoot(...)`가 반환하는 module class contract이며 `addReadinessCheck(...)`, `markReady()`, `markStarting()`을 포함합니다.

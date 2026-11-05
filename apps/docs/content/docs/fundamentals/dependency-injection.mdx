@@ -292,7 +292,7 @@ await context.close();
 A resolved singleton provider participates in the application lifecycle by implementing hook methods. Startup runs `onModuleInit()` for every eligible instance in provider order, then `onApplicationBootstrap()`. Shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse order, so dependents tear down before their dependencies:
 
 ```ts title="fragment: lifecycle hooks"
-import type { OnApplicationBootstrap, OnModuleDestroy } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnModuleDestroy } from '@fluojs/core';
 
 export class PoolHolder implements OnApplicationBootstrap, OnModuleDestroy {
   async onApplicationBootstrap(): Promise<void> {
