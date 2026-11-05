@@ -1,7 +1,8 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import { type EventBusTransport, EventBusService, OnEvent } from '@fluojs/event-bus';
-import { type ApplicationLogger, FluoFactory, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
+import type { OnApplicationShutdown } from '@fluojs/core';
+import { type ApplicationLogger, FluoFactory, defineModule, type RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { RUNTIME_CLEANUP_REGISTRATION } from '@fluojs/runtime/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';

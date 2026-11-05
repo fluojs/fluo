@@ -1,7 +1,7 @@
 import { EventEmitter, on } from 'node:events';
 
 import { Inject, Module } from '@fluojs/core';
-import type { OnApplicationShutdown } from '@fluojs/runtime';
+import type { OnApplicationShutdown } from '@fluojs/core';
 import {
   Arg,
   Context,

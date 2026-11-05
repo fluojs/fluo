@@ -21,6 +21,42 @@ describe('NestJS runtime lifecycle migration documentation', () => {
   });
 
   it.each([
+    ['missing hook', (source: string) => source.replace('  OnModuleInit,\n', '')],
+    ['wrong owner', (source: string) => source.replace(
+      /(export type \{[^}]+\} from )'@fluojs\/core'/u,
+      "$1'@fluojs/runtime'",
+    )],
+    ['value export', (source: string) => source.replace(
+      'export type {\n  LifecycleHooks,',
+      'export {\n  LifecycleHooks,',
+    )],
+    ['different source name', (source: string) => source.replace(
+      '  OnModuleInit,',
+      '  OnModuleDestroy as OnModuleInit,',
+    )],
+  ] as const)('rejects runtime lifecycle re-exports with %s', (_name, change) => {
+    const readWithChangedReexports = (relativePath: string): string =>
+      relativePath === 'packages/runtime/src/types.ts'
+        ? change(read(relativePath))
+        : read(relativePath);
+
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithChangedReexports);
+
+    expect(runGovernanceGuard).toThrow(/direct type re-exports/);
+  });
+
+  it('rejects a missing canonical core hook declaration', () => {
+    const readWithMissingHook = (relativePath: string): string =>
+      relativePath === 'packages/core/src/lifecycle.ts'
+        ? read(relativePath).replace(/export interface OnModuleInit \{[^}]+\}/u, '')
+        : read(relativePath);
+
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithMissingHook);
+
+    expect(runGovernanceGuard).toThrow(/OnModuleInit/);
+  });
+
+  it.each([
     [
       'packages/runtime/README.md',
       '`beforeApplicationShutdown()` is supported as a fluo runtime lifecycle hook.',
@@ -125,7 +161,7 @@ describe('NestJS runtime lifecycle migration documentation', () => {
 
   it.each([
     [
-      'packages/runtime/src/types.ts',
+      'packages/core/src/lifecycle.ts',
       'export interface BeforeApplicationShutdown {\n  beforeApplicationShutdown(signal?: string): MaybePromise<void>;\n}',
     ],
     [
@@ -150,7 +186,7 @@ describe('NestJS runtime lifecycle migration documentation', () => {
 
   it.each([
     [
-      'packages/runtime/src/types.ts',
+      'packages/core/src/lifecycle.ts',
       'export interface OnApplicationDraining {\n  onApplicationDraining(signal?: string): MaybePromise<void>;\n}',
     ],
     [
@@ -184,7 +220,7 @@ describe('NestJS runtime lifecycle migration documentation', () => {
   it('rejects a quoted lifecycle interface method', () => {
     // Given
     const readWithQuotedMethod = (requestedPath: string): string =>
-      requestedPath === 'packages/runtime/src/types.ts'
+      requestedPath === 'packages/core/src/lifecycle.ts'
         ? `${read(requestedPath)}\nexport interface BeforeApplicationShutdown {\n  'beforeApplicationShutdown'(): MaybePromise<void>;\n}`
         : read(requestedPath);
 
@@ -198,7 +234,7 @@ describe('NestJS runtime lifecycle migration documentation', () => {
   it('rejects a computed lifecycle interface method', () => {
     // Given
     const readWithComputedMethod = (requestedPath: string): string =>
-      requestedPath === 'packages/runtime/src/types.ts'
+      requestedPath === 'packages/core/src/lifecycle.ts'
         ? `${read(requestedPath)}\nexport interface BeforeApplicationShutdown {\n  ['beforeApplicationShutdown'](): MaybePromise<void>;\n}`
         : read(requestedPath);
 
@@ -215,7 +251,7 @@ describe('NestJS runtime lifecycle migration documentation', () => {
   ] as const)('rejects an unrecognized LifecycleHooks union member %s', (unionMember, expectedError) => {
     // Given
     const readWithUnionMember = (requestedPath: string): string =>
-      requestedPath === 'packages/runtime/src/types.ts'
+      requestedPath === 'packages/core/src/lifecycle.ts'
         ? read(requestedPath).replace('  | OnApplicationShutdown;', `  | OnApplicationShutdown\n${unionMember}`)
         : read(requestedPath);
 

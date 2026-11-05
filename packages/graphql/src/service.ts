@@ -3,7 +3,8 @@ import { createRequire } from 'node:module';
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import { Controller, type FrameworkRequest, Get, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next, Post } from '@fluojs/http';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/core';
+import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import type {
   DocumentNode,

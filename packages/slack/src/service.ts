@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
-import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/core';
 
 import { SlackLifecycleError, SlackMessageValidationError } from './errors.js';
 import { createSlackPlatformStatusSnapshot } from './status.js';

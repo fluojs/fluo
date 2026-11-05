@@ -1,5 +1,6 @@
 import { Inject, InvariantError, isFluoError, type Token } from '@fluojs/core';
-import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/core';
+import type { RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';

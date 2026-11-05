@@ -1,4 +1,4 @@
-import type { OnModuleDestroy } from '@fluojs/runtime';
+import type { OnModuleDestroy } from '@fluojs/core';
 import { describe, expect, it } from 'vitest';
 
 import { DefaultJwtVerifier } from './signing/verifier.js';

@@ -10,7 +10,7 @@
 | --- | --- |
 | 실행 환경 | 아래 검증 명령은 의존성을 설치한 repository checkout에서 Node `>=24 <27`, `pnpm@10.4.1`을 사용합니다. 생성 앱은 registry 의존성과 생성된 scripts를 유지하고, `examples/fluo-blog` 같은 repository example은 workspace 의존성과 자체 빌드 전제를 따릅니다. 이 문서는 두 앱 디렉터리를 서로 덮어쓰는 recipe가 아닙니다. |
 | 모듈과 DI | `@fluojs/runtime`의 `defineModule`, `FluoFactory`을 사용합니다. Root module과 provider를 등록하고, 모듈 간 의존성은 imports/exports로 공개해야 합니다. 생성자 의존성에는 `@fluojs/core`의 `Inject` 또는 provider의 명시적 `inject` 목록이 필요합니다. Decorator를 쓰면 module 평가 전에 `Symbol.metadata` 준비와 표준 decorator 변환이 필요합니다. [metadata 계약](./decorators-and-metadata.ko.md)을 따릅니다. |
-| Lifecycle API | `@fluojs/runtime`에서 type으로 `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `Application`, `ApplicationContext`를 import합니다. 훅은 동기 `void` 또는 `Promise<void>`를 반환합니다. Interface 선언만으로 등록되지는 않습니다. Hook-bearing `useValue` 또는 적격 singleton class/factory provider가 lifecycle 대상이며, `useExisting` alias와 request/transient provider는 독립 startup hook 대상으로 root-resolve하지 않습니다. |
+| Lifecycle API | 훅 타입 `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`은 `@fluojs/core`에서 import하고 `Application`, `ApplicationContext`는 `@fluojs/runtime`에서 import합니다. runtime이 훅 타입을 직접 재수출하므로 기존 runtime import는 그대로 호환됩니다. 훅은 동기 `void` 또는 `Promise<void>`를 반환합니다. Interface 선언만으로 등록되지는 않습니다. Hook-bearing `useValue` 또는 적격 singleton class/factory provider가 lifecycle 대상이며, `useExisting` alias와 request/transient provider는 독립 startup hook 대상으로 root-resolve하지 않습니다. |
 | HTTP 경로 | 각 platform의 concrete `AdapterClass.create(options)`와 `@fluojs/runtime`의 `FluoFactory.create(...)`, `app.listen()`을 사용합니다. Custom adapter는 `@fluojs/http/portable`의 `HttpApplicationAdapter`를 구현합니다. `src/` 경로는 구현 근거이지 consumer import가 아닙니다. |
 | 외부 자원 | 순수 DI 예제에는 서버, 환경 파일, 외부 서비스가 필요하지 않습니다. DB·queue·socket·background job을 추가하면 해당 자원의 연결 설정, 오류 처리, drain, close 소유권도 애플리케이션이나 해당 package에 지정해야 합니다. |
 
@@ -105,7 +105,7 @@ cleanup failure를 `ApplicationLogger`로 보고합니다.
 
 ```ts
 import { defineModule, FluoFactory } from '@fluojs/runtime';
-import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@fluojs/core';
 
 const events: string[] = [];
 class Resource implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown {

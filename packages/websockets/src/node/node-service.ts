@@ -7,7 +7,8 @@ import type { Duplex } from 'node:stream';
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type { HttpApplicationAdapter } from '@fluojs/http';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/core';
+import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 

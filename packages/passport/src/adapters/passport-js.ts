@@ -2,7 +2,7 @@
 import type { Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import type { GuardContext, Principal } from '@fluojs/http';
-import type { OnApplicationShutdown } from '@fluojs/runtime';
+import type { OnApplicationShutdown } from '@fluojs/core';
 
 import { AuthenticationFailedError, AuthenticationRequiredError } from '@fluojs/auth';
 import { normalizePrincipalScopes } from '@fluojs/auth-http/internal/scope';

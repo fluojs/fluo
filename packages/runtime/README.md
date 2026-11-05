@@ -269,7 +269,7 @@ In `@fluojs/runtime` 2.x, overlapping `start()` calls could start the same compo
 
 ### Migrating NestJS Lifecycle Hooks
 
-The public runtime lifecycle contract has four hooks: startup runs `onModuleInit()` and then `onApplicationBootstrap()`, while shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse lifecycle-instance order. Each eligible singleton `multi: true` contribution is a distinct lifecycle instance: startup follows contribution order and shutdown reverses it. NestJS `beforeApplicationShutdown` is unsupported and is not probed or invoked by fluo.
+The public runtime lifecycle contract has four hooks: startup runs `onModuleInit()` and then `onApplicationBootstrap()`, while shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse lifecycle-instance order. Each eligible singleton `multi: true` contribution is a distinct lifecycle instance: startup follows contribution order and shutdown reverses it. NestJS `beforeApplicationShutdown` is unsupported and is not probed or invoked by fluo. `@fluojs/core` owns the four hook interfaces and the `LifecycleHooks` union. Import hook types from core in new code. Runtime retains hook execution and direct re-export compatibility for existing runtime type imports.
 
 Move shutdown preparation into the documented phase that owns it. Use `onModuleDestroy()` for module-resource teardown that must finish before the application-wide signal phase, or `onApplicationShutdown(signal?)` for signal-aware application cleanup. `@fluojs/runtime` provides no `beforeApplicationShutdown` compatibility shim, alias, fallback, or additional runtime hook.
 
@@ -466,7 +466,7 @@ class UsersModule {}
 - `FluoFactory`: Class-based runtime bootstrap facade with explicit static access.
 - `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
 - `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container`, `modules`, and bootstrap diagnostics.
-- `LifecycleHooks`: Convenience union covering `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, and `OnApplicationShutdown`.
+- `LifecycleHooks`: Convenience union covering `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, and `OnApplicationShutdown`. New code should import it from its declaration owner, `@fluojs/core`. Direct re-exports from the runtime root preserve existing type imports.
 - `MicroserviceRuntime`: Transport contract resolved by `FluoFactory.createMicroservice(...)`. Implementations expose `listen()`, optional `send()`/`emit()`, and an optional `close(signal?)`. The optional `markShutdownStarted()` hook is invoked synchronously when the owning shell begins shutdown so implementations can close their own ingress gate before any awaited cleanup, keeping new `send()`/`emit()`/`listen()` attempts rejected even while a racing `listen()` is still settling.
 - `HealthModule.forRoot(options)`: Runtime-owned `/health` and `/ready` module facade whose readiness marker follows bootstrap and shutdown lifecycle transitions. It returns a `RuntimeHealthModule` so first-party runtime-aware packages can register `ReadinessCheck` functions without importing internal runtime seams.
 - `RuntimeHealthModule`: Module class contract returned by `HealthModule.forRoot(...)`, including `addReadinessCheck(...)`, `markReady()`, and `markStarting()`.

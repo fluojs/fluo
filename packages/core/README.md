@@ -182,6 +182,24 @@ class TransactionContext {}
 class Logger {}
 ```
 
+### Provider lifecycle hook contracts
+
+`@fluojs/core` owns the public provider lifecycle types `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, and their four-interface `LifecycleHooks` union. Import these types from the core root in new code. This fragment declares a provider shutdown hook.
+
+```ts
+import type { OnModuleDestroy } from '@fluojs/core';
+
+class CacheService implements OnModuleDestroy {
+  readonly values = new Map<string, string>();
+
+  onModuleDestroy(): void {
+    this.values.clear();
+  }
+}
+```
+
+Hooks return `MaybePromise<void>` (`void` or `Promise<void>`), and `onApplicationShutdown(signal?: string)` accepts an optional string signal. Register the provider in a runtime module for its hooks to run. `@fluojs/runtime` executes bootstrap and shutdown and directly re-exports all five types, preserving existing runtime type imports. Core only declares these contracts; it adds no runtime dependency and does not execute hooks. NestJS `beforeApplicationShutdown` is unsupported. See [Lifecycle & Shutdown Guarantees](../../docs/architecture/lifecycle-and-shutdown.md) for ordering and failure behavior.
+
 ### Typed public token
 
 `publicToken<T>(namespace)` gives the exact `Symbol.for(namespace)` symbol the
@@ -251,6 +269,7 @@ See the [optional import migration](../../docs/getting-started/migrate-persisten
 - **Metadata runtime**: `ensureMetadataSymbol`, `getModuleMetadata`
 - **Typed public token**: `publicToken<T>(namespace)`, `PublicToken<T>`
 - **Types**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`, `AfterCommitCallback`, `TransactionBoundaryOptions<T>`
+- **Lifecycle hook types**: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `LifecycleHooks`
 - **Request-pipeline integration seam**: DTO validation/binding metadata helpers plus standard decorator metadata-bag readers via `@fluojs/core/request-pipeline`
 - **Internal subpath**: broader metadata helpers, controller/route helpers, injection helpers, and clone utilities via `@fluojs/core/internal`
 

@@ -9,6 +9,7 @@ const supportedBuildModules = [
   'errors',
   'index',
   'internal',
+  'lifecycle',
   'metadata',
   'metadata-preload',
   'public-token',
