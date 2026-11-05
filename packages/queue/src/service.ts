@@ -2,13 +2,11 @@ import { cloneWithFallback } from '@fluojs/core/internal';
 import type { Container } from '@fluojs/di';
 import { getRedisComponentId } from '@fluojs/redis';
 import { createHash } from 'node:crypto';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/core';
 import type {
   ApplicationLogger,
   CompiledModule,
   ModuleType,
-  OnApplicationBootstrap,
-  OnApplicationShutdown,
-  OnModuleDestroy,
 } from '@fluojs/runtime';
 import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
 import { type Job as BullJob, Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions } from 'bullmq';

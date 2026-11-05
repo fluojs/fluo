@@ -1,7 +1,8 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
 import type { Container } from '@fluojs/di';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/core';
+import type { ApplicationLogger, CompiledModule, RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { CqrsBusBase, createDuplicateHandlerMessage, isSameHandlerRegistration } from '../discovery.js';
 import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from '../errors.js';

@@ -4,10 +4,10 @@ import { createRequire } from 'node:module';
 import { Inject, type Token } from '@fluojs/core';
 import { type Container, type ContainerResolutionError, isDiError, type Provider } from '@fluojs/di';
 import { Controller, forRoutes, Get, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
+import type { OnModuleDestroy } from '@fluojs/core';
 import {
   defineModule,
   type ModuleType,
-  type OnModuleDestroy,
   PLATFORM_SHELL,
   type PlatformShellSnapshot,
 } from '@fluojs/runtime';

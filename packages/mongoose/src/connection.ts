@@ -4,7 +4,7 @@ import { markMongooseConnectionHandle } from './connection-brand.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
-import type { OnApplicationShutdown } from '@fluojs/runtime';
+import type { OnApplicationShutdown } from '@fluojs/core';
 import { raceWithAbort } from '@fluojs/runtime';
 import {
   type ActiveRequestTransaction,

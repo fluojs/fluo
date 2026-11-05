@@ -10,12 +10,10 @@ import type {
 } from '@fluojs/http';
 import { resolveFetchStyleHttpAdapterRealtimeBindingInstallation } from '@fluojs/http/internal';
 import type { BunWebSocketBinding } from '@fluojs/platform-bun';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/core';
 import type {
   ApplicationLogger,
   CompiledModule,
-  OnApplicationBootstrap,
-  OnApplicationShutdown,
-  OnModuleDestroy,
 } from '@fluojs/runtime';
 import {
   APPLICATION_LOGGER,

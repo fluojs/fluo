@@ -8,7 +8,8 @@ import type {
   CloudflareWorkerWebSocketMessage,
   CloudflareWorkerWebSocketUpgradeHost,
 } from '@fluojs/platform-cloudflare-workers';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/core';
+import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import {

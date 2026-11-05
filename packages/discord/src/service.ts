@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
-import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/core';
 
 import { DiscordMessageValidationError, DiscordTransportError } from './errors.js';
 import { createDiscordPlatformStatusSnapshot, type DiscordStatusAdapterInput } from './status.js';

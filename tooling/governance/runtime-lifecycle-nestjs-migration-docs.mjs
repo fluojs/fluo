@@ -21,7 +21,7 @@ const lifecycleMethodNamePattern = /^(?:on|before)[A-Z][A-Za-z0-9]*$/u;
 
 const runtimeRequirements = [
   [
-    'packages/runtime/src/types.ts',
+    'packages/core/src/lifecycle.ts',
     [
       'export interface OnModuleInit',
       'onModuleInit(): MaybePromise<void>;',
@@ -253,9 +253,39 @@ export function enforceRuntimeLifecycleNestjsMigrationDocs(
       );
     }
 
-    if (relativePath === 'packages/runtime/src/types.ts') {
+    if (relativePath === 'packages/core/src/lifecycle.ts') {
       enforceLifecycleTypeAllowlist(relativePath, content);
     }
+  }
+
+  const runtimeTypesPath = 'packages/runtime/src/types.ts';
+  const runtimeTypes = parseRuntimeSource(runtimeTypesPath, readText(runtimeTypesPath));
+  const lifecycleExports = new Set([...lifecycleInterfaceNames, 'LifecycleHooks']);
+  const directReexports = new Set();
+  for (const statement of runtimeTypes.statements) {
+    if (
+      (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) &&
+      lifecycleExports.has(statement.name.text)
+    ) {
+      throw new Error(`Runtime lifecycle migration contract check failed: ${runtimeTypesPath} must use direct type re-exports, not local lifecycle declarations.`);
+    }
+    if (!ts.isExportDeclaration(statement) || !statement.exportClause || !ts.isNamedExports(statement.exportClause)) {
+      continue;
+    }
+    for (const specifier of statement.exportClause.elements) {
+      if (!lifecycleExports.has(specifier.name.text)) continue;
+      if (
+        !statement.isTypeOnly || !statement.moduleSpecifier ||
+        !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== '@fluojs/core' ||
+        (specifier.propertyName && specifier.propertyName.text !== specifier.name.text)
+      ) {
+        throw new Error(`Runtime lifecycle migration contract check failed: ${runtimeTypesPath} must preserve direct type re-exports from @fluojs/core for ${specifier.name.text}.`);
+      }
+      directReexports.add(specifier.name.text);
+    }
+  }
+  if (directReexports.size !== lifecycleExports.size) {
+    throw new Error(`Runtime lifecycle migration contract check failed: ${runtimeTypesPath} must preserve all five direct type re-exports from @fluojs/core.`);
   }
 
   enforceLifecycleBootstrapAllowlist([

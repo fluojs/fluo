@@ -1,7 +1,8 @@
 import { Inject, InvariantError, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { cloneWithFallback, FrameworkService, getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
-import type { ApplicationLogger, CompiledModule, MicroserviceRuntime, OnApplicationShutdown } from '@fluojs/runtime';
+import type { OnApplicationShutdown } from '@fluojs/core';
+import type { ApplicationLogger, CompiledModule, MicroserviceRuntime } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { getHandlerMetadataEntries } from './metadata.js';

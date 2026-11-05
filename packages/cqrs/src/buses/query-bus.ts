@@ -1,11 +1,10 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
 import type { Container } from '@fluojs/di';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/core';
 import type {
   ApplicationLogger,
   CompiledModule,
-  OnApplicationBootstrap,
-  OnApplicationShutdown,
   RuntimeCleanupRegistration,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';

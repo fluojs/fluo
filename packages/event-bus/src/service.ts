@@ -1,11 +1,10 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { cloneWithFallback, FrameworkService } from '@fluojs/core/internal';
 import type { Container, NormalizedProvider } from '@fluojs/di';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/core';
 import type {
   ApplicationLogger,
   CompiledModule,
-  OnApplicationBootstrap,
-  OnApplicationShutdown,
 } from '@fluojs/runtime';
 import {
   APPLICATION_LOGGER,

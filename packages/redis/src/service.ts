@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import type Redis from 'ioredis';
-import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/core';
 
 import { createRedisPlatformStatusSnapshot } from './status.js';
 import { getRedisComponentId, REDIS_CLIENT } from './tokens.js';

@@ -1,11 +1,9 @@
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
+import type { OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/core';
 import type {
   ApplicationLogger,
   CompiledModule,
-  OnApplicationBootstrap,
-  OnApplicationShutdown,
-  OnModuleDestroy,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { Cron as CronValidator } from 'croner';
