@@ -87,7 +87,7 @@ class SecureDto {
 }
 ```
 
-`ExposeClassOptions` is the exported class-level options type accepted by `Expose(...)`. Use `excludeExtraneous: true` when a DTO should emit only fields with field-level `@Expose()` metadata.
+`ExposeClassOptions` is the exported class-level options type accepted by `Expose(...)`. Use `excludeExtraneous: true` when a DTO should emit only instance fields with field-level `@Expose()` metadata. Applying `@Expose()` only to a static field never exposes a same-named instance field or creates an output key.
 
 ### Value transforms
 
@@ -139,6 +139,7 @@ The serializer cuts active cyclic references safely instead of recursing forever
 ### Inherited decorator contracts
 
 Serialization metadata declared on a base class is inherited by derived DTOs. `@Expose()`, `@Exclude()`, and `@Transform()` rules applied to shared base fields still take effect when you serialize subclass instances.
+Field decorators target instance fields only. Static applications are ignored, including across inheritance, so they never expose, exclude, or transform a same-named instance field.
 Derived decorators own their metadata updates, so overriding a field or class option never changes the later serialization of the base DTO or a sibling DTO.
 
 Class-level `excludeExtraneous` also follows normal inheritance. A derived class with `@Expose()` and no options keeps the nearest inherited setting, so an expose-only base DTO remains expose-only in subclasses. Use `@Expose({ excludeExtraneous: false })` on the derived class only when you intentionally want to re-enable ordinary enumerable fields while still honoring inherited field-level `@Exclude()` metadata.
@@ -160,7 +161,7 @@ Undecorated class instances are still traversed recursively, so decorated nested
 - **HTTP integration**: `SerializerInterceptor` serializes uncommitted handler results; after the response is committed, it returns the value it received from `next.handle()` unchanged, although other interceptors may still transform the chain result
 - **Types**: `ExposeClassOptions` is exported from the root entrypoint for class-level `Expose(...)` options, and `TransformFunction` is exported for callbacks passed to `Transform(...)`
 
-`Expose` can be applied to classes and fields. `Exclude` and `Transform` apply to fields.
+`Expose` can be applied to classes and instance fields. `Exclude` and `Transform` apply to instance fields. All three ignore static field applications without throwing; static values remain unchanged and static transform callbacks are not executed.
 
 ## Related Packages
 
