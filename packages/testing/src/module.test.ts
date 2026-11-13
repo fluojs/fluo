@@ -1,6 +1,6 @@
 import { getModuleMetadata, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import type { CallHandler, Converter, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, MiddlewareContext, Next, RequestObserver } from '@fluojs/http';
-import { Controller, FromCookie, FromQuery, Get, Post, type RequestContext, RequestDto, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
+import type { Converter, Dispatcher, Interceptor, Middleware, RequestObserver } from '@fluojs/http';
+import { Controller, FromCookie, FromQuery, Get, Post, type RequestContext, RequestDto, Version, VersioningType } from '@fluojs/http';
 import type { ExceptionFilterHandler } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
@@ -76,6 +76,28 @@ class UserController {
 class AppModule {}
 
 describe('@fluojs/testing', () => {
+  it('get: multi alias preserves transient target lifetime across calls (#4017)', async () => {
+    const token = Symbol('plugins');
+    @ScopeDecorator('transient')
+    class Plugin {}
+    @Module({
+      providers: [Plugin, { provide: token, useExisting: Plugin, multi: true }],
+    })
+    class PluginModule {}
+    const testingModule = await Test.createTestingModule({ rootModule: PluginModule }).compile();
+
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const first = testingModule.get<Plugin[]>(token);
+      const second = testingModule.get<Plugin[]>(token);
+
+      expect(first).toHaveLength(1);
+      expect(second).toHaveLength(1);
+      expect(second[0]).toBeInstanceOf(Plugin);
+      expect(second[0]).not.toBe(first[0]);
+    });
+  });
+
   it('exposes Test.createTestingModule for NestJS-style module builder access', async () => {
     const TOKEN = Symbol('token');
 

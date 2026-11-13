@@ -55,6 +55,12 @@ This excerpt shows that class Providers and factory Providers share the same fie
 
 The full public union, including `useValue` and `useExisting`, meets `NormalizedProvider` like this.
 
+`useExisting` preserves `multi` during normalization. With `multi: true`, the alias
+contributes its target's resolved value in registration order and follows the
+target's scope. Singleton consumers still reject request-scoped targets before
+construction, and multi overrides replace the entire set. Without `multi: true`,
+the alias resolves the single target value as before.
+
 `path:packages/di/src/types.ts:56-121`
 ```typescript
 export interface ValueProvider<T = unknown> {
@@ -66,6 +72,7 @@ export interface ValueProvider<T = unknown> {
 export interface ExistingProvider<T = unknown> {
   provide: Token<T>;
   useExisting: Token;
+  multi?: boolean;
 }
 
 export interface NormalizedProvider<T = unknown> {

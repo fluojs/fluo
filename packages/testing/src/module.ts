@@ -430,6 +430,10 @@ function resolveSyncProvider(provider: NormalizedProvider, state: SyncResolverSt
 }
 
 function resolveSyncMultiProvider(provider: NormalizedProvider, state: SyncResolverState): unknown {
+  if (provider.type === 'existing') {
+    return instantiateSyncProvider(provider, state);
+  }
+
   if (provider.scope === 'request' && !state.introspection.requestScopeEnabled) {
     throw new Error(`Request-scoped provider ${String(provider.provide)} cannot be resolved outside request scope.`);
   }

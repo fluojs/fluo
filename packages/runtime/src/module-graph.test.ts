@@ -65,6 +65,22 @@ describe('module graph cache-key prerequisites', () => {
     expect(secondKey).not.toBe(firstKey);
   });
 
+  it('cache key: single and multi aliases for the same target have distinct identities (#4017)', () => {
+    class Plugin {}
+    class AppModule {}
+    const token = Symbol('plugins');
+    defineRuntimeModuleMetadata(AppModule, { providers: [Plugin] });
+    const singleKey = createModuleGraphCacheKey(AppModule, {
+      providers: [{ provide: token, useExisting: Plugin }],
+    });
+
+    const multiKey = createModuleGraphCacheKey(AppModule, {
+      providers: [{ provide: token, useExisting: Plugin, multi: true }],
+    });
+
+    expect(multiKey).not.toBe(singleKey);
+  });
+
   it('changes when module replacements change', () => {
     class RealModule {}
     class FirstReplacementModule {}
