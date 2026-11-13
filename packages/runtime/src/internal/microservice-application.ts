@@ -150,7 +150,12 @@ export class FluoMicroserviceApplication implements MicroserviceApplication {
       rejectClose = reject;
     });
     void (async () => {
-      this.runtime.markShutdownStarted?.();
+      const errors: unknown[] = [];
+      try {
+        this.runtime.markShutdownStarted?.();
+      } catch (error) {
+        errors.push(error);
+      }
 
       if (this.listenPromise) {
         try {
@@ -158,26 +163,25 @@ export class FluoMicroserviceApplication implements MicroserviceApplication {
         } catch {}
       }
 
-      if (this.closeContextOnClose) {
-        const errors: unknown[] = [];
-
-        try {
-          await closeMicroserviceRuntime(this.runtime, signal);
-        } catch (error) {
-          errors.push(error);
+      try {
+        await closeMicroserviceRuntime(this.runtime, signal);
+      } catch (error) {
+        if (!this.closeContextOnClose && errors.length === 0) {
+          throw error;
         }
+        errors.push(error);
+      }
 
+      if (this.closeContextOnClose) {
         try {
           await this.context.close(signal);
         } catch (error) {
           errors.push(error);
         }
+      }
 
-        if (errors.length > 0) {
-          throw createLifecycleCloseError(errors);
-        }
-      } else {
-        await closeMicroserviceRuntime(this.runtime, signal);
+      if (errors.length > 0) {
+        throw createLifecycleCloseError(errors);
       }
 
       this.closed = true;

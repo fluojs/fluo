@@ -6,6 +6,8 @@
 
 Runtime lifecycle 책임 지도는 [lifecycle과 shutdown 계약](./architecture/lifecycle-and-shutdown.ko.md) 및 [application shell 장](../book/advanced/ch09-app-context.ko.md)에 있습니다. [Factory 조립](../packages/runtime/src/bootstrap.ts)은 부분 bootstrap 자원 획득을 소유하고 반환 shell에 `RuntimeResources`를 인계합니다. [HTTP](../packages/runtime/src/internal/application.ts), [context](../packages/runtime/src/internal/application-context.ts), [microservice](../packages/runtime/src/internal/microservice-application.ts) shell은 각자의 admission/startup/close 상태를 소유합니다. [Lifecycle 조율](../packages/runtime/src/internal/lifecycle.ts)과 [runtime 자원 정리](../packages/runtime/src/internal/runtime-resources.ts)는 상태 머신을 합치지 않고 hook 순서와 phase 재시도 소유권을 유지합니다. [Provider 선언 정책](../packages/runtime/src/internal/provider-policy.ts)은 DI effective resolution이 아닌 scope/strategy 표현을 소유합니다.
 
+[Microservice shutdown 계약](./architecture/lifecycle-and-shutdown.ko.md#실패-재시도와-자원-소유권)은 동기 `markShutdownStarted()` 알림이 throw해도 teardown을 계속합니다. Active listen을 기다린 뒤 transport를 닫고 standalone 소유 context를 닫습니다. 알림과 cleanup 실패는 하나의 cached terminal close result로 공유하며, 연결된 child는 부모 context teardown을 부모에게 남깁니다. 실행 증거는 `microservice-application.shutdown-notification.test.ts`와 `tooling/governance/runtime-shutdown-terminality.test.ts`에 있습니다.
+
 일반 identity·인증 결과·account-linking 정책은 `@fluojs/auth`, HTTP guard·strategy·credential·refresh integration은 `@fluojs/auth-http`, crypto와 rotation/replay는 `@fluojs/jwt`, Passport.js bridge는 `@fluojs/passport`가 소유합니다. 기존 Passport 예제와 import는 compatibility 경로이며 canonical HTTP 등록은 auth-http의 `AuthModule.forRoot(...)`입니다.
 
 Background HTTP 작업은 기존 `useForm`의 additive `mode: 'background'`와
