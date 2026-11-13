@@ -39,6 +39,110 @@ describe('fallbackClone', () => {
 })
 
 describe('cloneWithFallback', () => {
+  it('preserves the issue #4014 event prototype regardless of function siblings', () => {
+    class Ev {
+      id = 1
+      get label() {
+        return `x${this.id}`
+      }
+    }
+    const source = new Ev()
+    const fn = () => {}
+
+    const direct = cloneWithFallback(source)
+    const container = cloneWithFallback({ ev: source, fn })
+    const nested = container.ev
+
+    expect(container.fn).toBe(fn)
+    for (const cloned of [direct, nested]) {
+      expect(cloned).not.toBe(source)
+      expect(cloned).toBeInstanceOf(Ev)
+      expect(cloned.label).toBe('x1')
+    }
+  })
+
+  it.each(['native', 'throwing', 'missing'] as const)(
+    'preserves nested prototypes and own keys with %s structuredClone',
+    (mode) => {
+      class Value {
+        id = 1
+        get label() {
+          return `x${this.id}`
+        }
+        describe() {
+          return this.label
+        }
+      }
+      const marker = Symbol('marker')
+      const value = new Value()
+      const source = {
+        value,
+        array: [value],
+        map: new Map([[value, value]]),
+        set: new Set([value]),
+        [marker]: { value },
+      }
+      Object.defineProperty(source, 'hidden', { value: { value }, enumerable: false })
+      if (mode === 'throwing') {
+        vi.stubGlobal('structuredClone', () => {
+          throw new DOMException('', 'DataCloneError')
+        })
+      } else if (mode === 'missing') {
+        vi.stubGlobal('structuredClone', undefined)
+      }
+
+      try {
+        const cloned = cloneWithFallback(source)
+
+        expect(Reflect.ownKeys(cloned)).toEqual(Reflect.ownKeys(source))
+        expect(Object.getOwnPropertyDescriptor(cloned, 'hidden')?.enumerable).toBe(false)
+        expect(cloned[marker]).not.toBe(source[marker])
+        expect(cloned[marker].value).toBe(cloned.value)
+        expect(cloned.array[0]).toBe(cloned.value)
+        expect(cloned.map.get(cloned.value)).toBe(cloned.value)
+        expect(cloned.set.has(cloned.value)).toBe(true)
+        expect(cloned.value).not.toBe(value)
+        expect(Object.getPrototypeOf(cloned.value)).toBe(Value.prototype)
+        expect(cloned.value.describe()).toBe('x1')
+        cloned.value.id = 2
+        expect(value.id).toBe(1)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    },
+  )
+
+  it('keeps plain data detached with native structuredClone available', () => {
+    const matcher = /clone/gi
+    matcher.lastIndex = 2
+    const buffer = new Uint8Array([1, 2, 3]).buffer
+    const source = {
+      plain: { ok: true },
+      nullPrototype: Object.create(null),
+      date: new Date('2026-01-02T03:04:05Z'),
+      matcher,
+      buffer,
+      bytes: new Uint8Array([3, 2, 1]),
+      view: new DataView(buffer),
+    }
+
+    const cloned = cloneWithFallback(source)
+
+    expect(Object.getPrototypeOf(cloned.plain)).toBe(Object.prototype)
+    expect(Object.getPrototypeOf(cloned.nullPrototype)).toBeNull()
+    expect(cloned.date).toEqual(source.date)
+    expect(cloned.matcher.lastIndex).toBe(2)
+    expect(cloned.buffer).toEqual(buffer)
+    expect(cloned.bytes).toEqual(source.bytes)
+    expect(cloned.view.getUint8(1)).toBe(2)
+    for (const key of ['plain', 'nullPrototype', 'date', 'matcher', 'buffer', 'bytes', 'view'] as const) {
+      expect(cloned[key]).not.toBe(source[key])
+    }
+    for (const primitive of [undefined, null, true, 1, 2n, 'value', Symbol('value')]) {
+      expect(cloneWithFallback(primitive)).toBe(primitive)
+    }
+  })
+
   it('uses the fallback clone for circular, symbol-keyed, and complex nested values', () => {
     // Given
     const marker = Symbol('marker')
@@ -70,7 +174,6 @@ describe('cloneWithFallback', () => {
       const cloned = cloneWithFallback(source)
 
       // Then
-      expect(structuredCloneSpy).toHaveBeenCalledTimes(1)
       expect(cloned).not.toBe(source)
       expect(cloned.self).toBe(cloned)
       expect(cloned[marker]).toEqual({ enabled: true })
