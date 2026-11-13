@@ -369,6 +369,9 @@ export async function writeSuccessResponse(
 
   if (request.method.toUpperCase() === 'HEAD') {
     applyImplicitHeadContentType(response, responseValue);
+    if (isByteRangeByteSource(responseValue) && !isResponseBodyForbidden(response.statusCode)) {
+      response.setHeader('Content-Length', String(responseValue.byteLength));
+    }
     return response.send(undefined);
   }
 
