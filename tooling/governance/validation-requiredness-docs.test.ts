@@ -18,13 +18,34 @@ describe('validation requiredness documentation governance', () => {
     const chapterPath = `book/beginner/ch06-validation${locale}.md`;
     const parityPath = `docs/contracts/nestjs-parity-gaps${locale}.md`;
 
+    for (const [path, heading] of [
+      [chapterPath, '## 6.2 Defining CreatePostDto with Validation Rules'],
+      [parityPath, '## Not Implemented'],
+    ]) {
+      it.each([
+        ['missing', ''],
+        ['duplicated', `${heading}\n${heading}`],
+        ['commented-out', `<!-- ${heading} -->`],
+      ])(`${path}: %s section heading rejects the documentation`, (_, replacement) => {
+        const changed = readText(path).replace(heading, replacement);
+
+        const enforce = () => enforceValidationRequirednessDocs(
+          (candidate) => candidate === path ? changed : readText(candidate),
+        );
+
+        expect(enforce).toThrow(`${heading} must appear exactly once`);
+      });
+    }
+
     it.each([
       [chapterPath, '@IsDefined()', '', 'CreatePostDto.title must use @IsDefined()'],
       [
         parityPath,
-        '`@fluojs/validation`',
+        locale === ''
+          ? '`@fluojs/validation` follows that Official-tier stability contract.'
+          : '`@fluojs/validation`은 이 Official tier 안정성 계약을 따릅니다.',
         '`@fluojs/validation` stable `999.x`',
-        'validation major 999.x disagrees with package major',
+        'stability row must match the canonical line exactly once',
       ],
     ])('canonical verifier: invalid %s -> rejects the documentation', (path, before, after, message) => {
       const preload = `
@@ -70,6 +91,27 @@ describe('validation requiredness documentation governance', () => {
       },
     );
 
+    for (const field of ['title', 'body']) {
+      it.each([
+        ['commented-out', '// @IsDefined()'],
+        ['block-commented', '/* @IsDefined() */'],
+        ['duplicated', '@IsDefined()\n  @IsDefined()'],
+        ['negated-prefix', '!@IsDefined()'],
+        ['reworded', '@IsDefined({})'],
+      ])(`${chapterPath}: %s IsDefined on ${field} rejects the example`, (_, replacement) => {
+        const chapter = readText(chapterPath).replace(
+          new RegExp(String.raw`@IsDefined\(\)(\n\s*@IsString\(\)\n\s*@MinLength\(\d+\)\n\s*${field})`, 'u'),
+          `${replacement}$1`,
+        );
+
+        const enforce = () => enforceValidationRequirednessDocs(
+          (path) => path === chapterPath ? chapter : readText(path),
+        );
+
+        expect(enforce).toThrow(`CreatePostDto.${field} must use @IsDefined()`);
+      });
+    }
+
     it(`${chapterPath}: removing the IsDefined import rejects the example`, () => {
       const chapter = readText(chapterPath).replace('IsBoolean, IsDefined,', 'IsBoolean,');
 
@@ -80,32 +122,35 @@ describe('validation requiredness documentation governance', () => {
       expect(enforce).toThrow('CreatePostDto must import IsDefined');
     });
 
-    it(`${parityPath}: a stale validation major rejects the claim`, () => {
-      const major = Number(JSON.parse(readText('packages/validation/package.json')).version.split('.')[0]);
-      const parity = readText(parityPath).replace(
-        '`@fluojs/validation`',
-        `\`@fluojs/validation\` stable \`${major + 1}.x\``,
-      );
+    const parity = readText(parityPath);
+    const stabilityRow = parity.split('\n').find((line) => line.includes('| `docs/contracts/release-governance.md`'));
+    if (!stabilityRow) {
+      throw new Error(`${parityPath}: stability fixture is missing`);
+    }
+    const stabilitySentence = locale === ''
+      ? '`@fluojs/validation` follows that Official-tier stability contract.'
+      : '`@fluojs/validation`은 이 Official tier 안정성 계약을 따릅니다.';
+    const reordered = locale === ''
+      ? 'The current stable `1.x` package, `@fluojs/validation`, follows that stability contract.'
+      : '현재 stable `1.x` 패키지인 `@fluojs/validation`은 이 안정성 계약을 따릅니다.';
+
+    it.each([
+      ['missing', ''],
+      ['duplicated', `${stabilityRow}\n${stabilityRow}`],
+      ['negated-prefix', `${locale === '' ? 'Not true: ' : '사실이 아님: '}${stabilityRow}`],
+      ['reordered', stabilityRow.replace(stabilitySentence, reordered)],
+      ['commented-out', `<!-- ${stabilityRow} -->`],
+      ['stale-major', stabilityRow.replace('`@fluojs/validation`', '`@fluojs/validation` stable `999.x`')],
+      ['matching-major', stabilityRow.replace('`@fluojs/validation`', '`@fluojs/validation` stable `2.x`')],
+      ['additional-claim', `${stabilityRow}\n${reordered}`],
+    ])(`${parityPath}: %s stability claim rejects the documentation`, (_, replacement) => {
+      const changed = parity.replace(stabilityRow, replacement);
 
       const enforce = () => enforceValidationRequirednessDocs(
-        (path) => path === parityPath ? parity : readText(path),
+        (path) => path === parityPath ? changed : readText(path),
       );
 
-      expect(enforce).toThrow(`disagrees with package major ${major}.x`);
-    });
-
-    it(`${parityPath}: a matching validation major passes the claim`, () => {
-      const major = JSON.parse(readText('packages/validation/package.json')).version.split('.')[0];
-      const parity = readText(parityPath).replace(
-        '`@fluojs/validation`',
-        `\`@fluojs/validation\` stable \`${major}.x\``,
-      );
-
-      const enforce = () => enforceValidationRequirednessDocs(
-        (path) => path === parityPath ? parity : readText(path),
-      );
-
-      expect(enforce).not.toThrow();
+      expect(enforce).toThrow('stability row must match the canonical line exactly once');
     });
   }
 });
