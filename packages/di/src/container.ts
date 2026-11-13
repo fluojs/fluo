@@ -305,6 +305,7 @@ export class Container {
   private multiRequestCache: Map<NormalizedProvider, Promise<unknown>> | undefined;
   private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
   private readonly materializedCachePromises: Promise<unknown>[] = [];
+  private readonly inFlightResolutions = new Set<Promise<unknown>>();
   private readonly pendingDisposables: Disposable[] = [];
   private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
@@ -661,9 +662,11 @@ export class Container {
       );
     }
 
-    await this.assertStaleDisposalsSettled();
+    return this.trackResolution(async () => {
+      await this.assertStaleDisposalsSettled();
 
-    return this.resolveWithChain(normalizeFrameworkServiceToken(token), [], new Set<Token>());
+      return this.resolveWithChain(normalizeFrameworkServiceToken(token), [], new Set<Token>());
+    });
   }
 
   private async resolveMultiContribution(token: Token, contributionIndex: number): Promise<unknown> {
@@ -674,24 +677,45 @@ export class Container {
       );
     }
 
-    await this.assertStaleDisposalsSettled();
+    return this.trackResolution(async () => {
+      await this.assertStaleDisposalsSettled();
 
-    const normalizedToken = normalizeFrameworkServiceToken(token);
-    const providers = this.collectMultiProviders(normalizedToken);
-    const provider = providers[contributionIndex];
+      const normalizedToken = normalizeFrameworkServiceToken(token);
+      const providers = this.collectMultiProviders(normalizedToken);
+      const provider = providers[contributionIndex];
 
-    if (!provider) {
-      throw new ContainerResolutionError(
-        `Multi-provider contribution ${contributionIndex} is not registered for ${formatTokenName(token)}.`,
-        { token, hint: 'Resolve a contribution index returned by the registered multi-provider order.' },
+      if (!provider) {
+        throw new ContainerResolutionError(
+          `Multi-provider contribution ${contributionIndex} is not registered for ${formatTokenName(token)}.`,
+          { token, hint: 'Resolve a contribution index returned by the registered multi-provider order.' },
+        );
+      }
+
+      this.assertSingletonDependencyScopes(provider);
+
+      return await this.withTokenInChain(normalizedToken, [], new Set<Token>(), async (chain, activeTokens) =>
+        this.resolveMultiProviderInstance(provider, chain, activeTokens),
       );
+    });
+  }
+
+  private async trackResolution<T>(run: () => Promise<T>): Promise<T> {
+    const resolution = run();
+    const owners: Container[] = [];
+
+    // A child resolution may materialize both request caches and ancestor singletons.
+    for (let owner: Container | undefined = this; owner; owner = owner.parent) {
+      owners.push(owner);
+      owner.inFlightResolutions.add(resolution);
     }
 
-    this.assertSingletonDependencyScopes(provider);
-
-    return await this.withTokenInChain(normalizedToken, [], new Set<Token>(), async (chain, activeTokens) =>
-      this.resolveMultiProviderInstance(provider, chain, activeTokens),
-    );
+    try {
+      return await resolution;
+    } finally {
+      for (const owner of owners) {
+        owner.inFlightResolutions.delete(resolution);
+      }
+    }
   }
 
   /**
@@ -743,20 +767,29 @@ export class Container {
     let completed = false;
 
     try {
+      const entries = this.disposalCacheEntries();
+      // An admitted resolution may consume a stale failure while this attempt drains.
+      const retryableStaleTasks = this.retainedStaleDisposalTasks();
       // Dispose all live request-scope children before tearing down this scope's cache.
-      if (this.childScopes && this.childScopes.size > 0) {
-        const childResults = await Promise.allSettled(Array.from(this.childScopes).map((child) => child.disposeFromParent()));
+      const children = new Set(this.childScopes);
+      const childResults = Promise.allSettled(Array.from(children).map((child) => child.disposeFromParent()));
 
-        for (const result of childResults) {
-          if (result.status === 'rejected') {
-            this.collectDisposalError(result.reason, errors);
-          }
+      // Admitted resolutions may attach children only after their first request cache write.
+      await Promise.allSettled(this.inFlightResolutions);
+      const lateChildResults = await Promise.allSettled(
+        Array.from(this.childScopes ?? [])
+          .filter((child) => !children.has(child))
+          .map((child) => child.disposeFromParent()),
+      );
+
+      for (const result of [...await childResults, ...lateChildResults]) {
+        if (result.status === 'rejected') {
+          this.collectDisposalError(result.reason, errors);
         }
-
       }
 
       try {
-        await this.disposeCache(this.disposalCacheEntries());
+        await this.disposeCache(entries, retryableStaleTasks);
       } catch (error) {
         this.collectDisposalError(error, errors);
       }
@@ -1317,10 +1350,12 @@ export class Container {
     return entries;
   }
 
-  private async disposeCache(entries: Array<[NormalizedProvider | Token, Promise<unknown>]>): Promise<void> {
+  private async disposeCache(
+    entries: Array<[NormalizedProvider | Token, Promise<unknown>]>,
+    retryableStaleTasks: readonly StaleDisposalTask[],
+  ): Promise<void> {
     const errors: unknown[] = [];
 
-    const retryableStaleTasks = this.retainedStaleDisposalTasks();
     const attemptedStaleInstances = new Set<Disposable>();
 
     try {
@@ -1353,25 +1388,16 @@ export class Container {
     const disposables: Disposable[] = [];
     const seenInstances = new Set<unknown>();
     const errors: unknown[] = [];
-    let pendingPromises = entries.map(([, promise]) => promise);
-    const activePromises = new Set(pendingPromises);
+    // Admitted calls have settled, so this final read includes every late cache write.
+    // Retain the initial snapshot as rejected resolutions can evict their cache entries.
+    const activePromises = new Set(
+      [...entries, ...this.disposalCacheEntries()].map(([, promise]) => promise),
+    );
+    const settled = await Promise.allSettled(activePromises);
 
-    while (pendingPromises.length > 0) {
-      const settled = await Promise.allSettled(pendingPromises);
-
-      for (const result of settled) {
-        if (result.status === 'rejected') {
-          errors.push(result.reason);
-        }
-      }
-
-      // In-flight resolutions can cache more dependencies while this batch settles.
-      pendingPromises = this.disposalCacheEntries()
-        .map(([, promise]) => promise)
-        .filter((promise) => !activePromises.has(promise));
-
-      for (const promise of pendingPromises) {
-        activePromises.add(promise);
+    for (const result of settled) {
+      if (result.status === 'rejected') {
+        errors.push(result.reason);
       }
     }
 
