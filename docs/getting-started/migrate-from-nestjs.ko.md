@@ -83,6 +83,8 @@ clearCookie(context.response, 'session', { path: '/' });
 
 ## Decorator metadata 사전 로드 순서
 
+<!-- fluo-contract: validation.metadata-preload -->
+
 fluo package import는 `Symbol.metadata`를 설치하지 않습니다. `@fluojs/validation`의 field decorator와 `@ValidateClass(...)`, `@fluojs/serialization` 데코레이터, `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터는 decorated class module이 평가되기 전에 `Symbol.metadata`가 필요합니다. 이는 TC39 decorator metadata이며, 지원하지 않는 `reflect-metadata`나 `emitDecoratorMetadata`를 활성화하라는 뜻이 아닙니다.
 
 decorated application graph를 static import한 뒤 같은 bootstrap module에서 `ensureMetadataSymbol()`을 호출하면 안 됩니다. ESM은 bootstrap module body보다 static dependency를 먼저 평가하므로 그 호출은 너무 늦습니다. symbol을 설치한 다음 일반 bootstrap graph를 dynamic import하는 preload entrypoint를 사용하세요.
@@ -415,6 +417,8 @@ Runtime은 `AsyncIterable`이 아닌 subscription resolver 결과를 거부합�
 - Discord migration은 NestJS async dynamic-module 또는 custom-provider clone이 아니다. `DiscordModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. 직접 전달에는 `DiscordService`, 알림 통합에는 `DISCORD_CHANNEL`을 주입하고, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용하며, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 내부 provider helper는 private으로 유지한다.
 
 ### Nested DTO and Mapped Type Rewrites
+
+<!-- fluo-contract: validation.mapped-defaults -->
 
 NestJS에서는 class-validator와 class-transformer를 함께 사용하여 reflected metadata 또는 transformer metadata로 중첩 constructor를 제공하는 경우가 많습니다.
 

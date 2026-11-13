@@ -97,6 +97,8 @@ For the complete Chapter 14 path, import `ConfigModule.forRoot()` and the global
 
 ## Decorator metadata preload ordering
 
+<!-- fluo-contract: validation.metadata-preload -->
+
 Importing fluo packages does not install `Symbol.metadata`. Field decorators and `@ValidateClass(...)` from `@fluojs/validation`, `@fluojs/serialization` decorators, and migrated custom standard decorators that read `context.metadata` need `Symbol.metadata` before their decorated class modules evaluate. This is TC39 decorator metadata, not an instruction to enable unsupported `reflect-metadata` or `emitDecoratorMetadata`.
 
 Do not statically import the decorated application graph and then call `ensureMetadataSymbol()` in the same bootstrap module. ESM evaluates static dependencies before the bootstrap module body, so that call is too late. Use a preload entrypoint that installs the symbol before dynamically importing the ordinary bootstrap graph:
@@ -432,6 +434,8 @@ The runtime rejects subscription resolver results that are not `AsyncIterable`; 
 - Discord migration is not a NestJS async dynamic-module or custom-provider clone. `DiscordModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. Inject `DiscordService` for direct delivery, inject `DISCORD_CHANNEL` for notifications integration, use `global?: boolean` with default global visibility instead of NestJS `isGlobal`, and keep internal provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, and `NormalizedDiscordModuleOptions` private.
 
 ### Nested DTO and Mapped Type Rewrites
+
+<!-- fluo-contract: validation.mapped-defaults -->
 
 NestJS commonly combines class-validator with class-transformer so reflected or transformer metadata supplies the nested constructor:
 

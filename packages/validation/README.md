@@ -34,6 +34,8 @@ pnpm add @fluojs/validation
 
 ## Quick Start
 
+<!-- fluo-contract: validation.metadata-preload -->
+
 `Symbol.metadata` must exist before any DTO module using validation field
 decorators or `@ValidateClass(...)` evaluates. Importing `@fluojs/validation`
 does not install it. Call `ensureMetadataSymbol()` before decorated class
@@ -159,6 +161,8 @@ metadata; standalone validation and Standard Schema issues may leave it unset.
 `@fluojs/validation` always emits its normal human-readable `message` values. Applications that need localized messages can opt into `@fluojs/i18n/validation` after validation fails. That integration maps `source`, `field`, and `code` to translation keys without changing validator execution or coupling this package to HTTP locale resolution.
 
 ### Mapped DTO helpers
+
+<!-- fluo-contract: validation.mapped-defaults -->
 
 ```ts
 import { IsEmail, IsString } from '@fluojs/validation';

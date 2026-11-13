@@ -34,6 +34,8 @@ pnpm add @fluojs/validation
 
 ## 빠른 시작
 
+<!-- fluo-contract: validation.metadata-preload -->
+
 Validation field decorator와 `@ValidateClass(...)`를 사용하는 DTO module이
 평가되기 전에 `Symbol.metadata`가 있어야 합니다. `@fluojs/validation` import는
 이를 설치하지 않습니다. 아래처럼 같은 module의 decorated class 선언 전에
@@ -154,6 +156,8 @@ Standard Schema 이슈에서는 값이 없을 수 있습니다.
 `@fluojs/validation`은 항상 기존 human-readable `message` 값을 방출합니다. Localized message가 필요한 애플리케이션은 validation 실패 후 `@fluojs/i18n/validation`에 opt-in할 수 있습니다. 이 통합은 validator 실행을 바꾸거나 이 패키지를 HTTP locale resolution에 결합하지 않고 `source`, `field`, `code`를 translation key로 매핑합니다.
 
 ### Mapped DTO 헬퍼
+
+<!-- fluo-contract: validation.mapped-defaults -->
 
 ```ts
 import { IsString, IsEmail } from '@fluojs/validation';

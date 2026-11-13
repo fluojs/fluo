@@ -7,6 +7,26 @@ import {
   enforceValidationMappedTypesImportBoundary,
 } from './validation-mapped-types-import-boundary.mjs';
 
+function readSource(sourcePath: string) {
+  return readFileSync(join(import.meta.dirname, '../..', sourcePath), 'utf8');
+}
+
+function fixtureReader(sourcePath: string, mutate: (source: string) => string) {
+  return (relativePath: string) => {
+    const source = readSource(relativePath);
+    return relativePath === sourcePath ? mutate(source) : source;
+  };
+}
+
+function mutateSection(source: string, heading: string, mutate: (section: string) => string) {
+  const start = source.indexOf(`${heading}\n`) + heading.length + 1;
+  const remainder = source.slice(start);
+  const level = heading.match(/^#+/u)?.[0].length;
+  const next = remainder.search(new RegExp(`^#{1,${level}} `, 'mu'));
+  const end = next === -1 ? source.length : start + next;
+  return source.slice(0, start) + mutate(source.slice(start, end)) + source.slice(end);
+}
+
 describe('validation mapped-type import boundary governance', () => {
   it('keeps governed source and documentation examples on the canonical subpath', () => {
     expect(() => enforceValidationMappedTypesImportBoundary()).not.toThrow();
@@ -44,64 +64,49 @@ describe('validation mapped-type import boundary governance', () => {
     ];
 
     for (const [index, heading] of headings.entries()) {
-      const source = readFileSync(join(import.meta.dirname, '../..', sourcePath), 'utf8');
-      const section = source.slice(source.indexOf(`${heading}\n`) + heading.length + 1);
-      const statement = section.split('\n\n').find((paragraph) => index === 0
-        ? paragraph.includes('Symbol.metadata')
-        : paragraph.includes('source DTO'))?.trim();
-      if (!statement) {
-        throw new Error(`Missing canonical fixture for ${sourcePath}: ${heading}`);
-      }
-      const diagnostic = index === 0
-        ? 'metadata preload before decorated DTO modules evaluate.'
-        : 'mapped DTO constructor/default boundaries.';
-      const prefix = korean ? '다음 설명은 틀렸습니다: ' : 'It is incorrect that ';
-      const reworded = korean
-        ? '이 DTO 안내는 다른 순서로 다시 서술되었습니다.'
-        : 'This DTO guidance has been restated in a different order.';
+      const sentinel = `<!-- fluo-contract: validation.${index === 0 ? 'metadata-preload' : 'mapped-defaults'} -->`;
+      const diagnostic = index === 0 ? 'metadata preload' : 'mapped DTO constructor/default boundaries';
+      const reader = (mutate: (section: string) => string) => fixtureReader(
+        sourcePath,
+        (source) => mutateSection(source, heading, mutate),
+      );
 
-      it.each([
-        ['missing', ''],
-        ['duplicated', `${statement}\n\n${statement}`],
-        ['negated-prefix', `${prefix}${statement}`],
-        ['reordered', statement.split(' ').reverse().join(' ')],
-        ['reworded', reworded],
-        ['commented-out', `<!-- ${statement} -->`],
-        ['commented-out-lines', statement.split('\n').map((line) => `// ${line}`).join('\n')],
-        ['additional-negation', `${statement}\n\n${prefix}${statement}`],
-        ['additional-rewording', `${statement}\n\n${reworded}`],
-      ])(`rejects %s canonical statement for ${heading} in ${sourcePath}`, (mutation, replacement) => {
-        const readText = (relativePath: string) => {
-          const text = readFileSync(join(import.meta.dirname, '../..', relativePath), 'utf8');
-          return relativePath === sourcePath ? text.replace(statement, replacement) : text;
-        };
+      it.each(['reworded', 'wrapped', 'added-explanation'])(
+        `accepts %s prose with preserved structure for ${heading} in ${sourcePath}`,
+        (mutation) => {
+          const readText = reader((section) => section.split(/(```[\s\S]*?```|<!--[\s\S]*?-->)/u)
+            .map((part, partIndex) => {
+              if (partIndex % 2 === 1 || !part.trim()) {
+                return part;
+              }
+              if (mutation === 'wrapped') {
+                return part.replace(/\s+/gu, ' ').replace(/ /gu, '\n');
+              }
+              const explanation = korean ? '예제의 실행 구조를 유지합니다.' : 'The example retains its execution structure.';
+              return mutation === 'reworded' ? `\n\n${explanation}\n\n` : `${part}\n${explanation}\n`;
+            }).join(''));
 
-        const detail = mutation === 'missing' || mutation === 'duplicated'
-          ? ` Expected exactly one canonical line in ${heading}; found ${mutation === 'missing' ? 0 : 2}:`
-          : '';
+          expect(() => enforceValidationMappedTypesImportBoundary(readText)).not.toThrow();
+        },
+      );
 
-        expect(() => enforceValidationMappedTypesImportBoundary(readText))
-          .toThrow(`${sourcePath} must document validation ${diagnostic}${detail}`);
-      });
+      it.each(['missing', 'duplicated', 'outside-section'])(
+        `rejects %s sentinel for ${heading} in ${sourcePath}`,
+        (mutation) => {
+          expect(readSource(sourcePath)).toContain(sentinel);
+          const readText = fixtureReader(sourcePath, (source) => {
+            const modified = mutateSection(source, heading, (section) => section.replace(
+              sentinel,
+              mutation === 'duplicated' ? `${sentinel}\n${sentinel}` : '',
+            ));
+            return mutation === 'outside-section' ? `${modified}\n${sentinel}\n` : modified;
+          });
 
-      it(`rejects commented-out example code for ${heading} in ${sourcePath}`, () => {
-        const codeLine = index === 0 ? 'ensureMetadataSymbol();' : '  @IsString()';
-        expect(section).toContain(`\n${codeLine}`);
-        const readText = (relativePath: string) => {
-          const text = readFileSync(join(import.meta.dirname, '../..', relativePath), 'utf8');
-          if (relativePath !== sourcePath) {
-            return text;
-          }
-          const start = text.indexOf(`${heading}\n`) + heading.length + 1;
-          return text.slice(0, start) + text.slice(start).replace(codeLine, `// ${codeLine}`);
-        };
+          expect(() => enforceValidationMappedTypesImportBoundary(readText))
+            .toThrow(`${sourcePath} must document validation ${diagnostic}`);
+        },
+      );
 
-        expect(() => enforceValidationMappedTypesImportBoundary(readText))
-          .toThrow(`${sourcePath} must document validation ${diagnostic} Section ${heading} differs from canonical guidance`);
-      });
-    }
-
-    for (const heading of headings) {
       it.each([
         ['missing', ''],
         ['level-changed', `#${heading}`],
@@ -109,66 +114,114 @@ describe('validation mapped-type import boundary governance', () => {
         ['suffixed', `${heading} extra`],
         ['duplicated', heading],
       ])(`rejects %s heading ${heading} in ${sourcePath}`, (mutation, replacement) => {
-        const readText = (relativePath: string) => {
-          const source = readFileSync(join(import.meta.dirname, '../..', relativePath), 'utf8');
-          if (relativePath !== sourcePath) {
-            return source;
-          }
-          return mutation === 'duplicated'
-            ? `${source}\n\n${heading}\n\nContrary guidance.`
-            : source.replace(heading, replacement);
-        };
+        const readText = fixtureReader(sourcePath, (source) => mutation === 'duplicated'
+          ? `${source}\n\n${heading}\n`
+          : source.replace(heading, replacement));
 
         expect(() => enforceValidationMappedTypesImportBoundary(readText))
           .toThrow(`${sourcePath} must contain exactly one line-exact heading: ${heading}`);
       });
     }
 
-    it(`rejects negated metadata preload requirements in ${sourcePath}`, () => {
-      const [before, after] = korean
-        ? readme
-          ? ['`Symbol.metadata`가 있어야 합니다.', '`Symbol.metadata`가 없어도 됩니다.']
-          : ['`Symbol.metadata`가 필요합니다.', '`Symbol.metadata`가 필요하지 않습니다.']
-        : readme
-          ? ['`Symbol.metadata` must exist before', '`Symbol.metadata` need not exist before']
-          : ['need `Symbol.metadata` before', 'do not need `Symbol.metadata` before'];
-      const readText = (relativePath: string) => {
-        const source = readFileSync(join(import.meta.dirname, '../..', relativePath), 'utf8');
-        if (relativePath !== sourcePath) {
-          return source;
-        }
-        expect(source).toContain(before);
-        return source.replace(before, after);
-      };
+    const preloadHeading = headings[0];
+    const preloadReader = (mutate: (section: string) => string) => fixtureReader(
+      sourcePath,
+      (source) => mutateSection(source, preloadHeading, mutate),
+    );
+    const preloadDiagnostic = `${sourcePath} must document validation metadata preload`;
 
-      expect(() => enforceValidationMappedTypesImportBoundary(readText))
-        .toThrow(`${sourcePath} must document validation metadata preload before decorated DTO modules evaluate.`);
+    // Mutate each README example separately so a second valid fence cannot mask it.
+    for (const blockIndex of readme ? [0, 1] : [0]) {
+      it.each([
+        'missing-call', 'line-comment', 'block-comment', 'late-call', 'missing-import',
+        'wrong-import', 'type-import', 'string-call', 'uninvoked-function', 'static-graph-import',
+        'commented-fence', 'missing-fence',
+      ])(`rejects %s preload in block ${blockIndex} of ${sourcePath}`, (mutation) => {
+        const readText = preloadReader((section) => {
+          let index = 0;
+          return section.replace(/```(?:ts|typescript)\n([\s\S]*?)```/gu, (fence: string, code: string) => {
+            if (index++ !== blockIndex) {
+              return fence;
+            }
+            if (mutation === 'commented-fence') {
+              return `<!--\n${fence}\n-->`;
+            }
+            if (mutation === 'missing-fence') {
+              return '';
+            }
+            let modified = code;
+            switch (mutation) {
+              case 'missing-call': modified = code.replace('ensureMetadataSymbol();', ''); break;
+              case 'line-comment': modified = code.replace('ensureMetadataSymbol();', '// ensureMetadataSymbol();'); break;
+              case 'block-comment': modified = code.replace('ensureMetadataSymbol();', '/* ensureMetadataSymbol(); */'); break;
+              case 'late-call': modified = `${code.replace('ensureMetadataSymbol();', '')}\nensureMetadataSymbol();\n`; break;
+              case 'missing-import': modified = code.replace("import { ensureMetadataSymbol } from '@fluojs/core';", ''); break;
+              case 'wrong-import': modified = code.replace("'@fluojs/core'", "'@fluojs/validation'"); break;
+              case 'type-import': modified = code.replace('import { ensureMetadataSymbol }', 'import type { ensureMetadataSymbol }'); break;
+              case 'string-call': modified = code.replace('ensureMetadataSymbol();', "'ensureMetadataSymbol();';"); break;
+              case 'uninvoked-function': modified = code.replace('ensureMetadataSymbol();', 'function unused() { ensureMetadataSymbol(); }'); break;
+              case 'static-graph-import': modified = `${code}\nimport './bootstrap.js';\n`; break;
+            }
+            return fence.replace(code, modified);
+          });
+        });
+
+        expect(() => enforceValidationMappedTypesImportBoundary(readText)).toThrow(preloadDiagnostic);
+      });
+    }
+
+    it(`accepts active aliased and line-wrapped preload code in ${sourcePath}`, () => {
+      const readText = preloadReader((section) => section
+        .replaceAll('import { ensureMetadataSymbol }', 'import {\n ensureMetadataSymbol as prepareMetadata,\n}')
+        .replaceAll('ensureMetadataSymbol();', 'prepareMetadata(\n);'));
+
+      expect(() => enforceValidationMappedTypesImportBoundary(readText)).not.toThrow();
     });
 
-    it.each([
-      ['metadata preload', '`@fluojs/validation`', '`validation`'],
-      ['source constructors', 'do not run source DTO constructors', 'run source DTO constructors'],
-      ['field defaults', 'or copy field initializer/default values', 'and copy field initializer/default values'],
-    ])(`rejects %s guidance mutations in ${sourcePath}`, (boundary, before, after) => {
-      const korean = sourcePath.endsWith('.ko.md');
-      const replacements = korean && boundary !== 'metadata preload'
-        ? boundary === 'source constructors'
-          ? ['source DTO 생성자를 실행하거나', 'source DTO 생성자를 실행하고']
-          : ['field initializer/default 값을 복사하지 않습니다', 'field initializer/default 값을 복사합니다']
-        : [before, after];
-      const readText = (relativePath: string) => {
-        const source = readFileSync(join(import.meta.dirname, '../..', relativePath), 'utf8');
-        return relativePath === sourcePath
-          ? source.replaceAll(replacements[0], replacements[1])
-          : source;
-      };
+    const mappedHeading = headings[1];
+    const defaultLine = readme ? "  email = 'hello@example.com';" : '  address = new AddressDto();';
+    const mappedReader = (mutate: (section: string) => string) => fixtureReader(
+      sourcePath,
+      (source) => mutateSection(source, mappedHeading, mutate),
+    );
 
-      const diagnostic = boundary === 'metadata preload'
-        ? 'metadata preload'
-        : 'mapped DTO constructor/default boundaries';
+    it.each(['deleted', 'commented', 'no-initializer', 'undefined', 'unrelated-field', 'wrong-helper'])(
+      `rejects %s mapped subclass default in ${sourcePath}`,
+      (mutation) => {
+        const readText = mappedReader((section) => {
+          // The migration has the same initializer in both source and subclass.
+          const start = section.indexOf(readme ? 'class EmailOnlyDto' : 'class AddressOnlyDto');
+          const prefix = section.slice(0, start);
+          const subclass = section.slice(start);
+          const field = readme ? 'email' : 'address';
+          const replacement = mutation === 'deleted' ? ''
+            : mutation === 'commented' ? `// ${defaultLine}`
+              : mutation === 'no-initializer' ? `  ${field}: unknown;`
+                : mutation === 'undefined' ? `  ${field} = undefined;`
+                  : defaultLine.replace(field, 'unrelated');
+          return prefix + (mutation === 'wrong-helper'
+            ? subclass.replace('extends PickType', 'extends PartialType')
+            : subclass.replace(defaultLine, replacement));
+        });
 
-      expect(() => enforceValidationMappedTypesImportBoundary(readText))
-        .toThrow(`${sourcePath} must document validation ${diagnostic}`);
-    });
+        expect(() => enforceValidationMappedTypesImportBoundary(readText))
+          .toThrow(`${sourcePath} must document validation mapped DTO constructor/default boundaries`);
+      },
+    );
+
+    it.each(['PickType', 'OmitType', 'IntersectionType'])(
+      `accepts %s subclass with a re-declared default in ${sourcePath}`,
+      (helper) => {
+        const readText = mappedReader((section) => section.replace(
+          /class (EmailOnlyDto|AddressOnlyDto) extends PickType\([^\n]+\)/u,
+          `class $1 extends ${helper}(SourceDto)`,
+        ).replace(
+          /import \{[^}]*\} from '@fluojs\/validation\/mapped-types';/u,
+          `import { ${helper}, PartialType } from '@fluojs/validation/mapped-types';`,
+        ));
+
+        expect(() => enforceValidationMappedTypesImportBoundary(readText)).not.toThrow();
+      },
+    );
   }
 });
