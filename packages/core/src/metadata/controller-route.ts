@@ -1,3 +1,4 @@
+import { InvariantError } from '../errors.js';
 import type { MetadataPropertyKey } from '../types.js';
 import {
   cloneCollection,
@@ -132,7 +133,7 @@ function resolveRequiredRouteFields(
   const path = stored?.path ?? standard?.path;
 
   if (method === undefined || path === undefined) {
-    throw new Error(`Route metadata for property key "${String(propertyKey)}" is missing required "method" or "path".`);
+    throw new InvariantError(`Route metadata for property key "${String(propertyKey)}" is missing required "method" or "path".`);
   }
 
   return { method, path };
