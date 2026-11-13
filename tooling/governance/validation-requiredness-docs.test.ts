@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { enforceValidationRequirednessDocs } from './validation-requiredness-docs.mjs';
@@ -15,6 +17,42 @@ describe('validation requiredness documentation governance', () => {
   for (const locale of ['', '.ko']) {
     const chapterPath = `book/beginner/ch06-validation${locale}.md`;
     const parityPath = `docs/contracts/nestjs-parity-gaps${locale}.md`;
+
+    it.each([
+      [chapterPath, '@IsDefined()', '', 'CreatePostDto.title must use @IsDefined()'],
+      [
+        parityPath,
+        '`@fluojs/validation`',
+        '`@fluojs/validation` stable `999.x`',
+        'validation major 999.x disagrees with package major',
+      ],
+    ])('canonical verifier: invalid %s -> rejects the documentation', (path, before, after, message) => {
+      const preload = `
+        import fs from 'node:fs';
+        import { syncBuiltinESMExports } from 'node:module';
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (file, ...args) {
+          const content = originalReadFileSync.call(this, file, ...args);
+          return String(file).endsWith(${JSON.stringify(path)}) && typeof content === 'string'
+            ? content.replace(${JSON.stringify(before)}, ${JSON.stringify(after)})
+            : content;
+        };
+        syncBuiltinESMExports();
+      `;
+
+      const result = spawnSync(process.execPath, [
+        '--import',
+        `data:text/javascript,${encodeURIComponent(preload)}`,
+        fileURLToPath(new URL('./verify-platform-consistency-governance.mjs', import.meta.url)),
+      ], {
+        cwd: fileURLToPath(new URL('../../', import.meta.url)),
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+
+      expect(result.stderr).toContain(message);
+      expect(result.status).toBe(1);
+    });
 
     it.each(['title', 'body'])(
       `${chapterPath}: removing IsDefined from %s rejects the example`,
