@@ -177,6 +177,24 @@ Adapter wire support is an explicit portability contract. Supported Node listene
 
 Custom runtime methods do not become OpenAPI Path Item operations automatically. `@fluojs/openapi` continues to accept only its documented standard operation methods, so exclude custom-method descriptors from OpenAPI input or document those endpoints through an application-owned extension.
 
+### CORS origin variance
+
+`createCorsMiddleware({ allowOrigin })` emits `Vary: Origin` for array and function policies
+on every request, including rejected or missing `Origin` values and functions returning
+`undefined` or `"*"`. This also applies before recognized `OPTIONS` preflight responses are
+sent as bodyless `204` responses without calling `next`. Other requests, including rejected
+origins and non-preflight `OPTIONS`, continue through `next`; variance does not grant access.
+Rejected array origins and function results of `undefined` do not emit
+`Access-Control-Allow-Origin`. Functions receive the request origin, including `undefined`
+when it is absent, and their result still selects the allow-origin header.
+
+Static non-wildcard string policies also emit `Vary: Origin`; explicit `"*"` and omitted
+`allowOrigin` retain wildcard allow-origin behavior without adding Origin variance.
+Existing `Vary` fields and lowercase header names are preserved, `Origin` is deduplicated
+case-insensitively, and an existing `Vary: *` remains a wildcard. Credentials with wildcard
+origins remain invalid. Regression evidence lives in `src/middleware/cors.test.ts` and the
+real-listener CORS cases in `../runtime/src/application.test.ts`.
+
 ### Portable header helpers
 
 Use `getRequestHeader(request, name)` when middleware, versioning, DTO binding, or controller code

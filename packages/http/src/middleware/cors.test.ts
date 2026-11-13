@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse } from '../types.js';
-import { createCorsMiddleware } from './cors.js';
+import { type CorsOptions, createCorsMiddleware } from './cors.js';
 
 function createRequest(
   method: FrameworkRequest['method'],
@@ -47,6 +47,74 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 }
 
 describe('createCorsMiddleware', () => {
+  for (const method of ['GET', 'OPTIONS'] as const) {
+    for (const policy of ['array', 'function', 'wildcard function'] as const) {
+      it.each(['https://app.example.com', 'https://rejected.example.com', undefined])(
+        `varies ${method} CORS responses by Origin for ${policy} policies with origin %s`,
+        async (requestOrigin) => {
+          const callbackInputs: Array<string | undefined> = [];
+          const allowOrigin: CorsOptions['allowOrigin'] = policy === 'array'
+            ? ['https://app.example.com']
+            : (origin) => {
+              callbackInputs.push(origin);
+              return policy === 'wildcard function'
+                ? '*'
+                : origin === 'https://app.example.com' ? origin : undefined;
+            };
+          const middleware = createCorsMiddleware({ allowOrigin });
+          const response = createResponse();
+          let reachedNext = false;
+
+          await middleware.handle(
+            {
+              request: createRequest(method, requestOrigin, method === 'OPTIONS'
+                ? { 'access-control-request-method': 'GET' }
+                : {}),
+              requestContext: {} as never,
+              response,
+            },
+            async () => {
+              reachedNext = true;
+            },
+          );
+
+          const expectedOrigin = policy === 'wildcard function'
+            ? '*'
+            : requestOrigin === 'https://app.example.com' ? requestOrigin : undefined;
+          expect(response.headers['Access-Control-Allow-Origin']).toBe(expectedOrigin);
+          expect(response.headers.Vary).toBe('Origin');
+          expect(callbackInputs).toEqual(policy === 'array' ? [] : [requestOrigin]);
+          expect(reachedNext).toBe(method === 'GET');
+          expect(response.committed).toBe(method === 'OPTIONS');
+          expect(response.statusCode).toBe(method === 'OPTIONS' ? 204 : undefined);
+          expect(response.body).toBeUndefined();
+        },
+      );
+    }
+
+    it.each([undefined, '*', 'https://static.example.com'])(
+      `preserves ${method} CORS variance for static policy %s`,
+      async (allowOrigin) => {
+        const middleware = createCorsMiddleware({ allowOrigin });
+        const response = createResponse();
+
+        await middleware.handle(
+          {
+            request: createRequest(method, 'https://app.example.com', method === 'OPTIONS'
+              ? { 'access-control-request-method': 'GET' }
+              : {}),
+            requestContext: {} as never,
+            response,
+          },
+          async () => {},
+        );
+
+        expect(response.headers['Access-Control-Allow-Origin']).toBe(allowOrigin ?? '*');
+        expect(response.headers.Vary).toBe(allowOrigin && allowOrigin !== '*' ? 'Origin' : undefined);
+      },
+    );
+  }
+
   it('applies CORS headers on normal requests', async () => {
     const middleware = createCorsMiddleware({
       allowHeaders: ['Content-Type', 'Authorization'],
@@ -178,7 +246,7 @@ describe('createCorsMiddleware', () => {
       allowOrigin: ['https://app.example.com'],
     });
     const response = createResponse();
-    response.setHeader('Vary', 'Accept-Encoding, Origin');
+    response.setHeader('Vary', 'Accept-Encoding, oRiGiN');
 
     await middleware.handle(
       {
@@ -189,7 +257,7 @@ describe('createCorsMiddleware', () => {
       async () => {},
     );
 
-    expect(response.headers.Vary).toBe('Accept-Encoding, Origin');
+    expect(response.headers.Vary).toBe('Accept-Encoding, oRiGiN');
   });
 
   it('preserves lowercase vary header names when appending Origin', async () => {
@@ -250,6 +318,6 @@ describe('createCorsMiddleware', () => {
 
     expect(reachedNext).toBe(true);
     expect(response.headers['Access-Control-Allow-Origin']).toBeUndefined();
-    expect(response.headers.Vary).toBeUndefined();
+    expect(response.headers.Vary).toBe('Origin');
   });
 });

@@ -175,6 +175,24 @@ Adapter wire support는 명시적인 portability contract입니다. 지원되는
 
 Custom runtime method가 자동으로 OpenAPI Path Item operation이 되는 것은 아닙니다. `@fluojs/openapi`는 계속 문서화된 standard operation method만 받으므로 custom-method descriptor를 OpenAPI input에서 제외하거나 application-owned extension으로 해당 endpoint를 문서화해야 합니다.
 
+### CORS origin variance
+
+`createCorsMiddleware({ allowOrigin })`는 array 및 function 정책에서 모든 요청에
+`Vary: Origin`을 설정합니다. 거부되거나 누락된 `Origin`, function이 `undefined` 또는
+`"*"`를 반환하는 경우도 포함합니다. 인식된 `OPTIONS` preflight를 `next` 호출 없이
+bodyless `204` 응답으로 보내기 전에도 같은 규칙을 적용합니다. 거부된 origin과
+preflight가 아닌 `OPTIONS`를 포함한 나머지 요청은 `next`로 계속 진행하며, variance가
+접근 권한을 부여하지는 않습니다. Array에서 거부한 origin과 function 결과가 `undefined`인
+경우에는 `Access-Control-Allow-Origin`을 설정하지 않습니다. Function은 origin이 없을 때의
+`undefined`를 포함해 요청 origin을 전달받으며, 반환값으로 allow-origin header를 선택합니다.
+
+Wildcard가 아닌 static string 정책도 `Vary: Origin`을 설정합니다. 명시적인 `"*"`와
+`allowOrigin` 생략은 Origin variance를 추가하지 않고 wildcard allow-origin 동작을 유지합니다.
+기존 `Vary` 필드와 소문자 header 이름을 보존하고, `Origin`은 대소문자를 구분하지 않고
+중복을 제거하며, 기존 `Vary: *`는 wildcard로 유지합니다. Credentials와 wildcard origin의
+조합은 여전히 허용하지 않습니다. 실행 가능한 회귀 근거는 `src/middleware/cors.test.ts`와
+`../runtime/src/application.test.ts`의 실제 listener CORS 테스트입니다.
+
 ### 이식 가능한 헤더 helper
 
 미들웨어, versioning, DTO binding, controller 코드가 adapter가 넘긴 `string | string[] | undefined`
