@@ -80,6 +80,12 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 <!-- fluo:docs-navigation:end -->
 
+Validation DTO의 `Symbol.metadata` 사전 로드와 mapped DTO의 source 생성자·기본값
+경계는 [validation README](../packages/validation/README.ko.md#빠른-시작)와
+[NestJS 이전 안내](./getting-started/migrate-from-nestjs.ko.md#decorator-metadata-사전-로드-순서)를
+따르세요. 기본값이 필요하면 mapped subclass에서 다시 선언하고, `PartialType`은
+누락된 patch field의 `undefined` 의미를 유지합니다.
+
 HTTP가 매칭한 React 클라이언트 이동은 [navigation payload 계약](./contracts/react-navigation-payload.ko.md)에서 시작한 다음 [React API 원본](../packages/react/README.ko.md)과 [Vite SSR 예제](../examples/react-vite-ssr/README.ko.md)를 확인하세요. 공식 starter는 크기를 제한하고 escape한 HTTP 선택 초기 page를 전송한 뒤 동일한 build-produced importer map과 공통 provider/page slot을 hydration과 이후 `Link`/`useRouter()` 이동에 사용합니다. 이들은 확정된 URL·params를 history에 commit하고 back/forward도 새로 요청합니다. 생성 starter는 network/5xx, 호환되지 않는 build 및 복구 가능한 매핑된 import 실패에서 재시도·문서 이동 control과 함께 셸을 유지하며 다른 실패(없는 importer key 포함)는 전체 문서로 이동합니다. 일반 GET 및 JavaScript 비활성 GET은 streamed document를 유지합니다. 상태·cookie·오류는 HTTP가 소유합니다. 실행 근거는 `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`입니다.
 
 v2 프로덕션 navigation에서는 선택한 전체 Vite manifest와 동일 origin `/assets/`

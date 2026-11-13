@@ -83,7 +83,7 @@ clearCookie(context.response, 'session', { path: '/' });
 
 ## Decorator metadata 사전 로드 순서
 
-fluo 내장 데코레이터는 runtime record를 framework-owned store에 저장하므로 import 시점의 전역 변경이 필요하지 않습니다. 반면 `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터와 `@fluojs/serialization` 데코레이터는 decorated class module이 평가되는 동안 `Symbol.metadata`가 필요합니다.
+fluo package import는 `Symbol.metadata`를 설치하지 않습니다. `@fluojs/validation`의 field decorator와 `@ValidateClass(...)`, `@fluojs/serialization` 데코레이터, `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터는 decorated class module이 평가되기 전에 `Symbol.metadata`가 필요합니다. 이는 TC39 decorator metadata이며, 지원하지 않는 `reflect-metadata`나 `emitDecoratorMetadata`를 활성화하라는 뜻이 아닙니다.
 
 decorated application graph를 static import한 뒤 같은 bootstrap module에서 `ensureMetadataSymbol()`을 호출하면 안 됩니다. ESM은 bootstrap module body보다 static dependency를 먼저 평가하므로 그 호출은 너무 늦습니다. symbol을 설치한 다음 일반 bootstrap graph를 dynamic import하는 preload entrypoint를 사용하세요.
 
@@ -464,9 +464,21 @@ import {
 
 class UpdateUserDto extends PartialType(CreateUserDto) {}
 class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
-class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
+class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {
+  address = new AddressDto();
+}
 class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
 ```
+
+`PickType`, `OmitType`, `IntersectionType`은 source DTO 생성자를 실행하거나
+field initializer/default 값을 복사하지 않습니다. Derived class는 validation
+또는 binding metadata에서 발견한 retained field를 `undefined`로 초기화합니다.
+따라서 `CreateUserDto.address = new AddressDto()`는 자동으로 이어지지 않습니다.
+중첩 객체 기본값이 필요하면 위의 `AddressOnlyDto`처럼 subclass에서 `address`를
+다시 선언하세요. `PartialType`도 source 생성자와 기본값을 사용하지 않으며,
+누락된 patch field를 `undefined`로 유지하는 것이 목적입니다.
+`UpdateUserDto`에 create 기본값을 복원하면 누락과 명시적인 업데이트를 구별하려는
+patch 의미가 사라지므로 기본값을 다시 선언하지 않습니다.
 
 네 helper는 `@fluojs/validation/mapped-types`에서만 export되며 root import에는 compatibility alias가 없습니다. `@nestjs/mapped-types` binding과 `@nestjs/swagger`의 mapped binding을 이 subpath로 옮기세요. `PickType`, `OmitType`, `PartialType`은 적용 가능한 field-level validation과 binding metadata를 보존하지만, subset 또는 optional DTO가 base class-level validator의 field 가정을 더 이상 만족하지 않을 수 있으므로 해당 validator는 의도적으로 복사하지 않습니다. Derived DTO에서도 여전히 유효한 class-level rule은 검토 후 다시 선언하세요. `IntersectionType`은 모든 source contract를 유지하므로 각 input DTO의 field-level 및 class-level validation을 보존합니다. NestJS mapped-type의 class-level metadata 동작이 암묵적으로 이어진다고 가정하지 마세요.
 

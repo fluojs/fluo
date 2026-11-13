@@ -34,8 +34,16 @@ pnpm add @fluojs/validation
 
 ## Quick Start
 
+`Symbol.metadata` must exist before any DTO module using validation field
+decorators or `@ValidateClass(...)` evaluates. Importing `@fluojs/validation`
+does not install it. Call `ensureMetadataSymbol()` before decorated class
+declarations in the same module, as below.
+
 ```ts
+import { ensureMetadataSymbol } from '@fluojs/core';
 import { DefaultValidator, isDtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
+
+ensureMetadataSymbol();
 
 class CreateUserDto {
   @IsEmail()
@@ -61,6 +69,21 @@ try {
   }
 }
 ```
+
+For DTOs imported from separate modules, calling it in the module body after a
+static import of the application graph is too late. Use this preload entrypoint,
+and import DTOs and the application graph from `bootstrap.js`:
+
+```ts
+// preload.ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
+
+This prepares TC39 decorator metadata; it does not imply support for
+`reflect-metadata` or `emitDecoratorMetadata`.
 
 ## Common Patterns
 
@@ -146,9 +169,20 @@ class UserDto {
   @IsEmail() email = '';
 }
 
-class EmailOnlyDto extends PickType(UserDto, ['email']) {}
+class EmailOnlyDto extends PickType(UserDto, ['email']) {
+  email = 'hello@example.com';
+}
 class UpdateUserDto extends PartialType(UserDto) {}
 ```
+
+`PickType`, `OmitType`, and `IntersectionType` do not run source DTO constructors
+or copy field initializer/default values. The derived class initializes retained
+fields discovered through validation or binding metadata to `undefined`.
+Redeclare a field in the subclass when its default is needed, as shown by
+`EmailOnlyDto.email` above. `PartialType` also avoids source constructors and
+defaults; it deliberately preserves `undefined` for missing patch fields rather
+than restoring create defaults. Do not redeclare create defaults on
+`UpdateUserDto`.
 
 Mapped DTO helpers preserve field-level validation and binding metadata through
 the documented subclassing pattern shown above. `PickType`, `OmitType`, and
@@ -226,8 +260,10 @@ does not isolate mutations performed by user-supplied schema code.
 `ValidateClass` remains validation-only, including its existing empty-issues
 behavior. `DefaultValidator.materialize(..., { undeclaredProperties: 'reject' })`
 is a separate class hydration/rejection contract, not schema output parsing or
-HTTP projection. For handler output binding, use
+HTTP projection. To bind successful schema output from request data to HTTP
+handler input arguments, use
 [`createSchemaDto` and `StandardSchemaBinder`](../http/README.md#standard-schema-output-binding);
+this is not handler response/output binding.
 HTTP maps parser `DtoValidationError` failures to 400.
 
 **Evidence:** `src/standard-schema.ts`, the export in `src/index.ts`, and

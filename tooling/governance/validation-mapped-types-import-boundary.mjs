@@ -69,13 +69,47 @@ export function enforceNoRootMappedTypeImports(source, sourcePath) {
 }
 
 /**
- * Enforce the canonical mapped-type import boundary for governed source and
- * documentation examples.
+ * Enforce canonical mapped-type imports and the validation metadata preload
+ * and mapped constructor/default guidance in the EN/KO owner documents.
  *
  * @param readText Optional source reader used to inject governance fixtures.
  */
 export function enforceValidationMappedTypesImportBoundary(readText = defaultReadText) {
   for (const relativePath of governedPaths) {
-    enforceNoRootMappedTypeImports(readText(relativePath), relativePath);
+    const source = readText(relativePath);
+    enforceNoRootMappedTypeImports(source, relativePath);
+
+    if (
+      relativePath.startsWith('packages/validation/README')
+      || relativePath.startsWith('docs/getting-started/migrate-from-nestjs')
+    ) {
+      const korean = relativePath.endsWith('.ko.md');
+      const readme = relativePath.startsWith('packages/');
+      const metadataHeading = readme
+        ? korean ? '## 빠른 시작' : '## Quick Start'
+        : korean ? '## Decorator metadata 사전 로드 순서' : '## Decorator metadata preload ordering';
+      const metadata = (source.split(metadataHeading)[1]?.split('```')[0] ?? '').replace(/\s+/gu, ' ');
+      const metadataOrdering = korean
+        ? /평가되기 전에 `Symbol\.metadata`/u
+        : /`Symbol\.metadata` (?:must exist before|before)/u;
+      if (
+        !metadata.includes('`@fluojs/validation`')
+        || !metadata.includes('`@ValidateClass(...)`')
+        || !metadataOrdering.test(metadata)
+      ) {
+        throw new Error(`${relativePath} must document validation metadata preload before decorated DTO modules evaluate.`);
+      }
+
+      const mappedHeading = readme
+        ? korean ? '### Mapped DTO 헬퍼' : '### Mapped DTO helpers'
+        : '### Nested DTO and Mapped Type Rewrites';
+      const mapped = (source.split(mappedHeading)[1]?.split('\n### ')[0] ?? '').replace(/\s+/gu, ' ');
+      const mappedDefaults = korean
+        ? /`PickType`, `OmitType`, `IntersectionType`은 source DTO 생성자를 실행하거나 field initializer\/default 값을 복사하지 않습니다/u
+        : /`PickType`, `OmitType`, and `IntersectionType` do not run source DTO constructors or copy field initializer\/default values/u;
+      if (!mappedDefaults.test(mapped)) {
+        throw new Error(`${relativePath} must document validation mapped DTO constructor/default boundaries.`);
+      }
+    }
   }
 }

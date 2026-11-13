@@ -79,6 +79,12 @@ Follow Docs contract establishment → evidence verification → Korean Book app
 
 <!-- fluo:docs-navigation:end -->
 
+For validation DTO `Symbol.metadata` preload and mapped DTO source constructor
+and default boundaries, follow the [validation README](../packages/validation/README.md#quick-start)
+and [NestJS migration guidance](./getting-started/migrate-from-nestjs.md#decorator-metadata-preload-ordering).
+Redeclare needed defaults in the mapped subclass; `PartialType` preserves
+`undefined` for missing patch fields.
+
 For HTTP-matched React client navigation, start at the [navigation payload contract](./contracts/react-navigation-payload.md), then the [React API owner](../packages/react/README.md) and the [Vite SSR example](../examples/react-vite-ssr/README.md). The official starter transfers a bounded, escaped HTTP-selected initial page, then uses the same build-produced importer map and shared provider/page slot for hydration and later `Link`/`useRouter()` moves. Those controls commit confirmed URL/params through history, including fresh back/forward requests; the starter preserves network/5xx, incompatible builds and recoverable mapped import failures with retry/document controls while other failures, including absent importer keys, return to full documents. Ordinary and JavaScript-disabled GETs keep streamed documents. HTTP retains status, cookies, and error ownership. Runtime evidence is in `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, and `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`.
 
 For v2 production navigation, the complete selected Vite manifest and same-origin `/assets/`
