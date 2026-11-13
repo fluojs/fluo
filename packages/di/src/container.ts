@@ -386,7 +386,7 @@ export class Container {
 
       if (this.requestScopeEnabled && normalized.scope === 'singleton') {
         throw new ScopeMismatchError(
-          `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container.`,
+          `Singleton provider ${formatTokenName(normalized.provide)} cannot be registered on a request-scope container.`,
           {
             token: normalized.provide,
             scope: 'singleton',
