@@ -715,7 +715,7 @@ evict된 각 cached promise는 `path:packages/di/src/container.ts:1475-1523`의 
 
 stale disposal은 이제 shutdown-only error accumulator가 아니라 task state machine입니다. `StaleDisposalTask`는 promise, failure, 그리고 failure가 이미 소비되었는지를 기록합니다(`path:packages/di/src/container.ts:31-39`). `resolve()`는 replacement resolution을 시작하기 전에 `assertStaleDisposalsSettled()`를 호출합니다(`path:packages/di/src/container.ts:593-604`). disposal도 `disposeCache()`를 통해 같은 경계에 도달하며, cleanup이 계속될 수 있도록 resolution failure와 일반 `onDestroy()` failure도 함께 수집합니다.
 
-`path:packages/di/src/container.ts:1458-1614`
+`path:packages/di/src/container.ts:1470-1626`
 ```typescript
   private async assertStaleDisposalsSettled(): Promise<void> {
     const errors: unknown[] = [];
@@ -1055,6 +1055,8 @@ tier별 cache ownership은 disposal 대상 목록에서도 반복됩니다.
 이 발췌는 request child disposal이 root singleton을 건드리지 않는 이유를 직접 보여 줍니다. child는 request cache만 내놓고, root만 singleton cache를 내놓습니다.
 
 실제 instance 수집은 `collectDisposableInstances()`에서 `Promise.allSettled`로 수행됩니다. 이 점이 중요합니다. provider promise 하나가 reject되어도, 컨테이너는 다른 disposable instance들을 계속 모을 수 있습니다. 첫 시도에서는 `disposeInstancesInReverseOrder()`가 `onDestroy()`를 생성 역순으로 호출합니다. 실패한 instance만 원래 생성 순서로 다시 저장하므로 다음 명시적 시도는 그 유지 목록을 다시 뒤집어 같은 destruction order를 지키면서 성공한 hook을 다시 방문하지 않습니다.
+
+진행 중인 resolution은 disposal이 시작된 뒤에도 dependency를 cache에 추가할 수 있습니다. 수집기는 각 promise 묶음이 settle된 뒤 해당 컨테이너가 소유한 cache를 다시 읽고, 새 promise가 없어질 때까지 기다립니다. 그 뒤 materialization 순서로 instance를 모으므로 뒤늦게 생성된 dependency도 같은 disposal 시도에서 dependent 다음에 정리됩니다. `packages/di/src/container-dispose-inflight.test.ts`는 명시적 gate로 singleton/request와 single/multi cache의 이 동작을 검증합니다.
 
 `disposeCache()`는 stale task를 settle하기 전에 retry candidate를 snapshot하므로, 같은 disposal 중 처음 관찰된 failure는 그 pass에서 재시도하지 않습니다. 실제로 재시도한 모든 stale instance는 retry가 실패한 경우까지 live-cache disposal에서 제외하므로, 같은 live object를 반환하는 factory가 retained failure 뒤에 성공한 hook을 중복 호출할 수 없습니다.
 

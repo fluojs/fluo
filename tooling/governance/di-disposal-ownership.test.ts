@@ -193,7 +193,7 @@ describe('DI disposal ownership governance', () => {
       ['path:packages/di/src/container.ts:741-778', 741, 778],
       ['path:packages/di/src/container.ts:1302-1318', 1302, 1318],
       ['path:packages/di/src/container.ts:1320-1348', 1320, 1348],
-      ['path:packages/di/src/container.ts:1458-1614', 1458, 1614],
+      ['path:packages/di/src/container.ts:1470-1626', 1470, 1626],
     ] as const;
 
     // When / Then

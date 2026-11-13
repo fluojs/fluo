@@ -1353,13 +1353,25 @@ export class Container {
     const disposables: Disposable[] = [];
     const seenInstances = new Set<unknown>();
     const errors: unknown[] = [];
-    const activePromises = new Set(entries.map(([, promise]) => promise));
+    let pendingPromises = entries.map(([, promise]) => promise);
+    const activePromises = new Set(pendingPromises);
 
-    const settled = await Promise.allSettled(entries.map(([, p]) => p));
+    while (pendingPromises.length > 0) {
+      const settled = await Promise.allSettled(pendingPromises);
 
-    for (const result of settled) {
-      if (result.status === 'rejected') {
-        errors.push(result.reason);
+      for (const result of settled) {
+        if (result.status === 'rejected') {
+          errors.push(result.reason);
+        }
+      }
+
+      // In-flight resolutions can cache more dependencies while this batch settles.
+      pendingPromises = this.disposalCacheEntries()
+        .map(([, promise]) => promise)
+        .filter((promise) => !activePromises.has(promise));
+
+      for (const promise of pendingPromises) {
+        activePromises.add(promise);
       }
     }
 

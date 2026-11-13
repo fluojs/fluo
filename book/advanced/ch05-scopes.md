@@ -715,7 +715,7 @@ Each evicted cached promise is handed to `scheduleStaleDisposal()` in `path:pack
 
 Stale disposal is now a task state machine rather than a shutdown-only error accumulator. `StaleDisposalTask` records its promise, failure, and whether that failure has already been consumed (`path:packages/di/src/container.ts:31-39`). `resolve()` calls `assertStaleDisposalsSettled()` before beginning replacement resolution (`path:packages/di/src/container.ts:593-604`). Disposal reaches the same boundary through `disposeCache()`, while still collecting resolution and ordinary `onDestroy()` failures so cleanup can continue.
 
-`path:packages/di/src/container.ts:1458-1614`
+`path:packages/di/src/container.ts:1470-1626`
 ```typescript
   private async assertStaleDisposalsSettled(): Promise<void> {
     const errors: unknown[] = [];
@@ -1055,6 +1055,8 @@ Tiered cache ownership appears again in the disposal target list.
 This excerpt directly shows why request child disposal does not touch root singletons. The child exposes only request cache, and only the root exposes singleton cache.
 
 Actual instance collection happens in `collectDisposableInstances()` using `Promise.allSettled`. This matters. Even if one provider promise rejects, the container can keep collecting the other disposable instances. On the first attempt, `disposeInstancesInReverseOrder()` calls `onDestroy()` in reverse creation order. It stores only failed instances back in original creation order, so the next explicit attempt reverses that retained list into the same destruction order without revisiting successful hooks.
+
+An in-flight resolution can add dependencies to caches after disposal starts. After each promise batch settles, the collector reads the container's owned caches again and waits until no new promises remain. It then collects instances in materialization order, so late dependencies are destroyed after their dependents in the same disposal attempt. `packages/di/src/container-dispose-inflight.test.ts` uses an explicit gate to verify this behavior for singleton/request and single/multi caches.
 
 `disposeCache()` snapshots retry candidates before settling stale tasks so a failure first observed during the same disposal is not retried in that pass. Every stale instance actually retried is excluded from live-cache disposal, including one whose retry failed, so a factory that returns the same live object cannot invoke a successful hook behind a retained failure.
 
