@@ -51,6 +51,15 @@ function collectRootMappedTypeImports(source) {
   return imports;
 }
 
+function contentAfterUniqueHeading(source, heading, sourcePath) {
+  const lines = source.split(/\r?\n/u);
+  const matches = lines.flatMap((line, index) => line === heading ? [index] : []);
+  if (matches.length !== 1) {
+    throw new Error(`${sourcePath} must contain exactly one line-exact heading: ${heading}`);
+  }
+  return lines.slice(matches[0] + 1).join('\n');
+}
+
 /**
  * Reject mapped helper imports from the validation root in TypeScript source
  * and Markdown/MDX code fences.
@@ -88,7 +97,7 @@ export function enforceValidationMappedTypesImportBoundary(readText = defaultRea
       const metadataHeading = readme
         ? korean ? '## 빠른 시작' : '## Quick Start'
         : korean ? '## Decorator metadata 사전 로드 순서' : '## Decorator metadata preload ordering';
-      const metadata = (source.split(metadataHeading)[1]?.split('```')[0] ?? '').replace(/\s+/gu, ' ');
+      const metadata = contentAfterUniqueHeading(source, metadataHeading, relativePath).split('```')[0].replace(/\s+/gu, ' ');
       const metadataOrdering = korean
         ? /평가되기 전에 `Symbol\.metadata`/u
         : /`Symbol\.metadata` (?:must exist before|before)/u;
@@ -103,7 +112,7 @@ export function enforceValidationMappedTypesImportBoundary(readText = defaultRea
       const mappedHeading = readme
         ? korean ? '### Mapped DTO 헬퍼' : '### Mapped DTO helpers'
         : '### Nested DTO and Mapped Type Rewrites';
-      const mapped = (source.split(mappedHeading)[1]?.split('\n### ')[0] ?? '').replace(/\s+/gu, ' ');
+      const mapped = contentAfterUniqueHeading(source, mappedHeading, relativePath).split('\n### ')[0].replace(/\s+/gu, ' ');
       const mappedDefaults = korean
         ? /`PickType`, `OmitType`, `IntersectionType`은 source DTO 생성자를 실행하거나 field initializer\/default 값을 복사하지 않습니다/u
         : /`PickType`, `OmitType`, and `IntersectionType` do not run source DTO constructors or copy field initializer\/default values/u;

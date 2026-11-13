@@ -32,6 +32,40 @@ describe('validation mapped-type import boundary governance', () => {
     'docs/getting-started/migrate-from-nestjs.md',
     'docs/getting-started/migrate-from-nestjs.ko.md',
   ]) {
+    const korean = sourcePath.endsWith('.ko.md');
+    const readme = sourcePath.startsWith('packages/');
+    const headings = [
+      readme
+        ? korean ? '## 빠른 시작' : '## Quick Start'
+        : korean ? '## Decorator metadata 사전 로드 순서' : '## Decorator metadata preload ordering',
+      readme
+        ? korean ? '### Mapped DTO 헬퍼' : '### Mapped DTO helpers'
+        : '### Nested DTO and Mapped Type Rewrites',
+    ];
+
+    for (const heading of headings) {
+      it.each([
+        ['missing', ''],
+        ['level-changed', `#${heading}`],
+        ['inline', `See ${heading}`],
+        ['suffixed', `${heading} extra`],
+        ['duplicated', heading],
+      ])(`rejects %s heading ${heading} in ${sourcePath}`, (mutation, replacement) => {
+        const readText = (relativePath: string) => {
+          const source = readFileSync(join(import.meta.dirname, '../..', relativePath), 'utf8');
+          if (relativePath !== sourcePath) {
+            return source;
+          }
+          return mutation === 'duplicated'
+            ? `${source}\n\n${heading}\n\nContrary guidance.`
+            : source.replace(heading, replacement);
+        };
+
+        expect(() => enforceValidationMappedTypesImportBoundary(readText))
+          .toThrow(`${sourcePath} must contain exactly one line-exact heading: ${heading}`);
+      });
+    }
+
     it.each([
       ['metadata preload', '`@fluojs/validation`', '`validation`'],
       ['source constructors', 'do not run source DTO constructors', 'run source DTO constructors'],
