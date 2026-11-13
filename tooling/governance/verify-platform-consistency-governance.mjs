@@ -3472,25 +3472,27 @@ export function enforceReactServerFunctionContract() {
   }
 }
 
-export function enforceHttpRuntimeCancellationAndContextIsolation() {
-  const abortSource = read('packages/http/src/dispatch/request-abort.ts');
-  const dispatcherSource = read('packages/http/src/dispatch/dispatcher.ts');
-  const fastPathSource = read('packages/http/src/dispatch/fast-path/fast-path-executor.ts');
-  const contextSource = read('packages/http/src/context/request-context.ts');
-  const nodeRootSource = read('packages/http/src/index.ts');
-  const portableRootSource = read('packages/http/src/index.portable.ts');
-  const httpPackage = JSON.parse(read('packages/http/package.json'));
-  const cancellationRegression = read('packages/http/src/dispatch/dispatcher-cancellation.test.ts');
-  const contextRegression = read('packages/http/src/context/request-context-isolation.test.ts');
-  const fastPathScopeRegression = read('packages/http/src/dispatch/dispatcher-fast-path-scope.test.ts');
-  const sseBackpressureRegression = read(
+export function enforceHttpRuntimeCancellationAndContextIsolation(readText = read) {
+  const abortSource = readText('packages/http/src/dispatch/request-abort.ts');
+  const dispatcherSource = readText('packages/http/src/dispatch/dispatcher.ts');
+  const fastPathSource = readText('packages/http/src/dispatch/fast-path/fast-path-executor.ts');
+  const contextSource = readText('packages/http/src/context/request-context.ts');
+  const nodeRootSource = readText('packages/http/src/index.ts');
+  const portableRootSource = readText('packages/http/src/index.portable.ts');
+  const httpPackage = JSON.parse(readText('packages/http/package.json'));
+  const cancellationRegression = readText('packages/http/src/dispatch/dispatcher-cancellation.test.ts');
+  const contextRegression = readText('packages/http/src/context/request-context-isolation.test.ts');
+  const fastPathScopeRegression = readText('packages/http/src/dispatch/dispatcher-fast-path-scope.test.ts');
+  const sseBackpressureRegression = readText(
     'packages/http/src/dispatch/dispatcher-sse-backpressure-cancellation.test.ts',
   );
-  const byteRangeRegression = read('packages/http/src/dispatch/byte-range-response.test.ts');
-  const httpAdapterPortabilityHarness = read(
+  const byteRangeSource = readText('packages/http/src/byte-range-response.ts');
+  const responsePolicySource = readText('packages/http/src/dispatch/dispatch-response-policy.ts');
+  const byteRangeRegression = readText('packages/http/src/dispatch/byte-range-response.test.ts');
+  const httpAdapterPortabilityHarness = readText(
     'packages/testing/src/portability/http-adapter-portability.ts',
   );
-  const httpAdapterPortabilityRegression = read(
+  const httpAdapterPortabilityRegression = readText(
     'packages/testing/src/portability/http-adapter-portability.test.ts',
   );
 
@@ -3562,6 +3564,24 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
     'Managed SSE regressions must cover blocked-drain cancellation, exactly-once iterator cleanup, request-scope disposal, and original stream errors.',
   );
   assert(
+    byteRangeSource.includes("return method.toUpperCase() === 'GET';") &&
+      byteRangeSource.includes('isByteRangeRequestMethod(request.method) && response.statusCode === 200'),
+    'HTTP byte-range selection must remain GET-only and effective-200-only.',
+  );
+  assert(
+    responsePolicySource.includes("if (request.method.toUpperCase() === 'HEAD')") &&
+      responsePolicySource.includes("response.setHeader('Content-Length', String(responseValue.byteLength));"),
+    'HTTP byte responses must preserve HEAD full-length metadata when Range is ignored.',
+  );
+  assert(
+    byteRangeRegression.includes('HEAD with %s returns full metadata without opening a stream') &&
+      byteRangeRegression.includes('GET with effective route status %s ignores every range') &&
+      byteRangeRegression.includes('GET with handler status 403 ignores %s') &&
+      byteRangeRegression.includes('bytes=0-999999999999999999999') &&
+      byteRangeRegression.includes('bytes=-999999999999999999999'),
+    'HTTP byte-range regressions must cover full HEAD metadata, effective non-200 statuses, and oversized endpoint clamping.',
+  );
+  assert(
     byteRangeRegression.includes('if-range') &&
       byteRangeRegression.includes('uses the complete representation when If-Range does not match') &&
       byteRangeRegression.includes('writes a satisfiable byte range from a byte representation'),
@@ -3581,7 +3601,7 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
     'packages/http/README.md',
     'packages/http/README.ko.md',
   ]) {
-    const documentation = read(documentationPath);
+    const documentation = readText(documentationPath);
     assert(
       documentation.includes('Promise.prototype') && documentation.includes('isAborted()'),
       `${documentationPath} must document HTTP cancellation and request-context isolation together.`,
@@ -3598,7 +3618,7 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
     'book/advanced/ch11-request-pipeline.md',
     'book/advanced/ch11-request-pipeline.ko.md',
   ]) {
-    const documentation = read(documentationPath).toLowerCase();
+    const documentation = readText(documentationPath).toLowerCase();
     assert(
       documentation.includes('fast') &&
         documentation.includes('controller') &&
@@ -3617,7 +3637,7 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
     'book/advanced/ch11-request-pipeline.md',
     'book/advanced/ch11-request-pipeline.ko.md',
   ]) {
-    const documentation = read(documentationPath).toLowerCase();
+    const documentation = readText(documentationPath).toLowerCase();
     assert(
       documentation.includes('waitfordrain()') &&
         documentation.includes('iterator') &&
