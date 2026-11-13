@@ -1,3 +1,4 @@
+import { parseAcceptHeader, selectMostSpecificAcceptToken } from './dispatch-accept.js';
 import type { RequestContext } from '../types.js';
 import { readFirstNonEmptyRequestHeaderValue } from '../header-helpers.js';
 
@@ -7,78 +8,12 @@ const JSON_MEDIA_TYPE = 'application/json';
 /** Error representation selected by HTTP content negotiation. */
 export type ErrorRepresentationKind = 'html' | 'json';
 
-type AcceptRange = {
-  readonly mediaRange: string;
-  readonly order: number;
-  readonly quality: number;
-  readonly specificity: number;
-};
-
 type RepresentationCandidate = {
   readonly kind: ErrorRepresentationKind;
   readonly priority: number;
   readonly quality: number;
   readonly specificity: number;
 };
-
-function parseQuality(value: string | undefined): number {
-  if (value === undefined) {
-    return 1;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0;
-}
-
-function mediaRangeSpecificity(mediaRange: string): number {
-  if (mediaRange === '*/*') {
-    return 0;
-  }
-  return mediaRange.endsWith('/*') ? 1 : 2;
-}
-
-function parseAcceptHeader(value: string): readonly AcceptRange[] {
-  const ranges: AcceptRange[] = [];
-
-  for (const [order, token] of value.split(',').entries()) {
-    const [rawMediaRange, ...parameters] = token.trim().split(';');
-    const mediaRange = rawMediaRange?.trim().toLowerCase() ?? '';
-
-    if (!mediaRange.includes('/')) {
-      continue;
-    }
-
-    const qualityParameter = parameters
-      .map((parameter) => parameter.trim().split('='))
-      .find(([name]) => name?.toLowerCase() === 'q');
-
-    ranges.push({
-      mediaRange,
-      order,
-      quality: parseQuality(qualityParameter?.[1]?.trim()),
-      specificity: mediaRangeSpecificity(mediaRange),
-    });
-  }
-
-  return ranges;
-}
-
-function mediaRangeMatches(mediaRange: string, mediaType: string): boolean {
-  const [rangeType, rangeSubtype] = mediaRange.split('/');
-  const [type, subtype] = mediaType.split('/');
-  return rangeType !== undefined
-    && rangeSubtype !== undefined
-    && type !== undefined
-    && subtype !== undefined
-    && (rangeType === '*' || rangeType === type)
-    && (rangeSubtype === '*' || rangeSubtype === subtype);
-}
-
-function bestRangeForMediaType(ranges: readonly AcceptRange[], mediaType: string): AcceptRange | undefined {
-  return ranges
-    .filter((range) => mediaRangeMatches(range.mediaRange, mediaType))
-    .sort((left, right) => right.specificity - left.specificity || left.order - right.order)[0];
-}
 
 /**
  * Reads the normalized Accept header from one request context.
@@ -101,7 +36,7 @@ export function canNegotiateHtml(acceptHeader: string | undefined): boolean {
     return false;
   }
 
-  const range = bestRangeForMediaType(parseAcceptHeader(acceptHeader), HTML_MEDIA_TYPE);
+  const range = selectMostSpecificAcceptToken(HTML_MEDIA_TYPE, parseAcceptHeader(acceptHeader));
   return range !== undefined && range.quality > 0;
 }
 
@@ -134,7 +69,7 @@ export function selectErrorRepresentation(
   const candidates: RepresentationCandidate[] = [];
 
   for (const offer of offers) {
-    const range = bestRangeForMediaType(ranges, offer.mediaType);
+    const range = selectMostSpecificAcceptToken(offer.mediaType, ranges);
     if (range !== undefined && range.quality > 0) {
       candidates.push({
         kind: offer.kind,
