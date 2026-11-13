@@ -176,7 +176,7 @@ Fluo's type-safe storage also integrates cleanly with TypeScript's `as const` an
 
 ## 2.4 Reflect API examples in Fluo
 Fluo uses `Reflect` methods to interact with objects in a way that respects the language's internal mechanisms. A primary example is retrieving the metadata bag from a target class.
-`path:packages/core/src/metadata/shared.ts:314-331`
+`path:packages/core/src/metadata/shared.ts:331-348`
 ```typescript
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
   const activeMetadataSymbol = getActiveMetadataSymbol();
@@ -200,7 +200,7 @@ export function getStandardMetadataBag(target: object): StandardMetadataBag | un
 This helper resolves the active metadata symbol, prefers the target's own current/native bag, falls back to the target's own fallback-era bag, and then reads inherited bags. When own and inherited bags coexist, `overlayStandardMetadataBag(...)` preserves own-key precedence while leaving inherited records visible. The lower-level own-bag reader performs the `Object.hasOwn` and `Reflect.get` operations described earlier.
 
 Metadata property-map merging follows a separate path and does not call `Reflect.ownKeys`.
-`path:packages/core/src/metadata/shared.ts:372-400`
+`path:packages/core/src/metadata/shared.ts:396-417`
 ```typescript
 export function mergeMetadataPropertyKeys<TStored, TStandard>(
   stored: ReadonlyMap<MetadataPropertyKey, TStored> | undefined,
@@ -325,7 +325,7 @@ Custom Providers also enable contextual injection, where the DI container uses i
 
 Injection metadata reads both the WeakMap store and the standard metadata bag, then combines them into one schema.
 
-`path:packages/core/src/metadata/injection.ts:39-62`
+`path:packages/core/src/metadata/injection.ts:43-66`
 ```typescript
 export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
   const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
@@ -398,7 +398,7 @@ During resolution, `getInheritedClassDiMetadata()` in `path:packages/core/src/me
 
 When a Module is compiled, Fluo's runtime scans the `providers` list defined in `@Module` metadata. For each class Provider, the effective `ClassDiMetadata` from `getInheritedClassDiMetadata()` describes its dependencies and lifecycle Scope. This information guides the DI container as it instantiates Providers and their dependencies in the required order.
 
-The container does not precompute or topologically sort a dependency graph. When it instantiates a class or factory Provider, `resolveProviderDeps()` in `path:packages/di/src/container.ts:1538-1546` visits `provider.inject` entries in declaration order and awaits each dependency. `resolveDepToken()` recursively returns to `resolveWithChain()` for that Token, so each dependency is resolved or instantiated before the Provider's constructor or factory runs in `path:packages/di/src/container.ts:1362-1389`. The active Token chain also detects circular construction while this recursive resolution is in progress.
+The container does not precompute or topologically sort a dependency graph. When it instantiates a class or factory Provider, `resolveProviderDeps()` in `path:packages/di/src/container.ts:1855-1863` visits `provider.inject` entries in declaration order and awaits each dependency. `resolveDepToken()` recursively returns to `resolveWithChain()` for that Token, so each dependency is resolved or instantiated before the Provider's constructor or factory runs in `path:packages/di/src/container.ts:1639-1670`. The active Token chain also detects circular construction while this recursive resolution is in progress.
 
 ## 2.10 Handling Edge Cases: Dynamic Metadata
 In some advanced scenarios, metadata may need to be attached or modified dynamically at runtime. Fluo prioritizes declarative, Decorator-based configuration, but our metadata system also supports imperative APIs for these cases. You can configure classes and Modules programmatically with helpers such as `defineModuleMetadata` or `defineClassDiMetadata`, which is especially useful when building dynamic plugins or special test environments.
@@ -427,7 +427,7 @@ The practical lesson for advanced readers is that Fluo does **not** have a singl
 
 - `path:packages/core/src/metadata/shared.ts:10-35` resolves the global symbol hook.
 - `path:packages/core/src/metadata/shared.ts:126-150` defines the canonical standard-bag keys and Fluo-owned store identifiers.
-- `path:packages/core/src/metadata/shared.ts:245-257` allocates target-specific maps.
+- `path:packages/core/src/metadata/shared.ts:262-274` allocates target-specific maps.
 - `path:packages/core/src/metadata/store.ts:16-32` isolates record mutation by cloning on reads and writes.
 - `path:packages/core/src/metadata/class-di.ts:95-123` calculates and caches inherited effective DI state.
 
@@ -445,18 +445,18 @@ In `path:packages/core/src/metadata/shared.ts:126-150`, Fluo separates `standard
 This distinction is subtle but important. The former represents property keys for standard metadata bags, while the latter represents identifiers used to select Fluo-owned process-global `WeakMap` stores through `path:packages/core/src/metadata/shared.ts:156-204`. If you miss this difference, you might think all metadata lives in the same container, but the source code shows that Fluo intentionally distinguishes interoperability data from framework-only management information.
 
 Creation helpers reinforce this separation.
-`path:packages/core/src/metadata/shared.ts:245-257` exposes `getOrCreatePropertyMap`, which allocates a per-target `Map` only when needed. That means classes without route-level or property-level metadata do not pay for eagerly allocated structures. In applications with large fan-out, this kind of lazy handling matters much more than abstract claims about metadata performance because it directly reduces allocation pressure during Bootstrap.
+`path:packages/core/src/metadata/shared.ts:262-274` exposes `getOrCreatePropertyMap`, which allocates a per-target `Map` only when needed. That means classes without route-level or property-level metadata do not pay for eagerly allocated structures. In applications with large fan-out, this kind of lazy handling matters much more than abstract claims about metadata performance because it directly reduces allocation pressure during Bootstrap.
 
 Deduplication is also handled explicitly.
-`path:packages/core/src/metadata/shared.ts:259-285` implements `mergeUnique` using insertion order and reference identity. This may look ordinary, but it encodes framework semantics. Guards and Interceptors must preserve declared order, duplicate references must not explode the chain, and Fluo must not attempt deep structural equality on arbitrary user objects. Therefore, metadata helpers are also policy boundaries.
+`path:packages/core/src/metadata/shared.ts:286-302` implements `mergeUnique` using insertion order and reference identity. This may look ordinary, but it encodes framework semantics. Guards and Interceptors must preserve declared order, duplicate references must not explode the chain, and Fluo must not attempt deep structural equality on arbitrary user objects. Therefore, metadata helpers are also policy boundaries.
 
 The cloned store in `path:packages/core/src/metadata/store.ts:16-32` is one of the clearest examples of source-level rigor. `read()` clones on the way out, `write()` clones on the way in, and `update()` clones after applying the updater. This three-sided cloning discipline prevents shared mutable references from turning the metadata layer into ambient state. In framework code, this is far more valuable than simple convenience because it makes metadata contention dramatically easier to debug.
 
 `class-di.ts` shows how these lower-level pieces become runtime behavior. `path:packages/core/src/metadata/class-di.ts:49-61` calculates constructor lineage and reverses it, then `path:packages/core/src/metadata/class-di.ts:95-123` folds metadata from base to leaf and caches the effective snapshot. This reversal is not aesthetic. It ensures inherited defaults are seen first and child definitions have the final decision. In a reflection-heavy system, that rule would be opaque, but when the metadata engine stays small and explicit, inheritance behavior remains a readable algorithm.
 
-There is another hidden advanced point in `shared.ts`. `path:packages/core/src/metadata/shared.ts:287-370` provides `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, and record/map readers for constructor metadata. This means Fluo carefully decides where to read metadata from. Some information lives on the object itself, some information lives on the constructor, and the helpers keep this choice visible rather than hiding it behind one giant "get everything" API.
+There is another hidden advanced point in `shared.ts`. `path:packages/core/src/metadata/shared.ts:315-387` provides `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, and record/map readers for constructor metadata. This means Fluo carefully decides where to read metadata from. Some information lives on the object itself, some information lives on the constructor, and the helpers keep this choice visible rather than hiding it behind one giant "get everything" API.
 
-The key merge routine continues the same theme. `path:packages/core/src/metadata/shared.ts:372-400` merges stored keys and standard keys while preserving first-seen order. This behavior follows the same merge rule already shown in the earlier `mergeMetadataPropertyKeys(stored, standard)` call from `path:packages/core/src/metadata/injection.ts:39-62`. Instead of pretending the two worlds are identical, Fluo defines reconciliation rules explicitly, and that predictability lets the framework combine Standard Decorators with internal runtime stores without devolving into nondeterministic behavior.
+The key merge routine continues the same theme. `path:packages/core/src/metadata/shared.ts:396-417` merges stored keys and standard keys while preserving first-seen order. This behavior follows the same merge rule already shown in the earlier `mergeMetadataPropertyKeys(stored, standard)` call from `path:packages/core/src/metadata/injection.ts:43-66`. Instead of pretending the two worlds are identical, Fluo defines reconciliation rules explicitly, and that predictability lets the framework combine Standard Decorators with internal runtime stores without devolving into nondeterministic behavior.
 
 If we step back, a consistent set of design heuristics appears.
 

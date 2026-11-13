@@ -176,7 +176,7 @@ Module metadata write 경로는 저장 전에 Zod와 유사한 validator, develo
 
 ## 2.4 Reflect API examples in Fluo
 Fluo는 언어의 내부 메커니즘을 존중하는 방식으로 객체와 상호작용하기 위해 `Reflect` 메서드를 활용합니다. 주요 사례는 대상 클래스에서 메타데이터 가방을 검색하는 것입니다.
-`path:packages/core/src/metadata/shared.ts:314-331`
+`path:packages/core/src/metadata/shared.ts:331-348`
 ```typescript
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
   const activeMetadataSymbol = getActiveMetadataSymbol();
@@ -200,7 +200,7 @@ export function getStandardMetadataBag(target: object): StandardMetadataBag | un
 이 helper는 active metadata symbol을 해석하고, target의 own current/native bag, target의 own fallback-era bag, inherited bag 순서로 조회합니다. Own bag과 inherited bag이 함께 있으면 `overlayStandardMetadataBag(...)`이 own-key precedence를 보존하면서 inherited record를 계속 보이게 합니다. 앞서 설명한 `Object.hasOwn`과 `Reflect.get` 연산은 하위 own-bag reader에서 수행합니다.
 
 Metadata property map 병합은 별도 경로를 따르며 `Reflect.ownKeys`를 호출하지 않습니다.
-`path:packages/core/src/metadata/shared.ts:372-400`
+`path:packages/core/src/metadata/shared.ts:396-417`
 ```typescript
 export function mergeMetadataPropertyKeys<TStored, TStandard>(
   stored: ReadonlyMap<MetadataPropertyKey, TStored> | undefined,
@@ -325,7 +325,7 @@ export function Provider(options: ProviderOptions): StandardClassDecoratorFn {
 
 주입 메타데이터는 WeakMap 저장소와 표준 메타데이터 가방을 함께 읽어 하나의 스키마로 합칩니다.
 
-`path:packages/core/src/metadata/injection.ts:39-62`
+`path:packages/core/src/metadata/injection.ts:43-66`
 ```typescript
 export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
   const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
@@ -398,7 +398,7 @@ Resolution 중에는 `path:packages/core/src/metadata/class-di.ts:95-123`의 `ge
 
 Module이 compile될 때 Fluo runtime은 `@Module` metadata에 정의된 `providers` list를 순회합니다. 각 class Provider에 대해 `getInheritedClassDiMetadata()`가 반환한 effective `ClassDiMetadata`가 dependency와 lifecycle Scope를 설명합니다. DI container는 이 정보를 사용해 필요한 순서로 Provider와 그 dependency를 instantiate합니다.
 
-Container는 dependency graph를 미리 계산하거나 위상 정렬(topological sort)하지 않습니다. Class 또는 factory Provider를 instantiate할 때 `path:packages/di/src/container.ts:1538-1546`의 `resolveProviderDeps()`가 `provider.inject` entry를 선언 순서대로 순회하며 각 dependency를 await합니다. `resolveDepToken()`은 해당 Token에 대해 재귀적으로 `resolveWithChain()`으로 돌아가므로, `path:packages/di/src/container.ts:1362-1389`에서 Provider constructor 또는 factory가 실행되기 전에 각 dependency가 resolve 또는 instantiate됩니다. 이 recursive resolution이 진행되는 동안 active Token chain은 circular construction도 감지합니다.
+Container는 dependency graph를 미리 계산하거나 위상 정렬(topological sort)하지 않습니다. Class 또는 factory Provider를 instantiate할 때 `path:packages/di/src/container.ts:1855-1863`의 `resolveProviderDeps()`가 `provider.inject` entry를 선언 순서대로 순회하며 각 dependency를 await합니다. `resolveDepToken()`은 해당 Token에 대해 재귀적으로 `resolveWithChain()`으로 돌아가므로, `path:packages/di/src/container.ts:1639-1670`에서 Provider constructor 또는 factory가 실행되기 전에 각 dependency가 resolve 또는 instantiate됩니다. 이 recursive resolution이 진행되는 동안 active Token chain은 circular construction도 감지합니다.
 
 ## 2.10 Handling Edge Cases: Dynamic Metadata
 일부 고급 시나리오에서는 런타임에 동적으로 메타데이터를 부착하거나 수정해야 할 수도 있습니다. Fluo는 선언적이고 데코레이터 기반인 구성을 우선시하지만, 우리의 메타데이터 시스템은 이러한 경우를 위한 명령적 API도 지원합니다. `defineModuleMetadata`나 `defineClassDiMetadata` 헬퍼를 사용하여 프로그래밍 방식으로 클래스와 모듈을 구성할 수 있으며, 이는 특히 동적 플러그인이나 특수 테스트 환경을 구축할 때 유용합니다.
@@ -427,7 +427,7 @@ Fluo 메타데이터 시스템의 미래를 내다보며, 우리는 메모리 �
 
 - `path:packages/core/src/metadata/shared.ts:10-35`는 전역 심볼 후크를 해결합니다.
 - `path:packages/core/src/metadata/shared.ts:126-150`는 canonical standard-bag key와 Fluo 소유 store identifier를 정의합니다.
-- `path:packages/core/src/metadata/shared.ts:245-257`는 대상별 맵을 할당합니다.
+- `path:packages/core/src/metadata/shared.ts:262-274`는 대상별 맵을 할당합니다.
 - `path:packages/core/src/metadata/store.ts:16-32`는 읽기/쓰기 시 복제를 통해 레코드 수정을 격리합니다.
 - `path:packages/core/src/metadata/class-di.ts:95-123`은 상속된 유효 DI 상태를 계산하고 cache합니다.
 
@@ -445,18 +445,18 @@ Fluo 메타데이터 시스템의 미래를 내다보며, 우리는 메모리 �
 이 구분은 미묘하지만 중요합니다. 전자는 표준 metadata bag의 property key를 나타내고, 후자는 `path:packages/core/src/metadata/shared.ts:156-204`을 통해 Fluo 소유 process-global `WeakMap` store를 선택하는 identifier를 나타냅니다. 이 차이를 놓치면 모든 메타데이터가 동일한 컨테이너에 산다고 생각할 수 있지만, 소스 코드는 Fluo가 프레임워크 전용 관리 정보와 상호운용성 데이터를 의도적으로 구별하고 있음을 보여줍니다.
 
 생성 헬퍼들은 이러한 분리를 강화합니다.
-`path:packages/core/src/metadata/shared.ts:245-257`는 필요한 경우에만 대상별 `Map`을 할당하는 `getOrCreatePropertyMap`을 노출합니다. 즉 라우트 수준이나 속성 수준의 메타데이터가 없는 클래스는 성급하게 할당된 구조체에 대한 비용을 지불하지 않습니다. 팬아웃(fan-out)이 큰 애플리케이션에서 이러한 종류의 지연 처리는 부팅 시 할당 압박을 직접적으로 줄이기 때문에 "메타데이터 성능"에 대한 추상적인 주장보다 훨씬 중요합니다.
+`path:packages/core/src/metadata/shared.ts:262-274`는 필요한 경우에만 대상별 `Map`을 할당하는 `getOrCreatePropertyMap`을 노출합니다. 즉 라우트 수준이나 속성 수준의 메타데이터가 없는 클래스는 성급하게 할당된 구조체에 대한 비용을 지불하지 않습니다. 팬아웃(fan-out)이 큰 애플리케이션에서 이러한 종류의 지연 처리는 부팅 시 할당 압박을 직접적으로 줄이기 때문에 "메타데이터 성능"에 대한 추상적인 주장보다 훨씬 중요합니다.
 
 중복 제거 또한 명시적으로 처리됩니다.
-`path:packages/core/src/metadata/shared.ts:259-285`는 삽입 순서와 참조 동일성을 사용하여 `mergeUnique`를 구현합니다. 이는 평범해 보일 수 있지만 프레임워크 시맨틱을 인코딩합니다. 가드와 인터셉터는 선언된 순서를 유지해야 하고, 중복 참조가 체인을 폭발시키지 않아야 하며, Fluo는 임의의 사용자 객체에 대해 깊은 구조적 동일성을 시도하지 않아야 한다는 것입니다. 따라서 메타데이터 헬퍼는 정책의 경계이기도 합니다.
+`path:packages/core/src/metadata/shared.ts:286-302`는 삽입 순서와 참조 동일성을 사용하여 `mergeUnique`를 구현합니다. 이는 평범해 보일 수 있지만 프레임워크 시맨틱을 인코딩합니다. 가드와 인터셉터는 선언된 순서를 유지해야 하고, 중복 참조가 체인을 폭발시키지 않아야 하며, Fluo는 임의의 사용자 객체에 대해 깊은 구조적 동일성을 시도하지 않아야 한다는 것입니다. 따라서 메타데이터 헬퍼는 정책의 경계이기도 합니다.
 
 `path:packages/core/src/metadata/store.ts:16-32`의 복제 저장소는 소스 수준의 엄격함을 보여주는 가장 명확한 사례 중 하나입니다. `read()`는 나가는 길에 복제하고, `write()`는 들어오는 길에 복제하며, `update()`는 업데이터를 적용한 후 복제합니다. 이러한 삼면 복제 규율은 공유된 가변 참조가 메타데이터 계층을 주변 상태(ambient state)로 바꾸는 것을 방지합니다. 프레임워크 코드에서 이는 단순한 편의성보다 훨씬 가치 있는 일인데, 메타데이터 경합을 디버깅하는 것을 획기적으로 쉽게 만들어 주기 때문입니다.
 
 `class-di.ts`는 이러한 하위 조각들이 어떻게 런타임 동작이 되는지 보여줍니다. `path:packages/core/src/metadata/class-di.ts:49-61`은 constructor lineage를 계산하고 이를 반전시킨 뒤, `path:packages/core/src/metadata/class-di.ts:95-123`에서 base부터 leaf까지 metadata를 fold하고 effective snapshot을 cache합니다. 이 반전은 미학적인 것이 아니라 상속된 기본값이 먼저 보이고 자식 정의가 최종 결정권을 갖도록 보장하는 규칙입니다. 리플렉션이 과도한 시스템에서는 이런 규칙이 불투명해지기 쉽지만, Fluo처럼 메타데이터 엔진을 작고 명시적으로 유지하면 상속 동작도 읽을 수 있는 알고리즘으로 남습니다.
 
-`shared.ts`에는 숨겨진 또 다른 고급 포인트가 있습니다. `path:packages/core/src/metadata/shared.ts:287-370`은 `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, 생성자 메타데이터를 위한 record/map reader를 제공합니다. 이는 Fluo가 메타데이터를 *어디서* 읽을지 신중하게 결정한다는 뜻입니다. 어떤 정보는 객체 자체에 살고, 어떤 정보는 생성자에 살며, 헬퍼들은 이 선택을 하나의 거대한 "모든 것을 가져오기" API 뒤에 숨기지 않고 가시적으로 유지합니다.
+`shared.ts`에는 숨겨진 또 다른 고급 포인트가 있습니다. `path:packages/core/src/metadata/shared.ts:315-387`은 `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, 생성자 메타데이터를 위한 record/map reader를 제공합니다. 이는 Fluo가 메타데이터를 *어디서* 읽을지 신중하게 결정한다는 뜻입니다. 어떤 정보는 객체 자체에 살고, 어떤 정보는 생성자에 살며, 헬퍼들은 이 선택을 하나의 거대한 "모든 것을 가져오기" API 뒤에 숨기지 않고 가시적으로 유지합니다.
 
-키 병합 루틴도 같은 주제를 이어갑니다. `path:packages/core/src/metadata/shared.ts:372-400`은 처음 발견된 순서를 보존하면서 저장된 키와 표준 키를 병합합니다. 이 동작은 앞의 `path:packages/core/src/metadata/injection.ts:39-62` 발췌에서 `mergeMetadataPropertyKeys(stored, standard)` 호출로 이미 확인한 병합 규칙과 같은 흐름입니다. 두 세계가 동일한 척하는 대신 Fluo는 화해 규칙을 명시적으로 정의하고, 이러한 예측 가능성 덕분에 표준 데코레이터와 내부 런타임 저장소를 결합하면서도 비결정적인 동작으로 전락하지 않습니다.
+키 병합 루틴도 같은 주제를 이어갑니다. `path:packages/core/src/metadata/shared.ts:396-417`은 처음 발견된 순서를 보존하면서 저장된 키와 표준 키를 병합합니다. 이 동작은 앞의 `path:packages/core/src/metadata/injection.ts:43-66` 발췌에서 `mergeMetadataPropertyKeys(stored, standard)` 호출로 이미 확인한 병합 규칙과 같은 흐름입니다. 두 세계가 동일한 척하는 대신 Fluo는 화해 규칙을 명시적으로 정의하고, 이러한 예측 가능성 덕분에 표준 데코레이터와 내부 런타임 저장소를 결합하면서도 비결정적인 동작으로 전락하지 않습니다.
 
 한 걸음 물러나 보면 일관된 설계 휴리스틱 세트가 나타납니다.
 
