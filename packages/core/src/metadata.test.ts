@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { InvariantError, isFluoError } from './errors.js';
 import {
   getOwnStandardConstructorMetadataBag,
   getStandardConstructorMetadataBag,
@@ -332,6 +333,29 @@ describe('metadata helpers', () => {
       successStatus: 201,
       version: 'explicit-v2',
     });
+  });
+
+  it.each(['method', 'path'])('getRouteMetadata: missing %s throws a branded invariant error', (field) => {
+    const target = {};
+    const metadata = { method: 'GET', path: '/users' };
+    Reflect.deleteProperty(metadata, field);
+    defineRouteMetadata(target, 'getUser', metadata);
+    expect.assertions(4);
+
+    try {
+      getRouteMetadata(target, 'getUser');
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+      expect(error).toBeInstanceOf(Error);
+      expect(error).toBeInstanceOf(InvariantError);
+      expect(isFluoError(error, '@fluojs/core')).toBe(true);
+      expect(error).toMatchObject({
+        code: 'INVARIANT_ERROR',
+        message: 'Route metadata for property key "getUser" is missing required "method" or "path".',
+      });
+    }
   });
 
   it('returns cloned nested route metadata objects', () => {
