@@ -588,8 +588,8 @@ Node.js, Express, Fastify는 이 capability를 노출합니다. Fetch-style Web,
 
 ## HTTP-Owned React Navigation
 
-성공한 opt-in `@fluojs/react` page만 version 1 client navigation representation을 제공할 수
-있습니다. GET이 정확히 `Accept: application/vnd.fluo.react-navigation+json;v=1`을 보낼 때
+성공한 opt-in `@fluojs/react` page만 version 2 client navigation representation을 제공할 수
+있습니다. GET이 정확히 `Accept: application/vnd.fluo.react-navigation+json;v=2`을 보낼 때
 dispatcher가 matching, URI versioning, middleware, DTO binding/validation, guard, interceptor,
 handler 실행 및 response-value finalization 이후 이를 선택합니다. HTTP는 route metadata,
 matched URL/params, status, response validator와 기존 `Vary`, `Set-Cookie`를 유지하며
@@ -679,6 +679,31 @@ Provider failure는 원래 canonical JSON outcome으로 한 번만 fallback하�
 JSON write를 시작하지 않는다. HTTP가 `Accept`를 추가할 때 기존 native `Vary` 값도 보존한다. Successful-route
 `@Produces(...)` metadata는 error representation을 제어하지 않는다. 전체 phase/fallback 계약은
 [HTTP error representation decision](../../docs/architecture/http-error-representations.ko.md)을 참고한다.
+
+Progressive form에서는 정확히 `Accept: application/vnd.fluo.form+json;v=1`을 보내는 POST만
+독립적인 form v1 protocol을 선택합니다. 의도적인 domain validation 거부에는
+`HttpFormRejection.create({ fieldErrors, formErrors })`를 던지세요. 명시적이고 크기가 제한된
+안전한 메시지를 담은 status-400 exception을 생성합니다. `HttpFormErrors`는 readonly
+`fieldErrors: Readonly<Record<string, readonly string[]>>`와 `formErrors: readonly string[]`을
+포함합니다.
+
+실제 DTO validation failure에는 `HttpFormRepresentationProvider`로
+`errorRepresentation.form.project`를 구성하세요.
+`project(context: HttpErrorRepresentationContext)`는 동기 또는 비동기로
+`HttpFormErrors | undefined` 또는 `Promise<HttpFormErrors | undefined>`를 반환합니다.
+HTTP가 소유한 context에는 분류된 error, canonical JSON, request, 활성 request-scope container,
+선택적 handler/request id가 있고 response writer는 없습니다. `HttpErrorRepresentationOptions`는
+여전히 `html`을 필수로 요구하므로 form-only options object를 전달하지 말고 위 예제의 HTML
+provider와 함께 `form`을 추가하세요.
+
+HTTP는 협상된 validation의 원래 status를 유지합니다. 임의의 400/422를 자동으로 typed
+validation으로 분류하지 않습니다. 일반 error나 누락, undefined, 잘못된 형태, 크기 초과,
+예외 발생 projection은 canonical JSON을 유지합니다. 허용 목록의 비밀이 아닌 field/form
+메시지만 작성하세요. 제출 값, exception body, credential, stack을 공개하면 안 됩니다.
+Projection은 field key 최대 32개, field/form당 메시지 최대 8개, 메시지당 최대 256자를 허용하며
+애플리케이션이 직접 작성한 메시지에 대한 책임은 애플리케이션에 있습니다. Native submission,
+negotiation, 안전한 정보 공개는
+[progressive forms contract](../../docs/contracts/react-progressive-forms.ko.md)를 참고하세요.
 
 ### 프록시 뒤의 속도 제한
 
@@ -863,6 +888,7 @@ export class UploadController {
 
 `FAST_PATH_ELIGIBILITY_SYMBOL`과 `FAST_PATH_STATS_SYMBOL`은 호환되는 중복 package 사본 사이에서 안정적인 same-realm identity를 사용하므로 adapter와 diagnostics가 dispatcher-owned mutable state를 공유하지 않고 다른 사본이 기록한 metadata를 읽을 수 있습니다.
 
+- **폼 오류 표현**: `HttpFormRejection`은 의도적인 안전한 status-400 거부를 생성하고, `HttpFormErrors`는 readonly field/form 메시지를 담으며, `HttpFormRepresentationProvider`는 HTTP가 소유한 DTO validation context를 동기 또는 비동기로 안전한 오류나 `undefined`로 투영합니다.
 - **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`, `InputPolicy`
 - **명시적 입력 materialization**: `InputPolicyOptions`, `createSchemaDto`, `StandardSchemaBinder`, `SchemaDtoOptions`, `SchemaBindingField`
