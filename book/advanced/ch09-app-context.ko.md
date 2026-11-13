@@ -942,12 +942,12 @@ Private stop branch는 startup 순서의 반대로 component를 정리하고, �
   }
 ```
 
-readiness branch는 application `ready()`가 호출하는 대상입니다. component report를 모아 aggregate readiness로 반환하고, critical not-ready 상태는 `assertCriticalReadiness()`에서 invariant error가 됩니다.
+readiness branch는 application `ready()`가 호출하는 대상입니다. Shell은 probe collector에 위임하고 collector는 probe별 독립 timeout을 적용하며 등록 순서대로 component report를 모읍니다. Critical not-ready 상태는 `assertCriticalReadiness()`에서 invariant error가 됩니다.
 
-`path:packages/runtime/src/platform-shell.ts:228-253`
+`path:packages/runtime/src/platform-shell-probes.ts`
 ```typescript
   async ready(): Promise<PlatformReadinessReport> {
-    if (!this.hasRegisteredComponents()) {
+    if (this.registeredComponents.length === 0) {
       return {
         critical: false,
         status: 'ready',
@@ -957,16 +957,10 @@ readiness branch는 application `ready()`가 호출하는 대상입니다. compo
     const reports: PlatformReadinessReport[] = [];
 
     for (const component of this.registeredComponents) {
-      try {
-        reports.push(await component.component.ready());
-      } catch (error) {
-        const issue = createUnknownFailureIssue(component.component.id, 'ready', error);
-        this.diagnostics.push(issue);
-        reports.push({
-          critical: true,
-          reason: issue.cause,
-          status: 'not-ready',
-        });
+      const result = await this.collectComponentReadiness(component);
+      reports.push(result.readiness);
+      for (const diagnostic of result.diagnostics) {
+        this.diagnostics.retainProbe(diagnostic.phase, diagnostic.issue);
       }
     }
 
@@ -974,7 +968,9 @@ readiness branch는 application `ready()`가 호출하는 대상입니다. compo
   }
 ```
 
-`path:packages/runtime/src/platform-shell.ts:331-339`
+`snapshot()`의 probe를 포함해 각 component의 `ready()`와 `health()`는 기본 5000 ms를 사용합니다. Typed registration `{ component, readiness: { timeoutMs, critical } }`로 설정하며 bare component는 기본값을 사용하고 private component option을 읽지 않습니다. 양의 유한 budget은 내림 후 최소 1 ms이며 잘못된 값은 5000 ms를 사용합니다. Readiness timeout은 기본 critical(`not-ready`)이며 `critical: false`는 aggregate readiness `degraded`를 만듭니다. Health timeout은 `unhealthy`입니다. 다음 component도 검사하며 lifecycle diagnostic과 함께 component/phase별 최신 diagnostic을 보존합니다. Timeout은 driver 취소나 막힌 JavaScript의 중단 없이 비동기 대기만 제한합니다.
+
+`path:packages/runtime/src/platform-shell.ts`
 ```typescript
   async assertCriticalReadiness(): Promise<void> {
     const readiness = await this.ready();

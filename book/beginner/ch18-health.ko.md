@@ -75,6 +75,8 @@ Terminus는 확장 가능하도록 설계되었습니다. 가장 일반적인 �
 ### 18.2.5 The Evolution of Terminus in Fluo
 `@fluojs/terminus` 모듈은 대규모 트래픽 사용자들의 요구 사항과 함께 발전해 왔습니다. 단순한 종료 신호 래퍼(wrapper)로 시작했던 것이 이제는 종합적인 신뢰성 스위트로 거듭났습니다. 현재 Terminus 계약은 `execution.indicatorTimeoutMs`를 통한 **slow-indicator timeout guardrail**을 강조합니다. 따라서 원격 API ping처럼 느린 probe는 무기한 기다리지 않고 `down`으로 표시됩니다. 요청 rate limiting 같은 traffic-shaping 책임은 Terminus 자체가 아니라 gateway policy 또는 `@fluojs/throttler` 같은 패키지에 둡니다.
 
+Platform probe와 runtime readiness callback은 별도 기본 5000 ms budget을 사용합니다. Platform registration의 `readiness.timeoutMs`는 각 `ready()`/`health()`를 독립적으로 제한합니다. Readiness timeout은 기본 critical이며 registration `critical: false`는 aggregate `degraded`를 만듭니다. 직접 `HealthModule.forRoot({ readinessCheckTimeoutMs })`를 사용하는 경우 callback budget을 조정할 수 있습니다. 양의 유한 값은 내림 후 최소 1 ms이며 잘못된 값은 5000 ms를 사용합니다. Callback은 선언 순서를 유지하고 첫 false나 timeout에서 멈추며 timeout은 `503 unavailable`, 일반 error는 기존 전파 경로를 따릅니다. Terminus의 runtime readiness callback 전체는 기본 5000 ms를 유지하고 `TerminusModuleOptions`에는 이를 늘리는 option이 없으므로 indicator/platform budget이 더 길어도 먼저 잘립니다. Runtime timeout은 driver를 취소하거나 동기적으로 막힌 JavaScript를 중단하지 않습니다.
+
 Fluo 생태계의 최신 상태를 유지하면 신뢰성 엔지니어링 분야의 지속적인 개선 사항을 적용할 수 있습니다. Terminus 패키지는 실제 프로덕션 요구를 반영해 발전하며, 애플리케이션을 건강하고 응답성 있게 유지하기 위한 검증된 패턴을 제공합니다.
 
 ### 18.2.6 Terminus and the "Standard-First" Philosophy
