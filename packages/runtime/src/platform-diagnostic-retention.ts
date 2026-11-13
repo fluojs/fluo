@@ -30,10 +30,37 @@ export function createPlatformValidationFailureIssue(componentId: string): Platf
 
 export class PlatformDiagnosticRetention {
   private readonly retained: PlatformDiagnosticIssue[] = [];
+  private readonly lifecycleIndexesByComponent = new Map<
+    string,
+    Map<Exclude<PlatformDiagnosticPhase, PlatformProbePhase>, Map<string, number>>
+  >();
   private readonly probeIndexesByComponent = new Map<string, Map<PlatformProbePhase, number>>();
 
-  append(issues: readonly PlatformDiagnosticIssue[]): void {
-    this.retained.push(...issues);
+  append(
+    phase: Exclude<PlatformDiagnosticPhase, PlatformProbePhase>,
+    issues: readonly PlatformDiagnosticIssue[],
+  ): void {
+    for (const issue of issues) {
+      let phaseIndexes = this.lifecycleIndexesByComponent.get(issue.componentId);
+      if (phaseIndexes === undefined) {
+        phaseIndexes = new Map();
+        this.lifecycleIndexesByComponent.set(issue.componentId, phaseIndexes);
+      }
+
+      let codeIndexes = phaseIndexes.get(phase);
+      if (codeIndexes === undefined) {
+        codeIndexes = new Map();
+        phaseIndexes.set(phase, codeIndexes);
+      }
+
+      const retainedIndex = codeIndexes.get(issue.code);
+      if (retainedIndex === undefined) {
+        codeIndexes.set(issue.code, this.retained.length);
+        this.retained.push(issue);
+      } else {
+        this.retained[retainedIndex] = issue;
+      }
+    }
   }
 
   retainProbe(phase: PlatformProbePhase, issue: PlatformDiagnosticIssue): void {

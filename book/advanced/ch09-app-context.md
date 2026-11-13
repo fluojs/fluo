@@ -910,7 +910,7 @@ If a component fails to start, the private rollback stops already-started compon
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.diagnostics.append([
+          this.diagnostics.append('start-rollback', [
             createPlatformFailureIssue(component.component.id, 'start-rollback', rollbackError),
           ]);
         }
