@@ -690,6 +690,12 @@ complete phase and fallback contract.
 
 ### Rate limiting behind proxies
 
+`createRateLimitMiddleware({ limit, windowMs })` owns a separate process-local memory store by default. Its optional `RateLimitStore.consume(key, { now, windowMs })` capability atomically initializes, resets, and increments one window, returning an independent `{ count, resetAt }` snapshot that includes the current request. `now` and `resetAt` are epoch milliseconds; `windowMs` is a duration in milliseconds. The first request starts the window at `now + windowMs`; requests at `now >= resetAt` start a new window. Every request counts, including rejected requests, without extending an active deadline. Counts above `limit` produce 429 with `Retry-After` rounded up to seconds and the standard `TOO_MANY_REQUESTS` body.
+
+The built-in store performs consumption synchronously within one process, so concurrent requests cannot lose initialization or increments. Separate stores, processes, and restarts do not share budgets. Custom stores may return a snapshot directly or through a promise. To migrate an existing store, retain `get`, `set`, `increment(key)`, and `evict(now)` and add `consume`; middleware prefers it after eviction. A distributed implementation must make initialization/reset/increment atomic in the backend, for example in one transaction or script, and return a coherent count and deadline in the caller's time domain. A sequence of separately awaited reads and writes is not atomic.
+
+Existing stores without `consume` remain supported through the original `evict` then `get` and `set`/`increment` fallback. That fallback does not serialize concurrent requests: even in one process, concurrent initialization can overwrite counts, and separate backend calls cannot guarantee cross-process atomicity. Add `consume` before relying on concurrent quota enforcement. Store failures propagate normally rather than becoming 429 or silently switching to memory. Expired memory entries are swept during requests; this does not impose a key-cardinality bound.
+
 `createRateLimitMiddleware(...)` resolves client identity from the adapter-snapshotted direct transport address by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, configure `trustProxy` with an explicit hop count, address/CIDR list, or predicate. Forwarded data is ignored unless the direct peer satisfies that policy; malformed `Forwarded` data fails closed to the direct transport identity.
 
 ```ts
