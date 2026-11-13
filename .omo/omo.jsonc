@@ -11,7 +11,19 @@
       "prompt": "You are fluo-retrospective, a read-only lane retrospective analyst. Before analysis, read .agents/skills/retrospective-lane/references/analyst.md from the supplied repository root and follow its report contract. Read the supplied evidence and source paths; return the report JSON in Korean with original technical identifiers. Do not record events, edit files, run commands/tests, dispatch agents, mutate execution ledgers or remote state, or apply recommendations. If evidence is missing, report partial coverage and explicit unknowns; never invent incidents or timings.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6.1-sol",
+          "model": "chatgpt-subscription/gpt-6.1-sol-fast",
+          "reasoning": "high"
+        },
+        {
+          "model": "ccapi/claude-opus-5-5",
+          "reasoning": "high"
+        },
+        {
+          "model": "zai/glm-5.3",
+          "reasoning": "high"
+        },
+        {
+          "model": "meta/muse-spark-1.3",
           "reasoning": "high"
         }
       ],
@@ -43,7 +55,19 @@
       "description": "Builds one source-read-only issue acceptance preflight.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6.1-sol",
+          "model": "chatgpt-subscription/gpt-6.1-sol-fast",
+          "reasoning": "high"
+        },
+        {
+          "model": "ccapi/claude-opus-5-5",
+          "reasoning": "high"
+        },
+        {
+          "model": "zai/glm-5.3",
+          "reasoning": "high"
+        },
+        {
+          "model": "meta/muse-spark-1.3",
           "reasoning": "high"
         }
       ],
@@ -71,8 +95,20 @@
       "prompt": "Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6.1-sol",
+          "model": "chatgpt-subscription/gpt-6.1-sol-fast",
           "reasoning": "medium"
+        },
+        {
+          "model": "ccapi/claude-opus-5-5",
+          "reasoning": "medium"
+        },
+        {
+          "model": "zai/glm-5.3",
+          "reasoning": "high"
+        },
+        {
+          "model": "opengateway/deepseek/deepseek-v4.1-flash-ultrafast",
+          "reasoning": "high"
         }
       ],
       "execution_mode": "process",
@@ -99,8 +135,20 @@
       "description": "Reviews one exact issue head against its canonical contract.",
       "models": [
         {
-          "model": "z-ai/glm-5.3-flash-ultrafast",
+          "model": "opengateway/z-ai/glm-5.3-flash-ultrafast",
           "reasoning": "xhigh"
+        },
+        {
+          "model": "zai/glm-5.3",
+          "reasoning": "high"
+        },
+        {
+          "model": "ccapi/claude-sonnet-5-5",
+          "reasoning": "high"
+        },
+        {
+          "model": "chatgpt-subscription/gpt-6-luna-fast",
+          "reasoning": "high"
         }
       ],
       "execution_mode": "in-process",
@@ -128,7 +176,19 @@
       "description": "Reviews one exact issue head for code correctness and quality.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6.1-sol",
+          "model": "chatgpt-subscription/gpt-6.1-sol-fast",
+          "reasoning": "high"
+        },
+        {
+          "model": "ccapi/claude-opus-5-5",
+          "reasoning": "high"
+        },
+        {
+          "model": "zai/glm-5.3",
+          "reasoning": "high"
+        },
+        {
+          "model": "opengateway/deepseek/deepseek-v4.1-flash-ultrafast",
           "reasoning": "high"
         }
       ],
@@ -157,8 +217,20 @@
       "description": "Reviews one parent-owned canonical verification receipt.",
       "models": [
         {
-          "model": "z-ai/glm-5.3-flash-ultrafast",
+          "model": "opengateway/z-ai/glm-5.3-flash-ultrafast",
           "reasoning": "xhigh"
+        },
+        {
+          "model": "zai/glm-5.3",
+          "reasoning": "high"
+        },
+        {
+          "model": "ccapi/claude-sonnet-5-5",
+          "reasoning": "high"
+        },
+        {
+          "model": "chatgpt-subscription/gpt-6-luna-fast",
+          "reasoning": "high"
         }
       ],
       "execution_mode": "in-process",
