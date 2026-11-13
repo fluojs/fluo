@@ -17,7 +17,10 @@ const locales = [
 ];
 
 function section(readme: string, heading: string): string {
-  return readme.split(`\n## ${heading}\n`)[1]?.split('\n## ')[0] ?? '';
+  const lines = readme.split('\n');
+  const anchor = `## ${heading}`;
+  expect(lines.filter((line) => line === anchor), `Expected exactly one "${anchor}" heading`).toHaveLength(1);
+  return lines.slice(lines.indexOf(anchor) + 1).join('\n').split('\n## ')[0] ?? '';
 }
 
 function checkNavigation(readme: string): void {
@@ -25,7 +28,7 @@ function checkNavigation(readme: string): void {
   expect(navigationMediaType).toBe('application/vnd.fluo.react-navigation+json;v=2');
   expect(navigation).toContain(`Accept: ${navigationMediaType}`);
   expect(navigation).toContain('version 2');
-  expect(navigation).not.toMatch(/version 1|react-navigation\+json;v=1/u);
+  expect(navigation, 'Navigation instructions must not contain stale v1').not.toMatch(/version 1|react-navigation\+json;v=1/u);
 }
 
 function checkFormExports(readme: string, apiHeading: string): void {
@@ -65,6 +68,45 @@ it.each(locales)('HTTP README $path: form guidance -> preserves independent form
 });
 
 for (const locale of locales) {
+  it.each([
+    'HTTP-Owned React Navigation',
+    'HTTP Error Representations',
+    locale.apiHeading,
+  ])(`HTTP README ${locale.path}: missing section %s -> rejected by heading count`, (heading) => {
+    const readme = source(locale.path);
+
+    const variant = readme.replace(`\n## ${heading}\n`, `\n### ${heading}\n`);
+
+    expect(variant).not.toBe(readme);
+    expect(() => section(variant, heading)).toThrow(`Expected exactly one "## ${heading}" heading`);
+  });
+
+  it.each([
+    'HTTP-Owned React Navigation',
+    'HTTP Error Representations',
+    locale.apiHeading,
+  ])(`HTTP README ${locale.path}: duplicate section %s -> rejected by heading count`, (heading) => {
+    const readme = source(locale.path);
+
+    const variant = `${readme}\n## ${heading}\nUse version 1 navigation with Accept: application/vnd.fluo.react-navigation+json;v=1.\n`;
+
+    expect(() => section(variant, heading)).toThrow(`Expected exactly one "## ${heading}" heading`);
+  });
+
+  it.each([
+    'Use Accept: application/vnd.fluo.react-navigation+json;v=1 for navigation.',
+    'Use version 1 for navigation.',
+  ])(`HTTP README ${locale.path}: added stale instruction %s with v2 retained -> rejected specifically`, (instruction) => {
+    const readme = source(locale.path);
+
+    const variant = readme.replace('\n## HTTP-Owned React Navigation\n', `\n## HTTP-Owned React Navigation\n${instruction}\n`);
+
+    expect(variant).not.toBe(readme);
+    expect(section(variant, 'HTTP-Owned React Navigation')).toContain(`Accept: ${navigationMediaType}`);
+    expect(section(variant, 'HTTP-Owned React Navigation')).toContain('version 2');
+    expect(() => checkNavigation(variant)).toThrow('Navigation instructions must not contain stale v1');
+  });
+
   it.each([
     ['media type', 'application/vnd.fluo.react-navigation+json;v=2', 'application/vnd.fluo.react-navigation+json;v=1'],
     ['version description', 'version 2', 'version 1'],
