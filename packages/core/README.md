@@ -283,6 +283,8 @@ See the [optional import migration](../../docs/getting-started/migrate-persisten
 
 Public fluo errors carry a versioned package-owner contract. Use `isFluoError(...)`, or an owner package's narrower predicate, instead of constructor identity when errors can cross package boundaries; unbranded lookalikes and incompatible contract versions are rejected.
 
+If a non-configurable value at the internal `Symbol.for('fluo.metadata.registry.v1')` key is not a compatible metadata registry, core metadata access throws `InvariantError` (`INVARIANT_ERROR`) instead of silently splitting metadata stores. Configurable invalid values are replaced with a shared registry; the legacy `fluo.metadata.registry` key is ignored.
+
 ## Example Sources
 
 - `packages/core/src/index.ts`

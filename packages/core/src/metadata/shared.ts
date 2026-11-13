@@ -1,3 +1,4 @@
+import { InvariantError } from '../errors.js';
 import type { MetadataPropertyKey } from '../types.js';
 import { fallbackClone } from '../utils.js';
 
@@ -188,7 +189,7 @@ function getGlobalMetadataRegistry(): GlobalMetadataRegistry {
   const descriptor = Object.getOwnPropertyDescriptor(globalScope, metadataRegistryKey);
 
   if (descriptor && !descriptor.configurable) {
-    return registry;
+    throw new InvariantError(`Incompatible metadata registry at ${String(metadataRegistryKey)}.`);
   }
 
   Object.defineProperty(globalScope, metadataRegistryKey, {
@@ -206,6 +207,7 @@ function getGlobalMetadataRegistry(): GlobalMetadataRegistry {
  *
  * @param key Symbol key that identifies the metadata store.
  * @returns The process-global WeakMap for the provided metadata key.
+ * @throws {InvariantError} If a non-configurable incompatible value occupies the registry key.
  */
 export function getGlobalMetadataWeakMap<TKey extends object, TValue>(key: symbol): WeakMap<TKey, TValue> {
   const registry = getGlobalMetadataRegistry();
@@ -225,6 +227,7 @@ export function getGlobalMetadataWeakMap<TKey extends object, TValue>(key: symbo
  *
  * @param key Symbol key that identifies the counter.
  * @returns The process-global counter for the provided metadata key.
+ * @throws {InvariantError} If a non-configurable incompatible value occupies the registry key.
  */
 export function getGlobalMetadataCounter(key: symbol): MetadataCounter {
   const registry = getGlobalMetadataRegistry();

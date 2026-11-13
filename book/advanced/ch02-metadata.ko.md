@@ -27,7 +27,7 @@
 ## 2.1 The role of Reflect API
 표준 JavaScript의 세계에서 `Reflect` API는 객체에 대한 저수준 연산을 수행하고 가로채기 위한 정적 메서드들의 집합입니다. `Reflect.get`, `Reflect.set`, `Reflect.apply`와 같은 메서드를 제공하지만, 데코레이터 맥락에서 가장 중요한 역할은 메타데이터를 관리하는 표준화된 방법을 제공하는 것입니다. Fluo에서 `Reflect`는 기존 프레임워크에서 볼 수 있는 무거운 "마법 같은" 리플렉션이 아니라, 클래스 수준의 메타데이터 가방 및 내부 저장 메커니즘과 상호작용하기 위한 정밀한 도구로 사용됩니다.
 
-`Reflect` API는 `Reflect.get`, `Reflect.set` 같은 일반 언어 연산의 명시적인 형태를 제공합니다. Fluo는 `path:packages/core/src/metadata/shared.ts:46-57`에서 own `Symbol.metadata` bag을 읽을 때 `Object.hasOwn`으로 확인한 다음 `Reflect.get`을 사용하므로, 의도한 lookup 경계가 구현에 드러납니다.
+`Reflect` API는 `Reflect.get`, `Reflect.set` 같은 일반 언어 연산의 명시적인 형태를 제공합니다. Fluo는 `path:packages/core/src/metadata/shared.ts:47-58`에서 own `Symbol.metadata` bag을 읽을 때 `Object.hasOwn`으로 확인한 다음 `Reflect.get`을 사용하므로, 의도한 lookup 경계가 구현에 드러납니다.
 
 `Reflect.get`은 부수 효과를 차단하는 장치가 아닙니다. `target[prop]`과 마찬가지로 JavaScript의 `[[Get]]` 연산을 따르므로 accessor 또는 Proxy `get` trap을 실행할 수 있습니다. 앞선 own-property 검사는 일반적인 prototype lookup이 metadata bag을 제공하는 것을 막지만, Proxy는 여전히 관련 연산을 관찰할 수 있습니다. 일반 class constructor의 표준 decorator metadata는 data property일 것으로 기대되지만, 이 관례를 임의의 proxied target도 부수 효과 없이 검사할 수 있다는 보장으로 확대하면 안 됩니다.
 
@@ -46,7 +46,7 @@
 ## 2.2 Symbolic metadata: The modern approach
 메타데이터에 대한 현대적인 접근 방식은 이름 충돌을 일으킬 수 있는 문자열 기반 키를 피하는 것입니다. Fluo는 클래스 생성자에 메타데이터 가방을 직접 부착하기 위한 제안된 표준인 `Symbol.metadata`를 활용합니다. 이 가방은 프레임워크가 소유한 심볼이 키가 되는 평범한 객체입니다. 이를 통해 Fluo의 메타데이터는 다른 라이브러리 및 사용자 코드와 격리됩니다. `Symbol.metadata`가 기본적으로 지원되지 않는 경우, Fluo는 모든 환경에서 일관된 API를 유지하기 위해 폴리필을 제공합니다.
 
-`path:packages/core/src/metadata/shared.ts:9-34`
+`path:packages/core/src/metadata/shared.ts:10-35`
 ```typescript
 const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
 const fallbackMetadataSymbol = Symbol.for('fluo.symbol.metadata');
@@ -72,7 +72,7 @@ export function ensureMetadataSymbol(): symbol {
 
 이 폴리필 로직은 런타임 환경에 따라 유연하게 동작합니다. 만약 환경이 이미 네이티브 `Symbol.metadata`를 지원한다면 추가적인 작업을 하지 않고 해당 심볼을 그대로 사용하며, 지원하지 않는 환경에서만 전역 `Symbol` 객체에 새로운 메타데이터 심볼을 정의합니다. 이러한 "환경 감지 및 점진적 보강" 전략은 Fluo가 최신 사양을 지향하면서도 광범위한 호환성을 유지할 수 있게 해주는 핵심 기술입니다.
 
-Fluo는 package copy마다 다른 private symbol 대신 canonical `Symbol.for(...)` key를 의도적으로 사용합니다. 따라서 같은 JavaScript realm 안의 중복 Fluo package instance는 `path:packages/core/src/metadata/shared.ts:128-204`에 있는 동일한 metadata key와 `metadataRegistryKey`를 resolve합니다. `getGlobalMetadataRegistry()`는 `globalThis`에 registry 하나를 저장하고, `getGlobalMetadataWeakMap()`은 각 canonical key가 선택하는 공유 `WeakMap`을 반환합니다. 그 결과 한 package instance가 기록한 metadata를 같은 realm의 다른 instance에서도 읽을 수 있으며, 이 동작은 `path:packages/core/src/metadata.test.ts:48-137`에서 검증합니다. 이 설계는 cross-version isolation이 아니라 중복 package 간 interoperability를 제공하며, 서로 다른 realm은 각자의 global registry를 유지합니다.
+Fluo는 package copy마다 다른 private symbol 대신 canonical `Symbol.for(...)` key를 의도적으로 사용합니다. 따라서 같은 JavaScript realm 안의 중복 Fluo package instance는 `path:packages/core/src/metadata/shared.ts:129-205`에 있는 동일한 metadata key와 `metadataRegistryKey`를 resolve합니다. `getGlobalMetadataRegistry()`는 `globalThis`에 registry 하나를 저장하고, `getGlobalMetadataWeakMap()`은 각 canonical key가 선택하는 공유 `WeakMap`을 반환합니다. 그 결과 한 package instance가 기록한 metadata를 같은 realm의 다른 instance에서도 읽을 수 있으며, 이 동작은 `path:packages/core/src/metadata.test.ts:48-137`에서 검증합니다. 이 설계는 cross-version isolation이 아니라 중복 package 간 interoperability를 제공하며, 서로 다른 realm은 각자의 global registry를 유지합니다.
 
 Application-facing API와 Fluo의 더 넓은 metadata primitive를 구분하는 것은 symbol secrecy가 아니라 export boundary입니다. `path:packages/core/src/metadata.ts:1-29`는 `metadataKeys`, `metadataSymbol` 같은 helper와 symbol을 export하고, `path:packages/core/src/internal.ts:1-2`는 그 surface를 package-integration subpath인 `@fluojs/core/internal`을 통해 다시 export합니다. Root `@fluojs/core` entrypoint는 문서화된 application-facing subset만 노출합니다. 이 boundary는 Fluo package와 tooling에 의도된 사용 범위를 전달하지만, internal subpath를 의도적으로 import하는 코드가 internal symbol에 접근하지 못하게 만들지는 않습니다.
 
@@ -80,11 +80,11 @@ Application-facing API와 Fluo의 더 넓은 metadata primitive를 구분하는 
 
 또한, Fluo의 메타데이터 시스템은 일반 애플리케이션 코드에는 "불투명(opaque)"하게 유지되면서 내부 도구에는 "탐색 가능(discoverable)"하도록 설계되었습니다. 이는 Fluo Studio나 모노레포의 빌드 시스템에서만 사용하도록 의도된 제한된 내부 인트로스펙션용 API 세트를 제공함으로써 달성됩니다. 이러한 이중성은 개발자가 프레임워크의 안정성을 손상시키거나 민감한 내부 세부 사항을 공개 API 표면에 노출하지 않고도 가능한 최상의 도구 지원을 받을 수 있도록 보장합니다. 이는 확장성과 캡슐화 사이의 긴장에 대한 실용적인 접근 방식입니다.
 
-Fluo의 두 canonical symbol set는 서로 다른 lookup model을 담당합니다. `standardMetadataKeys`는 표준 decorator metadata bag 안에서 사용하는 property key를 담습니다. 반면 `path:packages/core/src/metadata/shared.ts:137-149`의 `metadataKeys.module`과 `metadataKeys.classDi`는 `getGlobalMetadataWeakMap(...)`에 전달되는 안정적인 identifier이며, class에서 읽는 property가 아니라 process-global `WeakMap` store를 선택합니다.
+Fluo의 두 canonical symbol set는 서로 다른 lookup model을 담당합니다. `standardMetadataKeys`는 표준 decorator metadata bag 안에서 사용하는 property key를 담습니다. 반면 `path:packages/core/src/metadata/shared.ts:138-150`의 `metadataKeys.module`과 `metadataKeys.classDi`는 `getGlobalMetadataWeakMap(...)`에 전달되는 안정적인 identifier이며, class에서 읽는 property가 아니라 process-global `WeakMap` store를 선택합니다.
 
 Canonical symbol은 standard-bag property key와 Fluo 소유 store identifier를 분리합니다.
 
-`path:packages/core/src/metadata/shared.ts:125-149`
+`path:packages/core/src/metadata/shared.ts:126-150`
 ```typescript
 export const standardMetadataKeys = {
   classValidation: Symbol.for('fluo.standard.class-validation'),
@@ -107,7 +107,7 @@ export const metadataKeys = {
 } as const;
 ```
 
-이 발췌에서 `standardMetadataKeys`는 표준 decorator metadata bag의 property key를 제공합니다. `metadataKeys`는 대신 `path:packages/core/src/metadata/shared.ts:155-203`의 process-global registry를 위한 identifier를 제공하며, 각 identifier는 target을 key로 사용하는 `WeakMap`으로 해석됩니다. 두 세트 모두 symbol을 사용하지만 같은 property lookup mechanism을 뜻하지는 않습니다.
+이 발췌에서 `standardMetadataKeys`는 표준 decorator metadata bag의 property key를 제공합니다. `metadataKeys`는 대신 `path:packages/core/src/metadata/shared.ts:156-204`의 process-global registry를 위한 identifier를 제공하며, 각 identifier는 target을 key로 사용하는 `WeakMap`으로 해석됩니다. 두 세트 모두 symbol을 사용하지만 같은 property lookup mechanism을 뜻하지는 않습니다.
 
 이 분리는 표준 metadata interoperability를 명시적으로 유지하면서 Fluo 소유 record에는 `WeakMap` lifecycle semantic을 제공합니다. Standard-bag read와 internal-store read는 각각 property lookup과 `WeakMap` lookup 경로를 따르며, symbol을 함께 사용하는 이유는 두 경로가 모두 일반 property access이기 때문이 아니라 안정적이고 충돌하기 어려운 identity가 필요하기 때문입니다.
 
@@ -176,7 +176,7 @@ Module metadata write 경로는 저장 전에 Zod와 유사한 validator, develo
 
 ## 2.4 Reflect API examples in Fluo
 Fluo는 언어의 내부 메커니즘을 존중하는 방식으로 객체와 상호작용하기 위해 `Reflect` 메서드를 활용합니다. 주요 사례는 대상 클래스에서 메타데이터 가방을 검색하는 것입니다.
-`path:packages/core/src/metadata/shared.ts:311-328`
+`path:packages/core/src/metadata/shared.ts:314-331`
 ```typescript
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
   const activeMetadataSymbol = getActiveMetadataSymbol();
@@ -200,7 +200,7 @@ export function getStandardMetadataBag(target: object): StandardMetadataBag | un
 이 helper는 active metadata symbol을 해석하고, target의 own current/native bag, target의 own fallback-era bag, inherited bag 순서로 조회합니다. Own bag과 inherited bag이 함께 있으면 `overlayStandardMetadataBag(...)`이 own-key precedence를 보존하면서 inherited record를 계속 보이게 합니다. 앞서 설명한 `Object.hasOwn`과 `Reflect.get` 연산은 하위 own-bag reader에서 수행합니다.
 
 Metadata property map 병합은 별도 경로를 따르며 `Reflect.ownKeys`를 호출하지 않습니다.
-`path:packages/core/src/metadata/shared.ts:369-397`
+`path:packages/core/src/metadata/shared.ts:372-400`
 ```typescript
 export function mergeMetadataPropertyKeys<TStored, TStandard>(
   stored: ReadonlyMap<MetadataPropertyKey, TStored> | undefined,
@@ -372,7 +372,7 @@ const metadata = getModuleMetadata(MyModule);
 console.log(metadata?.providers);
 ```
 
-`metadataKeys.module`과 `metadataKeys.classDi`는 `path:packages/core/src/metadata/shared.ts:137-203`의 process-global `WeakMap` store를 식별합니다. 이들은 `@Module` 또는 `@Inject`가 `MyClass[Symbol.metadata]`에 쓰는 property가 아닙니다. 따라서 application code는 read-only module inspection에 `getModuleMetadata()`를 사용하고, application 또는 container test를 통해 DI wiring을 실행해 검증하며, DTO binding, validation, standard-bag integration contract가 필요할 때만 문서화된 `@fluojs/core/request-pipeline` seam을 사용해야 합니다. `@fluojs/core/internal`의 더 넓은 class-DI reader는 fluo 소유 package와 framework test를 위해 예약되어 있습니다.
+`metadataKeys.module`과 `metadataKeys.classDi`는 `path:packages/core/src/metadata/shared.ts:138-204`의 process-global `WeakMap` store를 식별합니다. 이들은 `@Module` 또는 `@Inject`가 `MyClass[Symbol.metadata]`에 쓰는 property가 아닙니다. 따라서 application code는 read-only module inspection에 `getModuleMetadata()`를 사용하고, application 또는 container test를 통해 DI wiring을 실행해 검증하며, DTO binding, validation, standard-bag integration contract가 필요할 때만 문서화된 `@fluojs/core/request-pipeline` seam을 사용해야 합니다. `@fluojs/core/internal`의 더 넓은 class-DI reader는 fluo 소유 package와 framework test를 위해 예약되어 있습니다.
 
 수동 검사를 넘어 복잡한 애플리케이션의 경우 자동화된 "메타데이터 무결성 테스트"를 설정하는 것을 권장합니다. 이는 공개 루트 헬퍼, 패키지 소유 리더, 또는 요청 파이프라인 통합 seam을 사용하여 특정 클래스에 예상되는 데코레이터와 구성이 있는지 단언(assert)하는 단순한 유닛 테스트입니다. Fluo 내부 리더는 fluo 소유 패키지 테스트에는 적절하지만, 애플리케이션 테스트는 예약된 internal 서브패스에 의존하지 않아야 합니다. 이러한 테스트는 프로덕션에 도달하기 전에 잘못 설정된 데코레이터를 잡을 수 있는 (테스트 수준에서의) 일종의 "컴파일 타임" 체크 역할을 합니다. 메타데이터 검증을 CI/CD 파이프라인에 통합함으로써 코드베이스가 성장하고 진화함에 따라 애플리케이션의 구조적 무결성이 유지되도록 보장할 수 있습니다.
 
@@ -425,9 +425,9 @@ Fluo 메타데이터 시스템의 미래를 내다보며, 우리는 메모리 �
 
 고급 독자에게 실제 교훈은 Fluo가 **단 하나**의 메타데이터 메커니즘을 가지고 있지 않다는 점입니다. 의도적으로 계층화된 모델을 가지고 있으며, 각 계층은 서로 다른 역할을 수행합니다.
 
-- `path:packages/core/src/metadata/shared.ts:9-34`는 전역 심볼 후크를 해결합니다.
-- `path:packages/core/src/metadata/shared.ts:125-149`는 canonical standard-bag key와 Fluo 소유 store identifier를 정의합니다.
-- `path:packages/core/src/metadata/shared.ts:242-254`는 대상별 맵을 할당합니다.
+- `path:packages/core/src/metadata/shared.ts:10-35`는 전역 심볼 후크를 해결합니다.
+- `path:packages/core/src/metadata/shared.ts:126-150`는 canonical standard-bag key와 Fluo 소유 store identifier를 정의합니다.
+- `path:packages/core/src/metadata/shared.ts:245-257`는 대상별 맵을 할당합니다.
 - `path:packages/core/src/metadata/store.ts:16-32`는 읽기/쓰기 시 복제를 통해 레코드 수정을 격리합니다.
 - `path:packages/core/src/metadata/class-di.ts:95-123`은 상속된 유효 DI 상태를 계산하고 cache합니다.
 
@@ -437,26 +437,26 @@ Fluo 메타데이터 시스템의 미래를 내다보며, 우리는 메모리 �
 
 또한 이러한 계층적 접근 방식은 더 쉬운 확장성을 제공합니다. 기존 세 계층에 맞지 않는 새로운 메타데이터 요구 사항이 발생하면 전체 시스템을 다시 작성할 필요 없이 네 번째 특수 계층을 추가할 수 있습니다. 이는 클래스 수준의 DI 메타데이터와 완전히 다른 저장 전략을 사용하는 요청 범위 메타데이터를 처리하는 방식에서 볼 수 있습니다. 이러한 시스템 간의 명확한 경계를 유지함으로써 Fluo가 백엔드 개발의 변화하는 요구 사항에 유연하고 적응 가능하게 유지되도록 보장합니다.
 
-`path:packages/core/src/metadata/shared.ts:22-33`의 `ensureMetadataSymbol`이 어떻게 작성되었는지 보십시오.
+`path:packages/core/src/metadata/shared.ts:23-34`의 `ensureMetadataSymbol`이 어떻게 작성되었는지 보십시오.
 먼저 네이티브 `Symbol.metadata`를 선호하고, 필요한 경우 `Symbol`에 한 번만 정의합니다. 이 구현은 작지만 주요한 설계 규칙을 표현합니다. 독자적인 API가 아니라 표준 surface를 폴리필하는 것입니다. 이는 전체 생태계가 영원히 새로운 `Reflect.*Metadata` 동사에 의존하도록 요구했던 기존 리플렉션 라이브러리들과는 정반대되는 방식입니다.
 
 다음 계층은 명명 규율입니다.
-`path:packages/core/src/metadata/shared.ts:125-149`에서 Fluo는 `standardMetadataKeys`와 `metadataKeys`를 분리합니다.
-이 구분은 미묘하지만 중요합니다. 전자는 표준 metadata bag의 property key를 나타내고, 후자는 `path:packages/core/src/metadata/shared.ts:155-203`을 통해 Fluo 소유 process-global `WeakMap` store를 선택하는 identifier를 나타냅니다. 이 차이를 놓치면 모든 메타데이터가 동일한 컨테이너에 산다고 생각할 수 있지만, 소스 코드는 Fluo가 프레임워크 전용 관리 정보와 상호운용성 데이터를 의도적으로 구별하고 있음을 보여줍니다.
+`path:packages/core/src/metadata/shared.ts:126-150`에서 Fluo는 `standardMetadataKeys`와 `metadataKeys`를 분리합니다.
+이 구분은 미묘하지만 중요합니다. 전자는 표준 metadata bag의 property key를 나타내고, 후자는 `path:packages/core/src/metadata/shared.ts:156-204`을 통해 Fluo 소유 process-global `WeakMap` store를 선택하는 identifier를 나타냅니다. 이 차이를 놓치면 모든 메타데이터가 동일한 컨테이너에 산다고 생각할 수 있지만, 소스 코드는 Fluo가 프레임워크 전용 관리 정보와 상호운용성 데이터를 의도적으로 구별하고 있음을 보여줍니다.
 
 생성 헬퍼들은 이러한 분리를 강화합니다.
-`path:packages/core/src/metadata/shared.ts:242-254`는 필요한 경우에만 대상별 `Map`을 할당하는 `getOrCreatePropertyMap`을 노출합니다. 즉 라우트 수준이나 속성 수준의 메타데이터가 없는 클래스는 성급하게 할당된 구조체에 대한 비용을 지불하지 않습니다. 팬아웃(fan-out)이 큰 애플리케이션에서 이러한 종류의 지연 처리는 부팅 시 할당 압박을 직접적으로 줄이기 때문에 "메타데이터 성능"에 대한 추상적인 주장보다 훨씬 중요합니다.
+`path:packages/core/src/metadata/shared.ts:245-257`는 필요한 경우에만 대상별 `Map`을 할당하는 `getOrCreatePropertyMap`을 노출합니다. 즉 라우트 수준이나 속성 수준의 메타데이터가 없는 클래스는 성급하게 할당된 구조체에 대한 비용을 지불하지 않습니다. 팬아웃(fan-out)이 큰 애플리케이션에서 이러한 종류의 지연 처리는 부팅 시 할당 압박을 직접적으로 줄이기 때문에 "메타데이터 성능"에 대한 추상적인 주장보다 훨씬 중요합니다.
 
 중복 제거 또한 명시적으로 처리됩니다.
-`path:packages/core/src/metadata/shared.ts:256-282`는 삽입 순서와 참조 동일성을 사용하여 `mergeUnique`를 구현합니다. 이는 평범해 보일 수 있지만 프레임워크 시맨틱을 인코딩합니다. 가드와 인터셉터는 선언된 순서를 유지해야 하고, 중복 참조가 체인을 폭발시키지 않아야 하며, Fluo는 임의의 사용자 객체에 대해 깊은 구조적 동일성을 시도하지 않아야 한다는 것입니다. 따라서 메타데이터 헬퍼는 정책의 경계이기도 합니다.
+`path:packages/core/src/metadata/shared.ts:259-285`는 삽입 순서와 참조 동일성을 사용하여 `mergeUnique`를 구현합니다. 이는 평범해 보일 수 있지만 프레임워크 시맨틱을 인코딩합니다. 가드와 인터셉터는 선언된 순서를 유지해야 하고, 중복 참조가 체인을 폭발시키지 않아야 하며, Fluo는 임의의 사용자 객체에 대해 깊은 구조적 동일성을 시도하지 않아야 한다는 것입니다. 따라서 메타데이터 헬퍼는 정책의 경계이기도 합니다.
 
 `path:packages/core/src/metadata/store.ts:16-32`의 복제 저장소는 소스 수준의 엄격함을 보여주는 가장 명확한 사례 중 하나입니다. `read()`는 나가는 길에 복제하고, `write()`는 들어오는 길에 복제하며, `update()`는 업데이터를 적용한 후 복제합니다. 이러한 삼면 복제 규율은 공유된 가변 참조가 메타데이터 계층을 주변 상태(ambient state)로 바꾸는 것을 방지합니다. 프레임워크 코드에서 이는 단순한 편의성보다 훨씬 가치 있는 일인데, 메타데이터 경합을 디버깅하는 것을 획기적으로 쉽게 만들어 주기 때문입니다.
 
 `class-di.ts`는 이러한 하위 조각들이 어떻게 런타임 동작이 되는지 보여줍니다. `path:packages/core/src/metadata/class-di.ts:49-61`은 constructor lineage를 계산하고 이를 반전시킨 뒤, `path:packages/core/src/metadata/class-di.ts:95-123`에서 base부터 leaf까지 metadata를 fold하고 effective snapshot을 cache합니다. 이 반전은 미학적인 것이 아니라 상속된 기본값이 먼저 보이고 자식 정의가 최종 결정권을 갖도록 보장하는 규칙입니다. 리플렉션이 과도한 시스템에서는 이런 규칙이 불투명해지기 쉽지만, Fluo처럼 메타데이터 엔진을 작고 명시적으로 유지하면 상속 동작도 읽을 수 있는 알고리즘으로 남습니다.
 
-`shared.ts`에는 숨겨진 또 다른 고급 포인트가 있습니다. `path:packages/core/src/metadata/shared.ts:284-367`은 `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, 생성자 메타데이터를 위한 record/map reader를 제공합니다. 이는 Fluo가 메타데이터를 *어디서* 읽을지 신중하게 결정한다는 뜻입니다. 어떤 정보는 객체 자체에 살고, 어떤 정보는 생성자에 살며, 헬퍼들은 이 선택을 하나의 거대한 "모든 것을 가져오기" API 뒤에 숨기지 않고 가시적으로 유지합니다.
+`shared.ts`에는 숨겨진 또 다른 고급 포인트가 있습니다. `path:packages/core/src/metadata/shared.ts:287-370`은 `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, 생성자 메타데이터를 위한 record/map reader를 제공합니다. 이는 Fluo가 메타데이터를 *어디서* 읽을지 신중하게 결정한다는 뜻입니다. 어떤 정보는 객체 자체에 살고, 어떤 정보는 생성자에 살며, 헬퍼들은 이 선택을 하나의 거대한 "모든 것을 가져오기" API 뒤에 숨기지 않고 가시적으로 유지합니다.
 
-키 병합 루틴도 같은 주제를 이어갑니다. `path:packages/core/src/metadata/shared.ts:369-397`은 처음 발견된 순서를 보존하면서 저장된 키와 표준 키를 병합합니다. 이 동작은 앞의 `path:packages/core/src/metadata/injection.ts:39-62` 발췌에서 `mergeMetadataPropertyKeys(stored, standard)` 호출로 이미 확인한 병합 규칙과 같은 흐름입니다. 두 세계가 동일한 척하는 대신 Fluo는 화해 규칙을 명시적으로 정의하고, 이러한 예측 가능성 덕분에 표준 데코레이터와 내부 런타임 저장소를 결합하면서도 비결정적인 동작으로 전락하지 않습니다.
+키 병합 루틴도 같은 주제를 이어갑니다. `path:packages/core/src/metadata/shared.ts:372-400`은 처음 발견된 순서를 보존하면서 저장된 키와 표준 키를 병합합니다. 이 동작은 앞의 `path:packages/core/src/metadata/injection.ts:39-62` 발췌에서 `mergeMetadataPropertyKeys(stored, standard)` 호출로 이미 확인한 병합 규칙과 같은 흐름입니다. 두 세계가 동일한 척하는 대신 Fluo는 화해 규칙을 명시적으로 정의하고, 이러한 예측 가능성 덕분에 표준 데코레이터와 내부 런타임 저장소를 결합하면서도 비결정적인 동작으로 전락하지 않습니다.
 
 한 걸음 물러나 보면 일관된 설계 휴리스틱 세트가 나타납니다.
 
