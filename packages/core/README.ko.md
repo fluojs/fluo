@@ -16,12 +16,12 @@ Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Nod
 - [주요 기능](#주요-기능)
 - [문제 해결](#문제-해결)
 - [공개 API](#공개-api)
+- [중복 사본 오류 식별](#중복-사본-오류-식별)
+- [호환되는 프레임워크 서비스 사본](#호환되는-프레임워크-서비스-사본)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
 
 ## 설치
-
-공유 graph/trace/live/timing 데이터 선언의 소유자는 [`@fluojs/diagnostics`](../diagnostics/README.ko.md)입니다. 기존 `@fluojs/core/internal` Studio type import는 공유 선언 재노출로 유지됩니다. 새 data-only consumer는 diagnostics를 사용하고 metadata 실행부는 core에 남겨 두세요. [Import 마이그레이션](../../docs/getting-started/migrate-diagnostics.ko.md)은 선택 사항입니다.
 
 ```bash
 npm install @fluojs/core
@@ -237,6 +237,8 @@ Class를 다시 평가하면 이름이 같아도 다른 constructor이며 자동
 
 ## 공개 API
 
+공유 graph/trace/live/timing 데이터 선언의 소유자는 [`@fluojs/diagnostics`](../diagnostics/README.ko.md)입니다. 기존 `@fluojs/core/internal` Studio type import는 공유 선언 재노출로 유지됩니다. 새 data-only consumer는 diagnostics를 사용하고 metadata 실행부는 core에 남겨 두세요. [Import 마이그레이션](../../docs/getting-started/migrate-diagnostics.ko.md)은 선택 사항입니다.
+
 Breaking 선언 변경은
 [Core와 DI migration 가이드](../../docs/getting-started/migrate-core-di-declarations.ko.md)를
 따르세요. `Global`은 `Module({ global: true })`로 대체하며 injection은 variadic만
@@ -269,21 +271,22 @@ driver가 소유하며 공통 observation 선언은 persistence에 있습니다.
 - **Request-pipeline 통합 seam**: `@fluojs/core/request-pipeline`을 통한 DTO validation/binding 메타데이터 헬퍼와 표준 데코레이터 metadata bag reader
 - **내부 서브패스**: `@fluojs/core/internal`을 통한 더 넓은 메타데이터 헬퍼, 컨트롤러/라우트 헬퍼, injection 헬퍼, clone 유틸리티
 
+## 중복 사본 오류 식별
+
+공개 fluo 오류는 버전과 패키지 소유자를 포함한 규약을 가집니다. 오류가 패키지 경계를 넘을 수 있으면 constructor identity 대신 `isFluoError(...)` 또는 소유 패키지의 더 좁은 판별 함수를 사용하세요. 브랜드가 없는 유사 객체와 호환되지 않는 규약 버전은 거부됩니다.
+
+## 호환되는 프레임워크 서비스 사본
+
+내부 프레임워크 소유 서비스 호환성 메타데이터는 버전이 지정된 명시적 opt-in입니다. 이는 공개 토큰 API가 아니며 일반 애플리케이션 생성자 식별을 바꾸지 않습니다.
+
 ## 관련 패키지
 
 - `@fluojs/di`: 여기서 선언된 토큰과 스코프를 실제 인스턴스로 해석합니다.
 - `@fluojs/runtime`: `@Module` 메타데이터로 모듈 그래프를 컴파일합니다.
 - `@fluojs/http`: 동일한 메타데이터 프리미티브 위에서 컨트롤러와 라우트 정보를 읽습니다.
 
-## 중복 사본 오류 식별
-
-공개 fluo 오류는 버전과 패키지 소유자를 포함한 규약을 가집니다. 오류가 패키지 경계를 넘을 수 있으면 constructor identity 대신 `isFluoError(...)` 또는 소유 패키지의 더 좁은 판별 함수를 사용하세요. 브랜드가 없는 유사 객체와 호환되지 않는 규약 버전은 거부됩니다.
-
 ## 예제 소스
 
 - `packages/core/src/index.ts`
 - `packages/core/src/decorators.ts`
 - `packages/core/src/metadata.ts`
-## 호환되는 프레임워크 서비스 사본
-
-내부 프레임워크 소유 서비스 호환성 메타데이터는 버전이 지정된 명시적 opt-in입니다. 이는 공개 토큰 API가 아니며 일반 애플리케이션 생성자 식별을 바꾸지 않습니다.

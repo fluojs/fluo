@@ -16,12 +16,12 @@ Shared contracts, standard decorators, and metadata primitives that every fluo p
 - [Key Capabilities](#key-capabilities)
 - [Troubleshooting](#troubleshooting)
 - [Public API](#public-api)
+- [Duplicate-copy error identity](#duplicate-copy-error-identity)
+- [Compatible framework service copies](#compatible-framework-service-copies)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
 ## Installation
-
-[`@fluojs/diagnostics`](../diagnostics/README.md) owns shared graph/trace/live/timing data declarations. Existing Studio type imports from `@fluojs/core/internal` remain as re-exports. New data-only consumers should use diagnostics; metadata execution remains in core. [Import migration](../../docs/getting-started/migrate-diagnostics.md) is optional.
 
 ```bash
 npm install @fluojs/core
@@ -241,6 +241,8 @@ Standard decorators cannot automatically infer types for abstract classes or int
 
 ## Public API
 
+[`@fluojs/diagnostics`](../diagnostics/README.md) owns shared graph/trace/live/timing data declarations. Existing Studio type imports from `@fluojs/core/internal` remain as re-exports. New data-only consumers should use diagnostics; metadata execution remains in core. [Import migration](../../docs/getting-started/migrate-diagnostics.md) is optional.
+
 For the breaking declaration changes, follow the
 [Core and DI migration guide](../../docs/getting-started/migrate-core-di-declarations.md).
 `Module({ global: true })` replaces `Global`; injection is variadic only. Existing
@@ -275,21 +277,22 @@ See the [optional import migration](../../docs/getting-started/migrate-persisten
 - **Request-pipeline integration seam**: DTO validation/binding metadata helpers plus standard decorator metadata-bag readers via `@fluojs/core/request-pipeline`
 - **Internal subpath**: broader metadata helpers, controller/route helpers, injection helpers, and clone utilities via `@fluojs/core/internal`
 
+## Duplicate-copy error identity
+
+Public fluo errors carry a versioned package-owner contract. Use `isFluoError(...)`, or an owner package's narrower predicate, instead of constructor identity when errors can cross package boundaries; unbranded lookalikes and incompatible contract versions are rejected.
+
+## Compatible framework service copies
+
+Internal framework-owned service compatibility metadata is versioned and opt-in. It is not a public token API and never changes ordinary application constructor identity.
+
 ## Related Packages
 
 - `@fluojs/di`: resolves the tokens and scopes defined here into live instances
 - `@fluojs/runtime`: compiles the module graph from `@Module` metadata
 - `@fluojs/http`: consumes controller and route metadata built on the same primitives
 
-## Duplicate-copy error identity
-
-Public fluo errors carry a versioned package-owner contract. Use `isFluoError(...)`, or an owner package's narrower predicate, instead of constructor identity when errors can cross package boundaries; unbranded lookalikes and incompatible contract versions are rejected.
-
 ## Example Sources
 
 - `packages/core/src/index.ts`
 - `packages/core/src/decorators.ts`
 - `packages/core/src/metadata.ts`
-## Compatible framework service copies
-
-Internal framework-owned service compatibility metadata is versioned and opt-in. It is not a public token API and never changes ordinary application constructor identity.

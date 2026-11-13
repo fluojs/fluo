@@ -2776,6 +2776,40 @@ describe('changedFilesFromGit', () => {
 });
 
 describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
+  it.each([
+    ['book/advanced/ch02-metadata.md', 'getInjectionSchema', 2],
+    ['book/advanced/ch02-metadata.ko.md', 'getInjectionSchema', 2],
+    ['book/advanced/ch03-custom-decorators.md', 'defineInjectionMetadata', 1],
+    ['book/advanced/ch03-custom-decorators.ko.md', 'defineInjectionMetadata', 1],
+  ] as const)('resolves injection source citations to the complete declaration in %s', (chapterPath, declarationName, citationCount) => {
+    // Given: the real injection declarations and the chapter's path:line references.
+    const source = createSourceFile(
+      'injection.ts',
+      readFileSync(join(repoRoot, 'packages/core/src/metadata/injection.ts'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+    );
+    const declaration = source.statements.filter(isFunctionDeclaration)
+      .find((statement) => statement.name?.text === declarationName);
+    if (declaration === undefined) {
+      throw new TypeError(`Expected injection declaration ${declarationName}.`);
+    }
+    const chapter = readFileSync(join(repoRoot, chapterPath), 'utf8');
+
+    // When: every citation is resolved to its inclusive source range.
+    const ranges = [...chapter.matchAll(/`path:packages\/core\/src\/metadata\/injection\.ts:(\d+)-(\d+)`/gu)]
+      .map((match) => [Number(match[1]), Number(match[2])]);
+
+    // Then: citations start at the export and end at the declaration's closing brace.
+    expect(ranges).toHaveLength(citationCount);
+    for (const range of ranges) {
+      expect(range).toEqual([
+        source.getLineAndCharacterOfPosition(declaration.getStart(source)).line + 1,
+        source.getLineAndCharacterOfPosition(declaration.getEnd() - 1).line + 1,
+      ]);
+    }
+  });
+
   it('keeps the advanced metadata key-merge examples synchronized with core source', () => {
     // Given: the authoritative core implementation and both localized chapter mirrors.
     const source = readFileSync(join(repoRoot, 'packages/core/src/metadata/shared.ts'), 'utf8');

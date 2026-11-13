@@ -325,7 +325,7 @@ export function Provider(options: ProviderOptions): StandardClassDecoratorFn {
 
 주입 메타데이터는 WeakMap 저장소와 표준 메타데이터 가방을 함께 읽어 하나의 스키마로 합칩니다.
 
-`path:packages/core/src/metadata/injection.ts:43-66`
+`path:packages/core/src/metadata/injection.ts:47-71`
 ```typescript
 export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
   const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
@@ -456,7 +456,7 @@ Fluo 메타데이터 시스템의 미래를 내다보며, 우리는 메모리 �
 
 `shared.ts`에는 숨겨진 또 다른 고급 포인트가 있습니다. `path:packages/core/src/metadata/shared.ts:284-367`은 `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, 생성자 메타데이터를 위한 record/map reader를 제공합니다. 이는 Fluo가 메타데이터를 *어디서* 읽을지 신중하게 결정한다는 뜻입니다. 어떤 정보는 객체 자체에 살고, 어떤 정보는 생성자에 살며, 헬퍼들은 이 선택을 하나의 거대한 "모든 것을 가져오기" API 뒤에 숨기지 않고 가시적으로 유지합니다.
 
-키 병합 루틴도 같은 주제를 이어갑니다. `path:packages/core/src/metadata/shared.ts:369-397`은 처음 발견된 순서를 보존하면서 저장된 키와 표준 키를 병합합니다. 이 동작은 앞의 `path:packages/core/src/metadata/injection.ts:43-66` 발췌에서 `mergeMetadataPropertyKeys(stored, standard)` 호출로 이미 확인한 병합 규칙과 같은 흐름입니다. 두 세계가 동일한 척하는 대신 Fluo는 화해 규칙을 명시적으로 정의하고, 이러한 예측 가능성 덕분에 표준 데코레이터와 내부 런타임 저장소를 결합하면서도 비결정적인 동작으로 전락하지 않습니다.
+키 병합 루틴도 같은 주제를 이어갑니다. `path:packages/core/src/metadata/shared.ts:369-397`은 처음 발견된 순서를 보존하면서 저장된 키와 표준 키를 병합합니다. 이 동작은 앞의 `path:packages/core/src/metadata/injection.ts:47-71` 발췌에서 `mergeMetadataPropertyKeys(stored, standard)` 호출로 이미 확인한 병합 규칙과 같은 흐름입니다. 두 세계가 동일한 척하는 대신 Fluo는 화해 규칙을 명시적으로 정의하고, 이러한 예측 가능성 덕분에 표준 데코레이터와 내부 런타임 저장소를 결합하면서도 비결정적인 동작으로 전락하지 않습니다.
 
 한 걸음 물러나 보면 일관된 설계 휴리스틱 세트가 나타납니다.
 
