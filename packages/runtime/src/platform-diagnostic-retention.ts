@@ -1,8 +1,22 @@
 import type { PlatformDiagnosticIssue } from './platform-contract.js';
 
+/**
+ * Repeatable probe phases whose failures are retained independently of lifecycle diagnostics.
+ */
 export type PlatformProbePhase = 'health' | 'ready' | 'snapshot';
+/**
+ * Component operation phases used to distinguish retained platform diagnostics.
+ */
 export type PlatformDiagnosticPhase = PlatformProbePhase | 'start' | 'start-rollback' | 'stop' | 'validate';
 
+/**
+ * Creates a diagnostic for a component operation that threw an error.
+ *
+ * @param componentId - Identifier of the component whose operation failed.
+ * @param phase - Operation phase in which the failure occurred.
+ * @param error - Thrown value to describe as the diagnostic cause.
+ * @returns An error diagnostic identifying the component, operation, and cause.
+ */
 export function createPlatformFailureIssue(
   componentId: string,
   phase: PlatformDiagnosticPhase,
@@ -18,6 +32,12 @@ export function createPlatformFailureIssue(
   };
 }
 
+/**
+ * Creates a diagnostic when validation reports failure without supplying issues.
+ *
+ * @param componentId - Identifier of the component whose validation failed.
+ * @returns An error diagnostic explaining the missing validation issues.
+ */
 export function createPlatformValidationFailureIssue(componentId: string): PlatformDiagnosticIssue {
   return {
     code: 'RUNTIME_PLATFORM_VALIDATION_FAILED',
@@ -28,6 +48,10 @@ export function createPlatformValidationFailureIssue(componentId: string): Platf
   };
 }
 
+/**
+ * Retains the latest lifecycle diagnostic per component, phase, and code, and the
+ * latest probe failure per component and probe phase, in first-seen key order.
+ */
 export class PlatformDiagnosticRetention {
   private readonly retained: PlatformDiagnosticIssue[] = [];
   private readonly lifecycleIndexesByComponent = new Map<
