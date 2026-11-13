@@ -79,7 +79,9 @@ function getStandardRouteMetadata(target: object, propertyKey: MetadataPropertyK
 
 /**
  * Clone and replace the controller record stored on this exact target, without merging on write.
- * Guard and interceptor collections are copied while their entries retain their references.
+ * Guard and interceptor collections are copied. Entries that are arrays, Date, Map, Set,
+ * or plain objects (prototype Object.prototype or null) are deep-cloned through cloneMutableValue;
+ * other entries, including functions and other class instances, are returned unchanged.
  *
  * @param target Controller constructor whose own stored record is replaced.
  * @param metadata Complete controller record to copy into the store.
@@ -89,10 +91,11 @@ export function defineControllerMetadata(target: Function, metadata: ControllerM
 }
 
 /**
- * Merge the exact target's stored controller record with standard metadata into a fresh mutable copy.
+ * Merge the exact target's stored controller record with standard metadata into a new mutable record.
  * Stored records are not inherited through the prototype chain. Non-nullish stored basePath
  * and version take precedence; basePath defaults to ''. Guards and interceptors merge
- * stored-first and deduplicate by reference.
+ * stored-first and deduplicate by reference after both sources' collections and supported
+ * mutable entries are cloned as described in defineControllerMetadata.
  *
  * @param target Controller constructor to inspect.
  * @returns A fresh merged record, or undefined when neither source has a record.
@@ -166,10 +169,12 @@ function mergeRouteMetadata(
 }
 
 /**
- * Merge one route's stored and standard records into a fresh mutable copy.
+ * Merge one route's stored and standard records into a new mutable record.
  * Only this exact target's stored map is read, without prototype inheritance.
  * Non-nullish stored fields take precedence over standard fields; guards and interceptors
  * merge stored-first and deduplicate by reference. Headers and redirect are cloned.
+ * Guard and interceptor arrays are new, but their stored entries are returned without cloning;
+ * standard entries are cloned as described in defineControllerMetadata before merging.
  *
  * @param target Object whose route metadata is inspected.
  * @param propertyKey Route property to read from both sources.
