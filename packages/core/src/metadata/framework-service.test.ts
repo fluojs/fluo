@@ -1,12 +1,36 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import {
   defineFrameworkServiceIdentity,
+  FrameworkService,
   getFrameworkServiceIdentity,
   normalizeFrameworkServiceToken,
 } from './framework-service.js';
 
 describe('framework service identity metadata', () => {
+  it('FrameworkService: standard class decoration records the compatible identity', () => {
+    const identity = { id: '@fluojs/test/decorated-service', version: 1 };
+    expectTypeOf(FrameworkService(identity)).toEqualTypeOf<
+      (value: Function, context: ClassDecoratorContext) => void
+    >();
+
+    @FrameworkService(identity)
+    class DecoratedService {}
+
+    expect(getFrameworkServiceIdentity(DecoratedService)).toEqual(identity);
+    expect(normalizeFrameworkServiceToken(DecoratedService)).toBe(
+      Symbol.for('fluo.framework-service/@fluojs/test/decorated-service/v1'),
+    );
+  });
+
+  it.each([
+    { id: '', version: 1 },
+    { id: '@fluojs/test/service', version: 0 },
+    { id: '@fluojs/test/service', version: 1.5 },
+  ])('FrameworkService: invalid identity %j throws before decoration', (identity) => {
+    expect(() => FrameworkService(identity)).toThrow(TypeError);
+  });
+
   it('shares a versioned internal token only for explicitly designated compatible constructors', () => {
     class ServiceCopyA {}
     class ServiceCopyB {}
