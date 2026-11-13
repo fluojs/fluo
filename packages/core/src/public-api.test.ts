@@ -232,6 +232,18 @@ describe('@fluojs/core public API surface', () => {
     expect(internalTypeExport).toBe('moduleMetadata');
   });
 
+  it('internal subpath: deprecated injection helpers still round-trip metadata', () => {
+    const target = {};
+    const token = Symbol('service');
+
+    coreInternalApi.defineInjectionMetadata(target, 'service', { optional: true, token });
+
+    expect(coreInternalApi.getInjectionSchema(target)).toEqual([{
+      propertyKey: 'service',
+      metadata: { optional: true, token },
+    }]);
+  });
+
   it('keeps request-pipeline metadata helpers available from the documented integration seam', () => {
     expect(coreRequestPipelineApi).toHaveProperty('ensureRequestPipelineMetadataSymbol');
     expect(coreRequestPipelineApi).toHaveProperty('getRequestPipelineMetadataBag');
