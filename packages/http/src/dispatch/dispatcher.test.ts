@@ -180,6 +180,59 @@ class CountingContainer extends Container {
 }
 
 describe('dispatcher runtime', () => {
+  it.each(['fast', 'full'] as const)(
+    'dispatch: inherited required DTO values on %s path -> returns 400 without calling handler',
+    async (executionPath) => {
+      const handler = vi.fn();
+      class RequiredInput {
+        @FromBody('toString')
+        bodyValue = '';
+
+        @FromQuery('constructor')
+        queryValue = '';
+      }
+
+      class AllowGuard {
+        canActivate() {
+          return true;
+        }
+      }
+
+      @Controller('/own-source-values')
+      class OwnSourceController {
+        @UseGuards(...(executionPath === 'full' ? [AllowGuard] : []))
+        @Get('/')
+        @RequestDto(RequiredInput)
+        getValue(input: RequiredInput) {
+          handler(input);
+          return { ok: true };
+        }
+      }
+
+      const dispatcher = createDispatcher({
+        handlerMapping: createHandlerMapping([{ controllerToken: OwnSourceController }]),
+        rootContainer: new Container().register(OwnSourceController, AllowGuard),
+      });
+      const request = createRequest('/own-source-values');
+      request.body = {};
+      const response = createResponse();
+
+      await dispatcher.dispatch(request, response);
+
+      expect(getDispatcherFastPathStats(dispatcher)?.routes[0]?.executionPath).toBe(executionPath);
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toMatchObject({
+        error: {
+          details: [
+            { code: 'MISSING_FIELD', field: 'bodyValue', source: 'body' },
+            { code: 'MISSING_FIELD', field: 'queryValue', source: 'query' },
+          ],
+        },
+      });
+      expect(handler).not.toHaveBeenCalled();
+    },
+  );
+
   it('keeps a DTO-bound POST acknowledgement private while granting anonymous GET page prefetch', async () => {
     // Given: one HTTP controller owns both the form mutation and its public page.
     const navigationMediaType = 'application/vnd.fluo.react-navigation+json;v=2';
