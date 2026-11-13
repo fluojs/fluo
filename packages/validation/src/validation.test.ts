@@ -450,67 +450,54 @@ describe('DefaultValidator', () => {
 
     await expect(validator.validate(new ExtendedValidatorsDto(), ExtendedValidatorsDto)).resolves.toBeUndefined();
 
-    await expect(
-      validator.validate(
-        Object.assign(new ExtendedValidatorsDto(), {
-          arrayValues: ['legacy', 'extra', 'overflow', 'api'],
-          asciiText: '한글',
-          base64Text: 'not base64',
-          booleanText: 'yes',
-          currencyText: 'not money',
-          dateField: '2026-01-01',
-          dateRangeField: new Date('2027-01-01T00:00:00.000Z'),
-          decimalText: 'abc',
-          divisibleField: -7,
-          domainText: 'not a domain',
-          emptyField: 'not empty',
-          equalField: 'other',
-          hexColorText: 'blue',
-          hexadecimalText: 'xyz',
-          inField: 'other',
-          isoText: 'January 1',
-          jsonText: 'not json',
-          jwtText: 'not jwt',
-          latLongText: 'not coordinates',
-          localeText: 'not_locale',
-          magnetText: 'https://example.com',
-          mimeText: 'not mime',
-          mongoIdText: 'not mongo id',
-          negativeField: 1,
-          notEqualField: 'legacy',
-          notInField: 'legacy',
-          objectField: [],
-          portText: '99999',
-          postalText: 'not postal',
-          rfc3339Text: '2026-01-01',
-          rgbText: 'not rgb',
-          semverText: 'v1',
-          shortCode: 'legacy-code',
-          upperText: 'fluo',
-        }),
-        ExtendedValidatorsDto,
-      ),
-    ).rejects.toMatchObject({
-      issues: expect.arrayContaining([
-        expect.objectContaining({ field: 'equalField', message: 'equalField must equal fluo' }),
-        expect.objectContaining({ field: 'notEqualField', message: 'notEqualField must not equal legacy' }),
-        expect.objectContaining({ field: 'emptyField', message: 'emptyField must be empty' }),
-        expect.objectContaining({ field: 'inField', message: 'inField must be allowed' }),
-        expect.objectContaining({ field: 'notInField', message: 'notInField must not be forbidden' }),
-        expect.objectContaining({ field: 'dateField', message: 'dateField must be a Date' }),
-        expect.objectContaining({ field: 'objectField', message: 'objectField must be a plain object' }),
-        expect.objectContaining({ field: 'divisibleField', message: 'divisibleField must be divisible by five' }),
-        expect.objectContaining({ field: 'divisibleField', message: 'divisibleField must be positive' }),
-        expect.objectContaining({ field: 'negativeField', message: 'negativeField must be negative' }),
-        expect.objectContaining({ field: 'dateRangeField', message: 'dateRangeField must be on or before maximum' }),
-        expect.objectContaining({ field: 'shortCode', message: 'shortCode must not contain legacy' }),
-        expect.objectContaining({ field: 'shortCode', message: 'shortCode must be short' }),
-        expect.objectContaining({ field: 'asciiText', message: 'asciiText must be ASCII' }),
-        expect.objectContaining({ field: 'upperText', message: 'upperText must be uppercase' }),
-        expect.objectContaining({ field: 'arrayValues', message: 'arrayValues must contain at most three entries' }),
-        expect.objectContaining({ field: 'arrayValues', message: 'arrayValues must not contain legacy' }),
-      ]),
-    });
+    const invalidCases = [
+      ['equalField', 'other', ['EQUALS']],
+      ['notEqualField', 'legacy', ['NOT_EQUALS']],
+      ['emptyField', 'not empty', ['EMPTY']],
+      ['inField', 'other', ['IN']],
+      ['notInField', 'legacy', ['NOT_IN']],
+      ['dateField', '2026-01-01', ['INVALID_DATE']],
+      ['objectField', [], ['INVALID_OBJECT']],
+      ['divisibleField', -7, ['POSITIVE', 'DIVISIBLE_BY']],
+      ['negativeField', 1, ['NEGATIVE']],
+      ['dateRangeField', new Date('2025-12-31T23:59:59.999Z'), ['MIN_DATE']],
+      ['dateRangeField', new Date('2027-01-01T00:00:00.000Z'), ['MAX_DATE']],
+      ['shortCode', 'legacy-code', ['NOT_CONTAINS', 'MAX_LENGTH']],
+      ['asciiText', '한글', ['ASCII']],
+      ['asciiText', 'FLUO', ['LOWERCASE']],
+      ['upperText', 'fluo', ['UPPERCASE']],
+      ['base64Text', 'not base64', ['BASE64']],
+      ['booleanText', 'yes', ['BOOLEANSTRING']],
+      ['decimalText', 'abc', ['DECIMAL']],
+      ['domainText', 'not a domain', ['FQDN']],
+      ['hexColorText', 'blue', ['HEXCOLOR']],
+      ['hexadecimalText', 'xyz', ['HEXADECIMAL']],
+      ['jsonText', 'not json', ['JSON']],
+      ['jwtText', 'not jwt', ['JWT']],
+      ['localeText', 'not-a-locale!', ['LOCALE']],
+      ['magnetText', 'https://example.com', ['MAGNETURI']],
+      ['mimeText', 'not mime', ['MIMETYPE']],
+      ['mongoIdText', 'not mongo id', ['MONGOID']],
+      ['portText', '99999', ['PORT']],
+      ['rfc3339Text', '2026-01-01', ['RFC3339']],
+      ['semverText', 'v1', ['SEMVER']],
+      ['isoText', 'January 1', ['ISO8601']],
+      ['latLongText', 'not coordinates', ['LATLONG']],
+      ['postalText', 'not postal', ['POSTALCODE']],
+      ['rgbText', 'not rgb', ['RGBCOLOR']],
+      ['currencyText', 'not money', ['CURRENCY']],
+      ['arrayValues', ['legacy', 'extra', 'overflow', 'http'], ['ARRAY_MAX_SIZE', 'ARRAY_NOT_CONTAINS', 'ARRAY_CONTAINS']],
+    ] satisfies [keyof ExtendedValidatorsDto, unknown, string[]][];
+
+    for (const [field, value, codes] of invalidCases) {
+      const input = Object.assign(new ExtendedValidatorsDto(), { [field]: value });
+
+      const result = validator.validate(input, ExtendedValidatorsDto);
+
+      await expect(result, `${field}: ${codes.join(', ')}`).rejects.toMatchObject({
+        issues: codes.map((code) => ({ field, code })),
+      });
+    }
   });
 
   it('covers documented presence and identity validators with pass and fail contracts', async () => {
