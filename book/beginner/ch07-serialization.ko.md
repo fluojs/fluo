@@ -107,18 +107,31 @@ export class PublicPostDto {
 
 직렬화 패키지는 `serialize(value)`로 값을 직접 가공할 수 있습니다. HTTP 핸들러에서는 인터셉터를 쓰는 패턴이 더 자연스럽습니다. 응답 shaping이 여러 라우트에 반복될 수 있기 때문에, 핸들러 바깥의 공통 파이프라인에 두는 편이 책임이 더 깔끔하게 나뉩니다.
 
+`@UseInterceptors(...)`에 `SerializerInterceptor`를 class token으로 전달하면 request container에서 resolve합니다. 기존 service provider를 유지하면서 컨트롤러의 module에 provider로 등록하세요.
+
 ```typescript
+import { Inject, Module } from '@fluojs/core';
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
+import { PostsService } from './posts.service';
 
 @Controller('/posts')
 @UseInterceptors(SerializerInterceptor)
+@Inject(PostsService)
 export class PostsController {
+  constructor(private readonly postsService: PostsService) {}
+
   @Get('/')
   findAll() {
     return this.postsService.findAllPublic();
   }
 }
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService, SerializerInterceptor],
+})
+export class PostsModule {}
 ```
 
 이제 컨트롤러는 DTO 인스턴스나 직렬화를 의도한 데이터를 반환할 수 있습니다. 인터셉터가 응답 형태 조정 단계를 자동으로 적용하므로, 컨트롤러는 포맷팅 세부사항보다 조정 역할에 집중할 수 있습니다. 이 흐름은 응답 규칙을 한곳에 모아 API 전체의 일관성을 지키는 데도 도움이 됩니다.
@@ -132,6 +145,7 @@ export class PostsController {
 일부 고급 route는 response를 직접 제어해야 합니다. 예를 들어 CSV 다운로드는 header를 설정하고 최종 payload를 명시적으로 commit할 수 있습니다.
 
 ```typescript
+import { Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
 
@@ -144,6 +158,12 @@ export class PostsController {
     await context.response.send('id,title\npost-1,Serialization Basics');
   }
 }
+
+@Module({
+  controllers: [PostsController],
+  providers: [SerializerInterceptor],
+})
+export class PostsModule {}
 ```
 
 `send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출하면 handler의 최종 response payload가 commit됩니다. 그 시점부터 `SerializerInterceptor`는 `serialize(...)`를 건너뛰고 `next.handle()`에서 받은 값을 그대로 반환합니다. 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다. 이와 별개로 dispatcher는 commit된 response를 확인하고 두 번째 success-response write를 건너뛰므로 최종 chain 결과를 보내지 않습니다. 직접 쓸 payload의 민감한 field filtering과 필요한 encoding은 commit 전에 끝내야 합니다.
