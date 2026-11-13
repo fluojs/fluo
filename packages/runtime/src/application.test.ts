@@ -643,15 +643,100 @@ describe('bootstrapApplication', () => {
         'module:destroy',
         'application:shutdown',
         'adapter:close',
-        'runtime:waiting:start',
-        'runtime:waiting:end',
         'runtime:failing',
-        'runtime:after-failure',
       ]);
     } finally {
       cleanupCanFinish.resolve();
       await closePromise.catch(() => undefined);
     }
+  });
+
+  it.each(['application', 'context'] as const)('close: %s repeated cleanup failures retry only unfinished registrations in order', async (shell) => {
+    const events: string[] = [];
+    const firstFailure = new Error('first registration failed');
+    const secondFailure = new Error('second registration failed');
+    let firstAttempts = 0;
+    let secondAttempts = 0;
+
+    @Inject(RUNTIME_CLEANUP_REGISTRATION)
+    class RuntimeCleanupProbe implements OnModuleInit {
+      constructor(private readonly registerCleanup: RuntimeCleanupRegistration) {}
+
+      onModuleInit() {
+        this.registerCleanup(() => {
+          events.push('first');
+          if (++firstAttempts === 1) {
+            throw firstFailure;
+          }
+        });
+        this.registerCleanup(async () => {
+          events.push('fulfilled');
+        });
+        this.registerCleanup(async () => {
+          events.push('second');
+          if (++secondAttempts <= 2) {
+            throw secondFailure;
+          }
+        });
+        this.registerCleanup(() => {
+          events.push('void');
+        });
+      }
+    }
+    class AppModule {}
+    defineModule(AppModule, { providers: [RuntimeCleanupProbe] });
+    const app = registerAppForCleanup(shell === 'application'
+      ? await FluoFactory.create(AppModule, { adapter: { async listen() {}, async close() {} } })
+      : await FluoFactory.createApplicationContext(AppModule));
+
+    const initial = await app.close().catch((error: unknown) => error);
+
+    expect(initial).toBeInstanceOf(AggregateError);
+    expect((initial as AggregateError).errors).toEqual([firstFailure, secondFailure]);
+    expect(events).toEqual(['first', 'fulfilled', 'second', 'void']);
+    await expect(app.close()).rejects.toBe(secondFailure);
+    expect(events).toEqual(['first', 'fulfilled', 'second', 'void', 'first', 'second']);
+    await expect(app.close()).resolves.toBeUndefined();
+    await expect(app.close()).resolves.toBeUndefined();
+    expect(events).toEqual(['first', 'fulfilled', 'second', 'void', 'first', 'second', 'second']);
+  });
+
+  it.each(['application', 'context'] as const)('close: %s duplicate callback registrations preserve independent completion and removal', async (shell) => {
+    const failure = new Error('duplicate registration failed');
+    let calls = 0;
+    const cleanup = () => {
+      if (++calls === 2) {
+        throw failure;
+      }
+    };
+
+    @Inject(RUNTIME_CLEANUP_REGISTRATION)
+    class RuntimeCleanupProbe implements OnModuleInit {
+      constructor(private readonly registerCleanup: RuntimeCleanupRegistration) {}
+
+      onModuleInit() {
+        const remove = this.registerCleanup(cleanup);
+        this.registerCleanup(cleanup);
+        this.registerCleanup(cleanup);
+        remove();
+        remove();
+      }
+    }
+    class AppModule {}
+    defineModule(AppModule, { providers: [RuntimeCleanupProbe] });
+    const create = async () => registerAppForCleanup(shell === 'application'
+      ? await FluoFactory.create(AppModule, { adapter: { async listen() {}, async close() {} } })
+      : await FluoFactory.createApplicationContext(AppModule));
+    const first = await create();
+    const second = await create();
+
+    await expect(first.close()).rejects.toBe(failure);
+
+    expect(calls).toBe(2);
+    await expect(first.close()).resolves.toBeUndefined();
+    expect(calls).toBe(3);
+    await expect(second.close()).resolves.toBeUndefined();
+    expect(calls).toBe(5);
   });
 
   it('aggregates runtime cleanup failures while continuing later callbacks', async () => {

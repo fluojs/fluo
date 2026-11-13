@@ -170,8 +170,10 @@ artifact 회귀와 `tooling/release/cli-published-dependencies.test.ts`가 relea
 ## Runtime cleanup settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callback은 동기 또는 비동기일 수 있습니다. Runtime close와
-bootstrap-failure cleanup은 각 registration을 순서대로 await하고 failure 뒤에도 계속 실행하며,
-cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 자세한 내용은
+bootstrap-failure cleanup은 각 registration을 순서대로 await하고 failure 뒤에도 계속 실행합니다.
+명시적 close retry는 실패한 registration만 실행하며 해당 application 또는 context에서 성공한
+registration은 다시 실행하지 않습니다. Lifecycle hook retry는 phase 전체를 다시 실행합니다.
+Bootstrap은 cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 자세한 내용은
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.ko.md)와
 [`@fluojs/runtime` README](../packages/runtime/README.ko.md)를 참고하세요.
 

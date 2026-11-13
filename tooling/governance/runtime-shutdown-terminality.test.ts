@@ -51,7 +51,7 @@ const expectedContract = {
     'container.dispose',
   ],
   retry: {
-    runtimeCleanup: 'incomplete-phase-all-registrations',
+    runtimeCleanup: 'failed-registrations-only',
     lifecycleHooks: 'incomplete-phase-all-hooks',
     adapter: 'adapter-owned',
     container: 'failed-onDestroy-only',
@@ -320,8 +320,8 @@ describe('legacy Book runtime source consumers', () => {
       ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:88-94'],
       ['packages/runtime/src/internal/application.ts', 'path:packages/runtime/src/internal/application.ts:175-251'],
       ['packages/runtime/src/bootstrap.ts', 'path:packages/runtime/src/bootstrap.ts:498-518'],
-      ['packages/runtime/src/internal/runtime-resources.ts', 'path:packages/runtime/src/internal/runtime-resources.ts:151-178'],
-      ['packages/runtime/src/internal/runtime-resources.ts', 'path:packages/runtime/src/internal/runtime-resources.ts:180-195'],
+      ['packages/runtime/src/internal/runtime-resources.ts', 'path:packages/runtime/src/internal/runtime-resources.ts:158-185'],
+      ['packages/runtime/src/internal/runtime-resources.ts', 'path:packages/runtime/src/internal/runtime-resources.ts:187-202'],
       ['packages/runtime/src/internal/lifecycle.ts', 'path:packages/runtime/src/internal/lifecycle.ts:218-244'],
     ] as const) {
       expectSourceExampleToMatchRuntime(content, read(sourcePath), sourceMarker);

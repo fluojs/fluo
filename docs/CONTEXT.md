@@ -172,8 +172,10 @@ and `tooling/release/cli-published-dependencies.test.ts` verify the release-inpu
 ## Runtime Cleanup Settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callbacks may be synchronous or asynchronous. Runtime close and
-bootstrap-failure cleanup await each registration in order, continue after failures, and preserve
-the original bootstrap failure while reporting cleanup failures. See the [Lifecycle & Shutdown
+bootstrap-failure cleanup await each registration in order and continue after failures. Explicit close
+retries run only failed registrations; successful registrations never replay on that application or
+context. Lifecycle hook retries remain phase-wide. Bootstrap preserves its original failure while
+reporting cleanup failures. See the [Lifecycle & Shutdown
 Guarantees](./architecture/lifecycle-and-shutdown.md) and the
 [`@fluojs/runtime` README](../packages/runtime/README.md).
 
