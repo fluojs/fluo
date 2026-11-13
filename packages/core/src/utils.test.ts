@@ -39,6 +39,18 @@ describe('fallbackClone', () => {
 })
 
 describe('cloneWithFallback', () => {
+  it('clones a million-element array with equal contents detached from the source', () => {
+    const source = Array.from({ length: 1_000_000 }, (_, index) => index)
+
+    const cloned = cloneWithFallback(source)
+
+    expect(cloned).toHaveLength(source.length)
+    expect(source.every((value, index) => value === cloned[index])).toBe(true)
+    expect(cloned).not.toBe(source)
+    cloned[0] = -1
+    expect(source[0]).toBe(0)
+  })
+
   it('preserves the issue #4014 event prototype regardless of function siblings', () => {
     class Ev {
       id = 1

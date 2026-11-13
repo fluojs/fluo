@@ -26,7 +26,9 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
   if (Array.isArray(value)) {
     const cloned: unknown[] = [];
     seen.set(value, cloned);
-    cloned.push(...value.map((item) => cloneFallbackValue(item, seen)));
+    for (let index = 0; index < value.length; index += 1) {
+      cloned.push(cloneFallbackValue(value[index], seen));
+    }
     return cloned as T;
   }
 
