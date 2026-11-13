@@ -66,6 +66,27 @@ describe('validation mapped-type import boundary governance', () => {
       });
     }
 
+    it(`rejects negated metadata preload requirements in ${sourcePath}`, () => {
+      const [before, after] = korean
+        ? readme
+          ? ['`Symbol.metadata`가 있어야 합니다.', '`Symbol.metadata`가 없어도 됩니다.']
+          : ['`Symbol.metadata`가 필요합니다.', '`Symbol.metadata`가 필요하지 않습니다.']
+        : readme
+          ? ['`Symbol.metadata` must exist before', '`Symbol.metadata` need not exist before']
+          : ['need `Symbol.metadata` before', 'do not need `Symbol.metadata` before'];
+      const readText = (relativePath: string) => {
+        const source = readFileSync(join(import.meta.dirname, '../..', relativePath), 'utf8');
+        if (relativePath !== sourcePath) {
+          return source;
+        }
+        expect(source).toContain(before);
+        return source.replace(before, after);
+      };
+
+      expect(() => enforceValidationMappedTypesImportBoundary(readText))
+        .toThrow(`${sourcePath} must document validation metadata preload before decorated DTO modules evaluate.`);
+    });
+
     it.each([
       ['metadata preload', '`@fluojs/validation`', '`validation`'],
       ['source constructors', 'do not run source DTO constructors', 'run source DTO constructors'],

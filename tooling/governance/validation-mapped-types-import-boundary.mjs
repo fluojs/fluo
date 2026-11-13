@@ -97,10 +97,12 @@ export function enforceValidationMappedTypesImportBoundary(readText = defaultRea
       const metadataHeading = readme
         ? korean ? '## 빠른 시작' : '## Quick Start'
         : korean ? '## Decorator metadata 사전 로드 순서' : '## Decorator metadata preload ordering';
-      const metadata = contentAfterUniqueHeading(source, metadataHeading, relativePath).split('```')[0].replace(/\s+/gu, ' ');
+      const metadata = contentAfterUniqueHeading(source, metadataHeading, relativePath).split('```')[0].replace(/\s+/gu, ' ').trim();
       const metadataOrdering = korean
-        ? /평가되기 전에 `Symbol\.metadata`/u
-        : /`Symbol\.metadata` (?:must exist before|before)/u;
+        ? /평가되기 전에 `Symbol\.metadata`가 (?:있어야 합니다|필요합니다)\./u
+        : readme
+          ? /^`Symbol\.metadata` must exist before/u
+          : /`context\.metadata` need `Symbol\.metadata` before/u;
       if (
         !metadata.includes('`@fluojs/validation`')
         || !metadata.includes('`@ValidateClass(...)`')
