@@ -40,12 +40,12 @@ function normalizeCacheMethod(method: string): string {
 function buildSortedQueryString(query: Record<string, unknown>): string {
   const entries = Object.entries(query)
     .filter(([, value]) => value !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
     .map(([key, value]) => {
       if (Array.isArray(value)) {
         return [...value]
           .map((v) => String(v))
-          .sort((a, b) => a.localeCompare(b))
+          .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
           .map((v) => `${encodeURIComponent(key)}=${encodeURIComponent(v)}`)
           .join('&');
       }

@@ -26,7 +26,7 @@
 | 기본 키 소스 | `@CacheKey(...)`가 없으면 `CacheInterceptor`가 `httpKeyStrategy`에서 키를 계산합니다. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/types.ts` |
 | 내장 전략 | 지원되는 전략 값은 `'route'`, `'route+query'`, 사용자 정의 함수입니다. 기본값인 `'route+query'`는 path와 정렬된 query string을 사용하며, query-insensitive 응답에만 `'route'`를 설정합니다. | `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 확장 경로 | 애플리케이션은 function-based `httpKeyStrategy` 설정 또는 handler-local `@CacheKey(...)` factory로 key 생성을 커스터마이즈합니다. key 생성만 바꾸기 위해 `CacheInterceptor`를 subclass하는 것은 문서화된 확장 경로가 아닙니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/README.md` |
-| query 정규화 | query를 포함하는 키에서는 query 항목을 키 기준으로 정렬하고 반복 값도 정렬한 뒤 직렬화하므로, 순서만 다른 query string은 동일한 키로 매핑됩니다. | `packages/cache-manager/src/interceptor.ts` |
+| query 정규화 | query를 포함하는 키에서는 디코딩된 매개변수 이름과 각 매개변수의 반복 문자열 값을 프로세스 로케일이나 collation 설정과 무관한 결정적 UTF-16 코드 유닛 순서로 정렬한 뒤 URI 인코딩합니다. 순서만 다른 query string은 동일한 키로 매핑되며, 대소문자, Unicode 정규화 형태, 반복 값의 중복 개수는 구분됩니다. | `packages/cache-manager/src/interceptor.ts` |
 | principal 격리 | 내장 키 전략은 `principalScopeResolver`가 값을 반환하면 `|principal:<scope>`를 추가합니다. 사용자 정의 resolver가 없으면 인증된 요청은 `requestContext.principal`의 `issuer`와 `subject`를 추가합니다. | `packages/cache-manager/src/interceptor.ts` |
 | 명시적 override | `@CacheKey(...)`는 빈 문자열을 포함한 정적 문자열 또는 resolver 함수를 저장할 수 있으며, 해당 핸들러의 계산된 GET 키를 덮어씁니다. Metadata가 없을 때만 설정된 fallback strategy를 선택합니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 

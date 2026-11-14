@@ -950,6 +950,41 @@ describe('CacheInterceptor', () => {
       expect(await cacheService.get('/products?page=1&tag=a&tag=c')).toEqual({ data: 'tags' });
     });
 
+    it.each([
+      {
+        part: 'parameter names',
+        query: { '\u00e9': '1', '\u00e4': '1', a: '1', B: '1', 'e\u0301': '1', '\uffff': '1', '\ud83d\ude00': '1', omitted: undefined },
+        key: '/products?B=1&a=1&e%CC%81=1&%C3%A4=1&%C3%A9=1&%F0%9F%98%80=1&%EF%BF%BF=1',
+      },
+      {
+        part: 'repeated values',
+        query: { tag: ['\u00e9', '\u00e4', 'a', 'B', 'e\u0301', '\uffff', '\ud83d\ude00', 'a', 'a &'], omitted: undefined },
+        key: '/products?tag=B&tag=a&tag=a&tag=a%20%26&tag=e%CC%81&tag=%C3%A4&tag=%C3%A9&tag=%F0%9F%98%80&tag=%EF%BF%BF',
+      },
+    ])('strategy "route+query" sorts $part by decoded UTF-16 code units independently of collation', async ({ query, key }) => {
+      class ProductController {
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'route+query' });
+      const requestContext = createRequestContext('GET', '/products', '/products');
+      requestContext.request.query = query;
+      const originalQuery = structuredClone(query);
+      const context = createContext(ProductController, 'list', requestContext);
+      const next: CallHandler = { handle: vi.fn(async () => ({ data: 'ordered' })) };
+      // Force collation ties without relying on the host's installed locales.
+      const collation = vi.spyOn(String.prototype, 'localeCompare').mockReturnValue(0);
+
+      try {
+        await interceptor.intercept(context, next);
+
+        expect(await cacheService.get(key)).toEqual({ data: 'ordered' });
+        expect(requestContext.request.query).toEqual(originalQuery);
+      } finally {
+        collation.mockRestore();
+      }
+    });
+
     it('strategy "route+query" treats no-query and empty-query differently from route-only', async () => {
       class ProductController {
         @CacheTTL(120)
