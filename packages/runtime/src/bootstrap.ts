@@ -543,7 +543,7 @@ export class FluoFactory {
     };
     const runtimeCleanup: RuntimeCleanupCallback[] = [];
     if (studioDevtools) {
-      runtimeCleanup.push(() => studioDevtools.close());
+      createRuntimeCleanupRegistration(runtimeCleanup)(() => studioDevtools.close());
     }
     const bootstrapReadySignal = createBootstrapReadySignal();
     const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
@@ -703,7 +703,7 @@ export class FluoFactory {
     let bootstrappedModules: CompiledModule[] = [];
     const runtimeCleanup: RuntimeCleanupCallback[] = [];
     if (studioDevtools) {
-      runtimeCleanup.push(() => studioDevtools.close());
+      createRuntimeCleanupRegistration(runtimeCleanup)(() => studioDevtools.close());
     }
     const bootstrapReadySignal = createBootstrapReadySignal();
     const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);

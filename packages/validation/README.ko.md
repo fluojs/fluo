@@ -34,8 +34,18 @@ pnpm add @fluojs/validation
 
 ## 빠른 시작
 
+<!-- fluo-contract: validation.metadata-preload -->
+
+Validation field decorator와 `@ValidateClass(...)`를 사용하는 DTO module이
+평가되기 전에 `Symbol.metadata`가 있어야 합니다. `@fluojs/validation` import는
+이를 설치하지 않습니다. 아래처럼 같은 module의 decorated class 선언 전에
+`ensureMetadataSymbol()`을 호출하세요.
+
 ```ts
+import { ensureMetadataSymbol } from '@fluojs/core';
 import { DefaultValidator, isDtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
+
+ensureMetadataSymbol();
 
 class CreateUserDto {
   @IsEmail()
@@ -61,6 +71,21 @@ try {
   }
 }
 ```
+
+DTO를 별도 module에서 import한다면, application graph를 static import한 뒤
+module body에서 호출하는 것은 늦습니다. 다음 preload entrypoint를 사용하고,
+`bootstrap.js`에서 DTO와 application graph를 import하세요.
+
+```ts
+// preload.ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
+
+이는 TC39 decorator metadata를 위한 준비이며 `reflect-metadata`나
+`emitDecoratorMetadata` 지원을 의미하지 않습니다.
 
 ## 주요 패턴
 
@@ -132,6 +157,8 @@ Standard Schema 이슈에서는 값이 없을 수 있습니다.
 
 ### Mapped DTO 헬퍼
 
+<!-- fluo-contract: validation.mapped-defaults -->
+
 ```ts
 import { IsString, IsEmail } from '@fluojs/validation';
 import { PickType, PartialType } from '@fluojs/validation/mapped-types';
@@ -141,9 +168,19 @@ class UserDto {
   @IsEmail() email = '';
 }
 
-class EmailOnlyDto extends PickType(UserDto, ['email']) {}
+class EmailOnlyDto extends PickType(UserDto, ['email']) {
+  email = 'hello@example.com';
+}
 class UpdateUserDto extends PartialType(UserDto) {}
 ```
+
+`PickType`, `OmitType`, `IntersectionType`은 source DTO 생성자를 실행하거나
+field initializer/default 값을 복사하지 않습니다. Derived class는 validation
+또는 binding metadata에서 발견한 retained field를 `undefined`로 초기화합니다.
+필요한 기본값은 위의 `EmailOnlyDto.email`처럼 subclass에서 field를 다시
+선언하세요. `PartialType`도 source 생성자와 기본값을 사용하지 않으며,
+create 기본값을 복원하는 대신 누락된 patch field를 `undefined`로 유지하도록
+의도되었습니다. `UpdateUserDto`에는 create 기본값을 다시 선언하지 않습니다.
 
 Mapped DTO helper는 위와 같은 문서화된 subclassing 패턴에서도 field-level
 validation 및 binding metadata를 보존합니다. `PickType`, `OmitType`,
@@ -221,9 +258,11 @@ reject한 예외는 그대로 전파됩니다.
 empty-issues 동작을 포함한 검증 전용 API로 유지됩니다.
 `DefaultValidator.materialize(..., { undeclaredProperties: 'reject' })`는 별도의
 class hydration/rejection 계약이며 schema output parsing이나 HTTP projection이
-아닙니다. Handler output binding에는
+아닙니다. 요청 데이터에서 성공한 schema output을 HTTP handler의 입력 인자로
+바인딩하려면
 [`createSchemaDto`와 `StandardSchemaBinder`](../http/README.ko.md#standard-schema-output-binding)를
-사용하세요. HTTP는 parser의 `DtoValidationError` 실패를 400으로 바꿉니다.
+사용하세요. 이는 handler response/output 바인딩이 아닙니다.
+HTTP는 parser의 `DtoValidationError` 실패를 400으로 바꿉니다.
 
 **근거:** `src/standard-schema.ts`, `src/index.ts`의 export,
 `src/standard-schema-output.test.ts`가 parser와 호환성 경계의 확인 위치입니다.

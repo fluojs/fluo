@@ -489,8 +489,10 @@ Because of this structure, the application shell includes context functionality 
 Runtime-owned cleanup callbacks accept `void` or `Promise<void>`. Close and bootstrap-failure
 cleanup await registrations in order before moving to lifecycle hooks, adapters, or container
 disposal. A callback failure does not skip later registrations; close aggregates it for explicit
-retry of that incomplete phase, while bootstrap preserves its original error and reports cleanup
-failures through `ApplicationLogger`.
+retry of failed registrations in their original order. Successful registrations never replay on
+that application or context, even when the same callback function is registered twice. Lifecycle
+hook retries remain phase-wide. Bootstrap preserves its original error and reports cleanup failures
+through `ApplicationLogger`.
 
 The first contract to inspect is `ready()` in `path:packages/runtime/src/internal/application.ts:86-92`. This method does not call `adapter.listen()`. It only checks that the application is not already closed, then delegates to `platformShell.assertCriticalReadiness()`.
 
@@ -699,7 +701,7 @@ The executable evidence is intentionally split by shell and race:
 
 Failure-path cleanup is owned by `runBootstrapFailureCleanup()`. Even after bootstrap creates lifecycle instances or runtime resources, the runtime resets readiness and attempts every cleanup phase while preserving the original bootstrap error.
 
-`path:packages/runtime/src/internal/runtime-resources.ts:151-178`
+`path:packages/runtime/src/internal/runtime-resources.ts:158-185`
 
 ```typescript
 export async function runBootstrapFailureCleanup(options: {
@@ -734,7 +736,7 @@ export async function runBootstrapFailureCleanup(options: {
 
 This first failure-cleanup excerpt shows that the runtime tries to call lifecycle shutdown hooks even after bootstrap failure. The following excerpt separates container disposal from cleanup failure logging.
 
-`path:packages/runtime/src/internal/runtime-resources.ts:180-195`
+`path:packages/runtime/src/internal/runtime-resources.ts:187-202`
 
 ```typescript
   if (options.container) {
