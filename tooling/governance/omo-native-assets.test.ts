@@ -24,6 +24,7 @@ type OmoProjectConfig = Readonly<{
       string,
       Readonly<{
         execution_mode?: 'in-process' | 'process';
+        prompt?: string;
         tools?: Readonly<Record<string, boolean>>;
       }>
     >
@@ -100,6 +101,47 @@ const requiredShippedContractPaths = [
 ] as const;
 
 describe('OMO native asset manifest', () => {
+  it('#4091 stage targets: actual project registration -> valid; removed or unavailable target -> typed block', async () => {
+    const { validateDispatchRegistration, stageTargets, reviewerTargets } = await import(
+      new URL('../../.agents/skills/execute-lane/scripts/dispatch-targets.mjs', import.meta.url).href
+    );
+    const config = JSON.parse(read('.omo/omo.jsonc')) as OmoProjectConfig;
+    const agents = config.agents ?? {};
+
+    expect(() => validateDispatchRegistration(agents)).not.toThrow();
+    const targets = new Set([
+      ...Object.values<Readonly<{ subagent_type: string }>>(stageTargets),
+      ...Object.values<Readonly<{ subagent_type: string }>>(reviewerTargets),
+    ]
+      .map((route) => route.subagent_type));
+    for (const target of targets) {
+      const missing = Object.fromEntries(Object.entries(agents).filter(([name]) => name !== target));
+      for (const validate of [
+        () => validateDispatchRegistration(missing),
+        () => validateDispatchRegistration(agents, [target]),
+      ]) {
+        expect(validate).toThrow(expect.objectContaining({
+          kind: 'input-preparation', code: 'dispatch-target-unavailable',
+          subagent_type: target, fix_back_eligible: false,
+        }));
+      }
+    }
+  });
+  it('#4091 registered agents: role prompts -> existing checkout-relative references', () => {
+    const config = JSON.parse(read('.omo/omo.jsonc')) as OmoProjectConfig;
+    for (const [agent, reference] of Object.entries({
+      'fluo-issue-preflight': '.agents/skills/issue-preflight/references/preflight.md',
+      'fluo-issue-implementer': '.agents/skills/issue-implement/references/implementer.md',
+      'fluo-contract-reviewer': '.agents/skills/review-head/references/reviewers/contract.md',
+      'fluo-code-reviewer': '.agents/skills/review-head/references/reviewers/code.md',
+      'fluo-verification-reviewer': '.agents/skills/review-head/references/reviewers/verification.md',
+      'fluo-retrospective': '.agents/skills/retrospective-lane/references/analyst.md',
+    })) {
+      const paths = config.agents?.[agent]?.prompt?.match(/\.agents\/[A-Za-z0-9/.-]+\.md/gu);
+      expect(paths?.[0]).toBe(reference);
+      expect(existsSync(resolve(repoRoot, reference))).toBe(true);
+    }
+  });
   it('keeps execute-lane workers single-depth and non-orchestrating', () => {
     const config = JSON.parse(read('.omo/omo.jsonc')) as OmoProjectConfig;
     const agents = config.agents ?? {};

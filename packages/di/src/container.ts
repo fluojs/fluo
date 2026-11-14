@@ -1274,13 +1274,13 @@ export class Container {
   /**
    * Resolve the cache map that should hold the instance for `provider`.
    *
-   * **Singleton-in-request-scope**: if a provider with `scope: 'singleton'` (the default) is
-   * registered directly on a request-scope child container (rather than the root), it is cached
-   * in the child's `requestCache` instead of the root's `singletonCache`. This means it behaves
-   * as request-scoped despite the singleton scope annotation. This is intentional — it allows
-   * test and override scenarios to inject short-lived values without polluting the global cache
-   * — but the divergence from the declared scope is a known footgun for consumers who
-   * inadvertently register singletons on child containers.
+   * **Singleton override in a request scope**: `register()` rejects a singleton-scope provider on
+   * a request-scope container with `ScopeMismatchError`, so a singleton-scope provider becomes
+   * local to a request scope only through `container.override()` of a token that is already
+   * visible there. That replacement is cached in the request scope's `requestCache` instead of
+   * the root's `singletonCache`: it is shared with nested request children, disposed with the
+   * request scope, and never replaces the singleton instance seen by the root or other requests.
+   * Inherited singleton-scope providers always use the root `singletonCache`.
    */
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     if (provider.scope === 'singleton') {
@@ -1681,7 +1681,7 @@ export class Container {
       case 'value':
         return provider.useValue as T;
       case 'existing':
-        return await this.resolveWithChain(provider.useExisting as Token<T>, [], new Set());
+        throw new InvariantError('Alias provider must resolve its useExisting target before instantiate().');
       case 'factory': {
         if (!provider.useFactory) {
           throw new InvariantError('Factory provider is missing useFactory.');
