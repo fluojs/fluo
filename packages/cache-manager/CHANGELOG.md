@@ -2,6 +2,53 @@
 
 ## [Unreleased]
 
+## 2.2.0
+
+### Minor Changes
+
+- [#4109](https://github.com/fluojs/fluo/pull/4109) [`9a2c1ce`](https://github.com/fluojs/fluo/commit/9a2c1cefa22666ea16230d4342fba5f44ce3fff1) Thanks [@ayden94](https://github.com/ayden94)! - Add opt-in `rememberCacheErrors: 'bypass'` to synchronous and asynchronous CacheModule configuration. CacheService.remember can bypass only store read/write failures while preserving loader error identity, same-key coalescing, invalidation, and privacy-safe error observations. The default `throw` policy remains unchanged.
+
+### Patch Changes
+
+- [#4111](https://github.com/fluojs/fluo/pull/4111) [`e96dcba`](https://github.com/fluojs/fluo/commit/e96dcba331937436139f3b31aecc6e1606e4ffb3) Thanks [@ayden94](https://github.com/ayden94)! - Isolate inherited controller cache metadata before applying CacheKey, CacheTTL, or CacheEvict overrides. Child decorators no longer change parent or sibling cache keys, TTLs, or eviction targets, while unchanged policies and methods continue to inherit normally.
+
+- [#4089](https://github.com/fluojs/fluo/pull/4089) [`f737ffa`](https://github.com/fluojs/fluo/commit/f737ffa0a5cf9200720ba047a4fa21bd74863973) Thanks [@ayden94](https://github.com/ayden94)! - Make built-in `route+query` HTTP cache keys independent of process locale by sorting decoded parameter names and repeated string values in deterministic UTF-16 code-unit order before URI encoding. Reordered queries now share a key even when distinct Unicode strings compare equally under locale collation, while case, Unicode normalization forms, and repeated-value multiplicity remain distinct.
+
+  Existing mixed-case or non-ASCII query cache keys can change and cause cache misses after deployment. No legacy-key lookup or cache migration is performed.
+
+- [#4087](https://github.com/fluojs/fluo/pull/4087) [`0771708`](https://github.com/fluojs/fluo/commit/0771708e27eac64c99258e527cc916bbbca98ec3) Thanks [@ayden94](https://github.com/ayden94)! - Correct the cache-manager website's runtime metadata and instance-local remember coalescing descriptions, and add the missing operational limits, deferred eviction, and compatible service copy links to both README tables of contents.
+
+- [#4100](https://github.com/fluojs/fluo/pull/4100) [`6b3a485`](https://github.com/fluojs/fluo/commit/6b3a4850b5b314719b8ce27e7b791a9617e5f0b2) Thanks [@ayden94](https://github.com/ayden94)! - Preserve empty cache keys in literal, array, and resolver eviction targets after a confirmed HTTP response commit. Reject non-method placement of CacheKey, CacheTTL, and CacheEvict synchronously before registering metadata.
+
+- [#4103](https://github.com/fluojs/fluo/pull/4103) [`6cfc787`](https://github.com/fluojs/fluo/commit/6cfc7876049f17ef2743e59821ba5bd83b230d2a) Thanks [@ayden94](https://github.com/ayden94)! - Align the RedisCompatibleClient scan and set contracts with the MATCH/COUNT scan and persistent or EX writes used by RedisStore so real ioredis clients can be registered directly without type assertions. Preserve legacy custom-client compatibility and clarify direct-client support and application lifecycle ownership across the English and Korean guides.
+
+- [#4090](https://github.com/fluojs/fluo/pull/4090) [`11b0eac`](https://github.com/fluojs/fluo/commit/11b0eac48c292a36acb2b39a061c6f9560fdb8a9) Thanks [@ayden94](https://github.com/ayden94)! - Document NestJS cache migration boundaries for method-only decorators, single-store configuration and Keyv adaptation, manual cache migration outside the CLI codemod, and HTTP-only automatic interception.
+
+- [#4112](https://github.com/fluojs/fluo/pull/4112) [`6e5aeae`](https://github.com/fluojs/fluo/commit/6e5aeaefa2a33b838d6e61d209a763b60344134f) Thanks [@ayden94](https://github.com/ayden94)! - Default HTTP cache keys now encode the request path and principal resolver scope so entries remain separate across request targets and principal scopes. In built-in `route` and `route+query` keys, `%` becomes `%25` and `|` becomes `%7C` in these components; the path also encodes `?` as `%3F`. Query components retain their existing URI encoding.
+
+  Without a custom principal resolver, authenticated principals with an omitted issuer now use the suffix `|principal:<URI-encoded subject>` instead of `|principal:unknown:<URI-encoded subject>`. Explicit issuer values, including `unknown` and the empty string, retain the suffix `|principal:<URI-encoded issuer>:<URI-encoded subject>`.
+
+  Literal eviction keys for changed paths, scopes, or issuer-less principals must use the new format. Other keys retain their existing form when the path contains none of `%`, `|`, and `?` and the resolver scope contains neither `%` nor `|`. Custom `httpKeyStrategy` functions and explicit `@CacheKey` values are unchanged.
+
+- [#4088](https://github.com/fluojs/fluo/pull/4088) [`12fc4e4`](https://github.com/fluojs/fluo/commit/12fc4e423ef5dadef4c5bcab2698c1be2b75061c) Thanks [@ayden94](https://github.com/ayden94)! - Preserve values written after reset when an older remember write finishes. Reclaim invalidation bookkeeping after overlapping cache hits or read failures, while keeping pending loads invalidated until their load cycle settles.
+
+- [#4098](https://github.com/fluojs/fluo/pull/4098) [`e6becee`](https://github.com/fluojs/fluo/commit/e6becee66313784595fe2694478403742873b497) Thanks [@ayden94](https://github.com/ayden94)! - Validate cache store configuration during option normalization. Unsupported store names now fail instead of silently selecting memory, and custom stores must expose callable get, set, del, and reset methods. Validation runs synchronously in forRoot and when the factory result resolves in forRootAsync, without invoking store operations or requiring optional capabilities.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`1fe212d`](https://github.com/fluojs/fluo/commit/1fe212d4b49e6e2d1ef577d6ee62962e6da5bafb), [`93f2213`](https://github.com/fluojs/fluo/commit/93f22136266b93238c8db6a11160949867ce97ba), [`559fd2d`](https://github.com/fluojs/fluo/commit/559fd2df4c7a230a6bbdb4b89a23f1a5f8991f32), [`8817120`](https://github.com/fluojs/fluo/commit/8817120f21180ced38dda95b9fbbfb1133bb2a82), [`c0e0cb7`](https://github.com/fluojs/fluo/commit/c0e0cb7e67f07752c554a811a1d04e9e0e8f4337), [`7c3ded4`](https://github.com/fluojs/fluo/commit/7c3ded4f98f96ff702d3cf6466ef2e158045883e), [`31082f9`](https://github.com/fluojs/fluo/commit/31082f9e405d90edfea1646c60536316614bf7d1), [`d642f02`](https://github.com/fluojs/fluo/commit/d642f0281c34206b9684fe2bd116a9b230c29f0e), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/di@3.2.0
+  - @fluojs/http@3.3.0
+
 ## 2.1.3
 
 ### Patch Changes

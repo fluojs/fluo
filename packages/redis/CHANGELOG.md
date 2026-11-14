@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## 2.0.4
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4102](https://github.com/fluojs/fluo/pull/4102) [`a0b1bf7`](https://github.com/fluojs/fluo/commit/a0b1bf7b8663d32f17c8b14feb65c4a5d7ae1535) Thanks [@ayden94](https://github.com/ayden94)! - Allow unnamed Redis registrations and named `default` registrations to coexist with separate clients and facades. Preserve duplicate rejection for unnamed registrations and matching trimmed names across compatible package copies, existing token identities, and the shared `redis.default` diagnostic label. Cover explicit module visibility options at the ioredis constructor boundary.
+
+- [#4105](https://github.com/fluojs/fluo/pull/4105) [`7447bf4`](https://github.com/fluojs/fluo/commit/7447bf49d1beea2c4b9943a0eb826bfcca0c7937) Thanks [@ayden94](https://github.com/ayden94)! - Correct the Redis README and transport chapter examples to import the Pub/Sub transport from its public subpath and explicitly register named-client consumers before module decoration. Repair the English public API table-of-contents link and keep the English and Korean examples aligned.
+
+- [#4101](https://github.com/fluojs/fluo/pull/4101) [`6dc7de3`](https://github.com/fluojs/fluo/commit/6dc7de31c82d669dd79febe3c86577112604bf40) Thanks [@ayden94](https://github.com/ayden94)! - Wait for asynchronous Redis disconnect completion after a failed or timed-out QUIT, with a finite cleanup deadline that preserves the original failure if the client does not close. Honor lifecycle connect and quit timeouts above 2,147,483,647 ms without host timer overflow, and cancel remaining timer segments when the operation settles.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/di@3.2.0
+
 ## 2.0.3
 
 ### Patch Changes

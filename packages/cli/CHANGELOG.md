@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## 5.0.0
+
+### Major Changes
+
+- [#4007](https://github.com/fluojs/fluo/pull/4007) [`c3110b6`](https://github.com/fluojs/fluo/commit/c3110b6737144be4383c3f4d684ffbb9bf57278e) Thanks [@ayden94](https://github.com/ayden94)! - Remove Deno runtime support from the CLI
+
+  - `fluo new` no longer offers the Deno runtime or platform choices: the interactive runtime prompt lists Node.js, Bun, and Cloudflare Workers only, and the `application-deno-deno-http` starter profile and scaffold recipe are gone.
+  - Explicit `--runtime deno` and `--platform deno` generation flags now fail with a support-ended reason and the canonical migration URL instead of scaffolding or silently selecting a different runtime.
+  - `fluo dev`, `fluo build`, and `fluo start` no longer route legacy projects whose manifest declares `@fluojs/platform-deno`; those requests fail with the same support-ended reason and migration URL instead of falling back to Node.
+  - The CLI-owned dev restart runner, Studio sidecar runtime union, generated starter metadata, and sandbox matrix no longer carry Deno execution paths.
+  - Node.js, Bun, and Cloudflare Workers starters and all non-Deno CLI behavior are unchanged.
+
+  Migration: move existing Deno projects to the Node.js, Bun, or Cloudflare Workers starter following the Deno migration guide at https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-deno.md
+
+### Patch Changes
+
+- Updated dependencies [[`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/runtime@4.0.0
+
 ## 4.0.1
 
 ### Patch Changes

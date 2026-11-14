@@ -2,6 +2,61 @@
 
 ## [Unreleased]
 
+## 3.3.0
+
+### Minor Changes
+
+- [#4068](https://github.com/fluojs/fluo/pull/4068) [`559fd2d`](https://github.com/fluojs/fluo/commit/559fd2df4c7a230a6bbdb4b89a23f1a5f8991f32) Thanks [@ayden94](https://github.com/ayden94)! - Align single-byte ranges with RFC 9110: apply Range only to GET representations
+  whose effective ordinary response status is 200, preserve route and handler
+  non-200 statuses, and clamp arbitrary-length decimal end offsets and suffix
+  lengths to the selected representation without precision loss.
+
+  Migration: HEAD now ignores Range and returns complete representation metadata
+  instead of mirroring a partial GET response. A successful six-byte representation
+  returns 200 with Content-Length: 6, no Content-Range, and no body or stream-factory
+  invocation. Use GET to inspect a selected range. Conditional and bodyless status
+  decisions retain precedence. Static assets and explicit byte-range writers use
+  the same semantics.
+
+  Update the published listener and fetch portability harnesses to enforce full
+  HEAD framing, effective-200-only selection, and oversized-endpoint clamping.
+
+- [#4059](https://github.com/fluojs/fluo/pull/4059) [`31082f9`](https://github.com/fluojs/fluo/commit/31082f9e405d90edfea1646c60536316614bf7d1) Thanks [@ayden94](https://github.com/ayden94)! - Add optional atomic `RateLimitStore.consume(key, { now, windowMs })` and use it in HTTP rate-limit middleware. The built-in memory store now initializes, resets, and increments windows atomically under concurrent requests while preserving fixed deadlines and 429 responses.
+
+  Existing custom stores retain the get/set/increment/evict fallback without source changes. Add backend-atomic consume to enforce concurrent or distributed quotas; the legacy fallback remains non-atomic.
+
+### Patch Changes
+
+- [#4064](https://github.com/fluojs/fluo/pull/4064) [`1fe212d`](https://github.com/fluojs/fluo/commit/1fe212d4b49e6e2d1ef577d6ee62962e6da5bafb) Thanks [@ayden94](https://github.com/ayden94)! - Emit `Vary: Origin` for array and function CORS policies even when the request origin is rejected or absent, or a function returns a wildcard, including preflight responses. Preserve allow-origin selection and explicit or default wildcard policy behavior.
+
+- [#4061](https://github.com/fluojs/fluo/pull/4061) [`93f2213`](https://github.com/fluojs/fluo/commit/93f22136266b93238c8db6a11160949867ce97ba) Thanks [@ayden94](https://github.com/ayden94)! - Preserve the canonical `/*` middleware pattern during normalization so root wildcard middleware runs on root and non-root paths. Keep request-scoped middleware dependencies active and preserve root wildcard global-prefix exclusions.
+
+- [#4115](https://github.com/fluojs/fluo/pull/4115) [`8817120`](https://github.com/fluojs/fluo/commit/8817120f21180ced38dda95b9fbbfb1133bb2a82) Thanks [@ayden94](https://github.com/ayden94)! - Require an `If-Range` HTTP date to exactly match the selected `Last-Modified` date at one-second precision before applying a byte range. A newer but different date now returns the complete `200` representation instead of `206`, matching RFC 9110 section 13.1.5; exact matches, strong `ETag` validators, and older or malformed dates keep their existing behavior.
+
+- [#4063](https://github.com/fluojs/fluo/pull/4063) [`c0e0cb7`](https://github.com/fluojs/fluo/commit/c0e0cb7e67f07752c554a811a1d04e9e0e8f4337) Thanks [@ayden94](https://github.com/ayden94)! - Finalize managed SSE source iterators on write, frame encoding, drain, and source read failures. Await iterator cleanup before request observers finish and request-scoped resources dispose, preserving the original operation error if cleanup also fails.
+
+- [#4062](https://github.com/fluojs/fluo/pull/4062) [`7c3ded4`](https://github.com/fluojs/fluo/commit/7c3ded4f98f96ff702d3cf6466ef2e158045883e) Thanks [@ayden94](https://github.com/ayden94)! - Read only own properties when binding class DTO fields from body, query, path,
+  and cookie sources. Inherited values now follow the existing missing-field path:
+  required fields return HTTP 400 with MISSING_FIELD, while Optional fields retain
+  their constructor-initialized values without invoking converters.
+
+- [#4066](https://github.com/fluojs/fluo/pull/4066) [`d642f02`](https://github.com/fluojs/fluo/commit/d642f0281c34206b9684fe2bd116a9b230c29f0e) Thanks [@ayden94](https://github.com/ayden94)! - Correct the HTTP README navigation protocol to v2 and document the existing safe form rejection, error types and representation provider in English and Korean.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`2afd87f`](https://github.com/fluojs/fluo/commit/2afd87f67501281fac933d1b3264858a807b3494), [`685cdc6`](https://github.com/fluojs/fluo/commit/685cdc6a1e9356e1004268be915405372bcc2e1d)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/di@3.2.0
+  - @fluojs/auth@0.2.1
+  - @fluojs/validation@2.1.3
+
 ## 3.2.0
 
 ### Minor Changes

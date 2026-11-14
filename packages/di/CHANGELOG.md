@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## 3.2.0
+
+### Minor Changes
+
+- [#4050](https://github.com/fluojs/fluo/pull/4050) [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde) Thanks [@ayden94](https://github.com/ayden94)! - Honor `multi: true` on `useExisting` providers instead of silently treating them as single aliases. Alias contributions preserve registration order, target identity and scope, scope validation, full-set overrides, and indexed internal resolution.
+
+  Keep single and multi aliases distinct in runtime module graph cache keys, and preserve target lifetimes when testing modules resolve multi aliases through synchronous `get()`.
+
+- [#4113](https://github.com/fluojs/fluo/pull/4113) [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380) Thanks [@ayden94](https://github.com/ayden94)! - Close provider registration validation gaps and honor explicit scopes on value and alias providers.
+
+  - Non-boolean `multi` flags, non-constructor factory `resolverClass` values, and direct self-aliases such as `{ provide: 'S', useExisting: 'S' }` now throw `InvalidProviderError` at registration instead of being misclassified, failing with a raw `TypeError`, or failing later as a circular dependency.
+  - `ValueProvider` and `ExistingProvider` accept an optional `scope` (default `'singleton'`). Value providers honor it: `'transient'` values are neither cached nor disposed by the container, and `'request'` values are cached per request scope, so request scopes can register value and alias providers with `scope: 'request'`.
+  - Aliases never own an instance; the target's scope still decides the instance lifetime. A `'request'` alias is resolvable only inside a request scope and makes singleton consumers fail with `ScopeMismatchError` naming the alias.
+
+  Inputs that were silently accepted before now either throw or behave according to their declared scope. Remove invalid `multi`/`resolverClass` values and self-aliases, and drop an explicit `scope` from value or alias providers if you relied on it being ignored.
+
+### Patch Changes
+
+- [#4052](https://github.com/fluojs/fluo/pull/4052) [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac) Thanks [@ayden94](https://github.com/ayden94)! - Dispose cached dependencies materialized by in-flight resolutions after disposal starts, including uncached transient and multi-provider roots and resolutions started from request children, preserving reverse creation order and failed-hook retry ownership.
+
+- [#4042](https://github.com/fluojs/fluo/pull/4042) [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d) Thanks [@ayden94](https://github.com/ayden94)! - Format class token names in the ScopeMismatchError message when registering singleton providers on a request-scope container instead of including the class source.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93)]:
+  - @fluojs/core@2.2.0
+
 ## 3.1.3
 
 ### Patch Changes
