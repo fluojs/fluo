@@ -48,12 +48,12 @@ DI의 `Scope`는 타입 전용 union이며 runtime namespace가 아닙니다. Pr
 그리고 `path:packages/core/src/metadata/class-di.ts:95-123`가 그 필드를 constructor lineage를 따라 상속 가능하게 만듭니다. 즉 scope는 explicit metadata와 container policy의 조합일 뿐입니다. 사용 패턴에서 추론되지 않습니다.
 
 이 점은 예측 가능성에 직접 연결됩니다. class가 `@Scope(...)`를 생략하면,
-`path:packages/di/src/provider-normalization.ts:168-179`의 normalization이 `'singleton'`을 넣습니다.
+`path:packages/di/src/provider-normalization.ts:179-190`의 normalization이 `'singleton'`을 넣습니다.
 즉 Fluo는 작성자가 더 짧은 lifetime을 명시하지 않는 한 singleton-first입니다.
 
 class provider 정규화는 이 기본값을 실제 내부 record에 저장합니다.
 
-`path:packages/di/src/provider-normalization.ts:168-179`
+`path:packages/di/src/provider-normalization.ts:179-190`
 ```typescript
 export function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isClassConstructor(provider)) {
@@ -444,6 +444,8 @@ request-scope registration 자체에도 작성 경계가 있습니다.
 `path:packages/di/src/container.ts:332-370`는 request child에 default singleton을 직접 등록하는 것을 금지합니다.
 대응 테스트는 `path:packages/di/src/container.test.ts:807-813`입니다. Fluo는 request child를 두 번째 root container처럼 쓰는 것을 막고 싶어 합니다. request child의 주된 역할은 resolution boundary입니다.
 
+value provider와 alias provider도 같은 경계를 따릅니다. 둘 다 기본값이 `'singleton'`이므로 `requestScope.register({ provide: 'REQ', useValue: 1 })`는 여전히 거부되고, `requestScope.register({ provide: 'REQ', useValue: 1, scope: 'request' })`와 `scope: 'request'` alias는 request-local 추가로 허용됩니다. value provider는 선언한 scope로 캐시합니다. `'request'`는 child마다 값을 캐시하고, `'transient'`는 캐시하지도 dispose하지도 않습니다. alias는 인스턴스를 소유하지 않으므로 인스턴스 수명은 여전히 target의 scope가 결정합니다. 대신 alias scope는 등록 위치와 검증을 제어합니다. request alias는 request child 안에서만 resolve되고, 이를 의존하는 singleton은 NestJS식 scope bubbling 없이 alias 이름을 담은 `ScopeMismatchError`로 실패합니다. 회귀 테스트는 `packages/di/src/provider-validation.test.ts`에 있습니다.
+
 multi provider도 같은 request 경계를 공유합니다.
 `path:packages/di/src/container.test.ts:1292-1320`은 request-scoped multi provider가 request child마다 별도 캐시됨을 보여 줍니다.
 같은 child 안의 두 resolve는 같은 entry 인스턴스를 돌려주고, 다른 child는 다른 인스턴스를 받습니다.
@@ -707,7 +709,7 @@ console.log(first === second, report.currentBuilder() instanceof QueryBuilder);
    */
 ```
 
-hierarchy walk은 `path:packages/di/src/container.ts:1707-1761`에 구현되어 있습니다. override를 받은 컨테이너와 추적 중인 모든 request-scope descendant를 방문합니다. `path:packages/di/src/container.ts:1107-1128`에서 보듯 request scope는 request cache 또는 request-local multi cache를 처음 materialize할 때 추적 대상이 됩니다. 따라서 root override는 이미 materialize된 descendant request entry 중 overridden token 자체와, provider graph가 그 token에 의존하는 cached consumer를 evict할 수 있습니다. direct, alias, multi-provider dependency path를 포괄하는 dependency-aware 검사는 `path:packages/di/src/container.ts:1763-1819`에 있습니다.
+hierarchy walk은 `path:packages/di/src/container.ts:1707-1761`에 구현되어 있습니다. override를 받은 컨테이너와 추적 중인 모든 request-scope descendant를 방문합니다. `path:packages/di/src/container.ts:1107-1128`에서 보듯 request scope는 request cache 또는 request-local multi cache를 처음 materialize할 때 추적 대상이 됩니다. 따라서 root override는 이미 materialize된 descendant request entry 중 overridden token 자체와, provider graph가 그 token에 의존하는 cached consumer를 evict할 수 있습니다. direct, alias, multi-provider dependency path를 포괄하는 dependency-aware 검사는 `path:packages/di/src/container.ts:1763-1825`에 있습니다.
 
 이는 targeted invalidation이지, 모든 child cache를 비우거나 각 child가 ancestor 변경으로부터 격리된다는 보장이 아닙니다. 영향을 받는 materialized entry가 없는 descendant에는 retire할 대상이 없고, 이후 resolve는 갱신된 ancestor graph를 따릅니다. child-local override는 해당 child와 그 descendant만 순회하며 ancestor는 순회하지 않습니다. 또한 cache eviction이 application code가 이미 보관 중인 stale reference를 회수할 수는 없습니다.
 

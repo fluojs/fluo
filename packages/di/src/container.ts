@@ -1072,7 +1072,7 @@ export class Container {
     activeTokens: Set<Token>,
   ): Promise<unknown> {
     if (provider.type === 'existing') {
-      return await this.resolveWithChain(provider.useExisting as Token, chain, activeTokens);
+      return await this.resolveWithChain(this.assertAliasResolvableHere(provider).useExisting as Token, chain, activeTokens);
     }
 
     if (provider.scope === 'transient') {
@@ -1120,7 +1120,7 @@ export class Container {
       return undefined;
     }
 
-    return provider.useExisting;
+    return this.assertAliasResolvableHere(provider).useExisting;
   }
 
   private async resolveScopedOrSingletonInstance(
@@ -1761,6 +1761,12 @@ export class Container {
         return multiRequestScopedToken;
       }
 
+      const requestScopedAlias = this.findRequestScopedAlias(token);
+
+      if (requestScopedAlias !== undefined) {
+        return requestScopedAlias;
+      }
+
       const provider = this.resolveEffectiveProvider(token);
 
       if (provider) {
@@ -1819,6 +1825,45 @@ export class Container {
     }
 
     return undefined;
+  }
+
+  /**
+   * Finds the first alias declared with `scope: 'request'` on the single-provider alias chain of `token`.
+   * Alias cycles stop the walk so `resolveEffectiveProvider()` keeps reporting them as circular dependencies.
+   */
+  private findRequestScopedAlias(token: Token): Token | undefined {
+    const visitedAliases = new Set<Token>();
+    let provider = this.lookupProvider(token);
+
+    while (provider?.type === 'existing' && provider.useExisting !== undefined && !visitedAliases.has(provider.provide)) {
+      if (provider.scope === 'request') {
+        return provider.provide;
+      }
+
+      visitedAliases.add(provider.provide);
+      provider = this.lookupProvider(provider.useExisting);
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Aliases never own an instance, but an alias declared with `scope: 'request'` is only resolvable from a
+   * request scope, matching request-scoped class, factory, and value providers.
+   */
+  private assertAliasResolvableHere(provider: NormalizedProvider): NormalizedProvider {
+    if (provider.scope === 'request' && !this.requestScopeEnabled) {
+      throw new RequestScopeResolutionError(
+        `Request-scoped provider ${formatTokenName(provider.provide)} cannot be resolved outside request scope.`,
+        {
+          token: provider.provide,
+          scope: 'request',
+          hint: 'Wrap the resolve call inside a request-scoped child container created via container.createRequestScope().',
+        },
+      );
+    }
+
+    return provider;
   }
 
   private resolveEffectiveProvider(

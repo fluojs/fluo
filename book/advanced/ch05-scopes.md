@@ -48,12 +48,12 @@ The decorator in `path:packages/core/src/decorators.ts:79-89` records one string
 Then `path:packages/core/src/metadata/class-di.ts:95-123` makes that field inheritable through the constructor lineage. In other words, scope is only a combination of explicit metadata and container policy. It is not inferred from usage patterns.
 
 This connects directly to predictability. If a class omits `@Scope(...)`,
-the normalization in `path:packages/di/src/provider-normalization.ts:168-179` inserts `'singleton'`.
+the normalization in `path:packages/di/src/provider-normalization.ts:179-190` inserts `'singleton'`.
 So Fluo is singleton-first unless the author explicitly chooses a shorter lifetime.
 
 Class provider normalization stores this default in the actual internal record.
 
-`path:packages/di/src/provider-normalization.ts:168-179`
+`path:packages/di/src/provider-normalization.ts:179-190`
 ```typescript
 export function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isClassConstructor(provider)) {
@@ -444,6 +444,8 @@ Request-scope registration also has authoring boundaries.
 `path:packages/di/src/container.ts:332-370` forbids registering a default singleton directly in a request child.
 The matching test is `path:packages/di/src/container.test.ts:807-813`. Fluo wants to prevent request children from being used like second root containers. The main role of a request child is to be a resolution boundary.
 
+The same boundary covers value and alias Providers. Both default to `'singleton'`, so `requestScope.register({ provide: 'REQ', useValue: 1 })` is still rejected, while `requestScope.register({ provide: 'REQ', useValue: 1, scope: 'request' })` and a `scope: 'request'` alias are request-local additions. A value Provider uses its declared Scope for caching: `'request'` caches the value per child and `'transient'` neither caches nor disposes it. An alias never owns an instance, so its target's Scope still decides the instance lifetime. The alias Scope controls placement and validation instead: a request alias resolves only inside a request child, and a singleton that depends on it fails with `ScopeMismatchError` naming the alias, without NestJS-style scope bubbling. The regressions live in `packages/di/src/provider-validation.test.ts`.
+
 Multi providers share the same request boundary.
 `path:packages/di/src/container.test.ts:1292-1320` shows that request-scoped multi providers are cached separately per request child.
 Two resolves inside the same child return the same entry instance, while a different child receives a different instance.
@@ -707,7 +709,7 @@ The current `override()` implementation is in `path:packages/di/src/container.ts
    */
 ```
 
-The hierarchy walk is implemented in `path:packages/di/src/container.ts:1707-1761`. It visits the container receiving the override and every tracked request-scope descendant. A request scope becomes tracked when it first materializes a request or request-local multi cache, as shown in `path:packages/di/src/container.ts:1107-1128`. Therefore, a root override can evict already-materialized descendant request entries for the overridden token and cached consumers whose provider graph depends on that token. The dependency-aware checks live in `path:packages/di/src/container.ts:1763-1819` and cover direct, alias, and multi-provider dependency paths.
+The hierarchy walk is implemented in `path:packages/di/src/container.ts:1707-1761`. It visits the container receiving the override and every tracked request-scope descendant. A request scope becomes tracked when it first materializes a request or request-local multi cache, as shown in `path:packages/di/src/container.ts:1107-1128`. Therefore, a root override can evict already-materialized descendant request entries for the overridden token and cached consumers whose provider graph depends on that token. The dependency-aware checks live in `path:packages/di/src/container.ts:1763-1825` and cover direct, alias, and multi-provider dependency paths.
 
 This is targeted invalidation, not a promise that every child cache is cleared or isolated from ancestor changes. A descendant with no affected materialized entry has nothing to retire; its later resolution follows the updated ancestor graph. A child-local override walks that child and its descendants, not its ancestors. Cache eviction also cannot revoke stale references that application code has already retained.
 
