@@ -107,8 +107,18 @@ function hasOpaqueBrand(value: object): boolean {
   return check !== undefined && check(value);
 }
 
+/**
+ * Detects a callable `toJSON` defined on the value itself or on a prototype other than
+ * `Object.prototype`, so plain and null-prototype records only qualify through their own property.
+ */
 function hasCallableToJSON(value: Record<string | symbol, unknown>): boolean {
-  return typeof value.toJSON === 'function';
+  for (let holder: object | null = value; holder !== null && holder !== Object.prototype; holder = Object.getPrototypeOf(holder)) {
+    if (Object.hasOwn(holder, 'toJSON')) {
+      return typeof Reflect.get(holder, 'toJSON', value) === 'function';
+    }
+  }
+
+  return false;
 }
 
 function getSerializableConstructor(value: Record<string | symbol, unknown>): Function | undefined {
@@ -327,7 +337,7 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
     }
 
     if (isPlainObject(value)) {
-      return serializeRecord(value, context);
+      return hasCallableToJSON(value) ? value : serializeRecord(value, context);
     }
 
     return serializeClassInstance(value, context);
@@ -346,7 +356,7 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
  * completed shared references reuse the previously serialized value.
  * Opaque built-ins and non-JSON leaf values such as `Date`, `Map`, `Set`, `URL`, `Error`, `bigint`, functions, and symbols pass through unchanged unless you normalize them before or during serialization.
  * Built-ins are recognized realm-safely, so values created in another realm (for example through `node:vm`) also pass through,
- * as do `ReadableStream` and `Blob` values. Undecorated class instances that define a callable `toJSON()` pass through so the
+ * as do `ReadableStream` and `Blob` values. Plain records, null-prototype records, and undecorated class instances that define a callable `toJSON()` pass through so the
  * final JSON writer applies their own representation; classes with serialization metadata keep metadata-driven shaping.
  *
  * @typeParam T Input value type.

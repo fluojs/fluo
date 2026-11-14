@@ -157,7 +157,7 @@ Undecorated class instances without a callable `toJSON()` are still traversed re
 
 ### Plain-object safety
 
-`serialize()` treats plain objects and null-prototype records as data containers, not decorated class instances. Enumerable symbol keys are serialized, own `__proto__`, `constructor`, and `prototype` keys are treated as data rather than prototype mutations, and objects with custom or unsafe `constructor` fields are walked safely without throwing.
+`serialize()` treats plain objects and null-prototype records as data containers, not decorated class instances. Enumerable symbol keys are serialized, own `__proto__`, `constructor`, and `prototype` keys are treated as data rather than prototype mutations, and objects with custom or unsafe `constructor` fields are walked safely without throwing. A plain object or null-prototype record that has its own callable `toJSON` (enumerable or not) passes through unchanged so the final JSON writer emits its `toJSON()` representation; a non-callable `toJSON` value is serialized as ordinary data.
 
 ### Non-JSON leaf values
 

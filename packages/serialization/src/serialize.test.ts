@@ -858,6 +858,36 @@ describe('serialize', () => {
     expect(JSON.stringify(serialized)).toBe('{"m":"12.34","id":"abc","items":["12.34","abc"]}');
   });
 
+  it('passes plain and null-prototype records with a callable toJSON through unchanged', () => {
+    const price = { cents: 1234 };
+    Object.defineProperty(price, 'toJSON', { value: () => '12.34' });
+    const tag = Object.assign(Object.create(null) as Record<string, unknown>, {
+      label: 'raw',
+      toJSON: () => 'tag',
+    });
+    const serialized = serialize({ items: [price, tag], price, tag }) as {
+      items: unknown[];
+      price: unknown;
+      tag: unknown;
+    };
+
+    expect(serialize(price)).toBe(price);
+    expect(serialize(tag)).toBe(tag);
+    expect(serialized.price).toBe(price);
+    expect(serialized.tag).toBe(tag);
+    expect(serialized.items[0]).toBe(price);
+    expect(serialized.items[1]).toBe(tag);
+    expect(JSON.stringify(serialized)).toBe('{"items":["12.34","tag"],"price":"12.34","tag":"tag"}');
+  });
+
+  it('still walks plain records whose toJSON is not callable', () => {
+    const record = { id: 'r-1', toJSON: 'not-callable' };
+    const serialized = serialize(record);
+
+    expect(serialized).not.toBe(record);
+    expect(serialized).toEqual({ id: 'r-1', toJSON: 'not-callable' });
+  });
+
   it('keeps metadata-driven shaping for decorated classes that define toJSON', () => {
     class AccountView {
       id: string;

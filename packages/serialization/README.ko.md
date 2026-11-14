@@ -157,7 +157,7 @@ Class-level `excludeExtraneous`도 일반 상속 규칙을 따릅니다. 파생 
 
 ### 일반 객체 안전성
 
-`serialize()`는 일반 객체와 null-prototype 레코드를 데코레이터가 붙은 클래스 인스턴스로 오인하지 않습니다. Enumerable symbol key도 직렬화하며, own `__proto__`, `constructor`, `prototype` key는 prototype mutation이 아니라 data로 취급합니다. 사용자 정의 `constructor` 필드나 안전하지 않은 `constructor` 값을 가진 객체도 예외 없이 안전하게 순회합니다.
+`serialize()`는 일반 객체와 null-prototype 레코드를 데코레이터가 붙은 클래스 인스턴스로 오인하지 않습니다. Enumerable symbol key도 직렬화하며, own `__proto__`, `constructor`, `prototype` key는 prototype mutation이 아니라 data로 취급합니다. 사용자 정의 `constructor` 필드나 안전하지 않은 `constructor` 값을 가진 객체도 예외 없이 안전하게 순회합니다. 호출 가능한 own `toJSON`(enumerable 여부 무관)을 가진 일반 객체나 null-prototype 레코드는 그대로 통과하며 최종 JSON writer가 `toJSON()` 표현을 출력하고, 호출할 수 없는 `toJSON` 값은 일반 data로 직렬화합니다.
 
 ### 비JSON leaf 값
 
