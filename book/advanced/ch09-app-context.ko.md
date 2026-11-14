@@ -912,7 +912,7 @@ Component start가 실패하면 private rollback이 이미 시작한 component�
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.diagnostics.append([
+          this.diagnostics.append('start-rollback', [
             createPlatformFailureIssue(component.component.id, 'start-rollback', rollbackError),
           ]);
         }

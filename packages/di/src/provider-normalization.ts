@@ -6,9 +6,9 @@ import type { ClassType, ForwardRefToken, NormalizedProvider, OptionalInjectToke
 
 type ProviderObjectInput = {
   readonly inject?: unknown;
-  readonly multi?: boolean;
+  readonly multi?: unknown;
   readonly provide?: Token | null;
-  readonly resolverClass?: ClassType;
+  readonly resolverClass?: unknown;
   readonly scope?: unknown;
   readonly useClass?: unknown;
   readonly useExisting?: Token | null;
@@ -99,6 +99,17 @@ function normalizeProviderScope(scope: unknown, providerToken: Token): Scope | u
   });
 }
 
+function normalizeProviderMulti(multi: unknown, providerToken: Token): boolean | undefined {
+  if (multi === undefined || typeof multi === 'boolean') {
+    return multi;
+  }
+
+  throw new InvalidProviderError('Provider multi must be a boolean when declared.', {
+    token: providerToken,
+    hint: 'Use multi: true for ordered contributions, or omit it for a single provider.',
+  });
+}
+
 function normalizeInjectToken(token: unknown, providerToken: Token, index: number): NormalizedInjectToken {
   if (typeof token === 'object' && token !== null && '__forwardRef__' in token && token.__forwardRef__ === true) {
     if (!('forwardRef' in token) || !isTokenResolver(token.forwardRef)) {
@@ -185,6 +196,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
   assertObjectProvider(objectProvider);
   const provide = normalizeFrameworkServiceToken(objectProvider.provide);
   const explicitScope = normalizeProviderScope(objectProvider.scope, provide);
+  const multi = normalizeProviderMulti(objectProvider.multi, provide);
 
   if ('useValue' in objectProvider) {
     if (Object.hasOwn(objectProvider, 'inject')) {
@@ -195,9 +207,9 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 
     return freezeNormalizedProvider({
       inject: [],
-      multi: objectProvider.multi,
+      multi,
       provide,
-      scope: 'singleton',
+      scope: explicitScope ?? 'singleton',
       type: 'value',
       useValue: objectProvider.useValue,
     });
@@ -208,13 +220,22 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
       throw new InvalidProviderError('Factory provider useFactory must be a function.', { token: provide });
     }
 
-    const metadata = objectProvider.resolverClass ? getClassDiMetadata(objectProvider.resolverClass) : undefined;
+    const { resolverClass } = objectProvider;
+
+    if (resolverClass !== undefined && !isClassType(resolverClass)) {
+      throw new InvalidProviderError('Factory provider resolverClass must be a constructor when declared.', {
+        token: provide,
+        hint: 'Pass the class whose @Scope(...) metadata the factory should inherit, or omit resolverClass.',
+      });
+    }
+
+    const metadata = resolverClass ? getClassDiMetadata(resolverClass) : undefined;
 
     return freezeNormalizedProvider({
       inject: normalizeInject(objectProvider.inject, provide),
-      multi: objectProvider.multi,
+      multi,
       provide,
-      resolverClass: objectProvider.resolverClass,
+      resolverClass,
       scope: explicitScope ?? normalizeProviderScope(metadata?.scope, provide) ?? 'singleton',
       type: 'factory',
       useFactory: objectProvider.useFactory,
@@ -230,7 +251,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 
     return freezeNormalizedProvider({
       inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, provide),
-      multi: objectProvider.multi,
+      multi,
       provide,
       scope: explicitScope ?? normalizeProviderScope(metadata?.scope, provide) ?? 'singleton',
       type: 'class',
@@ -243,13 +264,22 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
       throw new InvalidProviderError('Alias provider useExisting must be a string, symbol, or constructable class token.', { token: provide });
     }
 
+    const useExisting = normalizeFrameworkServiceToken(objectProvider.useExisting);
+
+    if (useExisting === provide) {
+      throw new InvalidProviderError('Alias provider useExisting must not reference the alias token itself.', {
+        token: provide,
+        hint: 'Point useExisting at a different registered token.',
+      });
+    }
+
     return freezeNormalizedProvider({
       inject: [],
-      multi: objectProvider.multi,
+      multi,
       provide,
-      scope: 'singleton',
+      scope: explicitScope ?? 'singleton',
       type: 'existing',
-      useExisting: normalizeFrameworkServiceToken(objectProvider.useExisting),
+      useExisting,
     });
   }
 
