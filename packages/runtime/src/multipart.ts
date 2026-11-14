@@ -1,4 +1,4 @@
-import { PayloadTooLargeException } from '@fluojs/http/portable';
+import { BadRequestException, PayloadTooLargeException } from '@fluojs/http/portable';
 
 /**
  * Represents a single uploaded multipart file buffered in memory.
@@ -108,6 +108,8 @@ const CONSUMED_MULTIPART_INPUTS = new WeakSet<object>();
  * @returns Parsed string fields plus uploaded files buffered in memory.
  * @throws {PayloadTooLargeException} When any configured file-size, file-count, total-size, field-count, field-size,
  * or header-size limit is exceeded.
+ * @throws {BadRequestException} When the multipart request is syntactically malformed, such as a missing boundary,
+ * body, closing boundary, valid part header, form-data Content-Disposition header, or name parameter.
  */
 export async function parseMultipart(
   request: Request | MultipartRequestLike,
@@ -402,7 +404,7 @@ class MultipartStreamParser {
     await this.ensure(this.initialDelimiter.byteLength + 2);
 
     if (!matchesAt(this.buffer, this.initialDelimiter, 0)) {
-      this.fail(new Error('Multipart body does not start with its declared boundary.'));
+      this.fail(new BadRequestException('Multipart body does not start with its declared boundary.'));
       this.throwIfFailed();
     }
 
@@ -415,7 +417,7 @@ class MultipartStreamParser {
     }
 
     if (!equalsBytes(ending, TEXT_ENCODER.encode('\r\n'))) {
-      this.fail(new Error('Multipart boundary is malformed.'));
+      this.fail(new BadRequestException('Multipart boundary is malformed.'));
       this.throwIfFailed();
     }
   }
@@ -430,7 +432,7 @@ class MultipartStreamParser {
       const separator = line.indexOf(':');
 
       if (separator <= 0) {
-        this.fail(new Error('Multipart part contains a malformed header.'));
+        this.fail(new BadRequestException('Multipart part contains a malformed header.'));
         this.throwIfFailed();
       }
 
@@ -438,7 +440,7 @@ class MultipartStreamParser {
       const value = line.slice(separator + 1).trim();
 
       if (headers[name] !== undefined) {
-        this.fail(new Error(`Multipart part contains a repeated "${name}" header.`));
+        this.fail(new BadRequestException(`Multipart part contains a repeated "${name}" header.`));
         this.throwIfFailed();
       }
 
@@ -592,7 +594,7 @@ class MultipartStreamParser {
         return false;
       }
 
-      const error = new Error('Multipart body ended before its closing boundary.');
+      const error = new BadRequestException('Multipart body ended before its closing boundary.');
       this.fail(error);
       throw error;
     }
@@ -679,7 +681,7 @@ function extractMultipartBoundary(contentType: string | null): string {
   const boundary = match?.[1] ?? match?.[2]?.trim();
 
   if (!boundary) {
-    throw new Error('Multipart requests require a boundary parameter.');
+    throw new BadRequestException('Multipart requests require a boundary parameter.');
   }
 
   return boundary;
@@ -687,14 +689,14 @@ function extractMultipartBoundary(contentType: string | null): string {
 
 function parseContentDisposition(value: string | undefined): { filename?: string; name: string } {
   if (value === undefined) {
-    throw new Error('Multipart parts require a form-data Content-Disposition header.');
+    throw new BadRequestException('Multipart parts require a form-data Content-Disposition header.');
   }
 
   let index = skipWhitespace(value, 0);
   const dispositionType = readToken(value, index);
 
   if (!dispositionType || dispositionType.value.toLowerCase() !== 'form-data') {
-    throw new Error('Multipart parts require a form-data Content-Disposition header.');
+    throw new BadRequestException('Multipart parts require a form-data Content-Disposition header.');
   }
 
   index = dispositionType.end;
@@ -708,20 +710,20 @@ function parseContentDisposition(value: string | undefined): { filename?: string
     }
 
     if (value[index] !== ';') {
-      throw new Error('Multipart Content-Disposition parameters must be separated by semicolons.');
+      throw new BadRequestException('Multipart Content-Disposition parameters must be separated by semicolons.');
     }
 
     index = skipWhitespace(value, index + 1);
     const parameterName = readToken(value, index);
 
     if (!parameterName) {
-      throw new Error('Multipart Content-Disposition parameters require token names.');
+      throw new BadRequestException('Multipart Content-Disposition parameters require token names.');
     }
 
     index = skipWhitespace(value, parameterName.end);
 
     if (value[index] !== '=') {
-      throw new Error('Multipart Content-Disposition parameters require values.');
+      throw new BadRequestException('Multipart Content-Disposition parameters require values.');
     }
 
     index = skipWhitespace(value, index + 1);
@@ -730,7 +732,7 @@ function parseContentDisposition(value: string | undefined): { filename?: string
       : readToken(value, index);
 
     if (!parameterValue) {
-      throw new Error('Multipart Content-Disposition parameters require token or quoted-string values.');
+      throw new BadRequestException('Multipart Content-Disposition parameters require token or quoted-string values.');
     }
 
     if (!parameters.has(parameterName.value.toLowerCase())) {
@@ -743,7 +745,7 @@ function parseContentDisposition(value: string | undefined): { filename?: string
   const name = parameters.get('name');
 
   if (name === undefined) {
-    throw new Error('Multipart parts require a name parameter.');
+    throw new BadRequestException('Multipart parts require a name parameter.');
   }
 
   return {
@@ -814,7 +816,7 @@ function skipWhitespace(value: string, start: number): number {
 function resolveMultipartStreamBody(request: Request | MultipartRequestLike): ReadableStream<Uint8Array> {
   if (request instanceof Request) {
     if (!request.body) {
-      throw new Error('Multipart requests require a body.');
+      throw new BadRequestException('Multipart requests require a body.');
     }
 
     return request.body;
@@ -833,7 +835,7 @@ function resolveMultipartStreamBody(request: Request | MultipartRequestLike): Re
   }
 
   if (body === undefined || body === null) {
-    throw new Error('Multipart requests require a body.');
+    throw new BadRequestException('Multipart requests require a body.');
   }
 
   const converted = new Request(request.url ?? 'http://localhost/', {
@@ -842,7 +844,7 @@ function resolveMultipartStreamBody(request: Request | MultipartRequestLike): Re
   }).body;
 
   if (!converted) {
-    throw new Error('Multipart requests require a body.');
+    throw new BadRequestException('Multipart requests require a body.');
   }
 
   return converted;

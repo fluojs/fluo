@@ -944,12 +944,12 @@ The private stop branch cleans up components in reverse startup order and clears
   }
 ```
 
-The readiness branch is what application `ready()` calls. It gathers component reports, returns aggregate readiness, and `assertCriticalReadiness()` turns a critical not-ready state into an invariant error.
+The readiness branch is what application `ready()` calls. The shell delegates to its probe collector, which gathers component reports in registration order with an independent timeout per probe. `assertCriticalReadiness()` turns a critical not-ready state into an invariant error.
 
-`path:packages/runtime/src/platform-shell.ts:228-253`
+`path:packages/runtime/src/platform-shell-probes.ts`
 ```typescript
   async ready(): Promise<PlatformReadinessReport> {
-    if (!this.hasRegisteredComponents()) {
+    if (this.registeredComponents.length === 0) {
       return {
         critical: false,
         status: 'ready',
@@ -959,16 +959,10 @@ The readiness branch is what application `ready()` calls. It gathers component r
     const reports: PlatformReadinessReport[] = [];
 
     for (const component of this.registeredComponents) {
-      try {
-        reports.push(await component.component.ready());
-      } catch (error) {
-        const issue = createUnknownFailureIssue(component.component.id, 'ready', error);
-        this.diagnostics.push(issue);
-        reports.push({
-          critical: true,
-          reason: issue.cause,
-          status: 'not-ready',
-        });
+      const result = await this.collectComponentReadiness(component);
+      reports.push(result.readiness);
+      for (const diagnostic of result.diagnostics) {
+        this.diagnostics.retainProbe(diagnostic.phase, diagnostic.issue);
       }
     }
 
@@ -976,7 +970,9 @@ The readiness branch is what application `ready()` calls. It gathers component r
   }
 ```
 
-`path:packages/runtime/src/platform-shell.ts:331-339`
+Each component's `ready()` and `health()` uses 5000 ms by default, including probes used by `snapshot()`. Configure a typed registration as `{ component, readiness: { timeoutMs, critical } }`; bare components use defaults, and private component options are never inspected. Positive finite budgets are floored to at least 1 ms; invalid values fall back to 5000 ms. Readiness timeout is critical by default (`not-ready`); `critical: false` makes aggregate readiness `degraded`. Health timeout is `unhealthy`. Later components are still checked and the latest diagnostic per component/phase is retained alongside lifecycle diagnostics. Timeouts bound asynchronous waiting without cancelling drivers or preempting blocked JavaScript.
+
+`path:packages/runtime/src/platform-shell.ts`
 ```typescript
   async assertCriticalReadiness(): Promise<void> {
     const readiness = await this.ready();

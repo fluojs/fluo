@@ -8,6 +8,8 @@
 
 ## 모듈 및 저장소 모델
 
+`rememberCacheErrors`의 API 소유자는 [remember 저장소 오류 정책](../../packages/cache-manager/README.ko.md#remember-저장소-오류-정책)입니다. `'throw'`가 기본이며 생략/`undefined`도 같은 의미입니다. `'bypass'`는 `remember` 내부 store 읽기·쓰기 실패만 격리합니다. 다른 untyped 값은 구성 오류이며 `forRoot`는 등록 시, 동기·비동기 `forRootAsync` factory는 결과 resolve 시 검증합니다.
+
 | 표면 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, opt-in `ttlJitter`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, opt-in `observer`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
@@ -27,12 +29,14 @@
 | 내장 전략 | 지원되는 전략 값은 `'route'`, `'route+query'`, 사용자 정의 함수입니다. 기본값인 `'route+query'`는 path와 정렬된 query string을 사용하며, query-insensitive 응답에만 `'route'`를 설정합니다. | `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 확장 경로 | 애플리케이션은 function-based `httpKeyStrategy` 설정 또는 handler-local `@CacheKey(...)` factory로 key 생성을 커스터마이즈합니다. key 생성만 바꾸기 위해 `CacheInterceptor`를 subclass하는 것은 문서화된 확장 경로가 아닙니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/README.md` |
 | query 정규화 | query를 포함하는 키에서는 디코딩된 매개변수 이름과 각 매개변수의 반복 문자열 값을 프로세스 로케일이나 collation 설정과 무관한 결정적 UTF-16 코드 유닛 순서로 정렬한 뒤 URI 인코딩합니다. 순서만 다른 query string은 동일한 키로 매핑되며, 대소문자, Unicode 정규화 형태, 반복 값의 중복 개수는 구분됩니다. | `packages/cache-manager/src/interceptor.ts` |
-| principal 격리 | 내장 키 전략은 `principalScopeResolver`가 값을 반환하면 `|principal:<scope>`를 추가합니다. 사용자 정의 resolver가 없으면 인증된 요청은 `requestContext.principal`의 `issuer`와 `subject`를 추가합니다. | `packages/cache-manager/src/interceptor.ts` |
+| principal 격리 | 내장 키 전략은 요청 path와 resolver scope의 `%`를 `%25`로, `\|`를 `%7C`로 escape하고, path에서는 추가로 `?`를 `%3F`로 escape합니다. Query 구성 요소는 기존 URI 인코딩을 유지합니다. `principalScopeResolver`가 정의된 값을 반환하면 `\|principal:<escaped scope>`를 추가합니다. 사용자 정의 resolver가 없으면 issuer가 있는 인증된 요청은 `\|principal:<URI-encoded issuer>:<URI-encoded subject>`를 추가하고, issuer가 생략되면 `\|principal:<URI-encoded subject>`를 사용하여 빈 문자열을 포함한 모든 명시적 issuer와 구분합니다. Issuer가 없는 principal을 제외하면 `%`, `\|`, `?`가 없는 path와 `%`, `\|`가 없는 scope의 기존 키는 유지됩니다. | `packages/cache-manager/src/interceptor.ts` |
 | 명시적 override | `@CacheKey(...)`는 빈 문자열을 포함한 정적 문자열 또는 resolver 함수를 저장할 수 있으며, 해당 핸들러의 계산된 GET 키를 덮어씁니다. Metadata가 없을 때만 설정된 fallback strategy를 선택합니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 
 ## TTL 및 쓰기 규칙
 
 아래 jitter와 invalid-TTL no-op 규칙은 `set` / `remember` 쓰기 및 HTTP 캐싱에 관한 것입니다. `update`는 TTL 생략 시 live entry의 절대 만료를 보존하고 생성에만 module 기본값을 사용하며, invalid TTL은 `RangeError`로 reject하고 의도적으로 jitter를 적용하지 않습니다. 초에서 밀리초로의 올림과 명시적 삭제 계약은 API 원본을 참고하세요.
+
+`rememberCacheErrors: 'bypass'`는 store `get` 실패를 miss로 처리하고 loader 후 정상 쓰기를 시도합니다. Store `set` 실패는 이미 얻은 값을 반환하며 loader를 재실행하지 않습니다. Loader의 동기 throw/rejection, TTL 준비, jitter random callback 오류와 잘못된 sample은 우회하지 않고 그대로 전파합니다. 같은 서비스의 현재 reset generation에서 정상 miss와 우회한 읽기는 같은 key의 in-flight loader 결과 또는 원래 실패를 공유합니다. 실패가 settle되면 bookkeeping을 해제하고 다음 호출은 다시 로드할 수 있으며 다른 key는 독립적입니다. `get`, `set`, `del`, `reset`, `close`, `update`의 직접 오류 계약은 바뀌지 않습니다.
 
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
@@ -60,6 +64,8 @@ Custom capability는 무효화를 동기적으로 등록하고 I/O/reducer 작�
 
 ## 무효화 규칙
 
+Bypass에서도 pending read, loader, write와 겹친 같은 generation의 `del` 무효화를 유지합니다. 값을 변경한 뒤 실패한 store 쓰기도 필요한 stale-write 삭제를 수행하고 삭제 실패는 전파합니다. Reset/close 이전 loader의 늦은 저장을 억제하며 이전 generation의 정리로 reset 이후 새 값을 삭제하지 않습니다. Reset/close는 이미 시작된 store 작업을 drain하고 이후 store 수용 순서를 유지하지만, 아직 store 작업에 진입하지 않은 origin loader를 기다리는 보장은 없습니다. Lifecycle 실패는 우회하지 않으며 반복 close는 첫 teardown 완료/실패를 공유합니다.
+
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 데코레이터 경로 | `@CacheEvict(...)`는 단일 키, 키 목록, 또는 resolver 함수를 HTTP route metadata로 저장합니다. 이 metadata는 non-GET controller handler에서 `CacheInterceptor`만 소비하며, service method와 그 밖의 non-HTTP call path는 `CacheService.del(...)` 또는 다른 명시적 애플리케이션 경로로 무효화해야 합니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
@@ -80,7 +86,7 @@ Custom capability는 무효화를 동기적으로 등록하고 I/O/reducer 작�
 | opt-in seam | `CacheModule.forRoot(...)`가 `observer`를 받지 않으면 cache operation 관찰은 비활성화됩니다. 옵션이 없으면 `CacheService`는 관찰 작업 없이 기존 경로를 실행합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/service.ts` |
 | 프라이버시 경계 | `CacheObservation`은 `operation`, `outcome`, `durationMs`만 전달합니다. cache key, 캐시된 값, loader 결과, error 객체는 observer로 전달되지 않습니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
 | operation taxonomy | `operation`은 `get`, `set`, `del`, `remember`, `reset`, `close` 중 하나입니다. `remember`는 호출당 한 번 보고되며 내부 read는 별도 `get`으로 보고되지 않습니다. | `packages/cache-manager/src/service.ts` |
-| outcome 분류 | `CacheObservation`은 discriminated union으로, `get`과 `remember`에는 `hit`, `miss`, `error`만 허용하고 `set`, `del`, `reset`, `close`에는 `success`, `error`만 허용합니다. in-flight load에 합류한 `remember` 호출은 `miss`를 보고합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
+| outcome 분류 | `CacheObservation`은 discriminated union으로, `get`과 `remember`에는 `hit`, `miss`, `error`만 허용하고 `set`, `del`, `reset`, `close`에는 `success`, `error`만 허용합니다. 오류 없는 miss/합류는 `miss`, 캐시 hit는 `hit`입니다. 자신의 읽기 또는 공유 load의 쓰기를 우회한 호출은 값이 resolve되어도 `error`를 한 번 보고하며, 둘 다 실패해도 중복 보고하지 않습니다. 다른 caller의 읽기 오류는 전파하지 않고 내부 `get`/`set` event도 추가하지 않습니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
 | timing | `durationMs`는 런타임의 monotonic `performance.now()` clock으로 store queue 직렬화를 포함한 전체 `CacheService` 작업을 측정합니다. | `packages/cache-manager/src/service.ts` |
 | 실패 격리 | observer 오류는 삼켜집니다. throw된 error나 rejected promise는 캐시 결과를 바꾸지 않고 unhandled rejection으로도 노출되지 않으며, cache 작업은 observer 작업을 await하지 않습니다. | `packages/cache-manager/src/service.ts` |
 | HTTP fail-soft 상호작용 | `CacheInterceptor`는 여전히 store 실패를 삼켜서 캐시 오류가 정상 핸들러를 실패시키지 않도록 하며, 그 실패는 `error` observation으로 운영자에게 노출됩니다. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/service.ts` |

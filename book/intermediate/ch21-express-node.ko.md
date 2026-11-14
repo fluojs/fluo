@@ -207,7 +207,7 @@ async download(_input: undefined, ctx: RequestContext) {
 
 ### 21.3.3 Portable byte-range 다운로드
 
-Controller가 byte representation을 소유하거나 정확한 size를 가진 portable stream을 만들 수 있다면 `createByteRangeResponse(...)`를 사용하세요. `GET`은 유효한 단일 `Range: bytes=` member로 partial response를 만들고, `HEAD`는 stream을 열지 않고 그 metadata를 반영합니다. `POST`, unsafe, custom method는 원래 full response를 유지합니다.
+Controller가 byte representation을 소유하거나 정확한 size를 가진 portable stream을 만들 수 있다면 `createByteRangeResponse(...)`를 사용하세요. 유효한 일반 status가 `200`인 `GET`에만 유효한 단일 `Range: bytes=` member를 적용합니다. Route `successStatus`는 여전히 handler status보다 우선하고 non-200 응답은 전체 status와 body를 유지합니다. 지나치게 큰 십진수 end offset과 suffix length는 정밀도 손실 없이 representation 경계로 제한합니다. Migration: 이제 `HEAD`는 `Range`를 무시하고 전체 representation metadata를 반환합니다. 정상적인 6 byte 응답은 `200`, `Content-Length: 6`을 유지하며 `Content-Range`, body, stream factory 호출이 없습니다. 선택한 범위를 확인하려면 `GET`을 사용하세요. Conditional 및 bodyless status는 우선권을 유지하고 `POST`, unsafe, custom method는 원래 full response를 유지합니다.
 
 ```typescript
 import { createByteRangeResponse, Get } from '@fluojs/http';

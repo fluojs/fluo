@@ -208,6 +208,8 @@ If `search` reports `down`, `/health` returns `503` with its diagnostic while `/
 
 Use `execution.indicatorTimeoutMs` when custom indicators might hang or depend on slow downstreams. When a probe exceeds the configured timeout, Terminus marks that indicator as `down` instead of waiting forever.
 
+The runtime callback registered by Terminus has a separate default 5000 ms budget. Indicator/platform work that exceeds it makes `/ready` return `503 unavailable`. `TerminusModuleOptions` currently exposes no way to raise this callback budget; `HealthModule.forRoot({ readinessCheckTimeoutMs })` is configurable only for direct runtime HealthModule users. Raising `execution.indicatorTimeoutMs` or a platform registration budget alone does not extend this wait.
+
 Terminus also serializes checks per indicator instance inside each `TerminusHealthService` / application container. If a timed-out or otherwise slow probe is still running when another `/health` or `/ready` request arrives for the same container, Terminus reports that indicator as `down` for the new request instead of starting an overlapping probe against the same downstream. Separate application containers keep independent in-flight state even when tests or multi-app processes reuse the same indicator object. Built-in HTTP indicators abort their `fetch` request when their own timeout expires; other drivers and custom callbacks may not expose cancellation, so they are protected from overlap until the original promise settles.
 
 ```typescript

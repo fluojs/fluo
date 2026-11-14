@@ -55,6 +55,12 @@ export interface FactoryProvider<T = unknown> {
 
 `useValue`와 `useExisting`까지 포함한 전체 public union은 아래처럼 `NormalizedProvider`와 만납니다.
 
+`useExisting`도 정규화할 때 `multi`를 보존합니다. `multi: true`이면 alias는 등록
+순서에 따라 target의 해석된 값을 contribution으로 추가하고 target의 scope를
+따릅니다. singleton consumer는 request-scoped target을 생성 전에 거부하며,
+multi override는 전체 set을 교체합니다. `multi: true`가 없으면 기존처럼
+target 값 하나를 해석합니다.
+
 `path:packages/di/src/types.ts:56-121`
 ```typescript
 export interface ValueProvider<T = unknown> {
@@ -66,6 +72,7 @@ export interface ValueProvider<T = unknown> {
 export interface ExistingProvider<T = unknown> {
   provide: Token<T>;
   useExisting: Token;
+  multi?: boolean;
 }
 
 export interface NormalizedProvider<T = unknown> {

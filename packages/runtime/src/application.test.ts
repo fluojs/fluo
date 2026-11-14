@@ -3196,6 +3196,45 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it.each(['https://rejected.example.com', undefined])(
+    'CORS array policy varies shared-cacheable GET responses for origin %s without granting access',
+    async (origin) => {
+      @Controller('/cacheable')
+      class CacheableController {
+        @Get('/')
+        read() {
+          return { ok: true };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [CacheableController] });
+
+      const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
+        cors: ['https://trusted.example.com'],
+        middleware: [{
+          async handle(context, next) {
+            context.response.setHeader('Cache-Control', 'public, max-age=60');
+            await next();
+          },
+        }],
+        port: 0,
+      }));
+      await app.listen();
+
+      const response = await fetchForTest(`${await resolveNodeApplicationUrl(app)}/cacheable`, {
+        headers: origin ? { origin } : {},
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(response.headers.get('cache-control')).toBe('public, max-age=60');
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+      expect(response.headers.get('vary')).toBe('Origin');
+      await app.close();
+    },
+  );
+
   it('accepts a partial CorsOptions object and merges with framework defaults', async () => {
     @Controller('/ping')
     class PingController {
