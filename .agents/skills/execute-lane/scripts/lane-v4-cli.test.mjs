@@ -3,7 +3,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
@@ -281,6 +281,64 @@ if (args[0] === 'pr' && args[1] === 'view') {
   };
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog, env };
 };
+
+const importedAdaptive = {
+  retry_count_is_terminal: false, max_same_failure_repeats: null,
+  max_wall_clock_minutes: null, stop_on_child_contract_error: true,
+};
+
+for (const [name, retry_policy] of Object.entries({
+  'missing limits': { retry_count_is_terminal: true, stop_on_child_contract_error: true },
+  'unknown key': { ...importedAdaptive, bogus: 1 },
+  'tampered stop': { ...importedAdaptive, stop_on_child_contract_error: false },
+  'nonboolean terminal': { ...importedAdaptive, retry_count_is_terminal: 'false' },
+  'zero limit': { ...importedAdaptive, max_same_failure_repeats: 0, max_wall_clock_minutes: 1 },
+  'fractional limit': { ...importedAdaptive, max_same_failure_repeats: 1, max_wall_clock_minutes: 1.5 },
+  'mixed limits': { ...importedAdaptive, max_same_failure_repeats: 2 },
+  'terminal null limits': { ...importedAdaptive, retry_count_is_terminal: true },
+})) {
+  test(`retry policy import: ${name} -> TypeError and no execution lane created`, (t) => {
+    const f = fixture(t);
+    const before = readFileSync(f.lanePath);
+    const ledger = join(f.root, 'retry-policy.json');
+    writeFileSync(ledger, JSON.stringify({
+      version: 2, lane_id: 'retry-policy', confirmed_issues: [42], retry_policy,
+    }));
+
+    const result = f.cli('init', ['--from-lane-v2', ledger], false);
+
+    assert.match(result.stderr, /TypeError: retry_policy/u);
+    assert.equal(existsSync(join(f.root, '.omo/lanes-v4/retry-policy.json')), false);
+    assert.deepEqual(readFileSync(f.lanePath), before);
+  });
+}
+
+for (const [name, retry_policy] of Object.entries({
+  adaptive: importedAdaptive,
+  'adaptive numeric': { ...importedAdaptive, max_same_failure_repeats: 2, max_wall_clock_minutes: 60 },
+  bounded: { ...importedAdaptive, retry_count_is_terminal: true, max_same_failure_repeats: 2, max_wall_clock_minutes: 60 },
+})) {
+  test(`retry policy import: valid ${name} -> preserved policy and correct second-failure decision`, (t) => {
+    const f = fixture(t);
+    const ledger = join(f.root, 'retry-policy.json');
+    writeFileSync(ledger, JSON.stringify({
+      version: 2, lane_id: 'retry-policy', confirmed_issues: [42], retry_policy,
+    }));
+
+    const lanePath = f.cli('init', ['--from-lane-v2', ledger]).stdout.trim();
+    const record = () => f.cli('record', ['--lane', lanePath, '--issue', '42',
+      '--phase', 'implement', '--result-json', '{"ok":false,"error":"same"}']);
+    record();
+    assert.equal(JSON.parse(readFileSync(lanePath)).issues['42'].blocker, null);
+    record();
+
+    const lane = JSON.parse(readFileSync(lanePath));
+    assert.deepEqual(lane.retry_policy, retry_policy);
+    assert.equal(lane.issues['42'].attempts.implement, 2);
+    assert.deepEqual(lane.issues['42'].blocker, retry_policy.retry_count_is_terminal
+      ? { type: 'attempts-exhausted', phase: 'implement' } : null);
+  });
+}
 
 const heldWriter = async (t) => {
   const f = fixture(t);

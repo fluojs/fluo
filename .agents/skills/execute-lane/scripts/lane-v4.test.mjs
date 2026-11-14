@@ -402,9 +402,35 @@ test('retry policy: malformed child and explicit contract error -> policy blocke
 		const lane = applyChildResult(makeLane(), 'implement', result, { retryPolicy: adaptivePolicy, now: 0 });
 		assert.deepEqual(lane.blocker, { type: 'child-contract-error', phase: 'implement' });
 	}
-	const retry = applyChildResult(makeLane(), 'implement', null,
-		{ retryPolicy: { ...adaptivePolicy, stop_on_child_contract_error: false }, now: 0 });
+	assert.throws(() => applyChildResult(makeLane(), 'implement', null,
+		{ retryPolicy: { ...adaptivePolicy, stop_on_child_contract_error: false }, now: 0 }), TypeError);
+	const retry = applyChildResult(makeLane(), 'implement', null);
 	assert.equal(retry.blocker, null);
+});
+
+test('retry policy: malformed policy at engine boundary -> throws for failures and apparent success', () => {
+	const malformed = [
+		{ retry_count_is_terminal: true, stop_on_child_contract_error: true },
+		{ ...adaptivePolicy, unknown: 1 },
+		{ ...adaptivePolicy, stop_on_child_contract_error: false },
+		{ ...adaptivePolicy, retry_count_is_terminal: 'true' },
+		{ ...adaptivePolicy, max_same_failure_repeats: undefined },
+		{ ...adaptivePolicy, max_wall_clock_minutes: '1' },
+		{ ...adaptivePolicy, max_wall_clock_minutes: 0 },
+		{ ...adaptivePolicy, max_wall_clock_minutes: -1 },
+		{ ...adaptivePolicy, max_wall_clock_minutes: 1.5 },
+		{ ...adaptivePolicy, max_same_failure_repeats: Number.NaN },
+		{ ...adaptivePolicy, max_same_failure_repeats: Number.POSITIVE_INFINITY },
+		{ ...adaptivePolicy, max_same_failure_repeats: null },
+		null, false, [],
+	];
+
+	for (const retryPolicy of malformed) {
+		for (const result of [{ ok: false, error: 'same' }, { ok: true }]) {
+			assert.throws(() => applyChildResult(makeLane(), 'implement', result,
+				{ retryPolicy, now: 0 }), TypeError);
+		}
+	}
 });
 
 test('retry policy: explicit contract error with ok true -> blocker before success, legacy unchanged', () => {

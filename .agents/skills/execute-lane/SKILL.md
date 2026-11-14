@@ -30,6 +30,14 @@ provenance. External issue dependencies are rejected. Read predicted conflicts b
 Hand-initialized lanes need an explicit merge grant; importing a ledger does
 not authorize expanding its issue set.
 
+An imported `retry_policy` must contain exactly `retry_count_is_terminal`,
+`max_same_failure_repeats`, `max_wall_clock_minutes` and
+`stop_on_child_contract_error`. The terminal flag is boolean and the stop flag
+is exactly true. Both limits must be positive integers, or both null with the
+terminal flag false. Invalid policies raise `TypeError` before any lane is
+created. The pure engine applies the same validation before handling any result;
+a missing or nonnumeric bounded limit never becomes unlimited retries.
+
 `init` rejects an existing lane file, for both explicit issue specs and v2
 intake, preserving its bytes. It never resets an active lane. State writers
 (`record`, `set-fact`, `approve-merge`, `clear-blocker`) serialize the entire

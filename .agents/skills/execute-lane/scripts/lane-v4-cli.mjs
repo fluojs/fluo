@@ -39,7 +39,6 @@ import {
 } from "../../../../tooling/ci/local-verification.mjs";
 import { collectIdentity } from "../../../../tooling/ci/verify-local.mjs";
 import { assertPredictedConflicts } from "../../../workflow-contracts/contracts.mjs";
-import { schemaFailure } from "../../../workflow-contracts/schema-validator.mjs";
 import {
 	evaluatePreflight,
 	issueDigest,
@@ -66,6 +65,7 @@ import {
 	localCheckBinding,
 	summarizeTransitions,
 	trackStalls,
+	validateRetryPolicy,
 } from "./lane-v4.mjs";
 
 const arg = (args, flag, fallback) => {
@@ -413,9 +413,7 @@ export const laneV2ToInitSpecs = (laneV2) => {
 	}
 	const members = new Set(issues);
 	if (Object.hasOwn(laneV2, "retry_policy")) {
-		const schema = JSON.parse(readFileSync(new URL("../../../workflow-contracts/lane-ledger-v2.schema.json", import.meta.url)));
-		const failure = schemaFailure(schema.properties.retry_policy, laneV2.retry_policy, "retry_policy");
-		if (failure) throw new TypeError(failure);
+		validateRetryPolicy(laneV2.retry_policy);
 	}
 	assertPredictedConflicts(laneV2.predicted_conflicts, issues);
 	const graph = laneV2.dependency_graph ?? {};

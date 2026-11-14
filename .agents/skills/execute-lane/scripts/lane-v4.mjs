@@ -82,6 +82,25 @@ const requireRecord = (value, name) => {
 	return value;
 };
 
+export const validateRetryPolicy = (policy) => {
+	requireRecord(policy, 'retry_policy');
+	const fields = ['retry_count_is_terminal', 'max_same_failure_repeats',
+		'max_wall_clock_minutes', 'stop_on_child_contract_error'];
+	if (Reflect.ownKeys(policy).length !== fields.length
+		|| fields.some((field) => !Object.hasOwn(policy, field))
+		|| typeof policy.retry_count_is_terminal !== 'boolean'
+		|| policy.stop_on_child_contract_error !== true) {
+		throw new TypeError('retry_policy requires exactly four approved fields, boolean retry_count_is_terminal and stop_on_child_contract_error: true');
+	}
+	const positiveLimits = [policy.max_same_failure_repeats, policy.max_wall_clock_minutes]
+		.every((limit) => Number.isSafeInteger(limit) && limit > 0);
+	const nullLimits = policy.retry_count_is_terminal === false
+		&& policy.max_same_failure_repeats === null && policy.max_wall_clock_minutes === null;
+	if (!positiveLimits && !nullLimits) {
+		throw new TypeError('retry_policy limits must both be positive integers, or both null with retry_count_is_terminal: false');
+	}
+};
+
 /**
  * Fold one child result into the lane. Pure.
  * A well-formed success resets the phase attempt counter. Anything else
@@ -93,6 +112,7 @@ export const applyChildResult = (lane, phase, result, { retryPolicy, now } = {})
 	if (!PHASES.has(phase)) {
 		throw new TypeError(`unknown phase: ${phase}`);
 	}
+	if (retryPolicy !== undefined) validateRetryPolicy(retryPolicy);
 	const next = structuredClone(lane);
 	next.attempts ??= {};
 	const wellFormed =
