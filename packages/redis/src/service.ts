@@ -9,13 +9,10 @@ import type { RedisLifecycleOptions } from './types.js';
 const QUITTABLE_STATUSES = new Set(['connect', 'connecting', 'ready', 'reconnecting']);
 const DISCONNECTABLE_STATUSES = new Set(['close', 'connect', 'connecting', 'monitoring', 'ready', 'reconnecting', 'wait']);
 const DEFAULT_REDIS_LIFECYCLE_TIMEOUT_MS = 10_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 function isClosed(status: string): boolean {
   return status === 'end';
-}
-
-function isOpen(status: string): boolean {
-  return QUITTABLE_STATUSES.has(status);
 }
 
 function isConnectable(status: string): boolean {
@@ -40,14 +37,21 @@ async function withLifecycleTimeout<T>(operation: Promise<T>, timeoutMs: number,
   }
 
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const startedAt = performance.now();
 
   try {
     return await Promise.race([
       operation,
       new Promise<never>((_resolve, reject) => {
-        timeoutHandle = setTimeout(() => {
-          reject(new Error(message));
-        }, timeoutMs);
+        const scheduleTimeout = () => {
+          const remainingMs = timeoutMs - (performance.now() - startedAt);
+          if (remainingMs <= 0) {
+            reject(new Error(message));
+            return;
+          }
+          timeoutHandle = setTimeout(scheduleTimeout, Math.min(remainingMs, MAX_TIMER_DELAY_MS));
+        };
+        scheduleTimeout();
       }),
     ]);
   } finally {
@@ -118,10 +122,33 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
       );
       return;
     } catch (error: unknown) {
-      this.disconnectIfPossible(this.client.status);
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      let onClosed: (() => void) | undefined;
 
-      if (isOpen(this.client.status)) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          onClosed = () => {
+            if (isClosed(this.client.status)) {
+              resolve();
+            }
+          };
+          // ioredis disconnect() starts socket teardown; close may precede the terminal end state.
+          this.client.on('close', onClosed);
+          this.client.on('end', onClosed);
+          timeoutHandle = setTimeout(() => reject(error), DEFAULT_REDIS_LIFECYCLE_TIMEOUT_MS);
+          this.disconnectIfPossible(this.client.status);
+          onClosed();
+        });
+      } catch {
         throw error;
+      } finally {
+        if (timeoutHandle !== undefined) {
+          clearTimeout(timeoutHandle);
+        }
+        if (onClosed !== undefined) {
+          this.client.off('close', onClosed);
+          this.client.off('end', onClosed);
+        }
       }
     }
   }
