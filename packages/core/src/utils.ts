@@ -24,9 +24,21 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
   }
 
   if (Array.isArray(value)) {
-    const cloned: unknown[] = [];
+    const cloned: unknown[] = new Array(value.length);
     seen.set(value, cloned);
-    cloned.push(...value.map((item) => cloneFallbackValue(item, seen)));
+
+    for (const key of Reflect.ownKeys(value)) {
+      if (key === 'length') {
+        continue;
+      }
+
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+      if (descriptor) {
+        Object.defineProperty(cloned, key, cloneIntoDescriptorValue(descriptor, seen));
+      }
+    }
+
     return cloned as T;
   }
 
@@ -98,25 +110,26 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
 }
 
 /**
- * Clones a value through `structuredClone()` and falls back to the hardened internal clone path when needed.
+ * Creates a deterministic deep clone with prototypes preserved at every supported nesting level.
+ *
+ * Uses the prototype-preserving fallback contract regardless of whether `structuredClone()` is
+ * available, succeeds, or throws. Functions are returned by reference. Buffer and private-field
+ * instance behavior is not yet specified; see issue #4015.
  *
  * @param value Value to clone.
- * @returns A cloned value produced by `structuredClone()` when available, or `fallbackClone()` when the runtime clone fails.
+ * @returns A detached clone for supported runtime shapes, or the original primitive/function.
  */
 export function cloneWithFallback<T>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    return fallbackClone(value);
-  }
+  return fallbackClone(value);
 }
 
 /**
- * Creates a best-effort deep clone for runtimes where `structuredClone()` is not available or throws.
+ * Creates a prototype-preserving deep clone independently of runtime `structuredClone()` support.
  *
  * Supported fallback shapes include arrays, dates, regular expressions, maps, sets, typed arrays,
  * array buffers, plain objects, and custom prototype-based instances with symbol-keyed properties
- * and circular references preserved.
+ * and circular references preserved. Functions are returned by reference. Buffer and private-field
+ * instance behavior is not yet specified; see issue #4015.
  *
  * @param value Value to clone through the fallback path.
  * @returns A deep clone for supported runtime shapes, or the original value for primitives/functions.

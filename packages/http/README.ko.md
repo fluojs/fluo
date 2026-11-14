@@ -305,6 +305,17 @@ canonical `406 Not Acceptable` response를 반환합니다. 성공한 모든 for
 `Optional`로 누락을 허용하지 않으면 `FromBody`는 계속 `MISSING_FIELD`를
 보고합니다. Field initializer는 필수 transport field를 대신하지 않습니다.
 
+클래스 DTO binding은 alias와 null prototype 객체를 포함하여 body, query,
+path, cookie source의 own property만 읽습니다. `toString`, `constructor`,
+`__proto__`, `hasOwnProperty` 같은 상속된 값은 전달된 입력으로 취급하지
+않습니다. 값이 없거나 상속된 값 또는 명시적인 `undefined`이면 필수 field는
+HTTP 400 / `MISSING_FIELD`를 반환하며 오류 detail에 logical DTO field와
+source를 포함합니다. `Optional`이면 해당 값의 할당을 생략하고 constructor로
+초기화한 field를 유지합니다. 명시적인 `null`을 포함한 실제 own 값은 global
+converter, field converter 순서로 전달하며 생략한 값은 converter에 전달하지
+않습니다. 기존 body key guard는 계속 적용합니다. Header binding은
+case-insensitive header 조회를 유지합니다.
+
 ```ts
 import {
   Controller, FromBody, InputPolicy, Post, RequestDto,
@@ -731,6 +742,12 @@ negotiation, 안전한 정보 공개는
 [progressive forms contract](../../docs/contracts/react-progressive-forms.ko.md)를 참고하세요.
 
 ### 프록시 뒤의 속도 제한
+
+`createRateLimitMiddleware({ limit, windowMs })`는 기본적으로 별도의 프로세스 로컬 메모리 저장소를 소유합니다. 선택적인 `RateLimitStore.consume(key, { now, windowMs })` 기능은 창 초기화·재설정·증가를 원자적으로 수행하고 현재 요청을 포함하는 독립적인 `{ count, resetAt }` snapshot을 반환합니다. `now`와 `resetAt`은 epoch 밀리초이며 `windowMs`는 밀리초 단위 기간입니다. 첫 요청은 `now + windowMs`에 끝나는 창을 시작하고 `now >= resetAt`인 요청은 새 창을 시작합니다. 거절된 요청을 포함해 모든 요청을 세며 활성 창의 만료 시각을 연장하지 않습니다. `limit`를 초과한 count는 초 단위로 올림한 `Retry-After`와 표준 `TOO_MANY_REQUESTS` 본문을 포함하는 429를 만듭니다.
+
+내장 저장소는 한 프로세스에서 소비를 동기적으로 수행하므로 동시 요청의 초기화나 증가를 잃지 않습니다. 별도 저장소·프로세스·재시작 사이에는 예산을 공유하지 않습니다. 사용자 저장소는 snapshot을 직접 또는 promise로 반환할 수 있습니다. 기존 저장소를 이관하려면 `get`, `set`, `increment(key)`, `evict(now)`를 유지하고 `consume`을 추가하세요. 미들웨어는 eviction 후 이를 우선 사용합니다. 분산 구현은 하나의 transaction이나 script 등으로 backend의 초기화·재설정·증가를 원자적으로 수행하고 호출자의 시간 기준으로 일관된 count와 만료 시각을 반환해야 합니다. 개별 읽기와 쓰기를 따로 await하는 순서는 원자적이지 않습니다.
+
+`consume`이 없는 기존 저장소는 원래의 `evict` 후 `get` 및 `set`/`increment` fallback으로 계속 지원합니다. 이 fallback은 동시 요청을 직렬화하지 않습니다. 한 프로세스에서도 동시 초기화가 count를 덮어쓸 수 있고 별도의 backend 호출로는 프로세스 간 원자성을 보장할 수 없습니다. 동시 quota 강제에 의존하기 전에 `consume`을 추가하세요. 저장소 실패는 429로 바꾸거나 메모리로 조용히 전환하지 않고 그대로 전파합니다. 만료된 메모리 entry는 요청 중 정리하며, 이 동작이 키 개수 상한을 제공하지는 않습니다.
 
 `createRateLimitMiddleware(...)`는 기본적으로 어댑터가 snapshot한 직접 transport 주소로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 명시적인 hop 수, address/CIDR 목록 또는 predicate를 `trustProxy`로 구성하세요. 직접 peer가 해당 policy를 만족하지 않으면 forwarded data는 무시되며, malformed `Forwarded` data는 direct transport identity로 fail-closed 됩니다.
 
