@@ -365,6 +365,118 @@ test('C2: success resets the attempt counter', () => {
 	assert.equal(lane.blocker, null);
 });
 
+const adaptivePolicy = {
+	retry_count_is_terminal: false, max_same_failure_repeats: 2,
+	max_wall_clock_minutes: 1, stop_on_child_contract_error: true,
+};
+
+test('retry policy: adaptive count and elapsed telemetry -> fixable work keeps retrying', () => {
+	let lane = makeLane();
+	for (let i = 0; i < 6; i++) {
+		lane = applyChildResult(lane, 'implement', { ok: false, error: 'same' },
+			{ retryPolicy: adaptivePolicy, now: i * 120_000 });
+	}
+	assert.equal(lane.attempts.implement, 6);
+	assert.equal(lane.blocker, null);
+	assert.equal(lane.retry_telemetry.implement.elapsed_ms, 600_000);
+	assert.equal(lane.retry_telemetry.implement.same_failure_repeats, 6);
+	const success = applyChildResult(lane, 'implement', { ok: true },
+		{ retryPolicy: adaptivePolicy, now: 700_000 });
+	assert.equal(success.attempts.implement, 0);
+	assert.equal(success.retry_telemetry.implement, undefined);
+});
+
+test('retry policy: bounded repeat and wall clock limits -> original budget blocks', () => {
+	const retryPolicy = { ...adaptivePolicy, retry_count_is_terminal: true };
+	let lane = applyChildResult(makeLane(), 'implement', { ok: false, error: 'first' }, { retryPolicy, now: 0 });
+	lane = applyChildResult(lane, 'implement', { ok: false, error: 'different' }, { retryPolicy, now: 1 });
+	assert.equal(lane.blocker, null);
+	const repeat = applyChildResult(lane, 'implement', { ok: false, error: 'different' }, { retryPolicy, now: 2 });
+	assert.deepEqual(repeat.blocker, { type: 'attempts-exhausted', phase: 'implement' });
+	const elapsed = applyChildResult(lane, 'implement', { ok: false, error: 'third' }, { retryPolicy, now: 60_000 });
+	assert.deepEqual(elapsed.blocker, { type: 'retry-time-exhausted', phase: 'implement' });
+});
+
+test('retry policy: malformed child and explicit contract error -> policy blocker', () => {
+	for (const result of [null, {}, { ok: 'true' }, { ok: false, error: { type: 'child-contract-error' } }]) {
+		const lane = applyChildResult(makeLane(), 'implement', result, { retryPolicy: adaptivePolicy, now: 0 });
+		assert.deepEqual(lane.blocker, { type: 'child-contract-error', phase: 'implement' });
+	}
+	assert.throws(() => applyChildResult(makeLane(), 'implement', null,
+		{ retryPolicy: { ...adaptivePolicy, stop_on_child_contract_error: false }, now: 0 }), TypeError);
+	const retry = applyChildResult(makeLane(), 'implement', null);
+	assert.equal(retry.blocker, null);
+});
+
+test('retry policy: malformed policy at engine boundary -> throws for failures and apparent success', () => {
+	const malformed = [
+		{ retry_count_is_terminal: true, stop_on_child_contract_error: true },
+		{ ...adaptivePolicy, unknown: 1 },
+		{ ...adaptivePolicy, stop_on_child_contract_error: false },
+		{ ...adaptivePolicy, retry_count_is_terminal: 'true' },
+		{ ...adaptivePolicy, max_same_failure_repeats: undefined },
+		{ ...adaptivePolicy, max_wall_clock_minutes: '1' },
+		{ ...adaptivePolicy, max_wall_clock_minutes: 0 },
+		{ ...adaptivePolicy, max_wall_clock_minutes: -1 },
+		{ ...adaptivePolicy, max_wall_clock_minutes: 1.5 },
+		{ ...adaptivePolicy, max_same_failure_repeats: Number.NaN },
+		{ ...adaptivePolicy, max_same_failure_repeats: Number.POSITIVE_INFINITY },
+		{ ...adaptivePolicy, max_same_failure_repeats: null },
+		false, [],
+	];
+
+	for (const retryPolicy of malformed) {
+		for (const result of [{ ok: false, error: 'same' }, { ok: true }]) {
+			assert.throws(() => applyChildResult(makeLane(), 'implement', result,
+				{ retryPolicy, now: 0 }), TypeError);
+		}
+	}
+});
+
+test('retry policy: null -> legacy failure ceiling and success reset match absent policy', () => {
+	let current = makeLane();
+	let legacy = makeLane();
+	for (let attempt = 1; attempt <= ATTEMPT_CEILING; attempt++) {
+		legacy = applyChildResult(legacy, 'implement', { ok: false });
+
+		assert.doesNotThrow(() => {
+			current = applyChildResult(current, 'implement', { ok: false }, { retryPolicy: null });
+		});
+
+		assert.deepEqual(current, legacy);
+		assert.equal(current.attempts.implement, attempt);
+	}
+	assert.deepEqual(current.blocker, { type: 'attempts-exhausted', phase: 'implement' });
+	legacy = applyChildResult(legacy, 'implement', { ok: true });
+	assert.doesNotThrow(() => {
+		current = applyChildResult(current, 'implement', { ok: true }, { retryPolicy: null });
+	});
+	assert.deepEqual(current, legacy);
+	assert.equal(current.attempts.implement, 0);
+});
+
+test('retry policy: explicit contract error with ok true -> blocker before success, legacy unchanged', () => {
+	const lane = makeLane({ attempts: { implement: 2 },
+		retry_telemetry: { implement: { started_at: 0, elapsed_ms: 2, failure: 'old', same_failure_repeats: 1 } } });
+	const result = { ok: true, error: { type: 'child-contract-error' } };
+
+	const next = applyChildResult(lane, 'implement', result, { retryPolicy: adaptivePolicy, now: 3 });
+
+	assert.deepEqual(next.blocker, { type: 'child-contract-error', phase: 'implement' });
+	assert.equal(next.attempts.implement, 3);
+	assert.equal(next.retry_telemetry.implement.elapsed_ms, 3);
+	assert.deepEqual(applyChildResult(lane, 'implement', result),
+		{ ...lane, attempts: { implement: 0 }, retry_telemetry: {} });
+});
+
+test('decision: failed required observations -> typed failure before every write action', () => {
+	const observationFailures = [{ source: 'pr', subject: 'issue-3096', code: 'command-failed' }];
+	for (const patch of [{}, { preflight: null }, { hasNewCommits: false }, { pr: { state: 'MERGED' } }]) {
+		assert.deepEqual(decideNext(makeLane(), makeObs({ ...patch, observationFailures })),
+			{ action: 'observation-failed', failures: observationFailures });
+	}
+});
+
 test('C2: needs-human-check review verdict is a policy block', () => {
 	const next = decideNext(makeLane(), makeObs({ review: makeReview('NEEDS-HUMAN-CHECK') }));
 	assert.equal(next.action, 'blocked');

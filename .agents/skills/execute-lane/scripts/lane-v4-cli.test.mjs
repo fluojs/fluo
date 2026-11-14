@@ -3,7 +3,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
@@ -119,10 +119,12 @@ const fixture = (t, isolatedOrchestrator = false, parent = process.env.FLUO_PROD
 const args = process.argv.slice(2);
 appendFileSync(process.env.GH_LOG, JSON.stringify(args) + '\\n');
 const state = JSON.parse(readFileSync(process.env.GH_STATE));
-if (state.unavailable) process.exit(1);
+const subject = args[0] === 'issue' && args[2] !== '42' ? args[2] : args[0];
+if (state.unavailable || state.fail === subject) process.exit(1);
+if (state.malformed === subject) { process.stdout.write('{}'); process.exit(0); }
 if (args[0] === 'pr' && args[1] === 'view') {
   const pr = Object.hasOwn(state.prs ?? {}, args[2]) ? state.prs[args[2]] : state.pr;
-  if (!pr) process.exit(1);
+  if (!pr) { process.stderr.write('no pull requests found for branch "' + args[2] + '"'); process.exit(1); }
   process.stdout.write(JSON.stringify(pr));
 } else if (args[0] === 'issue' && args[1] === 'view') {
   process.stdout.write(args.includes('--jq') ? state.issue.state : JSON.stringify(state.issue));
@@ -280,8 +282,389 @@ if (args[0] === 'pr' && args[1] === 'view') {
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog, env };
 };
 
+const importedAdaptive = {
+  retry_count_is_terminal: false, max_same_failure_repeats: null,
+  max_wall_clock_minutes: null, stop_on_child_contract_error: true,
+};
+
+for (const phase of ['resolve-conflict', 'verify-local']) {
+  test(`record policy: ${phase} child contract error -> persisted blocker and retro before stage admission`, (t) => {
+    const f = fixture(t);
+    f.set('preflight', f.preflight());
+    f.implement();
+    const lane = JSON.parse(readFileSync(f.lanePath));
+    lane.retry_policy = importedAdaptive;
+    writeFileSync(f.lanePath, JSON.stringify(lane));
+    const before = readFileSync(f.lanePath);
+    const ordinary = { ok: phase === 'resolve-conflict' };
+    const record = (result, ok = true) => f.cli('record', [...f.common,
+      '--phase', phase, '--result-json', JSON.stringify(result)], ok);
+    record(ordinary, false);
+    assert.deepEqual(readFileSync(f.lanePath), before);
+    const result = { ...ordinary, error: { type: 'child-contract-error' } };
+
+    record(result);
+
+    const entry = JSON.parse(readFileSync(f.lanePath)).issues['42'];
+    const blocker = { type: 'child-contract-error', phase };
+    assert.equal(entry.attempts[phase], 1);
+    assert.deepEqual(entry.blocker, blocker);
+    assert.deepEqual(entry.facts, lane.issues['42'].facts);
+    assert.deepEqual(f.plan().decision, { action: 'blocked', reason: blocker.type, blocker });
+    const events = readRetroEvents(f.root, 'fixture').filter(event => event.kind === 'stage');
+    assert.equal(events.length, 1);
+    assert.equal(events[0].data.phase, phase);
+    assert.deepEqual(events[0].data.result, result);
+    const blockedBytes = readFileSync(f.lanePath);
+    record(ordinary, false);
+    assert.deepEqual(readFileSync(f.lanePath), blockedBytes);
+    assert.equal(readRetroEvents(f.root, 'fixture').filter(event => event.kind === 'stage').length, 1);
+  });
+}
+
+test('record policy: stored null -> legacy failure count and blocker at three without migration', (t) => {
+  const f = fixture(t);
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.retry_policy = null;
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    f.cli('record', [...f.common, '--phase', 'implement', '--result-json', '{"ok":false}']);
+    const stored = JSON.parse(readFileSync(f.lanePath));
+    assert.equal(stored.retry_policy, null);
+    assert.equal(stored.issues['42'].attempts.implement, attempt);
+    assert.deepEqual(stored.issues['42'].blocker,
+      attempt === 3 ? { type: 'attempts-exhausted', phase: 'implement' } : null);
+  }
+
+  assert.equal(f.plan().decision.action, 'blocked');
+});
+
+test('observation: null PR rollup entry -> typed failure for plan, plan-all and watch', (t) => {
+  const f = fixture(t);
+  f.state.pr = { number: 77, state: 'OPEN', headRefOid: 'a'.repeat(40),
+    mergeable: 'MERGEABLE', statusCheckRollup: [null] };
+  f.update();
+  const before = readFileSync(f.lanePath);
+
+  const single = f.plan().decision;
+  const all = JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision;
+  const watch = f.cli('watch', ['--lane', f.lanePath, '--once']).stdout;
+
+  assert.deepEqual(single, { action: 'observation-failed',
+    failures: [{ source: 'pr', subject: 'issue-42', code: 'invalid-response' }] });
+  assert.deepEqual(all, single);
+  assert.match(watch, /-> observation-failed/u);
+  assert.deepEqual(readFileSync(f.lanePath), before);
+});
+
+for (const [name, retry_policy] of Object.entries({
+  'missing limits': { retry_count_is_terminal: true, stop_on_child_contract_error: true },
+  'unknown key': { ...importedAdaptive, bogus: 1 },
+  'tampered stop': { ...importedAdaptive, stop_on_child_contract_error: false },
+  'nonboolean terminal': { ...importedAdaptive, retry_count_is_terminal: 'false' },
+  'zero limit': { ...importedAdaptive, max_same_failure_repeats: 0, max_wall_clock_minutes: 1 },
+  'fractional limit': { ...importedAdaptive, max_same_failure_repeats: 1, max_wall_clock_minutes: 1.5 },
+  'mixed limits': { ...importedAdaptive, max_same_failure_repeats: 2 },
+  'terminal null limits': { ...importedAdaptive, retry_count_is_terminal: true },
+})) {
+  test(`retry policy import: ${name} -> TypeError and no execution lane created`, (t) => {
+    const f = fixture(t);
+    const before = readFileSync(f.lanePath);
+    const ledger = join(f.root, 'retry-policy.json');
+    writeFileSync(ledger, JSON.stringify({
+      version: 2, lane_id: 'retry-policy', confirmed_issues: [42], retry_policy,
+    }));
+
+    const result = f.cli('init', ['--from-lane-v2', ledger], false);
+
+    assert.match(result.stderr, /TypeError: retry_policy/u);
+    assert.equal(existsSync(join(f.root, '.omo/lanes-v4/retry-policy.json')), false);
+    assert.deepEqual(readFileSync(f.lanePath), before);
+  });
+}
+
+for (const [name, retry_policy] of Object.entries({
+  adaptive: importedAdaptive,
+  'adaptive numeric': { ...importedAdaptive, max_same_failure_repeats: 2, max_wall_clock_minutes: 60 },
+  bounded: { ...importedAdaptive, retry_count_is_terminal: true, max_same_failure_repeats: 2, max_wall_clock_minutes: 60 },
+})) {
+  test(`retry policy import: valid ${name} -> preserved policy and correct second-failure decision`, (t) => {
+    const f = fixture(t);
+    const ledger = join(f.root, 'retry-policy.json');
+    writeFileSync(ledger, JSON.stringify({
+      version: 2, lane_id: 'retry-policy', confirmed_issues: [42], retry_policy,
+    }));
+
+    const lanePath = f.cli('init', ['--from-lane-v2', ledger]).stdout.trim();
+    const record = () => f.cli('record', ['--lane', lanePath, '--issue', '42',
+      '--phase', 'implement', '--result-json', '{"ok":false,"error":"same"}']);
+    record();
+    assert.equal(JSON.parse(readFileSync(lanePath)).issues['42'].blocker, null);
+    record();
+
+    const lane = JSON.parse(readFileSync(lanePath));
+    assert.deepEqual(lane.retry_policy, retry_policy);
+    assert.equal(lane.issues['42'].attempts.implement, 2);
+    assert.deepEqual(lane.issues['42'].blocker, retry_policy.retry_count_is_terminal
+      ? { type: 'attempts-exhausted', phase: 'implement' } : null);
+  });
+}
+
+const heldWriter = async (t) => {
+  const f = fixture(t);
+  const signal = AbortSignal.timeout(20_000);
+  const sockets = [];
+  const server = createServer(socket => {
+    sockets.push(socket);
+    socket.once('data', data => server.emit('holder-ready', socket, data.toString()));
+  });
+  const ready = once(server, 'holder-ready', { signal });
+  const listening = once(server, 'listening', { signal });
+  server.listen(0, '127.0.0.1');
+  await listening;
+  writeFileSync(join(f.root, 'bin/gh'), `#!${process.execPath}
+import { connect } from 'node:net';
+import { readFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+if (args[0] === 'pr') {
+  const socket = connect(Number(process.env.HOLDER_PORT), '127.0.0.1');
+  socket.on('connect', () => socket.write('locked\\n'));
+  socket.on('data', () => {
+    process.stderr.write('no pull requests found for branch "' + args[2] + '"');
+    process.exitCode = 1;
+    socket.end();
+  });
+  socket.on('close', () => process.exit(process.exitCode ?? 0));
+} else process.stdout.write(JSON.stringify(JSON.parse(readFileSync(process.env.GH_STATE)).issue));
+`);
+  const child = spawn(process.execPath, [script, 'record', '--root', f.root, ...f.common,
+    '--phase', 'implement', '--result-json', '{"ok":false}'], {
+    env: { ...f.env, HOLDER_PORT: String(server.address().port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stdout.resume();
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const closed = once(child, 'close', { signal });
+  t.after(() => {
+    child.kill('SIGKILL');
+    for (const socket of sockets) socket.destroy();
+    server.close();
+  });
+  const [socket, message] = await ready;
+  assert.equal(message, 'locked\n');
+  return { f, child, closed, socket, stderr: () => stderr };
+};
+
+test('lock: SIGKILL after acquisition -> later separate process recovers and commits state', async (t) => {
+  const holder = await heldWriter(t);
+  holder.child.kill('SIGKILL');
+  holder.socket.destroy();
+  const [code, signal] = await holder.closed;
+  assert.equal(code, null);
+  assert.equal(signal, 'SIGKILL');
+
+  holder.f.cli('approve-merge', holder.f.common);
+
+  assert.equal(JSON.parse(readFileSync(holder.f.lanePath)).issues['42'].approvals.merge, true);
+});
+
+test('lock: live separate holder -> contender cannot replace it or mutate state', async (t) => {
+  const holder = await heldWriter(t);
+  const before = readFileSync(holder.f.lanePath);
+
+  const contender = spawnSync(process.execPath,
+    [script, 'approve-merge', '--root', holder.f.root, ...holder.f.common],
+    { env: holder.f.env, encoding: 'utf8', timeout: 1000, killSignal: 'SIGKILL' });
+
+  assert.equal(contender.error?.code, 'ETIMEDOUT');
+  assert.equal(contender.signal, 'SIGKILL');
+  assert.deepEqual(readFileSync(holder.f.lanePath), before);
+  assert.equal(holder.child.exitCode, null);
+  assert.equal(holder.child.signalCode, null);
+  holder.socket.write('release\n');
+  const [code, signal] = await holder.closed;
+  assert.equal(code, 0, holder.stderr());
+  assert.equal(signal, null);
+  holder.f.cli('approve-merge', holder.f.common);
+  assert.equal(JSON.parse(readFileSync(holder.f.lanePath)).issues['42'].approvals.merge, true);
+});
+
+test('clear-blocker: repeated exhaustion and reset -> each clear remains a distinct retro event', (t) => {
+  const f = fixture(t);
+  for (let cycle = 0; cycle < 2; cycle++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      f.cli('record', [...f.common, '--phase', 'implement', '--result-json', '{"ok":false}']);
+    }
+    assert.deepEqual(JSON.parse(readFileSync(f.lanePath)).issues['42'].blocker,
+      { type: 'attempts-exhausted', phase: 'implement' });
+    f.cli('clear-blocker', [...f.common, '--phase', 'implement']);
+  }
+
+  const events = readRetroEvents(f.root, 'fixture').filter(event => event.data?.action === 'clear-blocker');
+
+  assert.equal(events.length, 2);
+  assert.notEqual(events[0].eventId, events[1].eventId);
+  assert.notEqual(events[0].data.operation_id, events[1].data.operation_id);
+  for (const event of events) {
+    assert.equal(typeof event.data.operation_id, 'string');
+    assert.equal(event.data.phase, 'implement');
+    assert.deepEqual(event.data.blocker, { type: 'attempts-exhausted', phase: 'implement' });
+  }
+  assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['42'].attempts.implement, 0);
+});
+
+test('init: existing manual or imported lane -> reject and preserve all bytes', (t) => {
+  const f = fixture(t);
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  Object.assign(lane.issues['42'], { facts: { sentinel: { value: 1 } },
+    attempts: { review: 2 }, approvals: { merge: true }, blocker: { type: 'policy', phase: 'review' } });
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const original = readFileSync(f.lanePath);
+  const ledger = join(f.root, 'ledger.json');
+  writeFileSync(ledger, JSON.stringify({ version: 2, lane_id: 'fixture', confirmed_issues: [42] }));
+
+  for (const args of [['--lane-id', 'fixture', '--issue', '42'], ['--from-lane-v2', ledger]]) {
+    const result = f.cli('init', args, false);
+    assert.equal(result.status, 1);
+    assert.deepEqual(readFileSync(f.lanePath), original);
+  }
+});
+
+for (const source of ['pr', 'issue', '43']) {
+  for (const defect of ['fail', 'malformed']) {
+    test(`observation: ${defect} ${source} -> plan, plan-all and watch fail closed`, (t) => {
+      const f = fixture(t);
+      f.set('preflight', f.preflight());
+      f.implement();
+      const review = f.review();
+      f.set('review', review, review.head_sha);
+      const lane = JSON.parse(readFileSync(f.lanePath));
+      lane.issues['42'].depends_on = [43];
+      writeFileSync(f.lanePath, JSON.stringify(lane));
+      const original = readFileSync(f.lanePath);
+      f.state[defect] = source;
+      f.update();
+
+      const single = f.plan().decision;
+      const all = JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision;
+      const watch = f.cli('watch', ['--lane', f.lanePath, '--once']).stdout;
+
+      assert.equal(single.action, 'observation-failed');
+      assert.deepEqual(single, all);
+      assert.deepEqual(single.failures, [{ source: source === '43' ? 'dependency' : source,
+        subject: source === 'pr' ? 'issue-42' : Number(source === 'issue' ? 42 : source),
+        code: defect === 'fail' ? 'command-failed' : 'invalid-response' }]);
+      assert.match(watch, /-> observation-failed/u);
+      assert.deepEqual(readFileSync(f.lanePath), original);
+    });
+  }
+}
+
+test('clear-blocker: matching phase -> reset only target and retain observable retro incident', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.issues['43'] = { ...structuredClone(lane.issues['42']), issue: 43, branch: 'issue-43' };
+  Object.assign(lane.issues['42'], {
+    blocker: { type: 'attempts-exhausted', phase: 'implement' },
+    attempts: { implement: 3, review: 2 },
+    retry_telemetry: { implement: { elapsed_ms: 123 }, review: { elapsed_ms: 456 } },
+  });
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const original = readFileSync(f.lanePath);
+  f.cli('clear-blocker', [...f.common, '--phase', 'review'], false);
+  assert.deepEqual(readFileSync(f.lanePath), original);
+
+  f.cli('clear-blocker', [...f.common, '--phase', 'implement']);
+
+  const after = JSON.parse(readFileSync(f.lanePath));
+  const expected = structuredClone(lane);
+  expected.issues['42'].blocker = null;
+  expected.issues['42'].attempts.implement = 0;
+  delete expected.issues['42'].retry_telemetry.implement;
+  assert.deepEqual(after, expected);
+  assert.equal(f.plan().decision.action, 'implement');
+  const events = readRetroEvents(f.root, 'fixture').filter(event => event.data?.action === 'clear-blocker');
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'incident');
+  assert.deepEqual(events[0].data.blocker, lane.issues['42'].blocker);
+  assert.equal(events[0].data.phase, 'implement');
+});
+
+test('concurrent CLI: separate record and set-fact writers -> complete JSON and no lost updates', async (t) => {
+  const f = fixture(t);
+  const preflight = f.preflight();
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.retry_policy = { retry_count_is_terminal: false, max_same_failure_repeats: null,
+    max_wall_clock_minutes: null, stop_on_child_contract_error: true };
+  lane.issues['43'] = { ...structuredClone(lane.issues['42']), issue: 43, branch: 'issue-43' };
+  lane.issues['42'].facts.padding = { value: 'x'.repeat(1_000_000) };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const preflight43 = createPreflight({ ...preflight, issue: 43 });
+  const commands = [
+    ['set-fact', '--issue', '42', '--kind', 'preflight', '--value', JSON.stringify(preflight)],
+    ['set-fact', '--issue', '43', '--kind', 'preflight', '--value', JSON.stringify(preflight43)],
+    ...Array.from({ length: 6 }, (_, i) => ['record', '--issue', i % 2 ? '43' : '42',
+      '--phase', 'implement', '--result-json', '{"ok":false,"error":"fixture"}']),
+  ];
+  const signal = AbortSignal.timeout(20_000);
+  const reader = spawn(process.execPath, ['--input-type=module', '-e', `
+    import { watch, readFileSync } from 'node:fs';
+    import { dirname } from 'node:path';
+    const path = ${JSON.stringify(f.lanePath)};
+    let reads = 0;
+    const watcher = watch(dirname(path), () => {
+      try { JSON.parse(readFileSync(path)); reads++; }
+      catch (error) { process.send({ error: error.message }); }
+    });
+    process.on('message', () => { watcher.close(); process.send({ reads }); process.disconnect(); });
+    process.send({ ready: true });
+  `], { env: f.env, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+  t.after(() => reader.kill('SIGKILL'));
+  const readerClosed = once(reader, 'close', { signal });
+  assert.deepEqual((await once(reader, 'message', { signal }))[0], { ready: true });
+  const readerMessages = [];
+  reader.on('message', message => readerMessages.push(message));
+  const workers = commands.map(args => {
+    const worker = spawn(process.execPath, ['-e', `
+      const { execFileSync } = require('node:child_process');
+      process.on('message', () => {
+        try { execFileSync(process.execPath, ${JSON.stringify([script, ...args, '--root', f.root, '--lane', f.lanePath])},
+          { stdio: ['ignore', 'pipe', 'pipe'] }); process.disconnect(); }
+        catch(error) { process.stderr.write(String(error.stderr)); process.exit(1); }
+      });
+      process.send('ready');
+    `], { env: f.env, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+    t.after(() => worker.kill('SIGKILL'));
+    let stderr = '';
+    worker.stderr.on('data', chunk => { stderr += chunk; });
+    const ready = once(worker, 'message', { signal });
+    const closed = once(worker, 'close', { signal }).then(([code]) => ({ code, stderr }));
+    return { worker, ready, closed };
+  });
+  await Promise.all(workers.map(worker => worker.ready));
+
+  for (const { worker } of workers) worker.send('go');
+  const outcomes = await Promise.all(workers.map(worker => worker.closed));
+  reader.send('stop');
+  await readerClosed;
+
+  for (const outcome of outcomes) assert.equal(outcome.code, 0, outcome.stderr);
+  assert.deepEqual(readerMessages.filter(message => message.error), []);
+  assert.ok(readerMessages.some(message => message.reads > 0));
+  const after = JSON.parse(readFileSync(f.lanePath));
+  for (const issue of ['42', '43']) {
+    assert.equal(after.issues[issue].attempts.implement, 3);
+    assert.equal(after.issues[issue].blocker, null);
+    assert.equal(after.issues[issue].facts.preflight.value.issue, Number(issue));
+  }
+  assert.deepEqual(after.issues['42'].facts.padding, lane.issues['42'].facts.padding);
+});
+
 const baselineFixture = (t) => {
-  const f = fixture(t, false, new URL('../../../../.omo/verification/retro-followups-3977-3978-20261013/issue-3978/fixtures/', import.meta.url).pathname);
+  const f = fixture(t);
   f.set('preflight', f.preflight());
   f.implement();
   f.commit('tests/baseline.mjs', `import { readFileSync } from 'node:fs';
@@ -977,7 +1360,7 @@ test('CLI: title/body, base and accepted contract edits invalidate old evidence'
   assert.equal(f.plan().decision.action, 'implement');
   f.state.unavailable = true;
   f.update();
-  assert.equal(f.plan().decision.action, 'preflight');
+  assert.equal(f.plan().decision.action, 'observation-failed');
 });
 
 test('CLI: unrelated main advancement preserves preflight, review and canonical receipt', (t) => {
