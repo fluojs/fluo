@@ -83,11 +83,13 @@ export class CacheRepository {
 
 `RedisModule.forRoot(...)` 등록은 각각 새 client를 생성하며, `@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해 그 client의 lifecycle을 직접 관리합니다. 이 module은 기존 client instance를 채택하지 않습니다. 등록 identity는 애플리케이션 전체에서 유일해야 합니다. 이름 없는 기본 등록은 하나만 허용하고, trim한 각 name도 하나만 허용합니다. 호환되는 중복 package 사본은 exported default/named token identity와 registration marker를 공유하므로 mixed-copy 중복도 Redis client 생성 전 bootstrap에서 거부됩니다. Ownership은 애플리케이션별로 격리되며 private lifecycle/guard token과 기본 `RedisService` constructor token 정책은 유지됩니다.
 
+이름 없는 등록과 `name: 'default'` 등록은 서로 다른 raw client와 파사드를 소유하므로 같은 애플리케이션에서 함께 사용할 수 있습니다. 중복 검사는 진단 라벨이 아니라 각 등록의 raw-client 토큰을 기준으로 합니다. 따라서 이름 없는 등록을 두 번 하거나 trim한 이름이 같은 등록을 두 번 하면 client 생성 전에 거부됩니다.
+
 - 호출자가 옵션을 강제로 캐스팅하더라도 Fluo는 항상 `lazyConnect: true`를 강제하므로, 소켓은 import 시점이 아니라 애플리케이션 bootstrap 중에 열립니다.
 - bootstrap 단계에서는 클라이언트가 ioredis `wait` 상태일 때만 lifecycle service가 `connect()`를 호출합니다.
-- lifecycle이 소유한 `connect()`와 `quit()` 호출은 package timeout(기본 `10_000` ms)으로 제한되어, Redis 명령이 멈춰도 bootstrap/shutdown이 무기한 대기하지 않습니다. `lifecycle.connectTimeoutMs`와 `lifecycle.quitTimeoutMs`로 재정의할 수 있으며, host process가 의도적으로 무제한 대기를 소유하는 경우에만 `0`을 전달하세요.
+- lifecycle이 소유한 `connect()`와 `quit()` 호출은 package timeout(기본 `10_000` ms)으로 제한되어, Redis 명령이 멈춰도 bootstrap/shutdown이 무기한 대기하지 않습니다. `lifecycle.connectTimeoutMs`와 `lifecycle.quitTimeoutMs`로 재정의할 수 있으며, host process가 의도적으로 무제한 대기를 소유하는 경우에만 `0`을 전달하세요. host timer 한계인 `2_147_483_647` ms를 넘는 시간을 포함해 모든 유한한 0 이상의 값을 지원합니다.
 - shutdown 단계에서는 ready/connecting 계열 상태에 `quit()`를 우선 시도해 정상 종료를 노리고, monitoring, wait/종료 전이 상태에서는 `disconnect()`를 직접 사용합니다.
-- `quit()`가 실패하면 Fluo는 `disconnect()`로 fallback하고, 그 뒤에도 클라이언트가 닫히지 않은 경우에만 에러를 다시 던집니다.
+- `quit()`가 실패하거나 timeout되면 Fluo는 `disconnect()` 호출 전에 종료 관측을 시작하고, 비동기적으로 `end`에 도달할 때까지 최대 `10_000` ms를 추가로 기다립니다. 정리가 성공하면 shutdown이 resolve되고, 그렇지 않으면 원래 QUIT 오류 또는 timeout을 다시 던집니다. `quitTimeoutMs: 0`으로 QUIT timeout을 비활성화했어도 QUIT이 reject되면 이 정리 기한이 적용됩니다.
 
 ### 옵션 정규화
 
@@ -114,6 +116,7 @@ Client 생성 전에 다음 순서로 정규화합니다.
 
 - `name`을 생략하면 기본 별칭인 `REDIS_CLIENT` / `RedisService`를 사용합니다.
 - `name`을 지정하면 `getRedisClientToken(name)` / `getRedisServiceToken(name)`으로 이름 있는 바인딩을 가져옵니다.
+- `default`도 사용할 수 있는 이름입니다. `name: 'default'`와 `name: ' default '`는 동일한 named 토큰을 사용하며, 이름 없는 `REDIS_CLIENT` / `RedisService` 별칭과는 구분됩니다.
 - `name`은 Fluo 등록만 식별합니다. ioredis Sentinel master name은 `sentinelName`으로 전달하세요. Fluo는 등록 토큰을 바꾸지 않고 이를 ioredis 생성자 `name` 옵션으로 전달합니다.
 - 이름 있는 클라이언트도 기본 클라이언트와 동일한 bootstrap/shutdown 계약을 따르며, `REDIS_CLIENT` / `RedisService` 별칭은 기본 등록에서만 export됩니다.
 - 이름은 trim되며, blank 또는 whitespace-only name은 token/component helper에서 거부됩니다.
@@ -224,7 +227,7 @@ export class RedisConnectionsModule {}
 - `DEFAULT_REDIS_CLIENT_NAME`: 안정적인 기본 Redis client name입니다.
 - `getRedisClientToken(name)`: 이름 있는 raw client 토큰 헬퍼입니다. `name`을 생략하면 기본 `REDIS_CLIENT` 토큰을 돌려줍니다.
 - `getRedisServiceToken(name)`: 이름 있는 `RedisService` 토큰 헬퍼입니다. `name`을 생략하면 기본 `RedisService` 토큰을 돌려줍니다.
-- `getRedisComponentId(name)`: Redis 소비 패키지들이 사용하는 상태/의존성 식별자 헬퍼입니다 (`redis.default`, `redis.cache` 등).
+- `getRedisComponentId(name)`: Redis 소비 패키지들이 사용하는 상태/의존성 식별자 헬퍼입니다 (`redis.default`, `redis.cache` 등). 호환성을 위해 `getRedisComponentId()`와 `getRedisComponentId('default')`는 모두 기존 `redis.default` 진단 라벨을 유지합니다. 서로 다른 두 등록이 이 라벨을 공유할 수 있으므로 애플리케이션 전체에서 유일한 등록 키로 사용하면 안 됩니다.
 - `createRedisPlatformStatusSnapshot(input)`: Redis 연결 상태를 Fluo 플랫폼 health/readiness 스냅샷으로 변환합니다.
 
 ### 타입

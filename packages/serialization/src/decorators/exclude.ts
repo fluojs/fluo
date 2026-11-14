@@ -6,7 +6,8 @@ type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFi
 type FieldDecoratorLike = StandardFieldDecoratorFn;
 
 /**
- * Excludes the decorated field from serialized output.
+ * Excludes the decorated instance field from serialized output.
+ * Static field applications are ignored and leave instance serialization unchanged.
  *
  * @returns A field decorator that marks the property as omitted during serialization.
  *
@@ -20,6 +21,10 @@ type FieldDecoratorLike = StandardFieldDecoratorFn;
  */
 export function Exclude(): FieldDecoratorLike {
   const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
+    if (context.static) {
+      return;
+    }
+
     updateFieldSerializationMetadata(context.metadata, context.name as MetadataPropertyKey, (current) => ({
       ...current,
       excluded: true,

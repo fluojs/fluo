@@ -5,7 +5,7 @@ import { CacheEvict, CacheKey } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
 import { CacheService } from './service.js';
 import { MemoryStore } from './stores/memory-store.js';
-import type { NormalizedCacheModuleOptions } from './types.js';
+import type { CacheEvictDecoratorValue, NormalizedCacheModuleOptions } from './types.js';
 
 const cacheOptions: NormalizedCacheModuleOptions = {
   global: false,
@@ -114,6 +114,103 @@ describe('CacheInterceptor contract regressions', () => {
     await expect(cache.get('')).resolves.toEqual({ source: 'handler' });
     await expect(cache.get('/products')).resolves.toBeUndefined();
   });
+
+  it.each([
+    { name: 'literal', target: '', expected: [''] },
+    { name: 'array', target: [''], expected: [''] },
+    { name: 'synchronous resolver', target: () => '', expected: [''] },
+    { name: 'asynchronous resolver', target: async () => '', expected: [''] },
+    { name: 'mixed duplicate array', target: ['', '/products', '', '/products'], expected: ['', '/products'] },
+    { name: 'synchronous array resolver', target: () => ['', '/products', ''], expected: ['', '/products'] },
+    { name: 'asynchronous array resolver', target: async () => ['', '/products', ''], expected: ['', '/products'] },
+    { name: 'empty array', target: [], expected: [] },
+    { name: 'empty synchronous array resolver', target: () => [], expected: [] },
+    { name: 'empty asynchronous array resolver', target: async () => [], expected: [] },
+  ] satisfies { name: string; target: CacheEvictDecoratorValue; expected: string[] }[])(
+    'evicts exactly the $name targets when the handler already committed the response',
+    async ({ target, expected }) => {
+      class ProductController {
+        @CacheEvict(target)
+        refresh() {}
+      }
+
+      const { cache, interceptor } = createInterceptor();
+      const keys = ['', '/products', '/unrelated'];
+      for (const key of keys) {
+        await cache.set(key, { version: 'previous' });
+      }
+      const del = vi.spyOn(cache, 'del');
+      const requestContext = createRequestContext('POST', '/products/refresh');
+      const context = createContext(ProductController, 'refresh', requestContext);
+      const next: CallHandler = {
+        handle: async () => {
+          requestContext.response.committed = true;
+          return { refreshed: true };
+        },
+      };
+
+      await interceptor.intercept(context, next);
+
+      expect(del.mock.calls.map(([key]) => key)).toEqual(expected);
+      for (const key of keys) {
+        await expect(cache.get(key)).resolves.toEqual(
+          expected.includes(key) ? undefined : { version: 'previous' },
+        );
+      }
+    },
+  );
+
+  it.each(['handler failure', 'writer rejection', 'unconfirmed commit', 'pre-commit abort'] as const)(
+    'preserves the empty eviction key after %s',
+    async (failure) => {
+      class ProductController {
+        @CacheEvict('')
+        refresh() {}
+      }
+
+      const { cache, interceptor } = createInterceptor();
+      await cache.set('', { version: 'previous' });
+      const del = vi.spyOn(cache, 'del');
+      const requestContext = createRequestContext('POST', '/products/refresh');
+      const abort = new AbortController();
+      requestContext.request.signal = abort.signal;
+      const context = createContext(ProductController, 'refresh', requestContext);
+      const next: CallHandler = {
+        handle: async () => {
+          if (failure === 'handler failure') {
+            throw new Error('handler failed');
+          }
+          return { refreshed: true };
+        },
+      };
+      if (failure === 'writer rejection') {
+        requestContext.response.send = async () => {
+          throw new Error('writer rejected');
+        };
+      } else if (failure === 'unconfirmed commit') {
+        requestContext.response.send = async () => {};
+      }
+
+      if (failure === 'handler failure') {
+        await expect(interceptor.intercept(context, next)).rejects.toThrow('handler failed');
+      } else {
+        const value = await interceptor.intercept(context, next);
+        await expect(cache.get('')).resolves.toEqual({ version: 'previous' });
+        expect(del).not.toHaveBeenCalled();
+        if (failure === 'pre-commit abort') {
+          abort.abort();
+        }
+        if (failure === 'writer rejection') {
+          await expect(requestContext.response.send(value)).rejects.toThrow('writer rejected');
+        } else {
+          await requestContext.response.send(value);
+        }
+      }
+
+      expect(del).not.toHaveBeenCalled();
+      await expect(cache.get('')).resolves.toEqual({ version: 'previous' });
+    },
+  );
 
   it('preserves cached reads when a resolved sender does not confirm response commit', async () => {
     // Given
