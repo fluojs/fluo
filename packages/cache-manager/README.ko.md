@@ -454,10 +454,14 @@ defineModule(ManualCacheModule, {
 | 설치된 underlying `cache-manager` generation이 millisecond를 사용하는 경우의 `ttl` | 초 단위 `ttl` | 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 generation이 TTL을 millisecond로 정의할 때에만 1000으로 나눕니다. `ttl`을 생략하면 memory 경로는 `300`초를, `redis` 및 custom-store 경로는 `0`을 적용합니다. |
 | `ttl: 0` | `ttl: 0` | "캐싱하지 않음"이 아니라 만료 없음을 뜻합니다. 음수이거나 유한하지 않은 값은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고 `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뜁니다. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | 정적 숫자 하나만 받습니다. 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮기세요. |
+| `@CacheTTL(...)` / `@CacheKey(...)` 배치 | Method 전용 `@CacheTTL(...)` / `@CacheKey(...)` | 두 fluo decorator는 method에만 적용할 수 있습니다. Controller 전체에 같은 TTL이 필요하면 대상 method마다 `@CacheTTL(...)`을 반복하거나 module `ttl`을 설정하세요. Module `ttl`은 해당 cache module의 기본값이며 controller 수준 metadata 지원을 추가하지 않습니다. |
 | 암묵적 query 민감 key | `httpKeyStrategy` | 기본값은 query-aware `'route+query'`입니다. query parameter가 응답에 영향을 주지 않을 때만 `'route'`를 선택하고, 명시적 custom key에는 function strategy 또는 `@CacheKey(...)`를 사용하세요. |
 | `isGlobal: true` | `global: true` | NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로, 명시적으로 opt-in하거나 cache provider를 resolve하는 모든 module에 import하지 않으면 두 cache module 모두 module-local로 유지됩니다. |
+| NestJS `stores` 배열 / Keyv instance | 직접 대응하는 설정 없음; `CacheModule` 등록마다 하나의 `store` 선택 | 다계층 또는 fallback caching은 기존 계약을 구현하는 애플리케이션 소유 custom `CacheStore` 안에서 구성하세요. `stores` 배열이나 변환하지 않은 Keyv instance를 직접 전달할 수 없습니다. |
 | `cache-manager-redis-store` 같은 NestJS store adapter | `store: 'redis'` 또는 `CacheStore` 객체 | NestJS adapter는 `CacheStore` 계약을 만족하지 않습니다. 내장 Redis 경로를 쓰거나 callback/options 완료를 Promise로 변환하고, `ttlSeconds`를 legacy TTL 초 단위로 매핑하며, `reset()`이 cache namespace만 비우도록 adapter를 감싸세요. `reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다. |
 | adapter가 소유하던 client teardown | store의 `close()` / `dispose()` | 애플리케이션 shutdown은 이 optional hook에만 teardown을 전달합니다. `redis.client`로 전달한 raw client는 애플리케이션 소유로 남아 애플리케이션 lifecycle에서 닫아야 합니다. |
+| `fluo migrate`를 통한 cache 코드 변환 | 이 표를 따른 수동 마이그레이션 | `fluo migrate`는 `@nestjs/cache-manager` 코드를 재작성하지 않습니다. CLI가 `No manual follow-ups detected`를 출력해도 cache import, 설정, decorator는 이 표에 따라 수동으로 옮겨야 합니다. |
+| WebSocket subscriber / microservice handler의 자동 caching | Standalone `CacheService` 명시 호출 | `CacheInterceptor`와 cache decorator의 자동 동작은 HTTP pipeline 전용입니다. HTTP GET은 read-through caching, non-GET은 `@CacheEvict(...)`를 통한 eviction 대상입니다. WebSocket subscriber와 microservice handler에서는 자동 interception 없이 `CacheService`를 직접 호출해야 합니다. |
 
 ```typescript
 CacheModule.forRoot({

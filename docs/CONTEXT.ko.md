@@ -80,6 +80,8 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 <!-- fluo:docs-navigation:end -->
 
+NestJS 캐시의 미지원 패턴은 [cache-manager 마이그레이션 표](../packages/cache-manager/README.ko.md#nestjs-캐시-마이그레이션)와 [마이그레이션 가이드](./getting-started/migrate-from-nestjs.ko.md#cache-manager-ttl-key-visibility-store-ownership-마이그레이션)를 따른다. 두 문서는 method 전용 `@CacheTTL`/`@CacheKey`, 등록마다 단일 store를 선택하는 `stores`/Keyv 경계, `fluo migrate` 이후에도 필요한 수동 cache 코드 변환, HTTP 전용 자동 interception과 WebSocket/microservice의 명시적 `CacheService` 호출을 소유한다.
+
 Validation DTO의 `Symbol.metadata` 사전 로드와 mapped DTO의 source 생성자·기본값
 경계는 [validation README](../packages/validation/README.ko.md#빠른-시작)와
 [NestJS 이전 안내](./getting-started/migrate-from-nestjs.ko.md#decorator-metadata-사전-로드-순서)를
