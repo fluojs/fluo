@@ -80,6 +80,8 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 <!-- fluo:docs-navigation:end -->
 
+NestJS 캐시의 미지원 패턴은 [cache-manager 마이그레이션 표](../packages/cache-manager/README.ko.md#nestjs-캐시-마이그레이션)와 [마이그레이션 가이드](./getting-started/migrate-from-nestjs.ko.md#cache-manager-ttl-key-visibility-store-ownership-마이그레이션)를 따른다. 두 문서는 method 전용 `@CacheTTL`/`@CacheKey`, 등록마다 단일 store를 선택하는 `stores`/Keyv 경계, `fluo migrate` 이후에도 필요한 수동 cache 코드 변환, HTTP 전용 자동 interception과 WebSocket/microservice의 명시적 `CacheService` 호출을 소유한다.
+
 Validation DTO의 `Symbol.metadata` 사전 로드와 mapped DTO의 source 생성자·기본값
 경계는 [validation README](../packages/validation/README.ko.md#빠른-시작)와
 [NestJS 이전 안내](./getting-started/migrate-from-nestjs.ko.md#decorator-metadata-사전-로드-순서)를
@@ -176,8 +178,10 @@ artifact 회귀와 `tooling/release/cli-published-dependencies.test.ts`가 relea
 ## Runtime cleanup settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callback은 동기 또는 비동기일 수 있습니다. Runtime close와
-bootstrap-failure cleanup은 각 registration을 순서대로 await하고 failure 뒤에도 계속 실행하며,
-cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 자세한 내용은
+bootstrap-failure cleanup은 각 registration을 순서대로 await하고 failure 뒤에도 계속 실행합니다.
+명시적 close retry는 실패한 registration만 실행하며 해당 application 또는 context에서 성공한
+registration은 다시 실행하지 않습니다. Lifecycle hook retry는 phase 전체를 다시 실행합니다.
+Bootstrap은 cleanup failure를 보고하면서 원래 bootstrap failure를 보존합니다. 자세한 내용은
 [Lifecycle & Shutdown Guarantees](./architecture/lifecycle-and-shutdown.ko.md)와
 [`@fluojs/runtime` README](../packages/runtime/README.ko.md)를 참고하세요.
 
