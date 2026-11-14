@@ -6,7 +6,8 @@ type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFi
 type FieldDecoratorLike = StandardFieldDecoratorFn;
 
 /**
- * Applies a synchronous transformation to the decorated field during serialization.
+ * Applies a synchronous transformation to the decorated instance field during serialization.
+ * Static field applications are ignored; their callbacks never run during serialization.
  *
  * @param transform Function that maps the raw field value to the serialized value.
  * @returns A field decorator that appends the transform to the field metadata.
@@ -21,6 +22,10 @@ type FieldDecoratorLike = StandardFieldDecoratorFn;
  */
 export function Transform(transform: TransformFunction): FieldDecoratorLike {
   const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
+    if (context.static) {
+      return;
+    }
+
     updateFieldSerializationMetadata(context.metadata, context.name as MetadataPropertyKey, (current) => ({
       ...current,
       transforms: [...(current?.transforms ?? []), transform],

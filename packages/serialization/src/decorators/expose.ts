@@ -19,10 +19,11 @@ export interface ExposeClassOptions {
 }
 
 /**
- * Marks a class or field as serializable output.
+ * Marks a class or instance field as serializable output.
  *
  * - On classes, configures class-level serialization behavior.
- * - On fields, marks the field as explicitly exposed.
+ * - On instance fields, marks the field as explicitly exposed.
+ * - On static fields, does nothing and leaves instance serialization unchanged.
  *
  * @param options Optional class-level serialization settings.
  * @returns A decorator that updates serialization metadata on the class or field.
@@ -47,6 +48,10 @@ export function Expose(options?: ExposeClassOptions): ClassOrFieldDecoratorLike 
           excludeExtraneous: options?.excludeExtraneous,
         });
       }
+      return;
+    }
+
+    if (context.static) {
       return;
     }
 
