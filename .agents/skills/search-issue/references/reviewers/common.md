@@ -20,6 +20,12 @@ Each task prompt must contain these sections:
 
 The lead chooses the native task category from `../domain.json` and sends all
 independent invocations in waves of at most `max_parallel_tasks`.
+All reviewer routes are validated by
+`.agents/skills/execute-lane/scripts/dispatch-targets.mjs` against the repository-owned native
+category allowlist: `architect`, `artistry`, `deep-high`, `deep-low`, `quick`,
+`ultrabrain`, `unspecified-high`, `unspecified-low`, `visual-engineering`,
+`writing`. `deep` and unknown or misspelled categories are invalid. These
+search categories do not replace the registered `fluo-*` execution stage agents.
 
 When a wave contains two or more invocations, submit them together in one
 native `task` batch with `run_in_background: true`. A foreground task or

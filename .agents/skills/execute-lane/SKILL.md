@@ -84,6 +84,41 @@ Resolve sibling paths relative to this skill. Read the stage before executing
 its action. Only the lead writes shared lane state and performs remote writes.
 Implementers stay in their assigned worktree; reviewers are read-only.
 
+### Registered dispatch and admission
+
+Use the returned `dispatch` as the native task route (`subagent_type`), with
+`run_in_background: true`. `preflight` selects `fluo-issue-preflight`;
+`implement` and every `fix-back` select `fluo-issue-implementer`. A `review`
+decision maps each effective axis to `fluo-contract-reviewer`,
+`fluo-code-reviewer`, or `fluo-verification-reviewer`. Review preparation puts
+the same route on `reviewers[i].dispatch`, leaving `common` identical.
+Retrospective analysis selects `fluo-retrospective`. These six agents are
+registered in `.omo/omo.jsonc` and read their own role reference first.
+`scripts/dispatch-targets.mjs` supplies routing values and validators only.
+
+The lead binds actual child routing to the new `record` success wrapper:
+`{ok:true, agent:"fluo-issue-preflight", ...}` or
+`{ok:true, agent:"fluo-issue-implementer", ...}`. Keep the preflight artifact,
+implementer `Result`, and effective policy digest unchanged. Review `record`
+successes include `{ok:true, head_sha, preflight_sha256, active_axes, reviews}`;
+every envelope includes the assigned `agent`. `set-fact --kind review` applies
+the same strict new-input admission. Missing, wrong-axis, unregistered, or
+category substitute identity cannot record success. Keep raw failures as
+retrospective evidence under the existing retry contract.
+
+If a target is unregistered or cannot run, do not use a category worker.
+Record the lead's observation as
+`{ok:false,error:{kind:"input-preparation",code:"dispatch-target-unavailable",
+subagent_type:"<assigned target>",fix_back_eligible:false}}` for that phase.
+This parks it as `input-preparation` without an implementation retry; restore
+the route and clear that phase's blocker before planning again. It is never a
+reviewer product BLOCK or an implementation fix-back.
+
+Stored canonical review facts without `agent` retain their original validation,
+content, `accepted_at` and local-check/waiver bindings. Only stored-fact reading
+allows this legacy shape; new `record` and `set-fact` inputs require identity.
+Dispatch metadata never enters accepted preflight or effective policy digests.
+
 ## Preflight and review policy
 
 Preflight is mandatory before implementation, including resumed lanes without

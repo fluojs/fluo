@@ -164,19 +164,19 @@
     "comprehensive": ["contract-api", "architecture", "tests-edge"]
   },
   "reviewers": {
-    "architecture": { "result_type": "audit_finding", "category": "deep" },
-    "contract-api": { "result_type": "audit_finding", "category": "deep" },
+    "architecture": { "result_type": "audit_finding", "category": "deep-high" },
+    "contract-api": { "result_type": "audit_finding", "category": "deep-high" },
     "docs-sync": { "result_type": "audit_finding", "category": "writing" },
-    "tests-edge": { "result_type": "audit_finding", "category": "deep" },
-    "nestjs-migration": { "result_type": "audit_finding", "category": "deep" },
+    "tests-edge": { "result_type": "audit_finding", "category": "deep-high" },
+    "nestjs-migration": { "result_type": "audit_finding", "category": "deep-high" },
     "release-impact": {
       "result_type": "audit_finding",
       "category": "unspecified-high"
     },
-    "feature-rd": { "result_type": "rd_brief", "category": "deep" },
+    "feature-rd": { "result_type": "rd_brief", "category": "deep-high" },
     "registration-triage": {
       "result_type": "registration_triage",
-      "category": "deep"
+      "category": "deep-high"
     }
   },
   "labels": [

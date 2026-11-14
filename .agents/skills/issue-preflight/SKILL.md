@@ -9,6 +9,16 @@ This mandatory stage belongs to `execute-lane`. It is not a second planning
 workflow and never implements, creates a PR, or chooses the next lane action.
 The child reads sources; the lead validates and records the accepted result.
 
+Dispatch with `subagent_type: "fluo-issue-preflight"` and
+`run_in_background: true`, using the engine/preparer's `dispatch`. The registered
+agent first reads `references/preflight.md` in the supplied repository/checkout.
+It stays read-only. The lead's successful `record` wrapper includes
+`agent: "fluo-issue-preflight"`; keep that identity outside the accepted artifact
+and its digest. An unregistered or unavailable target is a typed
+`input-preparation` block with `fix_back_eligible: false`, recorded using the
+`execute-lane` dispatch admission contract. Never replace it with a category
+worker or send it to implementation fix-back.
+
 ## Input
 
 Require lane and issue identity, freshly captured issue content, base identity,

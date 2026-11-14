@@ -32,6 +32,9 @@ const fixture = (t, completeCi = false) => {
 	mkdirSync(directory, { recursive: true });
 	const root = mkdtempSync(resolve(directory, "retrospective-lane-"));
 	if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
+	mkdirSync(resolve(root, ".omo"));
+	writeFileSync(resolve(root, ".omo/omo.jsonc"),
+		readFileSync(new URL("../../../../.omo/omo.jsonc", import.meta.url)));
 	if (completeCi) recordCiSnapshot(root, laneId, 1, ciRun(), [ciJob()]);
 	return root;
 };
@@ -94,6 +97,26 @@ test("final CI preparation: missing final run collection -> no retrospective dis
 
 	assert.equal(request.action, "collect-ci");
 	assert.deepEqual(request.issues, [1]);
+});
+
+test('#4091 retrospective: complete CI -> analyst dispatch; unfinished lane -> no dispatch', (t) => {
+	const root = fixture(t, true);
+
+	const request = retrospectiveRequest(root, laneId, snapshots);
+
+	assert.equal(request.action, 'retro');
+	assert.deepEqual(request.dispatch, { subagent_type: 'fluo-retrospective' });
+	const waiting = retrospectiveRequest(root, laneId, [{ issue: 1, decision: { action: 'review' } }]);
+	assert.deepEqual(waiting, { action: 'wait-lane', remaining: [1] });
+});
+
+test('#4091 retrospective: missing analyst registration -> typed input preparation', (t) => {
+	const root = fixture(t, true);
+	writeFileSync(resolve(root, '.omo/omo.jsonc'), '{"agents":{}}');
+
+	assert.throws(() => retrospectiveRequest(root, laneId, snapshots),
+		(error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+			&& error.subagent_type === 'fluo-retrospective');
 });
 
 for (const defect of ["missing-observation", "old-head", "old-attempt", "incomplete-jobs", "tampered-event"]) {

@@ -20,6 +20,10 @@ function fixture(t) {
   const root = mkdtempSync(join(directory, 'fluo-workflow-preparation-'));
   if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
   git(root, 'init', '-q', '-b', 'main');
+  mkdirSync(join(root, '.omo'));
+  writeFileSync(join(root, '.gitignore'), '.omo/\n');
+  writeFileSync(join(root, '.omo/omo.jsonc'),
+    readFileSync(new URL('../../../../.omo/omo.jsonc', import.meta.url)));
   git(root, 'config', 'user.name', 'Preparation Test');
   git(root, 'config', 'user.email', 'preparation@example.invalid');
   writeFileSync(join(root, 'source.mjs'), 'export const value = 1;\n');
@@ -97,7 +101,34 @@ test('review preparation: real merged graph -> one identical authenticated input
   assert.deepEqual(result.common.changed_paths, ['source.mjs']);
   assert.equal(result.common.footprint.categories.reflective_integration.affected, false);
   assert.deepEqual(result.reviewers.map((entry) => entry.reviewer), ['contract', 'code', 'verification']);
+  assert.deepEqual(result.reviewers.map((entry) => entry.dispatch), [
+    { subagent_type: 'fluo-contract-reviewer' },
+    { subagent_type: 'fluo-code-reviewer' },
+    { subagent_type: 'fluo-verification-reviewer' },
+  ]);
   for (const reviewer of result.reviewers) assert.equal(reviewer.input, result.common);
+});
+
+test('#4091 preflight preparation: authenticated footprint -> registered preflight dispatch', (t) => {
+  const value = fixture(t);
+  const path = join(value.input.artifact_root, 'preflight-input.json');
+  writeFileSync(path, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: value.footprintInput }));
+
+  const output = JSON.parse(execFileSync(process.execPath, [modulePath, 'preflight', path], { encoding: 'utf8' }));
+
+  assert.deepEqual(output.dispatch, { subagent_type: 'fluo-issue-preflight' });
+  assert.deepEqual(output.footprint, value.input.footprint);
+});
+
+test('#4091 preparation: absent registration -> typed non-fixable input block', (t) => {
+  const value = fixture(t);
+  const config = JSON.parse(readFileSync(join(value.root, '.omo/omo.jsonc')));
+  delete config.agents['fluo-code-reviewer'];
+  writeFileSync(join(value.root, '.omo/omo.jsonc'), JSON.stringify(config));
+
+  assert.throws(() => prepareReviewInput(value.input),
+    (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+      && error.subagent_type === 'fluo-code-reviewer');
 });
 
 test('review readable index: retained focused receipts -> authenticated decoder free exact results and unknown counts', (t) => {

@@ -58,6 +58,7 @@ import {
 } from "../../review-head/scripts/contracts.mjs";
 import { coordinateGeneratedIntegration, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
 import { observeKnownBaseline, validateKnownBaseline } from "./known-baseline.mjs";
+import { assertAgentIdentity, dispatchFor, DispatchPreparationError, validateDispatchTarget, validateUnavailableTarget } from "./dispatch-targets.mjs";
 import {
 	applyChildResult,
 	decideNext,
@@ -103,6 +104,13 @@ const run = (cwd, cmd, cmdArgs, trim = true) => {
 	} catch {
 		return null;
 	}
+};
+
+const registeredDispatch = (root, dispatch) => {
+	let agents;
+	try { agents = JSON.parse(readFileSync(resolve(root, ".omo/omo.jsonc"), "utf8")).agents; }
+	catch { throw new DispatchPreparationError(dispatch.subagent_type); }
+	validateDispatchTarget(dispatch, agents);
 };
 
 /** Supplementary incident capture never supplies execution or merge approval. */
@@ -1013,7 +1021,35 @@ const main = async () => {
 		const result = JSON.parse(arg(args, "--result-json"));
 		const observed = observeIssue(root, lane, issue);
 		validateStageMeasurements(result?.measurements, observed.headSha);
-		const next = applyChildResult(entry, phase, result, { retryPolicy: lane.retry_policy ?? undefined, now: Date.now() });
+		const unavailable = result?.error?.code === "dispatch-target-unavailable";
+		if (unavailable) {
+			if (!["preflight", "implement", "fix-back", "review"].includes(phase)) {
+				throw new TypeError("Unavailable child target requires a child stage");
+			}
+			if (result.ok !== false) throw new TypeError("Unavailable target cannot be a successful result");
+			validateUnavailableTarget(phase, result.error, observed.preflightPolicy?.active_axes);
+		} else if (result?.ok === true && !(lane.retry_policy?.stop_on_child_contract_error === true
+			&& result.error?.type === "child-contract-error")) {
+			if (["preflight", "implement", "fix-back", "review"].includes(phase)
+				&& Object.hasOwn(result, "category")) {
+				throw new TypeError("Category workers cannot supply registered stage successes");
+			}
+			const targets = phase === "review"
+				? Object.values(dispatchFor(phase, observed.preflightPolicy?.active_axes))
+				: dispatchFor(phase) ? [dispatchFor(phase)] : [];
+			for (const target of targets) {
+				registeredDispatch(root, target);
+			}
+			if (phase === "review") {
+				const { head_sha, preflight_sha256, active_axes, reviews } = result;
+				buildReviewFact({ head_sha, preflight_sha256, active_axes, reviews }, observed.headSha, observed.preflightPolicy);
+			} else if (["preflight", "implement", "fix-back"].includes(phase)) {
+				assertAgentIdentity(dispatchFor(phase), result.agent);
+			}
+		}
+		const next = unavailable
+			? { ...entry, blocker: { ...result.error, type: "input-preparation", phase } }
+			: applyChildResult(entry, phase, result, { retryPolicy: lane.retry_policy ?? undefined, now: Date.now() });
 		const childContractError = next.blocker?.type === "child-contract-error"
 			&& lane.retry_policy?.stop_on_child_contract_error === true
 			&& (typeof result?.ok !== "boolean" || result?.error?.type === "child-contract-error");
@@ -1067,7 +1103,7 @@ const main = async () => {
 			head: observed.headSha,
 			attempts: next.attempts,
 		});
-		if (["merge", "fix-back"].includes(phase)) {
+		if (!unavailable && ["merge", "fix-back"].includes(phase)) {
 			captureRetroCi(root, lane, issue);
 		}
 		process.stdout.write(
@@ -1192,6 +1228,9 @@ const main = async () => {
 				}
 				storedValue = value;
 			} else {
+				for (const target of Object.values(dispatchFor("review", obs.preflightPolicy.active_axes))) {
+					registeredDispatch(root, target);
+				}
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy);
 				delete entry.facts["local-checks"];
 				delete entry.facts["local-ci-waiver"];
@@ -1242,5 +1281,11 @@ if (
 	process.argv[1] &&
 	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-	await main();
+	try { await main(); }
+	catch (error) {
+		if (!(error instanceof DispatchPreparationError)) throw error;
+		process.stderr.write(`${JSON.stringify({ status: "blocked", kind: error.kind,
+			code: error.code, subagent_type: error.subagent_type, fix_back_eligible: false })}\n`);
+		process.exitCode = 1;
+	}
 }

@@ -70,6 +70,10 @@ Keep this root outside issue worktrees so cleanup cannot erase it.
    session does not expose it yet, reload the project configuration before
    dispatch; do not silently replace it with a category worker or mark the
    retrospective complete without its report.
+   Use the returned `request.dispatch.subagent_type`. An unavailable or
+   unregistered target is a typed `input-preparation` block with
+   `fix_back_eligible: false`, never a product defect or implementation
+   fix-back. Keep the request and evidence pending until that target can run.
 5. Validate the analyst's source links and distinguish confirmed observations,
    causal hypotheses, reviewer claims, and unknowns. Invalid analysis returns
    to the same analyst; it does not reopen a merged issue or rewrite evidence.
