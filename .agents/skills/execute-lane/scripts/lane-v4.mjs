@@ -112,7 +112,7 @@ export const applyChildResult = (lane, phase, result, { retryPolicy, now } = {})
 	if (!PHASES.has(phase)) {
 		throw new TypeError(`unknown phase: ${phase}`);
 	}
-	if (retryPolicy !== undefined) validateRetryPolicy(retryPolicy);
+	if (retryPolicy !== undefined && retryPolicy !== null) validateRetryPolicy(retryPolicy);
 	const next = structuredClone(lane);
 	next.attempts ??= {};
 	const wellFormed =

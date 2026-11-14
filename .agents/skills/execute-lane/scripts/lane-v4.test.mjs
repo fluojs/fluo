@@ -422,7 +422,7 @@ test('retry policy: malformed policy at engine boundary -> throws for failures a
 		{ ...adaptivePolicy, max_same_failure_repeats: Number.NaN },
 		{ ...adaptivePolicy, max_same_failure_repeats: Number.POSITIVE_INFINITY },
 		{ ...adaptivePolicy, max_same_failure_repeats: null },
-		null, false, [],
+		false, [],
 	];
 
 	for (const retryPolicy of malformed) {
@@ -431,6 +431,28 @@ test('retry policy: malformed policy at engine boundary -> throws for failures a
 				{ retryPolicy, now: 0 }), TypeError);
 		}
 	}
+});
+
+test('retry policy: null -> legacy failure ceiling and success reset match absent policy', () => {
+	let current = makeLane();
+	let legacy = makeLane();
+	for (let attempt = 1; attempt <= ATTEMPT_CEILING; attempt++) {
+		legacy = applyChildResult(legacy, 'implement', { ok: false });
+
+		assert.doesNotThrow(() => {
+			current = applyChildResult(current, 'implement', { ok: false }, { retryPolicy: null });
+		});
+
+		assert.deepEqual(current, legacy);
+		assert.equal(current.attempts.implement, attempt);
+	}
+	assert.deepEqual(current.blocker, { type: 'attempts-exhausted', phase: 'implement' });
+	legacy = applyChildResult(legacy, 'implement', { ok: true });
+	assert.doesNotThrow(() => {
+		current = applyChildResult(current, 'implement', { ok: true }, { retryPolicy: null });
+	});
+	assert.deepEqual(current, legacy);
+	assert.equal(current.attempts.implement, 0);
 });
 
 test('retry policy: explicit contract error with ok true -> blocker before success, legacy unchanged', () => {

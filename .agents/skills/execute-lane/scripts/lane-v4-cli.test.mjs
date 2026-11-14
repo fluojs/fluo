@@ -287,6 +287,77 @@ const importedAdaptive = {
   max_wall_clock_minutes: null, stop_on_child_contract_error: true,
 };
 
+for (const phase of ['resolve-conflict', 'verify-local']) {
+  test(`record policy: ${phase} child contract error -> persisted blocker and retro before stage admission`, (t) => {
+    const f = fixture(t);
+    f.set('preflight', f.preflight());
+    f.implement();
+    const lane = JSON.parse(readFileSync(f.lanePath));
+    lane.retry_policy = importedAdaptive;
+    writeFileSync(f.lanePath, JSON.stringify(lane));
+    const before = readFileSync(f.lanePath);
+    const ordinary = { ok: phase === 'resolve-conflict' };
+    const record = (result, ok = true) => f.cli('record', [...f.common,
+      '--phase', phase, '--result-json', JSON.stringify(result)], ok);
+    record(ordinary, false);
+    assert.deepEqual(readFileSync(f.lanePath), before);
+    const result = { ...ordinary, error: { type: 'child-contract-error' } };
+
+    record(result);
+
+    const entry = JSON.parse(readFileSync(f.lanePath)).issues['42'];
+    const blocker = { type: 'child-contract-error', phase };
+    assert.equal(entry.attempts[phase], 1);
+    assert.deepEqual(entry.blocker, blocker);
+    assert.deepEqual(entry.facts, lane.issues['42'].facts);
+    assert.deepEqual(f.plan().decision, { action: 'blocked', reason: blocker.type, blocker });
+    const events = readRetroEvents(f.root, 'fixture').filter(event => event.kind === 'stage');
+    assert.equal(events.length, 1);
+    assert.equal(events[0].data.phase, phase);
+    assert.deepEqual(events[0].data.result, result);
+    const blockedBytes = readFileSync(f.lanePath);
+    record(ordinary, false);
+    assert.deepEqual(readFileSync(f.lanePath), blockedBytes);
+    assert.equal(readRetroEvents(f.root, 'fixture').filter(event => event.kind === 'stage').length, 1);
+  });
+}
+
+test('record policy: stored null -> legacy failure count and blocker at three without migration', (t) => {
+  const f = fixture(t);
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.retry_policy = null;
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    f.cli('record', [...f.common, '--phase', 'implement', '--result-json', '{"ok":false}']);
+    const stored = JSON.parse(readFileSync(f.lanePath));
+    assert.equal(stored.retry_policy, null);
+    assert.equal(stored.issues['42'].attempts.implement, attempt);
+    assert.deepEqual(stored.issues['42'].blocker,
+      attempt === 3 ? { type: 'attempts-exhausted', phase: 'implement' } : null);
+  }
+
+  assert.equal(f.plan().decision.action, 'blocked');
+});
+
+test('observation: null PR rollup entry -> typed failure for plan, plan-all and watch', (t) => {
+  const f = fixture(t);
+  f.state.pr = { number: 77, state: 'OPEN', headRefOid: 'a'.repeat(40),
+    mergeable: 'MERGEABLE', statusCheckRollup: [null] };
+  f.update();
+  const before = readFileSync(f.lanePath);
+
+  const single = f.plan().decision;
+  const all = JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision;
+  const watch = f.cli('watch', ['--lane', f.lanePath, '--once']).stdout;
+
+  assert.deepEqual(single, { action: 'observation-failed',
+    failures: [{ source: 'pr', subject: 'issue-42', code: 'invalid-response' }] });
+  assert.deepEqual(all, single);
+  assert.match(watch, /-> observation-failed/u);
+  assert.deepEqual(readFileSync(f.lanePath), before);
+});
+
 for (const [name, retry_policy] of Object.entries({
   'missing limits': { retry_count_is_terminal: true, stop_on_child_contract_error: true },
   'unknown key': { ...importedAdaptive, bogus: 1 },

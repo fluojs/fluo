@@ -564,7 +564,9 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	], (value) => value !== null && Number.isSafeInteger(value.number) && value.number > 0
 		&& ["OPEN", "CLOSED", "MERGED"].includes(value.state)
 		&& typeof value.headRefOid === "string" && /^[a-f0-9]{40}$/u.test(value.headRefOid)
-		&& (value.statusCheckRollup === null || Array.isArray(value.statusCheckRollup)));
+		&& (value.statusCheckRollup === null || (Array.isArray(value.statusCheckRollup)
+			&& value.statusCheckRollup.every((check) => check !== null
+				&& typeof check === "object" && !Array.isArray(check)))));
 	if (parsed !== null) {
 		const rollup = parsed.statusCheckRollup ?? [];
 		const states = rollup.map((c) => c.conclusion ?? c.state ?? "PENDING");
@@ -1011,8 +1013,11 @@ const main = async () => {
 		const result = JSON.parse(arg(args, "--result-json"));
 		const observed = observeIssue(root, lane, issue);
 		validateStageMeasurements(result?.measurements, observed.headSha);
-		const next = applyChildResult(entry, phase, result, { retryPolicy: lane.retry_policy, now: Date.now() });
-		if (phase === "resolve-conflict" && result?.ok === true) {
+		const next = applyChildResult(entry, phase, result, { retryPolicy: lane.retry_policy ?? undefined, now: Date.now() });
+		const childContractError = next.blocker?.type === "child-contract-error"
+			&& lane.retry_policy?.stop_on_child_contract_error === true
+			&& (typeof result?.ok !== "boolean" || result?.error?.type === "child-contract-error");
+		if (!childContractError && phase === "resolve-conflict" && result?.ok === true) {
 			const obs = observeIssue(root, lane, issue);
 			if (result.head_sha !== obs.headSha) throw new TypeError("Conflict result requires current head_sha");
 			if (obs.generatedIntegrationRequired.length) {
@@ -1024,7 +1029,7 @@ const main = async () => {
 				};
 			}
 		}
-		if (phase === "verify-local" && result?.ok === false) {
+		if (!childContractError && phase === "verify-local" && result?.ok === false) {
 			const obs = observeIssue(root, lane, issue);
 			if (
 				result.head_sha !== obs.headSha || !obs.preflightPolicy ||

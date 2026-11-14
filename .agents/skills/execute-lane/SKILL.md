@@ -176,8 +176,14 @@ Failure identity uses `result.error`, then `result.failed_command`, then the
 result itself. `stop_on_child_contract_error` parks malformed results (no boolean
 `ok`) and explicit `error: {type: "child-contract-error"}` (even with `ok: true`) as
 `child-contract-error`. A success resets only that phase's attempts and telemetry.
-Existing v4 files without `retry_policy` load unchanged and retain the legacy
-ceiling of 3, including retrying malformed results.
+Existing v4 files with absent or null `retry_policy` retain the legacy ceiling
+of 3, including retrying malformed results. Stored null remains null; no migration
+is needed. Every non-null policy retains strict validation.
+
+`record` persists a child-contract-error policy outcome and its raw stage event
+without admitting phase evidence, including for `resolve-conflict` and
+`verify-local`. Ordinary stage results still require their existing head and
+evidence bindings, even when a prior contract-error blocker is already present.
 
 An exhausted attempt budget is resumable; never hide failure as success. Preserve
 the same issue/branch/worktree/optional PR during fix-back. Use a fresh implementation
