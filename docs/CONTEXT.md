@@ -79,6 +79,14 @@ Follow Docs contract establishment → evidence verification → Korean Book app
 
 <!-- fluo:docs-navigation:end -->
 
+For unsupported NestJS cache patterns, follow the [cache-manager migration table](../packages/cache-manager/README.md#nestjs-cache-migration) and [migration guide](./getting-started/migrate-from-nestjs.md#cache-manager-ttl-key-visibility-and-store-ownership-migration). These owners cover method-only `@CacheTTL`/`@CacheKey`, the single-store-per-registration boundary for `stores`/Keyv, manual cache code conversion after `fluo migrate`, and HTTP-only automatic interception with explicit `CacheService` calls for WebSocket/microservice handlers.
+
+For validation DTO `Symbol.metadata` preload and mapped DTO source constructor
+and default boundaries, follow the [validation README](../packages/validation/README.md#quick-start)
+and [NestJS migration guidance](./getting-started/migrate-from-nestjs.md#decorator-metadata-preload-ordering).
+Redeclare needed defaults in the mapped subclass; `PartialType` preserves
+`undefined` for missing patch fields.
+
 For HTTP-matched React client navigation, start at the [navigation payload contract](./contracts/react-navigation-payload.md), then the [React API owner](../packages/react/README.md) and the [Vite SSR example](../examples/react-vite-ssr/README.md). The official starter transfers a bounded, escaped HTTP-selected initial page, then uses the same build-produced importer map and shared provider/page slot for hydration and later `Link`/`useRouter()` moves. Those controls commit confirmed URL/params through history, including fresh back/forward requests; the starter preserves network/5xx, incompatible builds and recoverable mapped import failures with retry/document controls while other failures, including absent importer keys, return to full documents. Ordinary and JavaScript-disabled GETs keep streamed documents. HTTP retains status, cookies, and error ownership. Runtime evidence is in `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, and `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`.
 
 For v2 production navigation, the complete selected Vite manifest and same-origin `/assets/`
@@ -172,8 +180,10 @@ and `tooling/release/cli-published-dependencies.test.ts` verify the release-inpu
 ## Runtime Cleanup Settlement
 
 `RUNTIME_CLEANUP_REGISTRATION` callbacks may be synchronous or asynchronous. Runtime close and
-bootstrap-failure cleanup await each registration in order, continue after failures, and preserve
-the original bootstrap failure while reporting cleanup failures. See the [Lifecycle & Shutdown
+bootstrap-failure cleanup await each registration in order and continue after failures. Explicit close
+retries run only failed registrations; successful registrations never replay on that application or
+context. Lifecycle hook retries remain phase-wide. Bootstrap preserves its original failure while
+reporting cleanup failures. See the [Lifecycle & Shutdown
 Guarantees](./architecture/lifecycle-and-shutdown.md) and the
 [`@fluojs/runtime` README](../packages/runtime/README.md).
 

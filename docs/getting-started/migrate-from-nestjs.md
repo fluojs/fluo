@@ -97,7 +97,9 @@ For the complete Chapter 14 path, import `ConfigModule.forRoot()` and the global
 
 ## Decorator metadata preload ordering
 
-Fluo's built-in decorators store their runtime records in framework-owned stores and do not require import-time global mutation. A migrated custom standard decorator that reads `context.metadata` is different, as are `@fluojs/serialization` decorators: their decorated classes need `Symbol.metadata` while the class module is being evaluated.
+<!-- fluo-contract: validation.metadata-preload -->
+
+Importing fluo packages does not install `Symbol.metadata`. Field decorators and `@ValidateClass(...)` from `@fluojs/validation`, `@fluojs/serialization` decorators, and migrated custom standard decorators that read `context.metadata` need `Symbol.metadata` before their decorated class modules evaluate. This is TC39 decorator metadata, not an instruction to enable unsupported `reflect-metadata` or `emitDecoratorMetadata`.
 
 Do not statically import the decorated application graph and then call `ensureMetadataSymbol()` in the same bootstrap module. ESM evaluates static dependencies before the bootstrap module body, so that call is too late. Use a preload entrypoint that installs the symbol before dynamically importing the ordinary bootstrap graph:
 
@@ -433,6 +435,8 @@ The runtime rejects subscription resolver results that are not `AsyncIterable`; 
 
 ### Nested DTO and Mapped Type Rewrites
 
+<!-- fluo-contract: validation.mapped-defaults -->
+
 NestJS commonly combines class-validator with class-transformer so reflected or transformer metadata supplies the nested constructor:
 
 ```typescript
@@ -481,9 +485,21 @@ import {
 
 class UpdateUserDto extends PartialType(CreateUserDto) {}
 class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
-class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
+class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {
+  address = new AddressDto();
+}
 class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
 ```
+
+`PickType`, `OmitType`, and `IntersectionType` do not run source DTO constructors
+or copy field initializer/default values. The derived class initializes retained
+fields discovered through validation or binding metadata to `undefined`.
+Consequently, `CreateUserDto.address = new AddressDto()` does not carry over
+automatically. Redeclare `address` in the subclass when a nested object default
+is needed, as shown in `AddressOnlyDto` above. `PartialType` also avoids source
+constructors and defaults; its purpose is to preserve `undefined` for missing
+patch fields. Do not restore create defaults on `UpdateUserDto`, because that
+would erase the patch distinction between omission and an explicit update.
 
 All four helpers are exported only from `@fluojs/validation/mapped-types`; root imports have no compatibility aliases. Migrate `@nestjs/mapped-types` bindings and mapped bindings from `@nestjs/swagger` to that subpath. `PickType`, `OmitType`, and `PartialType` preserve applicable field-level validation and binding metadata but intentionally do not copy base class-level validators, because a subset or optionalized DTO may no longer satisfy those validators' field assumptions. Audit and redeclare any class-level rule that is still valid on the derived DTO. `IntersectionType` preserves field-level and class-level validation from every input DTO because the intersection retains all source contracts. Do not assume NestJS mapped-type class-level metadata behavior carries over implicitly.
 
@@ -966,10 +982,14 @@ Kafka and RabbitMQ keep inbound consumer callbacks pending until handler executi
 - **TTL unit and defaults.** fluo `ttl` is a number of seconds. Before converting a NestJS TTL, inspect the installed underlying `cache-manager` dependency/version: divide by 1000 only when that dependency generation defines TTLs in milliseconds; copying such a value unchanged inflates expiry by 1000x. When `ttl` is omitted, `CacheModule.forRoot(...)` applies `300` seconds on the default memory path and `0` for the `redis` and custom-store paths.
 - **TTL `0` and invalid values.** `ttl: 0` means "no expiry", not "do not cache". A negative or non-finite TTL is treated as invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and the cache write for that handler, so the route falls through to the handler on every request.
 - **Static `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)` stores one static number as route metadata; it accepts no factory, context argument, or async value. A NestJS handler that computed a per-request lifetime must call `CacheService.set(key, value, ttlSeconds)` explicitly instead.
+- **Decorator placement.** fluo `@CacheTTL(...)` and `@CacheKey(...)` are method-only and do not support controller-level metadata. For a controller-wide TTL, repeat `@CacheTTL(...)` on the relevant methods or configure module `ttl`. Module `ttl` is the default for that cache module; it does not add controller-level decorator support.
 - **Query-sensitive keys.** `httpKeyStrategy` defaults to `'route+query'`, which keys entries on the concrete request path and canonical query values, so `/search?q=a` and `/search?q=b` use separate entries. Select `httpKeyStrategy: 'route'` only when query values intentionally do not affect the response; a function strategy and `@CacheKey(...)` remain available for custom keys.
 - **`isGlobal` to `global`.** Rename `isGlobal` to `global`. Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules stay module-local. Either set `global: true` or import the returned module into each module that resolves cache providers; otherwise bootstrap fails to resolve them.
+- **`stores` and Keyv boundary.** NestJS `stores` arrays and Keyv instances have no direct configuration equivalent. fluo selects one `store` per `CacheModule` registration. Multi-tier or fallback caching requires an application-owned custom `CacheStore` implementing the existing contract; do not pass a `stores` array or an unadapted Keyv instance directly.
 - **Custom store adaptation.** `store` accepts `'memory'`, `'redis'`, or a `CacheStore` object. NestJS store adapters such as `cache-manager-redis-store` do not satisfy that contract; either use the built-in `store: 'redis'` path or wrap the adapter in an object exposing `get`, `set`, `del`, and `reset`. Convert callback/options completion to the Promise result that `CacheStore` expects, map Fluo `ttlSeconds` to the legacy adapter TTL in seconds, and make `reset()` delete only the cache namespace. Never blindly forward `CacheService.reset()` to a whole-database `flushDb`, because that could delete application-owned data outside the configured cache namespace.
 - **Teardown ownership.** Application shutdown closes `CacheService`, which forwards teardown to a store `close()` hook. A `dispose()`-only store remains compatible when `close()` is absent, but new custom stores that own sockets, pools, or timers should implement `close()`. A raw client passed through `redis.client` is never closed by the module and must be closed from the application lifecycle, while a client resolved through `@fluojs/redis` keeps that package's own lifecycle ownership.
+- **Codemod boundary.** `fluo migrate` does not rewrite `@nestjs/cache-manager` code. Even when the CLI reports `No manual follow-ups detected`, migrate cache imports, configuration, and decorators manually using this migration map.
+- **Transport boundary.** Automatic `CacheInterceptor` and cache decorator behavior belongs to the HTTP pipeline: read-through caching for HTTP GET, and eviction through `@CacheEvict(...)` for non-GET. WebSocket subscribers and microservice handlers must call the standalone `CacheService` directly; those transports have no automatic cache interception.
 
 ```typescript
 import { Module } from '@fluojs/core';
