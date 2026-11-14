@@ -83,6 +83,8 @@ export class CacheRepository {
 
 Every `RedisModule.forRoot(...)` registration creates a new client that `@fluojs/redis` owns, including named clients registered through `RedisModule.forRoot({ name, ... })`. The module never adopts an existing client instance. Registration identity is application-wide: only one unnamed default registration and one registration for each trimmed name are allowed. Compatible duplicate package copies share the exported default/named token identities and the registration marker, so mixed-copy duplicates are rejected during bootstrap before creating a Redis client. Ownership remains isolated per application; private lifecycle/guard tokens and the default `RedisService` constructor token keep their existing policy.
 
+An unnamed registration and a registration with `name: 'default'` own distinct raw clients and facades, so they can coexist in the same application. Duplicate detection uses each registration's raw-client token rather than its diagnostic label. Two unnamed registrations or two registrations with the same trimmed name still fail before client construction.
+
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.
 - Lifecycle-owned `connect()` and `quit()` calls are bounded by package timeouts (`10_000` ms by default) so bootstrap and shutdown do not wait forever on a stalled Redis command. Override them with `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs`; pass `0` only when the host process intentionally owns an unbounded wait.
@@ -114,6 +116,7 @@ Use `RedisModule.forRoot({ name, ...options })` when one application needs more 
 
 - Omit `name` when you want the default aliases: `REDIS_CLIENT` / `RedisService`.
 - Pass `name` when you want the named helpers: `getRedisClientToken(name)` / `getRedisServiceToken(name)`.
+- `default` is a valid name. `name: 'default'` and `name: ' default '` use the same named tokens, distinct from the unnamed `REDIS_CLIENT` / `RedisService` aliases.
 - `name` identifies the Fluo registration only. For an ioredis Sentinel master name, pass `sentinelName`; Fluo forwards it to ioredis as its constructor `name` option without changing the registration tokens.
 - Named clients follow the same bootstrap/shutdown contract as the default client; only the default registration exports the `REDIS_CLIENT` / `RedisService` aliases.
 - Names are trimmed, and blank or whitespace-only names are rejected by token/component helpers.
@@ -224,7 +227,7 @@ export class RedisConnectionsModule {}
 - `DEFAULT_REDIS_CLIENT_NAME`: Stable default Redis client name.
 - `getRedisClientToken(name)`: DI token helper for a named raw client. Omitting `name` returns the default `REDIS_CLIENT` token.
 - `getRedisServiceToken(name)`: DI token helper for a named `RedisService` facade. Omitting `name` returns the default `RedisService` token.
-- `getRedisComponentId(name)`: Status/dependency id helper used by Redis-consuming packages (`redis.default`, `redis.cache`, etc.).
+- `getRedisComponentId(name)`: Status/dependency id helper used by Redis-consuming packages (`redis.default`, `redis.cache`, etc.). For compatibility, both `getRedisComponentId()` and `getRedisComponentId('default')` retain the existing `redis.default` diagnostic label. Those two distinct registrations can share this label; it is not an application-wide unique registration key.
 - `createRedisPlatformStatusSnapshot(input)`: Adapts Redis connection state into Fluo's platform health/readiness snapshot contract.
 
 ### Types

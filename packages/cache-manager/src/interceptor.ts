@@ -115,11 +115,11 @@ function normalizeTtl(ttlSeconds: number | undefined, fallback: number): number 
 
 function normalizeEvictKeys(value: string | readonly string[]): string[] {
   if (typeof value === 'string') {
-    return value.length > 0 ? [value] : [];
+    return [value];
   }
 
   if (Array.isArray(value)) {
-    return value.filter((key) => key.length > 0);
+    return [...value];
   }
 
   return [];
@@ -204,7 +204,7 @@ export class CacheInterceptor implements Interceptor {
   ): Promise<void> {
     const evictMetadata = metadataBag ? getCacheEvictMetadata(metadataBag) : undefined;
 
-    if (!evictMetadata) {
+    if (evictMetadata === undefined) {
       return;
     }
 

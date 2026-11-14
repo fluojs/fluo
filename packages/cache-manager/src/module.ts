@@ -77,6 +77,20 @@ async function resolveRedisPeerModule(): Promise<RedisPeerModule> {
 function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): NormalizedCacheModuleOptions {
   const store = options.store ?? 'memory';
 
+  if (store !== 'memory' && store !== 'redis') {
+    if (typeof store !== 'object') {
+      throw new Error('Cache store must be "memory", "redis", or a custom CacheStore object.');
+    }
+
+    const invalidMethods = (['get', 'set', 'del', 'reset'] as const).filter(
+      (method) => typeof store[method] !== 'function',
+    );
+
+    if (invalidMethods.length > 0) {
+      throw new Error(`Custom cache store requires callable methods: ${invalidMethods.join(', ')}.`);
+    }
+  }
+
   return {
     global: options.global ?? false,
     keyPrefix: options.keyPrefix ?? 'fluo:cache:',
@@ -229,6 +243,7 @@ export class CacheModule {
    *
    * @param options Cache module options.
    * @returns A runtime module exporting `CacheService` and `CacheInterceptor`.
+   * @throws When a store name is unsupported or a custom store lacks callable `get`, `set`, `del`, or `reset`.
    *
    * @example
    * ```ts
@@ -260,7 +275,8 @@ export class CacheModule {
    * and its resolved options are normalized with the same defaults as
    * {@link CacheModule.forRoot}. Module visibility comes from the `global` option on this
    * call because module metadata is fixed before the factory runs; a `global` value in the
-   * factory result is ignored. A rejected factory fails bootstrap.
+   * factory result is ignored. Store validation runs when the factory result resolves;
+   * invalid store configuration or a rejected factory fails option resolution/bootstrap.
    *
    * @param options Injected factory registration options.
    * @returns A runtime module exporting `CacheService` and `CacheInterceptor`.
