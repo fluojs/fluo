@@ -240,3 +240,11 @@ test('the extended profile executes full secondary verification exactly once per
     assert.equal(task.commands.filter(({ argv }) => argv.some((arg) => arg.startsWith('--shard='))).length, 0, id);
   }
 });
+
+test('scoped static lint tolerates changed directories that biome.json does not include', () => {
+  const plan = buildVerificationPlan({ changedFiles: ['apps/docs/content/docs/packages/serialization.mdx'], identity });
+  const lint = plan.tasks.find((task) => task.id === 'static')?.commands.find(({ argv }) =>
+    argv[0] === 'exec' && argv[1] === 'biome' && argv[2] === 'lint');
+  assert.ok(lint, 'static task lints the scoped directory');
+  assert.deepEqual(lint.argv, ['exec', 'biome', 'lint', '--no-errors-on-unmatched', 'apps/docs']);
+});
