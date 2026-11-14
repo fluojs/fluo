@@ -568,9 +568,12 @@ Lower-level Node compression internals stay behind the `@fluojs/platform-nodejs/
 Providers that receive the internal `RUNTIME_CLEANUP_REGISTRATION` token may register cleanup
 callbacks that return `void` or `Promise<void>`. Runtime close and bootstrap-failure cleanup run
 the callbacks in registration order and await each one before entering later cleanup phases.
-Failures do not prevent later callbacks from running: `close()` aggregates cleanup failures and
-leaves that incomplete phase eligible for an explicit retry, while bootstrap preserves its original
-failure and reports cleanup failures through `ApplicationLogger`.
+Failures do not prevent later callbacks from running: `close()` aggregates failures from the current
+attempt. An explicit close retry runs only failed registrations, in their original order; registrations
+that returned `void` or fulfilled never run again. Completion belongs to each registration on one
+application or context, even when the same function is registered twice. The cleanup phase completes
+once every registration succeeds. Lifecycle hook retries remain phase-wide. Bootstrap preserves its
+original failure and reports cleanup failures through `ApplicationLogger`.
 
 ## Related Packages
 

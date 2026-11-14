@@ -107,18 +107,31 @@ This class expresses the transfer contract. Only exposed fields are included in 
 
 The serialization package can process values directly with `serialize(value)`. In HTTP handlers, using an Interceptor is the more natural pattern. Response shaping can repeat across many routes, so placing it in the shared pipeline keeps responsibilities cleaner.
 
+When passed as a class token to `@UseInterceptors(...)`, `SerializerInterceptor` is resolved from the request container. Register it as a provider in the controller's module, keeping the existing service providers:
+
 ```typescript
+import { Inject, Module } from '@fluojs/core';
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
+import { PostsService } from './posts.service';
 
 @Controller('/posts')
 @UseInterceptors(SerializerInterceptor)
+@Inject(PostsService)
 export class PostsController {
+  constructor(private readonly postsService: PostsService) {}
+
   @Get('/')
   findAll() {
     return this.postsService.findAllPublic();
   }
 }
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService, SerializerInterceptor],
+})
+export class PostsModule {}
 ```
 
 Now the Controller can return DTO instances or data intended for serialization. The Interceptor automatically applies the response shaping step, which lets the Controller focus on coordination instead of formatting details. This flow also gathers response rules in one place and helps keep the API consistent.
@@ -132,6 +145,7 @@ Automatic shaping applies only while the response is framework-managed. In the `
 Some advanced routes need direct control over the response. For example, a CSV download can set headers and commit its final payload explicitly:
 
 ```typescript
+import { Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
 
@@ -144,6 +158,12 @@ export class PostsController {
     await context.response.send('id,title\npost-1,Serialization Basics');
   }
 }
+
+@Module({
+  controllers: [PostsController],
+  providers: [SerializerInterceptor],
+})
+export class PostsModule {}
 ```
 
 Calling `send(...)`, `redirect(...)`, or a manual streaming helper commits the handler's final response payload. From that point, `SerializerInterceptor` bypasses `serialize(...)` and returns the value it received from `next.handle()` unchanged. Other interceptors may still transform the chain result. Independently, the dispatcher sees the committed response and skips a second success-response write, so it does not send the final chain result. Filter sensitive fields and complete any encoding before committing the directly written payload.

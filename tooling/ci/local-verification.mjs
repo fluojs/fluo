@@ -220,7 +220,7 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     const lintPaths = selection.packageDirectories.length ? selection.packageDirectories
       : changedFiles.filter((path) => /\.(?:[cm]?[jt]sx?|json)$/u.test(path));
     if (lintPaths.length) {
-      staticTask.commands.push(command('pnpm', ['exec', 'biome', 'lint', ...lintPaths]),
+      staticTask.commands.push(command('pnpm', ['exec', 'biome', 'lint', '--no-errors-on-unmatched', ...lintPaths]),
         command('pnpm', ['verify:public-export-tsdoc']));
       staticTask.capabilities.push('lint', 'declaration-importers');
     }
