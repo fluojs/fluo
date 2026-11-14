@@ -215,7 +215,7 @@ request child 생성 코드는 그 공유를 package-private construction path�
 
 실제 cache map 선택은 `cacheFor()`가 합니다.
 `path:packages/di/src/container.ts:1285-1329`가 핵심 규칙을 보여 줍니다.
-default-scope provider는 원칙적으로 root `singletonCache`를 사용합니다. 단 request child에 locally registered된 경우만 예외적으로 request cache를 사용합니다. 메서드 주석이 이 예외를 일부러 footgun으로 문서화하는 이유도 여기에 있습니다.
+default-scope provider는 원칙적으로 root `singletonCache`를 사용합니다. 단 request child에 local로 존재하는 singleton-scope replacement만 예외적으로 request cache를 사용합니다. `register()`는 request scope에서 singleton-scope provider를 `ScopeMismatchError`로 거부하므로, 메서드 주석은 이미 보이는 token에 대한 `container.override()`를 이 예외에 도달하는 유일한 경로로 문서화합니다.
 
 cache 선택 규칙은 한 번만 자세히 보겠습니다. 뒤의 request, override, disposal 문단은 이 발췌를 전제로 recap만 붙입니다.
 
