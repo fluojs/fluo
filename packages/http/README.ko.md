@@ -1037,7 +1037,7 @@ return createByteRangeResponse(
 );
 ```
 
-dispatcher는 먼저 일반 conditional request를 평가합니다. 그 다음 `If-Range`는 정확한 strong `ETag` 또는 현재 `Last-Modified` date일 때만 partial response를 허용하며, 그 외에는 전체 representation을 보냅니다. partial response는 range offset과 length를 보존하도록 identity byte를 유지하고 Node compression을 건너뜁니다. 선택된 encoded byte를 포함해 명시적 byte-range response와 정적 에셋에도 같은 규칙이 적용됩니다. Migration: 이제 `HEAD`는 모든 `Range` field를 무시하고 전체 representation metadata를 반환합니다. 정상적인 6 byte representation은 `200`, `Content-Length: 6`을 유지하며 `Content-Range`, body, stream factory 호출이 없습니다. 선택한 범위를 확인하려면 `GET`을 사용하세요. Conditional 및 bodyless status 결정은 유지됩니다. Byte, 정확한 size, filesystem resource는 애플리케이션이 소유합니다. `createByteRangeResponse(...)`는 file을 열거나, stat, seek, size 계산, close하지 않으며 multi-range response도 의도적으로 구성하지 않습니다.
+dispatcher는 먼저 일반 conditional request를 평가합니다. 그 다음 `If-Range`는 정확한 strong `ETag` 또는 선택된 `Last-Modified` date와 1초 정밀도에서 정확히 일치하는 HTTP date일 때만 partial response를 허용하며, 더 오래되거나 더 최신인 date를 포함한 그 외에는 전체 representation을 보냅니다. partial response는 range offset과 length를 보존하도록 identity byte를 유지하고 Node compression을 건너뜁니다. 선택된 encoded byte를 포함해 명시적 byte-range response와 정적 에셋에도 같은 규칙이 적용됩니다. Migration: 이제 `HEAD`는 모든 `Range` field를 무시하고 전체 representation metadata를 반환합니다. 정상적인 6 byte representation은 `200`, `Content-Length: 6`을 유지하며 `Content-Range`, body, stream factory 호출이 없습니다. 선택한 범위를 확인하려면 `GET`을 사용하세요. Conditional 및 bodyless status 결정은 유지됩니다. Byte, 정확한 size, filesystem resource는 애플리케이션이 소유합니다. `createByteRangeResponse(...)`는 file을 열거나, stat, seek, size 계산, close하지 않으며 multi-range response도 의도적으로 구성하지 않습니다.
 
 ## 관련 패키지
 
