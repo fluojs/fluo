@@ -35,6 +35,7 @@ import {
   Head,
   Header,
   HttpCode,
+  Optional,
   Options,
   Post,
   Produces,
@@ -45,6 +46,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '../index.js';
+import { DefaultBinder } from '../adapters/binding.js';
 import { registerFrameworkResponseWriter } from '../internal.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
@@ -180,6 +182,167 @@ class CountingContainer extends Container {
 }
 
 describe('dispatcher runtime', () => {
+  it.each(['fast', 'full'] as const)(
+    'dispatch: inherited required DTO values on %s path -> returns 400 without calling handler',
+    async (executionPath) => {
+      const handler = vi.fn();
+      class RequiredInput {
+        @FromBody('toString')
+        bodyValue = '';
+
+        @FromQuery('constructor')
+        queryValue = '';
+      }
+
+      class AllowGuard {
+        canActivate() {
+          return true;
+        }
+      }
+
+      @Controller('/own-source-values')
+      class OwnSourceController {
+        @UseGuards(...(executionPath === 'full' ? [AllowGuard] : []))
+        @Get('/')
+        @RequestDto(RequiredInput)
+        getValue(input: RequiredInput) {
+          handler(input);
+          return { ok: true };
+        }
+      }
+
+      const dispatcher = createDispatcher({
+        handlerMapping: createHandlerMapping([{ controllerToken: OwnSourceController }]),
+        rootContainer: new Container().register(OwnSourceController, AllowGuard),
+      });
+      const request = createRequest('/own-source-values');
+      request.body = {};
+      const response = createResponse();
+
+      await dispatcher.dispatch(request, response);
+
+      expect(getDispatcherFastPathStats(dispatcher)?.routes[0]?.executionPath).toBe(executionPath);
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toMatchObject({
+        error: {
+          details: [
+            { code: 'MISSING_FIELD', field: 'bodyValue', source: 'body' },
+            { code: 'MISSING_FIELD', field: 'queryValue', source: 'query' },
+          ],
+        },
+      });
+      expect(handler).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['field', 'global-and-field'] as const)(
+    'dispatch: %s converters on the full path -> skip inherited or absent values and convert own values in order',
+    async (mode) => {
+      const calls: string[] = [];
+      const globalConverter = {
+        convert(value: unknown) {
+          calls.push(`global:${String(value)}`);
+          return `${String(value)}:global`;
+        },
+      };
+      const fieldConverter = {
+        convert(value: unknown) {
+          calls.push(`field:${String(value)}`);
+          return `${String(value)}:field`;
+        },
+      };
+      const handler = vi.fn();
+
+      class RequiredInput {
+        @Convert(fieldConverter)
+        @FromBody('toString')
+        bodyValue: unknown = 'initialized';
+
+        @Convert(fieldConverter)
+        @FromQuery('constructor')
+        queryValue: unknown = 'initialized';
+      }
+
+      class OptionalInput {
+        @Convert(fieldConverter)
+        @FromBody('toString')
+        @Optional()
+        bodyValue: unknown = 'initialized';
+
+        @Convert(fieldConverter)
+        @FromQuery('missing')
+        @Optional()
+        queryValue: unknown = 'initialized';
+      }
+
+      @Controller('/converter-own-values')
+      class ConverterOwnValuesController {
+        @Post('/required')
+        @HttpCode(200)
+        @RequestDto(RequiredInput)
+        required(input: RequiredInput) {
+          handler(input);
+          return { bodyValue: input.bodyValue, queryValue: input.queryValue };
+        }
+
+        @Post('/optional')
+        @HttpCode(200)
+        @RequestDto(OptionalInput)
+        optional(input: OptionalInput) {
+          handler(input);
+          return { bodyValue: input.bodyValue, queryValue: input.queryValue };
+        }
+      }
+
+      const dispatcher = createDispatcher({
+        ...(mode === 'global-and-field' ? { binder: new DefaultBinder([globalConverter]) } : {}),
+        handlerMapping: createHandlerMapping([{ controllerToken: ConverterOwnValuesController }]),
+        rootContainer: new Container().register(ConverterOwnValuesController),
+      });
+      const dispatchWith = async (path: string, body: unknown, query: Record<string, unknown>) => {
+        const request = createRequest(path, 'POST');
+        request.body = body;
+        request.query = query as FrameworkRequest['query'];
+        const response = createResponse();
+        await dispatcher.dispatch(request, response);
+        return response;
+      };
+
+      const missing = await dispatchWith('/converter-own-values/required', {}, {});
+      const omitted = await dispatchWith('/converter-own-values/optional', {}, {});
+
+      expect(getDispatcherFastPathStats(dispatcher)?.routes.map((route) => route.executionPath)).toEqual(['full', 'full']);
+      expect(missing.statusCode).toBe(400);
+      expect(missing.body).toMatchObject({
+        error: {
+          details: [
+            { code: 'MISSING_FIELD', field: 'bodyValue', source: 'body' },
+            { code: 'MISSING_FIELD', field: 'queryValue', source: 'query' },
+          ],
+        },
+      });
+      expect(omitted.statusCode).toBe(200);
+      expect(omitted.body).toEqual({ bodyValue: 'initialized', queryValue: 'initialized' });
+      expect(calls).toEqual([]);
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      const present = await dispatchWith(
+        '/converter-own-values/required',
+        { toString: 'body' },
+        { constructor: null },
+      );
+
+      expect(present.statusCode).toBe(200);
+      if (mode === 'global-and-field') {
+        expect(present.body).toEqual({ bodyValue: 'body:global:field', queryValue: 'null:global:field' });
+        expect(calls).toEqual(['global:body', 'field:body:global', 'global:null', 'field:null:global']);
+      } else {
+        expect(present.body).toEqual({ bodyValue: 'body:field', queryValue: 'null:field' });
+        expect(calls).toEqual(['field:body', 'field:null']);
+      }
+    },
+  );
+
   it('keeps a DTO-bound POST acknowledgement private while granting anonymous GET page prefetch', async () => {
     // Given: one HTTP controller owns both the form mutation and its public page.
     const navigationMediaType = 'application/vnd.fluo.react-navigation+json;v=2';
