@@ -12,7 +12,7 @@ Shared Redis connection layer for fluo. It provides a default app-scoped `ioredi
 - [When to use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
-- [Public API](#public-api)
+- [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
@@ -134,15 +134,6 @@ import {
 const ANALYTICS_REDIS = getRedisServiceToken('analytics');
 const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
-    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
-  ],
-})
-export class AppModule {}
-
 @Inject(RedisService, ANALYTICS_REDIS, ANALYTICS_REDIS_CLIENT)
 export class AnalyticsStore {
   constructor(
@@ -151,6 +142,16 @@ export class AnalyticsStore {
     private readonly analyticsClient: Redis,
   ) {}
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
+  ],
+  providers: [AnalyticsStore],
+})
+export class AppModule {}
 ```
 
 ### Raw Client Access
@@ -183,7 +184,7 @@ export class AdvancedService {
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { getRedisClientToken, RedisModule } from '@fluojs/redis';
-import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices/redis';
 import type Redis from 'ioredis';
 
 const COMMAND_REDIS = getRedisClientToken();
