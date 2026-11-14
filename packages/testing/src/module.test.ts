@@ -98,6 +98,30 @@ describe('@fluojs/testing', () => {
     });
   });
 
+  it('get: multi alias through an intermediate alias preserves transient target lifetime (#4017)', async () => {
+    const token = Symbol('plugins');
+    const alias = Symbol('plugin-alias');
+    @ScopeDecorator('transient')
+    class Plugin {}
+    @Module({
+      providers: [Plugin, { provide: alias, useExisting: Plugin }, { provide: token, useExisting: alias, multi: true }],
+    })
+    class PluginModule {}
+    const testingModule = await Test.createTestingModule({ rootModule: PluginModule }).compile();
+
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const first = testingModule.get<Plugin[]>(token);
+      const second = testingModule.get<Plugin[]>(token);
+
+      expect(first).toHaveLength(1);
+      expect(second).toHaveLength(1);
+      expect(first[0]).toBeInstanceOf(Plugin);
+      expect(second[0]).toBeInstanceOf(Plugin);
+      expect(second[0]).not.toBe(first[0]);
+    });
+  });
+
   it('exposes Test.createTestingModule for NestJS-style module builder access', async () => {
     const TOKEN = Symbol('token');
 
