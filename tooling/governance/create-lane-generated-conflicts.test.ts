@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -153,7 +153,8 @@ describe('create-lane generated conflicts', () => {
   );
 
   it('producer: actual compiler source/config graph -> receipt/schema/v4 init roundtrip', () => {
-    const graph = generatedConsumerGraph(root);
+    // Retain the historical tracked-consumer observation when replaying legacy receipts.
+    const graph = { ...generatedConsumerGraph(root), tracked: true };
     const produced = withGeneratedConflicts(plan, [
       { issue: 42, title: 'Adjust typegen', body: 'packages/cli/src/commands/typegen-compiler.ts' },
       { issue: 43, title: 'Adjust consumer types', body: 'packages/react/src/typegen.ts' },
@@ -196,6 +197,63 @@ describe('create-lane generated conflicts', () => {
       substituted.predicted_conflicts[0].generated.inputs[0].sha256 = 'f'.repeat(64);
       expect(() => assertLaneSourceBinding(substituted, artifact)).toThrow();
       expect(() => validateLedger('fixture', substituted)).toThrow();
+    } finally {
+      rmSync(temporary, { recursive: true, force: true });
+    }
+  });
+
+  it('producer: Git tracking removed -> new hints disappear while legacy receipts and import remain valid', () => {
+    mkdirSync(resolve(root, '.worktrees'), { recursive: true });
+    const temporary = mkdtempSync(resolve(root, '.worktrees/generated-tracking-'));
+    const put = (path: string, text: string) => {
+      const absolute = resolve(temporary, path);
+      mkdirSync(resolve(absolute, '..'), { recursive: true });
+      writeFileSync(absolute, text);
+    };
+    const observations = [42, 43].map((issue) => ({
+      issue, title: 'Compiler change', body: 'packages/react/src/typegen.ts',
+    }));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: temporary, encoding: 'utf8' }).trim();
+    try {
+      put('examples/react-vite-ssr/package.json', JSON.stringify({
+        name: 'tracked-fixture', scripts: {
+          typegen: 'node cli.mjs typegen src/app.ts --tsconfig tsconfig.json --output src/generated/react-pages.ts',
+        },
+      }));
+      put('examples/react-vite-ssr/tsconfig.json', '{"include":["src/*.ts"]}');
+      put('examples/react-vite-ssr/src/app.ts', 'export class AppModule {}');
+      put(hint.surface, '// generated fixture');
+      put('pnpm-lock.yaml', 'lockfileVersion: 9');
+      put('packages/react/src/typegen.ts', 'export const version = 2;');
+      put('packages/cli/src/commands/typegen.ts', 'export const version = 2;');
+      git('init', '-q');
+      git('add', '.');
+      const tracked = generatedConsumerGraph(temporary);
+      expect(tracked.tracked).toBe(true);
+      const previous = withGeneratedConflicts(plan, observations, tracked);
+      expect(previous.predicted_conflicts).toHaveLength(1);
+      const approvals = ['confirmed-issues', 'suggested-additions', 'lane-plan'].map((gate) => {
+        const approval = { gate, approval_id: `approval-${plan.lane_id}-${gate}`, approved: true,
+          ...(gate === 'lane-plan' ? { release_handoff_attestations: [] }
+            : { issue_numbers: gate === 'confirmed-issues' ? [42, 43] : [] }) };
+        return { ...approval, binding_sha256: approvalBinding(approval, artifact, previous) };
+      });
+
+      git('rm', '--cached', hint.surface);
+      const untracked = generatedConsumerGraph(temporary);
+      const updated = withGeneratedConflicts(previous, observations, untracked);
+
+      expect(untracked.tracked).toBe(false);
+      expect(updated.predicted_conflicts).toEqual([]);
+      expect(generatedConsumerGraph(root).tracked).toBe(false);
+      expect(validateApprovals(approvals, artifact, previous, [])).toBeNull();
+      expect(validateApprovals(approvals, artifact, updated, [])).toBe('approval_binding_mismatch');
+      const legacy = readyLedger(previous, artifact, '.omo/search-issue/artifacts/generated-fixture.json');
+      expect(() => assertLaneSourceBinding(legacy, artifact)).not.toThrow();
+      expect(() => validateLedger('fixture', legacy)).not.toThrow();
+      expect(laneV2ToInitSpecs(legacy).predictedConflicts).toEqual(previous.predicted_conflicts);
+      expect(laneV2ToInitSpecs(readyLedger(updated, artifact,
+        '.omo/search-issue/artifacts/generated-fixture.json')).predictedConflicts).toEqual([]);
     } finally {
       rmSync(temporary, { recursive: true, force: true });
     }

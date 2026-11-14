@@ -11,13 +11,15 @@
     "typegen": "node ../../packages/cli/bin/fluo.mjs typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts",
     "typegen:check": "node ../../packages/cli/bin/fluo.mjs typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check",
     "typegen:watch": "node ../../packages/cli/bin/fluo.mjs typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --watch",
-    "build": "pnpm typegen:check && vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
-    "build:reliability": "pnpm typegen:check && vite build --mode reliability --config vite.client.config.ts && vite build --mode reliability --config vite.server.config.ts",
+    "typegen:fixture": "node ../../packages/cli/bin/fluo.mjs typegen tests/typegen-fixture/app.module.ts --export AppModule --tsconfig tests/typegen-fixture/tsconfig.json --output tests/typegen-fixture/generated/react-pages.ts",
+    "typegen:prepare": "node ../../tooling/ci/prepare-react-typegen.mjs",
+    "build": "pnpm typegen:prepare && pnpm typegen:check && vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
+    "build:reliability": "pnpm typegen:prepare && pnpm typegen:check && vite build --mode reliability --config vite.client.config.ts && vite build --mode reliability --config vite.server.config.ts",
     "start": "node dist/server/main.js",
-    "test": "vitest run src",
+    "test": "pnpm typegen:prepare && vitest run src",
     "test:browser": "pnpm --workspace-root build && pnpm build && playwright test --config playwright.config.ts",
     "test:reliability": "playwright test --config playwright.reliability.config.ts",
-    "typecheck": "pnpm typegen:check && tsc -p tsconfig.json --noEmit"
+    "typecheck": "pnpm typegen:prepare && pnpm typegen:check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@fluojs/core": "workspace:*",

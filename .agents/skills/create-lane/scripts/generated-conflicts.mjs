@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -52,11 +53,13 @@ export const generatedConsumerGraph = (root, consumer = 'examples/react-vite-ssr
   })).filter((input) => isRepositoryFile(input.path) &&
     !input.path.split('/').includes('node_modules') && input.path !== surface)
     .sort((a, b) => a.path.localeCompare(b.path));
-  return { surface, command: `pnpm --filter ${JSON.parse(readFileSync(manifestPath, 'utf8')).name} typegen:check`, inputs };
+  const tracked = execFileSync('git', ['ls-files', '--', surface], { cwd: root, encoding: 'utf8' }).trim() === surface;
+  return { surface, command: `pnpm --filter ${JSON.parse(readFileSync(manifestPath, 'utf8')).name} typegen:check`, inputs, tracked };
 };
 
 /** Produce a source-bound hint before plan/receipt digests are calculated. */
 export const deriveGeneratedConflicts = (observations, graph) => {
+  if (graph.tracked === false) return [];
   const paths = [...graph.inputs.map((input) => input.path), graph.surface];
   const evidence = observations.map(({ issue, title, body }) => {
     if (!Number.isSafeInteger(issue) || issue < 1 || typeof title !== 'string' || typeof body !== 'string') {

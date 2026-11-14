@@ -327,6 +327,8 @@ function requiredBrowserCases(surface) {
 
 
 export function productDomainPlan(domain, output) {
+  const prepare = { id: 'prepare-react-typegen', executable: process.execPath,
+    args: ['tooling/ci/prepare-react-typegen.mjs'], env: {} };
   const browserConfig = '../../tooling/ci/browser-playwright.config.mjs';
   const browserEnv = (id, suite) => ({
     FLUO_BROWSER_SUITE: suite, FLUO_BROWSER_OUTPUT: resolve(output),
@@ -352,6 +354,7 @@ export function productDomainPlan(domain, output) {
     env: { REACT_VITE_FORM_TEST_SERVER: '1' },
   });
   if (domain === 'tooling') return [
+    prepare,
     { id: 'source-http', executable: 'pnpm', args: ['vitest', 'run', 'examples/react-vite-ssr'],
       env: { FLUO_BACKGROUND_EVIDENCE: resolve(output, 'source-http-background') } },
     { id: 'example-types', executable: 'pnpm', args: [...exampleFilter, 'typecheck'], env: {} },
@@ -367,6 +370,7 @@ export function productDomainPlan(domain, output) {
       browserReport: 'reliability-browser-report.json' },
   ];
   if (domain === 'starters') return [
+    prepare,
     { id: 'packed-cold-dev', executable: 'pnpm', args: ['--dir', 'packages/cli', 'sandbox:matrix'],
       env: { FLUO_CLI_SANDBOX_PROFILE: 'full', FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked' } },
     { id: 'typegen-tests', executable: 'pnpm', args: ['--filter', '@fluojs/cli', 'exec', 'vitest', 'run', '-c', 'vitest.config.ts',
@@ -375,6 +379,7 @@ export function productDomainPlan(domain, output) {
       env: { FLUO_PRODUCT_ACCEPTANCE: '1', FLUO_BACKGROUND_EVIDENCE: resolve(output, 'packed-product') } },
   ];
   if (domain === 'soak') return [
+    prepare,
     build('reliability-build', true),
     formBuild('reliability-form-build', true),
     { id: 'soak-browser', executable: 'pnpm', args: [...exampleFilter, 'test:reliability', '--config', browserConfig, '--project', 'chromium'],

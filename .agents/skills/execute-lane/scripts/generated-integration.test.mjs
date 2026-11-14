@@ -17,6 +17,7 @@ const row = (issue, action, patch = {}) => ({ issue, decision: { action },
 
 test('coordination: plain or unrelated hints -> no serialization', () => {
   const rows = [row(42, 'resolve-conflict'), row(43, 'merge')];
+  assert.deepEqual(coordinateGeneratedIntegration({ predicted_conflicts: [] }, rows), rows);
   assert.deepEqual(coordinateGeneratedIntegration({ predicted_conflicts: [{ surface: hint.surface, issues: hint.issues }] }, rows), rows);
   assert.deepEqual(coordinateGeneratedIntegration({ predicted_conflicts: [{ ...hint, issues: [43, 44] }] }, rows), rows);
 });

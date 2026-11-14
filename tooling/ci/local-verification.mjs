@@ -95,7 +95,8 @@ function companionChecks(changedFiles, manifest) {
 }
 
 const isCompatibilityBootstrap = ({ executable, argv }) => executable === 'pnpm'
-  && (argv.join(' ') === 'install --frozen-lockfile' || argv[0] === 'build');
+  && (argv.join(' ') === 'install --frozen-lockfile' || argv[0] === 'build'
+    || argv.includes('run') && argv.includes('build'));
 
 /** Full-PR only: split one composite secondary definition into four package shards plus one smoke task. */
 function expandCompatibilityTask(task) {
@@ -290,6 +291,29 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     }
     if (mode !== 'full') tasks = tasks.filter((task) => task.id !== 'tooling-1'
       || task.commands.some(({ argv }) => argv.join(' ') !== 'install --frozen-lockfile'));
+  }
+  // Resolve preparation after all scoped reconstruction, compatibility expansion
+  // and no-suite filtering. Each consumer restores only package dist, not artifacts.
+  for (const task of tasks) {
+    const consumesExample = mode === 'full'
+      || selection.packageDirectories.includes('examples/react-vite-ssr')
+      || task.commands.some(({ argv }) => argv.includes('examples/tsconfig.json'));
+    if (!consumesExample
+      || !/^(?:static|packages-\d+|tooling-\d+|react-product|starters|compatibility-.+)$/u.test(task.id)) continue;
+    const commands = task.commands.filter(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs'));
+    if (mode !== 'full' && ['packages/cli', 'packages/react', 'packages/platform-fastify',
+      'packages/validation', 'packages/vite'].some((directory) => !selection.buildDirectories.includes(directory))) {
+      // The all-examples compiler also reads React when only another example changed.
+      commands.splice(commands.findLastIndex(isCompatibilityBootstrap) + 1, 0, {
+        executable: 'pnpm', argv: ['-r', '--filter=@fluojs/cli...',
+          '--filter=@fluojs/example-react-vite-ssr^...', '--if-present', 'run', 'build'], cwd: '.',
+      });
+    }
+    const bootstrap = commands.findLastIndex(isCompatibilityBootstrap);
+    commands.splice(bootstrap + 1, 0, {
+      executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.',
+    });
+    task.commands = commands;
   }
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   for (const task of tasks) {

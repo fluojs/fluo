@@ -144,6 +144,17 @@ Inside `packages/cli/`:
 
 Canonical examples in `examples/` are first-class workspace members and verification targets. They participate in the monorepo dependency graph, TypeScript type-checking, and Vitest test runs.
 
+After building packages, run `pnpm prepare:react-typegen` before directly invoking
+Vitest or the examples compiler. It generates missing React example artifacts
+at `examples/react-vite-ssr/src/generated/react-pages.ts` and
+`examples/react-vite-ssr/tests/typegen-fixture/generated/react-pages.ts`; both are
+Git-ignored. Existing artifacts are checked without rewriting them, so stale,
+malformed or unsupported output still fails. After changing compiler inputs,
+explicitly run the example's `typegen` and `typegen:fixture` scripts to regenerate
+both, then run `typegen:check`. Root `typecheck`, normal tests and example scripts
+prepare their consumers; CI consumer jobs prepare after package build/restore.
+Build archives carry package dist, not these artifacts.
+
 - **Typecheck**: `pnpm typecheck` includes `tsc -p examples/tsconfig.json --noEmit`. Examples share path-mapped workspace packages, so editor resolution and CI catch type errors in example code.
 - **Tests**: `pnpm test` runs `vitest run`, which includes the `examples` project defined in `vitest.config.ts`. Each example has tests in `src/app.test.ts`.
 - **Dependencies**: Each example has a `package.json` with `workspace:*` dependencies on `@fluojs/*` packages. Run `pnpm install` after adding or changing example dependencies.
@@ -151,6 +162,7 @@ Canonical examples in `examples/` are first-class workspace members and verifica
 When modifying core packages, verify that examples still pass:
 
 ```sh
+pnpm prepare:react-typegen
 pnpm vitest run examples/
 pnpm typecheck
 ```

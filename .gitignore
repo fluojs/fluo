@@ -12,3 +12,5 @@ coverage/
 .omo/*
 !.omo/omo.jsonc
 .pnpm-store
+/examples/react-vite-ssr/src/generated/react-pages.ts
+/examples/react-vite-ssr/tests/typegen-fixture/generated/react-pages.ts

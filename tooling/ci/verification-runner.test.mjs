@@ -213,6 +213,16 @@ test('aggregate requires every full PR shard result and rejects cancelled jobs d
     /job failed|cancelled/u);
   assert.throws(() => aggregateResults(plan, output, artifacts, { ...jobs, build: { result: 'skipped' } }),
     /job failed|skipped/u);
+  const staticResultPath = join(output, 'static.json');
+  const originalStaticResult = readFileSync(staticResultPath, 'utf8');
+  const failedPreparation = JSON.parse(originalStaticResult);
+  const preparation = failedPreparation.commands.find(({ command }) =>
+    command.argv.includes('tooling/ci/prepare-react-typegen.mjs'));
+  assert.ok(preparation);
+  preparation.exitCode = 3;
+  writeFileSync(staticResultPath, JSON.stringify(failedPreparation));
+  assert.throws(() => aggregateResults(plan, output, artifacts, jobs), /failed|mismatch/u);
+  writeFileSync(staticResultPath, originalStaticResult);
   rmSync(join(output, 'compatibility-floor-2.json'));
   assert.throws(() => aggregateResults(plan, output, artifacts, jobs), /missing task/u);
 });

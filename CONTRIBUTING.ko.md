@@ -139,6 +139,17 @@ fluo는 릴리스를 위해 `supervised-auto` 정책을 사용합니다.
 
 `examples/`의 표준 예제들은 워크스페이스의 최우선 구성원이자 검증 대상입니다. 이들은 모노레포 의존성 그래프, TypeScript 타입 체크, 그리고 Vitest 테스트 실행에 참여합니다.
 
+패키지를 빌드한 뒤 Vitest나 examples compiler를 직접 실행하기 전에
+`pnpm prepare:react-typegen`을 실행하세요. 누락된 React 예제 artifact
+`examples/react-vite-ssr/src/generated/react-pages.ts`와
+`examples/react-vite-ssr/tests/typegen-fixture/generated/react-pages.ts`를 생성하며
+두 파일은 Git에서 무시합니다. 기존 artifact는 덮어쓰지 않고 검사하므로 stale,
+malformed, unsupported 출력은 계속 실패합니다. Compiler 입력을 변경한 뒤에는
+예제의 `typegen`과 `typegen:fixture` script를 명시적으로 실행해 둘 다 재생성하고
+`typegen:check`를 실행하세요. Root `typecheck`, 일반 테스트와 예제 script는
+소비 전에 준비하며 CI consumer job도 package build/restore 후 준비합니다.
+Build archive에는 package dist만 전달하고 이 artifact들은 포함하지 않습니다.
+
 - **타입 체크**: `pnpm typecheck`에는 `tsc -p examples/tsconfig.json --noEmit`이 포함됩니다. 예제들은 경로 매핑된 워크스페이스 패키지를 공유하므로, 에디터와 CI에서 예제 코드의 타입 오류를 포착할 수 있습니다.
 - **테스트**: `pnpm test`는 `vitest run`을 실행하며, 여기에는 `vitest.config.ts`에 정의된 `examples` 프로젝트가 포함됩니다. 각 예제는 `src/app.test.ts`에 테스트를 가지고 있습니다.
 - **의존성**: 각 예제는 `@fluojs/*` 패키지에 대해 `workspace:*` 의존성을 가진 `package.json`을 가집니다. 예제 의존성을 추가하거나 변경한 후에는 `pnpm install`을 실행하세요.
@@ -146,6 +157,7 @@ fluo는 릴리스를 위해 `supervised-auto` 정책을 사용합니다.
 코어 패키지를 수정할 때는 예제가 여전히 통과하는지 확인하세요.
 
 ```sh
+pnpm prepare:react-typegen
 pnpm vitest run examples/
 pnpm typecheck
 ```
