@@ -82,28 +82,78 @@ const requireRecord = (value, name) => {
 	return value;
 };
 
+export const validateRetryPolicy = (policy) => {
+	requireRecord(policy, 'retry_policy');
+	const fields = ['retry_count_is_terminal', 'max_same_failure_repeats',
+		'max_wall_clock_minutes', 'stop_on_child_contract_error'];
+	if (Reflect.ownKeys(policy).length !== fields.length
+		|| fields.some((field) => !Object.hasOwn(policy, field))
+		|| typeof policy.retry_count_is_terminal !== 'boolean'
+		|| policy.stop_on_child_contract_error !== true) {
+		throw new TypeError('retry_policy requires exactly four approved fields, boolean retry_count_is_terminal and stop_on_child_contract_error: true');
+	}
+	const positiveLimits = [policy.max_same_failure_repeats, policy.max_wall_clock_minutes]
+		.every((limit) => Number.isSafeInteger(limit) && limit > 0);
+	const nullLimits = policy.retry_count_is_terminal === false
+		&& policy.max_same_failure_repeats === null && policy.max_wall_clock_minutes === null;
+	if (!positiveLimits && !nullLimits) {
+		throw new TypeError('retry_policy limits must both be positive integers, or both null with retry_count_is_terminal: false');
+	}
+};
+
 /**
  * Fold one child result into the lane. Pure.
  * A well-formed success resets the phase attempt counter. Anything else
- * (failure, malformed shape) is a retry until ATTEMPT_CEILING, at which
- * point a typed, user-resumable blocker is recorded.
+ * (failure, malformed shape) follows the approved retry policy. Legacy
+ * entries without one retry until ATTEMPT_CEILING. Blockers are resumable.
  */
-export const applyChildResult = (lane, phase, result) => {
+export const applyChildResult = (lane, phase, result, { retryPolicy, now } = {}) => {
 	requireRecord(lane, 'lane');
 	if (!PHASES.has(phase)) {
 		throw new TypeError(`unknown phase: ${phase}`);
 	}
+	if (retryPolicy !== undefined && retryPolicy !== null) validateRetryPolicy(retryPolicy);
 	const next = structuredClone(lane);
 	next.attempts ??= {};
 	const wellFormed =
 		typeof result === 'object' && result !== null && result.ok === true;
-	if (wellFormed) {
+	if (wellFormed && !(retryPolicy?.stop_on_child_contract_error &&
+		result.error?.type === 'child-contract-error')) {
 		next.attempts[phase] = 0;
+		if (next.retry_telemetry) delete next.retry_telemetry[phase];
 		return next;
 	}
 	const attempts = (next.attempts[phase] ?? 0) + 1;
 	next.attempts[phase] = attempts;
-	if (attempts >= ATTEMPT_CEILING) {
+	if (!retryPolicy) {
+		if (attempts >= ATTEMPT_CEILING) {
+			next.blocker = { type: 'attempts-exhausted', phase };
+		}
+		return next;
+	}
+	if (!Number.isFinite(now)) {
+		throw new TypeError('retry policy requires the observation time in milliseconds');
+	}
+	const previous = next.retry_telemetry?.[phase];
+	const failure = JSON.stringify(result?.error ?? result?.failed_command ?? result);
+	const telemetry = {
+		started_at: previous?.started_at ?? now,
+		elapsed_ms: now - (previous?.started_at ?? now),
+		failure,
+		same_failure_repeats: previous && previous.failure === failure
+			? previous.same_failure_repeats + 1 : 1,
+	};
+	next.retry_telemetry ??= {};
+	next.retry_telemetry[phase] = telemetry;
+	if (retryPolicy.stop_on_child_contract_error &&
+		(!result || Array.isArray(result) || typeof result.ok !== 'boolean'
+			|| result.error?.type === 'child-contract-error')) {
+		next.blocker = { type: 'child-contract-error', phase };
+	} else if (retryPolicy.retry_count_is_terminal &&
+		telemetry.elapsed_ms >= retryPolicy.max_wall_clock_minutes * 60_000) {
+		next.blocker = { type: 'retry-time-exhausted', phase };
+	} else if (retryPolicy.retry_count_is_terminal &&
+		telemetry.same_failure_repeats >= retryPolicy.max_same_failure_repeats) {
 		next.blocker = { type: 'attempts-exhausted', phase };
 	}
 	return next;
@@ -175,6 +225,10 @@ export const trackStalls = (counts, next, threshold) => {
 export const decideNext = (lane, obs) => {
 	requireRecord(lane, 'lane');
 	requireRecord(obs, 'obs');
+
+	if (obs.observationFailures?.length) {
+		return { action: 'observation-failed', failures: obs.observationFailures };
+	}
 
 	// 1. Standing typed blockers park the issue until a human acts.
 	if (lane.blocker !== null && lane.blocker !== undefined) {

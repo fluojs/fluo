@@ -137,6 +137,21 @@ const metadata = getModuleMetadata(AppModule);
 console.log(metadata.providers);
 ```
 
+### Deterministic internal cloning
+
+The `cloneWithFallback` and `fallbackClone` utilities from `@fluojs/core/internal` share one
+prototype-preserving deep-clone contract. The result does not depend on whether the runtime's
+`structuredClone` is available, succeeds, or throws, or whether a sibling field contains a function.
+Custom class instances remain detached instances of their original prototype at every supported
+nesting level, including object fields, array items, Map keys/values, and Set entries. Prototype
+methods and getters remain available. Own string/symbol properties and circular references are preserved
+on plain objects and custom instances; plain objects retain their original prototype, including `null`.
+
+Date, RegExp (including `lastIndex`), Map, Set, ArrayBuffer, typed array, and DataView values are
+copied with detached contents. Primitives are unchanged and functions are returned by reference.
+This is an in-process copy contract, not a wire serialization format. Buffer and private-field
+instances are not yet specified; see [issue #4015](https://github.com/fluojs/fluo/issues/4015).
+
 ### AsyncModuleOptions for dynamic configuration
 
 `AsyncModuleOptions<T>` is the standard contract for modules that require asynchronous initialization, such as those relying on an external `ConfigService`.

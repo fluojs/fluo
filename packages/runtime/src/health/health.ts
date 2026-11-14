@@ -2,6 +2,7 @@ import type { Constructor } from '@fluojs/core';
 import { Controller, forRoutes, Get, type Middleware } from '@fluojs/http/portable';
 
 import { defineModule } from '../bootstrap.js';
+import { normalizeProbeTimeout, runProbeWithTimeout } from '../probe-timeout.js';
 import type { ModuleType } from '../types.js';
 
 /**
@@ -30,6 +31,11 @@ export interface ReadinessStatus {
  * Describes the health module options contract.
  */
 export interface HealthModuleOptions {
+  /** Per-readiness-callback budget, default 5000 ms. Positive finite values are
+   * floored to at least 1 ms; other inputs use the default. Timeout returns 503
+   * unavailable without cancelling the callback; ordinary errors still propagate.
+   */
+  readinessCheckTimeoutMs?: number;
   /** Class-based middleware applied only to the generated `/health` and `/ready` endpoints. */
   endpointMiddleware?: readonly Constructor<Middleware>[];
   healthCheck?: (ctx: import('@fluojs/http/portable').RequestContext) =>
@@ -68,6 +74,7 @@ export class HealthModule {
   static forRoot(options: HealthModuleOptions = {}): RuntimeHealthModule {
   const basePath = options.path ?? '';
   const readinessChecks: ReadinessCheck[] = [];
+  const readinessCheckTimeoutMs = normalizeProbeTimeout(options.readinessCheckTimeoutMs);
   let ready = false;
 
   const resolveHealthResponse = async (
@@ -108,9 +115,9 @@ export class HealthModule {
       }
 
       for (const check of readinessChecks) {
-        const result = await check(ctx);
+        const result = await runProbeWithTimeout(() => check(ctx), readinessCheckTimeoutMs);
 
-        if (!result) {
+        if (result.timedOut || !result.value) {
           ctx.response.setStatus(503);
           return { status: 'unavailable' };
         }

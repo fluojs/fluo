@@ -4,6 +4,7 @@ import { MemoryStore } from './stores/memory-store.js';
 import type { CacheObservation, CacheObserver, CacheStore, NormalizedCacheModuleOptions } from './types.js';
 
 const baseOptions: NormalizedCacheModuleOptions = {
+  rememberCacheErrors: 'throw',
   global: false,
   httpKeyStrategy: 'route',
   keyPrefix: 'fluo:cache:',
@@ -92,6 +93,70 @@ class FailingStore implements CacheStore {
 }
 
 describe('CacheService cache observation', () => {
+  it.each(['throw', 'reject', 'pending'] as const)('remember bypass is unaffected by an observer that stays %s', async (kind) => {
+    const observerFailure = new Error('observer failure');
+    const store = new FailingStore();
+    const onCacheOperation = vi.fn(() => {
+      if (kind === 'throw') throw observerFailure;
+      if (kind === 'reject') return Promise.reject(observerFailure);
+      return new Promise<void>(() => undefined);
+    });
+    const cache = new CacheService(store, {
+      ...baseOptions, rememberCacheErrors: 'bypass', observer: { onCacheOperation },
+    });
+    const loader = vi.fn(async () => 'loaded');
+
+    await expect(cache.remember('private:key', loader)).resolves.toBe('loaded');
+
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(onCacheOperation).toHaveBeenCalledExactlyOnceWith({
+      operation: 'remember', outcome: 'error', durationMs: expect.any(Number),
+    });
+  });
+
+  it('remember bypass observes the full scheduler wait and loader duration exactly once', async () => {
+    const resetStarted = createDeferredSignal();
+    const resetRelease = createDeferredSignal();
+    const loaderStarted = createDeferredSignal();
+    const loaderRelease = createDeferredSignal();
+    const clock = new ManualClock();
+    const { observations, observer } = createRecordingObserver();
+    const store: CacheStore = {
+      async get() { throw new Error('read failure'); },
+      async set() { throw new Error('write failure'); },
+      async del() {},
+      async reset() { resetStarted.resolve(); await resetRelease.promise; },
+    };
+    const cache = new CacheService(store, { ...baseOptions, rememberCacheErrors: 'bypass', observer }, clock);
+    const reset = cache.reset();
+    await resetStarted.promise;
+    const pending = cache.remember('private:key', async () => {
+      loaderStarted.resolve();
+      await loaderRelease.promise;
+      return 'loaded';
+    });
+    const settled = Promise.allSettled([pending]);
+
+    try {
+      clock.advance(37);
+      resetRelease.resolve();
+      await reset;
+      await loaderStarted.promise;
+      clock.advance(13);
+      loaderRelease.resolve();
+
+      await expect(pending).resolves.toBe('loaded');
+      expect(observations).toEqual([
+        { operation: 'reset', outcome: 'success', durationMs: 37 },
+        { operation: 'remember', outcome: 'error', durationMs: 50 },
+      ]);
+    } finally {
+      resetRelease.resolve();
+      loaderRelease.resolve();
+      await Promise.all([reset, settled]);
+    }
+  });
+
   it('reports get miss then hit outcomes when an observer is configured', async () => {
     // Given: a cache service with a recording observer and one cached entry.
     const { observations, observer } = createRecordingObserver();

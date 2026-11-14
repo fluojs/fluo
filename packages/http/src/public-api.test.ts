@@ -14,16 +14,19 @@ import type {
   HttpConnection,
   MiddlewareRouteConfig,
   MiddlewareRouteSnapshot,
+  RateLimitStore,
+  RateLimitStoreEntry,
   ResponseFormatter,
   RouteDefinition,
 } from './index.js';
 import * as httpPublicApi from './index.js';
-import * as httpInternalApi from './internal.js';
 import type {
   ByteRangeResponseOptions as PortableByteRangeResponseOptions,
   ByteRangeResponseSource as PortableByteRangeResponseSource,
+  RateLimitStore as PortableRateLimitStore,
 } from './index.portable.js';
 import * as portableHttpPublicApi from './index.portable.js';
+import * as httpInternalApi from './internal.js';
 
 type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends (<Value>() => Value extends Right ? 1 : 2)
   ? (<Value>() => Value extends Right ? 1 : 2) extends (<Value>() => Value extends Left ? 1 : 2)
@@ -139,6 +142,23 @@ function collectRuntimeDependencyGraph(entrypoint: URL) {
 }
 
 describe('@fluojs/http public API surface', () => {
+  it('keeps legacy rate-limit stores assignable and shares the optional atomic contract with portable', () => {
+    const legacy: RateLimitStore = {
+      get: () => undefined,
+      set: () => {},
+      increment: () => 0,
+      evict: () => {},
+    };
+
+    expectTypeOf<RateLimitStore>().toEqualTypeOf<PortableRateLimitStore>();
+    expectTypeOf<NonNullable<RateLimitStore['consume']>>().toEqualTypeOf<
+      (key: string, options: { now: number; windowMs: number }) => RateLimitStoreEntry | Promise<RateLimitStoreEntry>
+    >();
+    expect(legacy.consume).toBeUndefined();
+    expect(httpPublicApi.createMemoryRateLimitStore().consume).toEqual(expect.any(Function));
+    expect(portableHttpPublicApi.createMemoryRateLimitStore().consume).toEqual(expect.any(Function));
+  });
+
   it('declares portable response cookie APIs', () => {
     expectTypeOf<CookieSameSite>().toEqualTypeOf<'lax' | 'none' | 'strict'>();
     expectTypeOf<keyof CookieOptions>().toEqualTypeOf<'domain' | 'expires' | 'httpOnly' | 'maxAgeSeconds' | 'path' | 'sameSite' | 'secure'>();

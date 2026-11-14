@@ -53,15 +53,17 @@ const dtoBindingPlanCache = new WeakMap<Constructor, CompiledDtoBindingPlan>();
 function createSourceReader(source: MetadataSource, sourceKey: string): (request: FrameworkRequest) => unknown {
   switch (source) {
     case 'path':
-      return (request) => request.params[sourceKey];
+      return (request) => Object.hasOwn(request.params, sourceKey) ? request.params[sourceKey] : undefined;
     case 'query':
-      return (request) => request.query[sourceKey];
+      return (request) => Object.hasOwn(request.query, sourceKey) ? request.query[sourceKey] : undefined;
     case 'header':
       return (request) => getRequestHeader(request, sourceKey);
     case 'cookie':
-      return (request) => request.cookies[sourceKey];
+      return (request) => Object.hasOwn(request.cookies, sourceKey) ? request.cookies[sourceKey] : undefined;
     case 'body':
-      return (request) => (request.body as Record<string, unknown> | undefined)?.[sourceKey];
+      return (request) => request.body !== undefined && request.body !== null && Object.hasOwn(request.body, sourceKey)
+        ? (request.body as Record<string, unknown>)[sourceKey]
+        : undefined;
     case 'files':
       return (request) =>
         request.files?.filter((file) => file.fieldname === sourceKey).map(toPortableRequestFile);

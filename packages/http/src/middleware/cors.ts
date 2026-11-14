@@ -40,7 +40,7 @@ function setHeaderIfValue(
 }
 
 /**
- * Create cors middleware.
+ * Creates CORS middleware with Origin variance for array and function policies.
  *
  * @param options The options.
  * @returns The create cors middleware result.
@@ -85,7 +85,11 @@ export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
         options.maxAge !== undefined ? String(options.maxAge) : undefined,
       );
 
-      if (origin && origin !== '*') {
+      if (
+        Array.isArray(options.allowOrigin) ||
+        typeof options.allowOrigin === 'function' ||
+        (origin && origin !== '*')
+      ) {
         appendVaryHeader(context.response, 'Origin');
       }
 
