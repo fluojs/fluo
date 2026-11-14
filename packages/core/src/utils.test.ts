@@ -255,6 +255,110 @@ describe('fallbackClone', () => {
     cloned.bytes[0] = 9
     expect(source[0]).toBe(1)
   })
+
+  it('copies typed array subclass own fields, symbol keys, and circular references', () => {
+    const marker = Symbol('marker')
+
+    class Bytes extends Uint8Array {
+      meta = { id: 1 }
+      self?: Bytes
+      [marker]?: { enabled: boolean }
+
+      get id() {
+        return this.meta.id
+      }
+    }
+
+    const source = new Bytes([1, 2])
+    source.meta.id = 7
+    source.self = source
+    source[marker] = { enabled: true }
+    const cloned = fallbackClone({ bytes: source, again: source })
+
+    expect(cloned.bytes).not.toBe(source)
+    expect(cloned.bytes).toBeInstanceOf(Bytes)
+    expect(cloned.bytes.id).toBe(7)
+    expect(cloned.bytes.meta).not.toBe(source.meta)
+    expect(cloned.bytes.self).toBe(cloned.bytes)
+    expect(cloned.again).toBe(cloned.bytes)
+    expect(cloned.bytes[marker]).toEqual({ enabled: true })
+    expect(cloned.bytes[marker]).not.toBe(source[marker])
+    expect(Array.from(cloned.bytes)).toEqual([1, 2])
+    expect(Object.keys(cloned.bytes)).toEqual(Object.keys(source))
+  })
+
+  it('copies Buffer own properties', () => {
+    const marker = Symbol('marker')
+    const source = Object.assign(Buffer.from('ab'), { label: { name: 'payload' }, [marker]: 1 })
+    const cloned = fallbackClone(source)
+
+    expect(Buffer.isBuffer(cloned)).toBe(true)
+    expect(cloned.toString()).toBe('ab')
+    expect(cloned.label).toEqual({ name: 'payload' })
+    expect(cloned.label).not.toBe(source.label)
+    expect(cloned[marker]).toBe(1)
+  })
+
+  it('keeps DataView and ArrayBuffer subclasses and own properties without calling their constructors', () => {
+    let constructed = 0
+
+    class TrackedBuffer extends ArrayBuffer {
+      label = 'buffer'
+
+      constructor(length: number) {
+        super(length)
+        constructed += 1
+      }
+    }
+
+    // TypeScript's generic DataView constructor signature cannot be extended directly (TS2508).
+    const DataViewBase: new (buffer: ArrayBuffer) => DataView = DataView
+
+    class TrackedView extends DataViewBase {
+      label = 'view'
+
+      constructor(buffer: ArrayBuffer) {
+        super(buffer)
+        constructed += 1
+      }
+
+      first() {
+        return this.getUint8(0)
+      }
+    }
+
+    const buffer = new TrackedBuffer(4)
+    const view = new TrackedView(buffer)
+    view.setUint8(0, 5)
+    const bytes = new Uint8Array(buffer, 1, 2)
+    bytes[0] = 6
+    constructed = 0
+    const cloned = fallbackClone({ buffer, view, bytes })
+
+    expect(constructed).toBe(0)
+    expect(cloned.buffer).toBeInstanceOf(TrackedBuffer)
+    expect(cloned.buffer).not.toBe(buffer)
+    expect(cloned.buffer.label).toBe('buffer')
+    expect(Array.from(new Uint8Array(cloned.buffer))).toEqual([5, 6, 0, 0])
+    expect(cloned.view).toBeInstanceOf(TrackedView)
+    expect(cloned.view.label).toBe('view')
+    expect(cloned.view.first()).toBe(5)
+    expect(cloned.view.buffer).not.toBe(buffer)
+    expect(Array.from(cloned.bytes)).toEqual([6, 0])
+    cloned.view.setUint8(0, 9)
+    expect(view.getUint8(0)).toBe(5)
+  })
+
+  it('copies DataView values created in another realm', () => {
+    const source = runInNewContext('const view = new DataView(new ArrayBuffer(2)); view.setUint8(1, 3); view') as DataView
+    const cloned = fallbackClone({ view: source })
+
+    expect(cloned.view).not.toBe(source)
+    expect(Object.getPrototypeOf(cloned.view)).toBe(Object.getPrototypeOf(source))
+    expect(cloned.view.getUint8(1)).toBe(3)
+    cloned.view.setUint8(1, 9)
+    expect(source.getUint8(1)).toBe(3)
+  })
 })
 
 describe('cloneWithFallback', () => {

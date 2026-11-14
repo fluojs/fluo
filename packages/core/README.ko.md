@@ -146,8 +146,9 @@ array item, Map key/value, Set entry를 포함한 모든 지원 중첩 위치에
 plain object는 `null`을 포함한 원래 prototype을 유지합니다.
 
 Date, RegExp (`lastIndex` 포함), Map, Set, ArrayBuffer, typed array, DataView는
-내용을 복사하고 원본과 분리합니다. Node `Buffer`를 포함한 typed array subclass는
-prototype을 유지하며 subclass constructor를 호출하지 않고 복사하므로 `Buffer` 복제 시
+내용을 복사하고 원본과 분리합니다. Node `Buffer`를 포함한 ArrayBuffer, typed array, DataView
+subclass는 prototype과 own string/symbol property(circular reference 포함)를 유지하며
+subclass constructor를 호출하지 않고 복사하므로 `Buffer` 복제 시
 `DEP0005` deprecation warning이 발생하지 않습니다. Class 또는 상위 class가 ECMAScript
 private member(`#field`, `#method()`, decorator가 붙은 `accessor`)를 선언한 instance는
 분리된 복사본 대신 reference로 반환합니다. Private state는 복사할 수 없으며, 복사본은
@@ -158,7 +159,7 @@ chain에 있는 method나 accessor의 source 어느 위치든(문자열, 정규�
 identifier 시작 문자가 오면 private member를 선언한 class로 간주합니다. Prototype chain의
 `constructor`가 없거나, 가려졌거나(예: `['constructor']() {}` method), 해당 prototype과 맞지 않는
 instance도 class를 식별할 수 없으므로 reference로 반환합니다. 다른 realm(예: `node:vm`)에서
-생성한 typed array도 복사하며 원래 prototype을 유지합니다. 알려진 한계로, source에 그런 text만 포함된 class(예: `pattern = /#tag/`
+생성한 typed array와 DataView도 복사하며 원래 prototype을 유지합니다. 알려진 한계로, source에 그런 text만 포함된 class(예: `pattern = /#tag/`
 field나 `'#id'` 문자열)도 복사하지 않고 reference로 반환합니다. Primitive는 그대로 반환하며
 function은 reference로 반환합니다. 이 계약은 process 내부 복제에 해당하며 wire
 serialization 형식이 아닙니다.

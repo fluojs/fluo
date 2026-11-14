@@ -148,9 +148,10 @@ methods and getters remain available. Own string/symbol properties and circular 
 on plain objects and custom instances; plain objects retain their original prototype, including `null`.
 
 Date, RegExp (including `lastIndex`), Map, Set, ArrayBuffer, typed array, and DataView values are
-copied with detached contents. Typed array subclasses, including Node `Buffer`, keep their prototype
-and are copied without calling the subclass constructor, so cloning a `Buffer` does not emit the
-`DEP0005` deprecation warning. Instances whose class or an ancestor class declares ECMAScript
+copied with detached contents. ArrayBuffer, typed array, and DataView subclasses, including Node
+`Buffer`, keep their prototype and own string/symbol properties (with circular references
+preserved) and are copied without calling the subclass constructor, so cloning a `Buffer` does not
+emit the `DEP0005` deprecation warning. Instances whose class or an ancestor class declares ECMAScript
 private members (`#field`, `#method()`, or a decorated `accessor`) are returned by reference instead
 of as a detached copy, because private state cannot be copied and a copy would throw a `TypeError`
 when that state is read later. This rule takes precedence over the shape-specific copies above, so
@@ -160,7 +161,7 @@ when its source text, or the source of any method or accessor on its prototype c
 followed by an identifier-start character anywhere, including inside strings, regular expressions,
 or comments. An instance whose prototype chain has a missing, shadowed (for example a
 `['constructor']() {}` method), or non-matching `constructor` is also returned by reference because
-its class cannot be identified. Typed arrays created in another realm (for example through
+its class cannot be identified. Typed arrays and DataViews created in another realm (for example through
 `node:vm`) are copied as well and keep their original prototype. As a known limitation, a class whose source merely
 contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is also returned
 by reference instead of copied. Primitives are unchanged and functions are returned by reference.

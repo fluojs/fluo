@@ -12,28 +12,87 @@ function cloneIntoDescriptorValue(
   };
 }
 
-// The intrinsic %TypedArray%.prototype[Symbol.toStringTag] getter reads the [[TypedArrayName]] slot,
-// so it names the element type for typed arrays from any realm and ignores subclass overrides.
-const typedArrayNameGetter = Object.getOwnPropertyDescriptor(
-  Object.getPrototypeOf(Uint8Array.prototype) as object,
-  Symbol.toStringTag,
-)?.get as (this: ArrayBufferView) => string;
+// Intrinsic getters read internal slots, so they work for views and buffers from any realm and ignore
+// subclass overrides. %TypedArray%.prototype[Symbol.toStringTag] names the element type of a typed
+// array and returns `undefined` for a DataView.
+function intrinsicGetter<T>(prototype: object, key: PropertyKey): (this: unknown) => T {
+  return Object.getOwnPropertyDescriptor(prototype, key)?.get as (this: unknown) => T;
+}
+
+const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype) as object;
+const typedArrayNameGetter = intrinsicGetter<string | undefined>(typedArrayPrototype, Symbol.toStringTag);
+const typedArrayBufferGetter = intrinsicGetter<ArrayBufferLike>(typedArrayPrototype, 'buffer');
+const typedArrayByteOffsetGetter = intrinsicGetter<number>(typedArrayPrototype, 'byteOffset');
+const typedArrayByteLengthGetter = intrinsicGetter<number>(typedArrayPrototype, 'byteLength');
+const typedArrayLengthGetter = intrinsicGetter<number>(typedArrayPrototype, 'length');
+const dataViewBufferGetter = intrinsicGetter<ArrayBufferLike>(DataView.prototype, 'buffer');
+const dataViewByteOffsetGetter = intrinsicGetter<number>(DataView.prototype, 'byteOffset');
+const dataViewByteLengthGetter = intrinsicGetter<number>(DataView.prototype, 'byteLength');
+const arrayBufferByteLengthGetter = intrinsicGetter<number>(ArrayBuffer.prototype, 'byteLength');
+const arrayIndexPattern = /^(?:0|[1-9]\d*)$/;
 const privateMemberDeclarations = new WeakMap<object, boolean>();
 
-function cloneTypedArray(value: ArrayBufferView): ArrayBufferView {
-  const prototype = Object.getPrototypeOf(value) as object;
-  // Select the current realm's intrinsic by name instead of prototype identity so typed arrays from
-  // another realm are copied too, and subclass constructors such as Node's deprecated
-  // `new Buffer(buffer)` path are never invoked.
-  const Intrinsic = (globalThis as unknown as Record<string, new (buffer: ArrayBuffer) => ArrayBufferView>)[
-    typedArrayNameGetter.call(value)
-  ];
-  const cloned = new Intrinsic(
-    (value.buffer as ArrayBuffer).slice(value.byteOffset, value.byteOffset + value.byteLength),
-  );
+// Copies bytes into a fresh intrinsic ArrayBuffer instead of `slice()`, whose species lookup would
+// invoke an ArrayBuffer subclass constructor.
+function copyBytes(buffer: ArrayBufferLike, byteOffset: number, byteLength: number): ArrayBuffer {
+  const copy = new ArrayBuffer(byteLength);
+  new Uint8Array(copy).set(new Uint8Array(buffer, byteOffset, byteLength));
+  return copy;
+}
 
-  if (prototype !== Intrinsic.prototype) {
+// Copies typed arrays (including Node `Buffer`), DataViews, and ArrayBuffers through the current
+// realm's intrinsics, so subclass constructors such as Node's deprecated `new Buffer(buffer)` path are
+// never invoked and values from another realm are copied too. The original prototype is restored and
+// own string/symbol properties are copied like any custom instance, sharing `seen` for circular state.
+function cloneBinaryValue(value: ArrayBufferView | ArrayBuffer, seen: WeakMap<object, unknown>): object {
+  let cloned: object;
+  let indexedLength = 0;
+
+  if (!ArrayBuffer.isView(value)) {
+    cloned = copyBytes(value, 0, arrayBufferByteLengthGetter.call(value));
+  } else {
+    const name = typedArrayNameGetter.call(value);
+
+    if (name === undefined) {
+      cloned = new DataView(
+        copyBytes(
+          dataViewBufferGetter.call(value),
+          dataViewByteOffsetGetter.call(value),
+          dataViewByteLengthGetter.call(value),
+        ),
+      );
+    } else {
+      const Intrinsic = (globalThis as unknown as Record<string, new (buffer: ArrayBuffer) => ArrayBufferView>)[name];
+      cloned = new Intrinsic(
+        copyBytes(
+          typedArrayBufferGetter.call(value),
+          typedArrayByteOffsetGetter.call(value),
+          typedArrayByteLengthGetter.call(value),
+        ),
+      );
+      indexedLength = typedArrayLengthGetter.call(value);
+    }
+  }
+
+  const prototype = Object.getPrototypeOf(value) as object | null;
+
+  if (Object.getPrototypeOf(cloned) !== prototype) {
     Object.setPrototypeOf(cloned, prototype);
+  }
+
+  seen.set(value, cloned);
+
+  for (const key of Reflect.ownKeys(value)) {
+    // Element indices are already copied with the bytes and cannot be redefined as own properties.
+    if (typeof key === 'string' && arrayIndexPattern.test(key) && Number(key) < indexedLength) {
+      continue;
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+    if (descriptor) {
+      Object.defineProperty(cloned, key, cloneIntoDescriptorValue(descriptor, seen));
+    }
   }
 
   return cloned;
@@ -172,22 +231,8 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
     return cloned as T;
   }
 
-  if (value instanceof DataView) {
-    const cloned = new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
-    seen.set(value, cloned);
-    return cloned as T;
-  }
-
-  if (ArrayBuffer.isView(value)) {
-    const cloned = cloneTypedArray(value);
-    seen.set(value, cloned);
-    return cloned as T;
-  }
-
-  if (value instanceof ArrayBuffer) {
-    const cloned = value.slice(0);
-    seen.set(value, cloned);
-    return cloned as T;
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+    return cloneBinaryValue(value, seen) as T;
   }
 
   const prototype = Object.getPrototypeOf(value) as object | null;
@@ -232,9 +277,9 @@ export function cloneWithFallback<T>(value: T): T {
  *
  * Supported fallback shapes include arrays, dates, regular expressions, maps, sets, typed arrays,
  * array buffers, plain objects, and custom prototype-based instances with symbol-keyed properties
- * and circular references preserved. Typed arrays, including Node `Buffer` and other typed array
- * subclasses, keep their prototype and receive detached contents without invoking the subclass
- * constructor. Functions are returned by reference. Instances whose class or ancestor class declares
+ * and circular references preserved. ArrayBuffers, typed arrays, and DataViews, including Node
+ * `Buffer` and other subclasses, keep their prototype and own string/symbol properties and receive
+ * detached contents without invoking the subclass constructor. Functions are returned by reference. Instances whose class or ancestor class declares
  * ECMAScript private members (`#field` or `#method()`) are returned by reference instead of as a
  * detached copy that would fail later when private state is read; this takes precedence over every
  * shape-specific copy, including typed array subclasses. Detection is conservative and never misses
@@ -244,8 +289,8 @@ export function cloneWithFallback<T>(value: T): T {
  * An instance whose prototype chain has a missing, shadowed, or non-matching `constructor` is also
  * returned by reference because its class cannot be identified. As a known limitation, a class whose
  * source merely contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is
- * returned by reference instead of copied. Typed arrays created in another realm are copied as
- * well and keep their original prototype.
+ * returned by reference instead of copied. Typed arrays and DataViews created in another realm are
+ * copied as well and keep their original prototype.
  *
  * @param value Value to clone through the fallback path.
  * @returns A deep clone for supported runtime shapes, or the original value for primitives/functions.
