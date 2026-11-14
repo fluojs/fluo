@@ -539,6 +539,30 @@ export class HttpAdapterPortabilityHarness<
         context.response.setStatus(403);
         return this.getLogo();
       }
+
+      @Produces('application/octet-stream')
+      @Get('/buffer')
+      bufferLogo() {
+        return createLogoArrayBuffer();
+      }
+
+      @Produces('application/octet-stream')
+      @HttpCode(403)
+      @Get('/buffer-denied')
+      deniedBufferLogo() {
+        return createLogoArrayBuffer();
+      }
+
+      @Get('/stream')
+      streamLogo() {
+        return createByteRangeResponse(() => createChunkedLogoStream(), { size: 6 });
+      }
+
+      @HttpCode(403)
+      @Get('/stream-denied')
+      deniedStreamLogo() {
+        return createByteRangeResponse(() => createChunkedLogoStream(), { size: 6 });
+      }
     }
 
     class AppModule {}
@@ -671,17 +695,24 @@ export class HttpAdapterPortabilityHarness<
           }
         }
       }
-      for (const path of ['logo', 'writer', 'denied', 'handler-status']) {
-        for (const range of ['bytes=0-999999999999999999999', 'bytes=-999999999999999999999', 'bytes=9-']) {
+      for (const path of ['logo', 'writer', 'buffer', 'stream', 'denied', 'handler-status', 'buffer-denied', 'stream-denied']) {
+        for (const range of ['bytes=2-4', 'bytes=0-999999999999999999999', 'bytes=-999999999999999999999', 'bytes=9-']) {
           const response = await fetch(`${baseUrl}/assets/${path}`, { headers: { range } });
-          const denied = path === 'denied' || path === 'handler-status';
+          const denied = path === 'denied' || path === 'handler-status' || path.endsWith('-denied');
           const unsatisfiable = !denied && range === 'bytes=9-';
-          const expectedRange = denied ? null : unsatisfiable ? 'bytes */6' : 'bytes 0-5/6';
+          const bounded = !denied && range === 'bytes=2-4';
+          const expectedBody = unsatisfiable
+            ? new Uint8Array()
+            : bounded ? Uint8Array.from([2, 3, 4]) : Uint8Array.from([0, 1, 2, 3, 4, 5]);
+          const expectedRange = denied
+            ? null
+            : unsatisfiable ? 'bytes */6' : bounded ? 'bytes 2-4/6' : 'bytes 0-5/6';
           const body = await response.bytes();
           if (response.status !== (denied ? 403 : unsatisfiable ? 416 : 206)
             || response.headers.get('content-range') !== expectedRange
-            || !equalByteArrays(body, unsatisfiable ? new Uint8Array() : Uint8Array.from([0, 1, 2, 3, 4, 5]))) {
-            throw new Error(`${this.options.name} adapter changed effective status or oversized range semantics.`);
+            || response.headers.get('content-length') !== String(expectedBody.byteLength)
+            || !equalByteArrays(body, expectedBody)) {
+            throw new Error(`${this.options.name} adapter changed effective status or range semantics for ${path} with ${range}.`);
           }
         }
       }
@@ -1284,6 +1315,27 @@ export class HttpAdapterPortabilityHarness<
       throw new Error(`${this.options.name} adapter leaked shutdown signal listeners after close().`);
     }
   }
+}
+
+function createLogoArrayBuffer(): ArrayBuffer {
+  const buffer = new ArrayBuffer(6);
+  new Uint8Array(buffer).set([0, 1, 2, 3, 4, 5]);
+  return buffer;
+}
+
+function createChunkedLogoStream(): ReadableStream<Uint8Array> {
+  const chunks = [Uint8Array.from([0, 1]), Uint8Array.from([2, 3, 4]), Uint8Array.from([5])];
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks.shift();
+      if (chunk === undefined) {
+        controller.close();
+        return;
+      }
+
+      controller.enqueue(chunk);
+    },
+  });
 }
 
 function equalByteArrays(left: Uint8Array, right: Uint8Array): boolean {
