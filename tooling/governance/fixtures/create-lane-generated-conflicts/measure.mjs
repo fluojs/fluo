@@ -38,7 +38,7 @@ const observed = (issue, head, merged = false) => {
       mergeable: issue === 42 ? 'CONFLICTING' : 'MERGEABLE', ciStatus: 'passing' } };
   const policy = evaluatePreflight(preflight, obs).policy;
   obs.review = buildReviewFact({ head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
-    reviews: policy.active_axes.map((reviewer) => ({ reviewer, reviewed_head_sha: head,
+    reviews: policy.active_axes.map((reviewer) => ({ reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head,
       preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [] })) }, head, policy);
   return obs;
 };
