@@ -221,11 +221,12 @@ describe('HEAD metadata and resource ownership', () => {
     calls: number;
   }>([
     { headers: {}, status: 200, length: '5', calls: 1 },
-    { headers: { range: 'bytes=1-3' }, status: 206, length: '3', calls: 1 },
-    { headers: { range: 'bytes=9-' }, status: 416, length: '0', calls: 1 },
+    // HEAD ignores Range: satisfiable and unsatisfiable ranges return full metadata.
+    { headers: { range: 'bytes=1-3' }, status: 200, length: '5', calls: 1 },
+    { headers: { range: 'bytes=9-' }, status: 200, length: '5', calls: 1 },
     { headers: { 'if-none-match': '"v1"' }, status: 304, length: null, calls: 0 },
     { headers: { 'if-match': '"other"' }, status: 412, length: null, calls: 0 },
-  ])('preserves conditional/range status $status without opening a stream', async ({ headers, status, length, calls }) => {
+  ])('preserves conditional status $status and full HEAD metadata without opening a stream', async ({ headers, status, length, calls }) => {
     // Given a representation with exact size and validators.
     let handlerCalls = 0;
     let opened = 0;
@@ -260,12 +261,11 @@ describe('HEAD metadata and resource ownership', () => {
       const response = await createNextAppRouterHandler(async () => adapter).HEAD(new Request('https://next.test/bytes', {
         method: 'HEAD', headers,
       }));
-      // Then conditional evaluation and range metadata remain HTTP-owned.
+      // Then conditional evaluation stays HTTP-owned while HEAD ignores Range.
       expect(response.status).toBe(status);
       expect(response.headers.get('etag')).toBe('"v1"');
       expect(response.headers.get('content-length')).toBe(length);
-      if (status === 206) expect(response.headers.get('content-range')).toBe('bytes 1-3/5');
-      if (status === 416) expect(response.headers.get('content-range')).toBe('bytes */5');
+      expect(response.headers.get('content-range')).toBe(null);
       expect(response.body).toBeNull();
       expect(handlerCalls).toBe(calls);
       expect(resolutions).toBe(1);

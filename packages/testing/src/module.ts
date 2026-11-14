@@ -429,7 +429,38 @@ function resolveSyncProvider(provider: NormalizedProvider, state: SyncResolverSt
   return instance;
 }
 
+function resolveSyncMultiAliasTarget(token: Token, state: SyncResolverState): unknown {
+  let target = normalizeFrameworkServiceToken(token);
+  const visited = new Set<Token>();
+
+  // Follow intermediate single aliases so the final target's lifetime is preserved.
+  while (collectMultiProviders(state.introspection, target).length === 0) {
+    const provider = lookupProvider(state.introspection, target);
+
+    if (provider?.type !== 'existing' || provider.useExisting === undefined) {
+      break;
+    }
+
+    if (visited.has(target)) {
+      throw new Error(`Circular dependency detected while resolving token ${String(target)} via get().`);
+    }
+
+    visited.add(target);
+    target = normalizeFrameworkServiceToken(provider.useExisting);
+  }
+
+  return resolveSyncToken(target, state);
+}
+
 function resolveSyncMultiProvider(provider: NormalizedProvider, state: SyncResolverState): unknown {
+  if (provider.type === 'existing') {
+    if (provider.useExisting === undefined) {
+      throw new Error('Existing provider is missing useExisting token.');
+    }
+
+    return resolveSyncMultiAliasTarget(provider.useExisting, state);
+  }
+
   if (provider.scope === 'request' && !state.introspection.requestScopeEnabled) {
     throw new Error(`Request-scoped provider ${String(provider.provide)} cannot be resolved outside request scope.`);
   }

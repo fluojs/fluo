@@ -239,6 +239,10 @@ export interface MicroserviceRuntime {
    * attempts are rejected while a racing listen() is still settling. The
    * owning shell caches its terminal close result before invoking this callback,
    * and the terminal gate must stay closed even if close() later rejects.
+   * The callback runs with the runtime receiver. A synchronous throw does not
+   * skip active-listen settlement, transport close, or owned-context close.
+   * Its failure is retained before transport and context failures in the cached
+   * close result; multiple failures are reported together as AggregateError.
    */
   markShutdownStarted?(): void;
   /** Send a request/response message for the given transport pattern. */
