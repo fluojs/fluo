@@ -29,25 +29,26 @@ export function isMiddlewareRouteConfig(
 }
 
 /**
- * Normalize route pattern.
+ * Normalize duplicate and trailing slashes while preserving middleware wildcard prefixes.
  *
  * @param path The path.
- * @returns The normalize route pattern result.
+ * @returns The canonical pattern, with root wildcards represented as `/*`.
  */
 export function normalizeRoutePattern(path: string): string {
   if (path.endsWith('/*')) {
-    return `${normalizeRoutePattern(path.slice(0, -2))}/*`;
+    const prefix = normalizeRoutePattern(path.slice(0, -2));
+    return prefix === '/' ? '/*' : `${prefix}/*`;
   }
 
   return normalizeRoutePath(path);
 }
 
 /**
- * Match route pattern.
+ * Match normalized exact paths or middleware wildcard prefixes at segment boundaries.
  *
  * @param pattern The pattern.
  * @param path The path.
- * @returns The match route pattern result.
+ * @returns Whether the path matches; the root wildcard `/*` matches every normalized path.
  */
 export function matchRoutePattern(pattern: string, path: string): boolean {
   const normalizedPath = normalizeRoutePattern(path);
