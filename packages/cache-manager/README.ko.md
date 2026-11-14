@@ -22,9 +22,12 @@
   - [비동기 설정](#비동기-설정)
   - [수동 모듈 조합](#수동-모듈-조합)
   - [NestJS 캐시 마이그레이션](#nestjs-캐시-마이그레이션)
+  - [메모리 저장소 운영 한계](#메모리-저장소-운영-한계)
+  - [지연 삭제 시점](#지연-삭제-시점)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
+- [호환되는 서비스 사본](#호환되는-서비스-사본)
 
 ## 설치
 
@@ -60,6 +63,8 @@ npm install @fluojs/cache-manager @fluojs/redis ioredis
 `CacheModule`을 등록하고 컨트롤러에 `CacheInterceptor`를 사용합니다.
 
 내장 메모리 경로는 기본적으로 안전한 상한을 갖습니다. `ttl`을 생략하면 fluo는 기본 TTL 300초를 적용하고, 메모리 저장소의 live 엔트리가 1,000개를 넘으면 가장 오래된 키부터 제거합니다.
+
+`store` 옵션은 `'memory'`, `'redis'` 또는 custom `CacheStore` 객체를 받습니다. `store`를 생략하거나 `undefined`로 설정하면 기본 메모리 저장소를 유지합니다. `CacheModule.forRoot(...)`는 등록 중 store를 동기적으로 검증합니다. `'mongo'`처럼 지원하지 않는 문자열은 조용히 메모리로 fallback하지 않고 지원하는 내장 저장소 이름을 안내하는 구성 오류를 던집니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -350,6 +355,8 @@ Redis cache prefix를 cache가 아닌 데이터와 공유하지 마세요. `del(
 
 `CacheStore` 계약을 구현한 custom store는 `store` 옵션에 직접 전달할 수 있습니다. in-process LRU store, Redis 외 원격 캐시, 또는 cache operation을 관찰해야 하는 테스트 더블에 적합합니다.
 
+검증은 `get`, `set`, `del`, `reset`이 호출 가능한지 확인하고, 누락되거나 함수가 아닌 메서드 이름을 구성 오류에 표시합니다. Store 작업을 직접 호출하지 않으며 일반 객체와 prototype 메서드를 가진 class instance를 모두 허용합니다. `close`, `dispose`, `atomicUpdate` capability는 계속 선택적이며 등록 시 검증하지 않습니다.
+
 ### 캐시 작업 관찰
 
 플랫폼 status helper는 캐시 가용성만 보고합니다. hit rate, latency, error outcome을 측정하려면 `CacheModule.forRoot(...)`에 opt-in `observer`를 전달하세요. 이 observer는 `@fluojs/metrics`와 독립적이므로, 애플리케이션이 이미 사용하는 metrics backend에 자유롭게 연결할 수 있습니다.
@@ -429,6 +436,8 @@ CacheModule.forRootAsync({
 
 비동기 경로도 `forRoot(...)`와 동일한 store 선택을 지원합니다. `'memory'`, DI로 해석하거나 직접 전달한 client를 사용하는 `'redis'`, 그리고 모든 custom `CacheStore` instance를 사용할 수 있습니다.
 
+`useFactory`가 옵션을 직접 반환하든 Promise로 반환하든, factory 결과가 resolve될 때 동일한 store 검증을 수행합니다. 잘못된 store 설정은 해당 store를 사용하는 cache service가 사용 가능해지기 전에 옵션 해석/bootstrap을 실패시킵니다. `forRootAsync(...)` 등록 호출은 factory를 실행하지 않으므로 아직 반환되지 않은 store 값을 동기적으로 거부할 수 없습니다.
+
 ### 수동 모듈 조합
 
 일반적인 애플리케이션 설정과 커스텀 `defineModule(...)` 조합에서는 `CacheModule.forRoot(...)`를 사용합니다.
@@ -454,10 +463,14 @@ defineModule(ManualCacheModule, {
 | 설치된 underlying `cache-manager` generation이 millisecond를 사용하는 경우의 `ttl` | 초 단위 `ttl` | 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 generation이 TTL을 millisecond로 정의할 때에만 1000으로 나눕니다. `ttl`을 생략하면 memory 경로는 `300`초를, `redis` 및 custom-store 경로는 `0`을 적용합니다. |
 | `ttl: 0` | `ttl: 0` | "캐싱하지 않음"이 아니라 만료 없음을 뜻합니다. 음수이거나 유한하지 않은 값은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고 `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뜁니다. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | 정적 숫자 하나만 받습니다. 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮기세요. |
+| `@CacheTTL(...)` / `@CacheKey(...)` 배치 | Method 전용 `@CacheTTL(...)` / `@CacheKey(...)` | 두 fluo decorator는 method에만 적용할 수 있습니다. Controller 전체에 같은 TTL이 필요하면 대상 method마다 `@CacheTTL(...)`을 반복하거나 module `ttl`을 설정하세요. Module `ttl`은 해당 cache module의 기본값이며 controller 수준 metadata 지원을 추가하지 않습니다. |
 | 암묵적 query 민감 key | `httpKeyStrategy` | 기본값은 query-aware `'route+query'`입니다. query parameter가 응답에 영향을 주지 않을 때만 `'route'`를 선택하고, 명시적 custom key에는 function strategy 또는 `@CacheKey(...)`를 사용하세요. |
 | `isGlobal: true` | `global: true` | NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로, 명시적으로 opt-in하거나 cache provider를 resolve하는 모든 module에 import하지 않으면 두 cache module 모두 module-local로 유지됩니다. |
+| NestJS `stores` 배열 / Keyv instance | 직접 대응하는 설정 없음; `CacheModule` 등록마다 하나의 `store` 선택 | 다계층 또는 fallback caching은 기존 계약을 구현하는 애플리케이션 소유 custom `CacheStore` 안에서 구성하세요. `stores` 배열이나 변환하지 않은 Keyv instance를 직접 전달할 수 없습니다. |
 | `cache-manager-redis-store` 같은 NestJS store adapter | `store: 'redis'` 또는 `CacheStore` 객체 | NestJS adapter는 `CacheStore` 계약을 만족하지 않습니다. 내장 Redis 경로를 쓰거나 callback/options 완료를 Promise로 변환하고, `ttlSeconds`를 legacy TTL 초 단위로 매핑하며, `reset()`이 cache namespace만 비우도록 adapter를 감싸세요. `reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다. |
 | adapter가 소유하던 client teardown | store의 `close()` / `dispose()` | 애플리케이션 shutdown은 이 optional hook에만 teardown을 전달합니다. `redis.client`로 전달한 raw client는 애플리케이션 소유로 남아 애플리케이션 lifecycle에서 닫아야 합니다. |
+| `fluo migrate`를 통한 cache 코드 변환 | 이 표를 따른 수동 마이그레이션 | `fluo migrate`는 `@nestjs/cache-manager` 코드를 재작성하지 않습니다. CLI가 `No manual follow-ups detected`를 출력해도 cache import, 설정, decorator는 이 표에 따라 수동으로 옮겨야 합니다. |
+| WebSocket subscriber / microservice handler의 자동 caching | Standalone `CacheService` 명시 호출 | `CacheInterceptor`와 cache decorator의 자동 동작은 HTTP pipeline 전용입니다. HTTP GET은 read-through caching, non-GET은 `@CacheEvict(...)`를 통한 eviction 대상입니다. WebSocket subscriber와 microservice handler에서는 자동 interception 없이 `CacheService`를 직접 호출해야 합니다. |
 
 ```typescript
 CacheModule.forRoot({
