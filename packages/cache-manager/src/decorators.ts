@@ -21,8 +21,11 @@ function getRouteRecord(metadata: unknown, name: string | symbol): StandardMetad
   const bag = getMetadataBag(metadata);
   let routeMap = bag[cacheRouteMetadataKey] as Map<string | symbol, StandardMetadataBag> | undefined;
 
-  if (!routeMap) {
-    routeMap = new Map<string | symbol, StandardMetadataBag>();
+  if (!routeMap || !Object.hasOwn(bag, cacheRouteMetadataKey)) {
+    // Detach every inherited record before later decorators write other methods.
+    routeMap = new Map(
+      Array.from(routeMap ?? [], ([methodName, record]) => [methodName, { ...record }]),
+    );
     bag[cacheRouteMetadataKey] = routeMap;
   }
 

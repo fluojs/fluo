@@ -193,10 +193,11 @@ describe('static asset real-listener portability', () => {
       expect(notModified.status).toBe(304);
       expect(compressedHead.headers.get('content-encoding')).toBe('br');
       expect(compressedHead.headers.get('vary')).toContain('Accept-Encoding');
-      expect(compressedRange.status).toBe(206);
+      expect(compressedRange.status).toBe(200);
       expect(compressedRange.headers.get('content-encoding')).toBe('br');
-      expect(compressedRange.headers.get('content-range')).toBe('bytes 1-2/4');
-      expect(compressedRange.headers.get('content-length')).toBe('2');
+      expect(compressedRange.headers.get('content-range')).toBeNull();
+      expect(compressedRange.headers.get('content-length')).toBe('4');
+      expect(await compressedRange.text()).toBe('');
       expect(malformedRange.status).toBe(200);
       await expect(malformedRange.bytes()).resolves.toEqual(Uint8Array.from({ length: 64 }, (_, index) => index));
       expect(unacceptable.status).toBe(406);
