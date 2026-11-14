@@ -287,6 +287,17 @@ canonical `406 Not Acceptable` response를 반환합니다. 성공한 모든 for
 `Optional`로 누락을 허용하지 않으면 `FromBody`는 계속 `MISSING_FIELD`를
 보고합니다. Field initializer는 필수 transport field를 대신하지 않습니다.
 
+클래스 DTO binding은 alias와 null prototype 객체를 포함하여 body, query,
+path, cookie source의 own property만 읽습니다. `toString`, `constructor`,
+`__proto__`, `hasOwnProperty` 같은 상속된 값은 전달된 입력으로 취급하지
+않습니다. 값이 없거나 상속된 값 또는 명시적인 `undefined`이면 필수 field는
+HTTP 400 / `MISSING_FIELD`를 반환하며 오류 detail에 logical DTO field와
+source를 포함합니다. `Optional`이면 해당 값의 할당을 생략하고 constructor로
+초기화한 field를 유지합니다. 명시적인 `null`을 포함한 실제 own 값은 global
+converter, field converter 순서로 전달하며 생략한 값은 converter에 전달하지
+않습니다. 기존 body key guard는 계속 적용합니다. Header binding은
+case-insensitive header 조회를 유지합니다.
+
 ```ts
 import {
   Controller, FromBody, InputPolicy, Post, RequestDto,
