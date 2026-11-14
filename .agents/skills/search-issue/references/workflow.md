@@ -97,6 +97,39 @@ The ledger states are `intake`, `running`, `triage`, `registering`,
 `published`, `completed`, and `blocked`. Each invocation transitions from
 `expected` to `started` to `completed`, `failed`, or `blocked`.
 
+### Executable ledger commands
+
+Every real transition uses `node .agents/skills/search-issue/scripts/run.mjs`.
+Pass `--root <repository-root> --out <run-directory>` to every command.
+The run directory must be inside that root; it contains `ledger.json`.
+Commands acquire an exclusive run lock and save validated transitions atomically.
+Concurrent writers fail rather than racing registration.
+
+Initialize with `init --input <intake.json>`:
+
+```json
+{
+  "run_id": "search-example",
+  "repository": "fluojs/fluo",
+  "authority": {
+    "explicit_harness_invocation": true,
+    "investigation_only": false
+  },
+  "intake": {
+    "scope_mode": "package",
+    "packages": ["runtime"],
+    "purposes": ["tests-edge"]
+  }
+}
+```
+
+This accepts resolved intake without scenario, reviewer results, or fake issue
+numbers. The synthetic runner remains gated by `--fixture-only`.
+Both paths use `createLedger`, native invocation transitions, `createDrafts`,
+`assertLedger`, and `registerLedger`; both persist the same ledger schema.
+The ledger binds its immutable intake, authority, repository and run identity.
+Invalid stored state blocks every command before the next stage or GitHub access.
+
 ## Native reviewer waves
 
 Build the reviewer set by taking the ordered union of selected purpose routes
@@ -119,6 +152,14 @@ results block finding intake.
 If the native `task` tool or background batch mode is unavailable, mark the run
 `blocked` and stop. Never delete, skip, complete, or synthesize an invocation
 without its returned native task ID and terminal typed envelope.
+
+After each native background dispatch, record
+`start --invocation <package:.../reviewer:...> --task-id <native-task-id>`.
+Collect its terminal envelope with `collect --input <result.json>`.
+Envelopes must match `reviewer-contract.schema.json` and the exact started
+invocation. Duplicate, malformed, wrong-package, wrong-reviewer and wrong-type
+results fail closed. `drafts` advances only after every invocation completed.
+These commands record native task evidence and preserve the background wave rules.
 
 ## Finding intake and drafts
 
@@ -145,6 +186,13 @@ of those labels. Do not label every package merely because it was audited.
 The group keys, `package_area`, and allowed `area:*` labels must agree;
 every catalog package must have an allowed `pkg:*` label.
 
+Draft construction deduplicates by package, evidence, problem theme, contract
+impact, and affected surfaces. It keeps R&D records separate and includes only
+briefs with `issue_eligibility: register` in drafts. IDs follow immutable package
+order and are reproducible on resume. Priority is the highest severity among
+all included findings, regardless of reviewer record order. The executable
+path keeps drafts package-local; it does not infer cross-package bundles.
+
 ## Registration triage
 
 After all drafts are stable, run exactly one native task using
@@ -162,13 +210,30 @@ The triage task is read-only. The lead alone owns registration:
 - confirm those labels exist in the repository before `gh issue create`;
   missing labels block registration, never create an unlabeled substitute
 - never publicly register security-sensitive or support-only drafts
-- execute `gh issue create` once per approved draft and record the exact
-  issue number and URL in the ledger
+- execute `register` after `triage --input <decisions.json>` stores exactly
+  one decision per stable draft
+- use the shared registration path to record each exact issue number and URL
 - stop on the first failed or malformed creation receipt
+
+`decisions.json` is the triage reviewer's array of records, each containing
+`draft_id`, `decision`, `reason`, `labels`, `duplicate_of`, `safety_route`,
+and `confidence`. Registering decisions retain highest priority, ownership,
+issue classification, and `source:package-audit` labels. A security label or
+security/support route blocks public registration.
+
+Registration reuses valid local receipts without creating anything. For drafts
+without receipts it checks repository labels and looks up the exact durable
+body marker bound to repository, run and stable draft. A single matching remote
+issue recovers its number and URL; no match permits creation. Failed, truncated
+or ambiguous lookup and malformed receipts block creation with a saved reason.
+Each receipt is saved before the next draft. A crash after GitHub succeeds but
+before the save is reconciled on resume. All confirmed run receipts, including
+recovered and previously saved ones, drive publication and registered counts.
 
 ## Publication and handoff
 
-When at least one issue is created, call:
+After registration, use `run.mjs publish` with the same root and run directory.
+When at least one confirmed receipt exists, this calls the existing publisher:
 
 ```text
 node .agents/skills/search-issue/scripts/publish-search-artifact.mjs \
@@ -199,6 +264,19 @@ or retain an active `.opencode` handoff.
 
 When zero issues are created, create no search artifact and report
 `search_run_id: none`.
+
+Resume reuses an existing identical v2 artifact and never overwrites it.
+A different artifact or a symlink blocks completion. The independently exported
+`publishSearchArtifact` helper retains its exclusive-publication behavior.
+
+### Interruption and recovery
+
+Use `block --reason <nonempty-reason>` to persist an explicit interruption.
+`resume` selects the last available stage from preserved results, drafts,
+triage and receipts. It never changes an invocation from `expected` or `started`
+to `completed`. Correct missing or malformed native results through collection
+after resume; terminal blocked results remain terminal evidence. Resolve named
+blockers before resuming. An invalid ledger is left untouched.
 
 ## Final report
 

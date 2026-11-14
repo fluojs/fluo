@@ -2,6 +2,7 @@ import { linkSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { searchArtifactDigest } from '../../../workflow-contracts/contracts.mjs';
+import { assertLedger } from './ledger-contract.mjs';
 
 const safeRunId = /^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9+._-]*$/u;
 
@@ -39,7 +40,9 @@ export const publishRun = ({ ghCalls, ledger, outputDirectory, runId }) => {
     throw new TypeError('run_id must be a safe artifact basename.');
   }
 
-  const selectedIssues = ghCalls.map(({ issue_number: issueNumber }) => issueNumber);
+  assertLedger(ledger);
+  const selectedIssues = ledger.registration_results
+    .map(({ issue_number: issueNumber }) => issueNumber).filter((number) => number !== null);
   const artifactPath =
     selectedIssues.length === 0
       ? null
@@ -55,6 +58,7 @@ export const publishRun = ({ ghCalls, ledger, outputDirectory, runId }) => {
             command: `$create-lane ${artifactPath}`,
           },
   };
+  assertLedger(completedLedger);
 
   publishJsonExclusive(resolve(outputDirectory, 'ledger.json'), completedLedger);
   publishJsonExclusive(resolve(outputDirectory, 'gh-calls.json'), ghCalls);
