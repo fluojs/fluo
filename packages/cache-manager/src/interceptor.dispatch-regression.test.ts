@@ -6,11 +6,20 @@ import { CacheEvict } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
 import { CacheModule } from './module.js';
 import { CacheService } from './service.js';
+import type { CacheEvictDecoratorValue } from './types.js';
 
 type SimpleJsonDispatchResponse = FrameworkResponse & {
   body?: unknown;
   sendSimpleJson(body: Record<string, unknown> | unknown[]): void;
 };
+
+function createDeferredSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
 
 function createRequest(path: string): FrameworkRequest {
   return {
@@ -60,6 +69,77 @@ describe('CacheInterceptor response dispatch regressions', () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
+
+  it.each([
+    { name: 'literal', target: '' },
+    { name: 'array', target: [''] },
+    { name: 'synchronous resolver', target: () => '' },
+    { name: 'asynchronous resolver', target: async () => '' },
+    { name: 'synchronous array resolver', target: () => [''] },
+    { name: 'asynchronous array resolver', target: async () => [''] },
+  ] satisfies { name: string; target: CacheEvictDecoratorValue }[])(
+    'evicts the empty $name key only after pending sendSimpleJson dispatch commits',
+    async ({ target }) => {
+      const evicted = createDeferredSignal();
+      const writeStarted = createDeferredSignal();
+      const commit = createDeferredSignal();
+      @Controller('/products')
+      @UseInterceptors(CacheInterceptor)
+      class ProductController {
+        @Post('/refresh')
+        @CacheEvict(target)
+        refresh() {
+          return { refreshed: true };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        controllers: [ProductController],
+        imports: [CacheModule.forRoot({
+          store: 'memory',
+          observer: {
+            onCacheOperation(observation) {
+              if (observation.operation === 'del' && observation.outcome === 'success') {
+                evicted.resolve();
+              }
+            },
+          },
+        })],
+      });
+      const app = await FluoFactory.create(AppModule);
+      let dispatch: Promise<void> | undefined;
+
+      try {
+        const cache = await app.container.resolve(CacheService);
+        await cache.set('', { version: 'previous' }, 120);
+        const response = createSimpleJsonResponse();
+        response.sendSimpleJson = vi.fn(async function sendSimpleJson(this: SimpleJsonDispatchResponse, body) {
+          writeStarted.resolve();
+          await commit.promise;
+          this.body = body;
+          this.committed = true;
+        });
+
+        dispatch = app.dispatch(createRequest('/products/refresh'), response);
+        await writeStarted.promise;
+        expect(response.committed).toBe(false);
+        await expect(cache.get('')).resolves.toEqual({ version: 'previous' });
+        commit.resolve();
+        await dispatch;
+        await evicted.promise;
+
+        expect(response.sendSimpleJson).toHaveBeenCalledTimes(1);
+        expect(response.send).not.toHaveBeenCalled();
+        expect(response.committed).toBe(true);
+        await expect(cache.get('')).resolves.toBeUndefined();
+      } finally {
+        commit.resolve();
+        await dispatch;
+        await app.close();
+      }
+    },
+  );
 
   it('evicts after normal JSON dispatch commits through sendSimpleJson', async () => {
     // Given

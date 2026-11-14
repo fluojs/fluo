@@ -310,6 +310,8 @@ CacheModule.forRoot({
 
 완전히 다른 키 전략이 필요하다면 `httpKeyStrategy`에 함수를 전달하거나, literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용하세요. 빈 literal `@CacheKey('')`도 명시적인 key로 유지되며, decorator metadata가 없을 때만 설정된 `httpKeyStrategy`를 선택합니다. 요청을 인식하는 cache key를 만들 때 지원되는 확장 경로는 이러한 function-based hook이며, cache key 생성만 바꾸기 위해 `CacheInterceptor`를 subclass하지 않습니다.
 
+Eviction도 같은 key 공간을 사용합니다. `@CacheEvict('')`, `@CacheEvict([''])`, 그리고 `''` 또는 `''`를 포함한 배열을 반환하는 동기·비동기 resolver는 정확히 그 빈 key를 대상으로 합니다. 혼합 배열은 빈 key와 비어 있지 않은 key를 모두 유지하고, 중복 대상은 한 번만 삭제하며, 빈 배열은 아무것도 삭제하지 않습니다. 이 대상들도 다른 eviction key와 같은 [응답 commit 시점](#지연-삭제-시점)을 따릅니다.
+
 ```typescript
 CacheModule.forRoot({
   store: 'memory',
@@ -534,10 +536,15 @@ class ProductController {
 - `CacheUpdateError`: [원자 갱신](#원자-갱신)의 안정적인 `CacheUpdateErrorCode` 분류를 제공하는 오류입니다. 관련 reducer, capability, Redis 구조적 타입도 같은 package root에서 export됩니다.
 
 ### 데코레이터
+
+`@CacheKey`, `@CacheTTL`, `@CacheEvict`는 method에만 적용할 수 있습니다. Class, field, getter, setter 또는 accessor에 적용하면 metadata를 등록하기 전에 해당 decorator 이름과 method 전용이라는 조건을 밝히는 동기 오류가 발생합니다. Controller 수준 기본값은 지원하지 않으므로 각 HTTP handler method에 decorator를 적용하세요.
+
 - `@CacheTTL(seconds)`: 특정 핸들러의 TTL을 설정합니다.
 - `@CacheKey(key)`: 특정 핸들러의 custom cache key 또는 key factory를 설정합니다.
 - `@CacheEvict(key)`: 성공적인 non-GET controller handler가 완료된 뒤 `CacheInterceptor`가 소비하는 HTTP route metadata를 저장합니다. 임의의 service call을 intercept하지 않습니다.
 - `cacheRouteMetadataKey`, `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, `getCacheEvictMetadata(...)`: 캐시 데코레이터 metadata key를 다시 구현하지 않고 cache decorator metadata를 검사해야 하는 first-party interceptor 통합, 진단, 고급 tooling을 위해 공개된 low-level metadata helper입니다.
+
+`getCacheEvictMetadata(...)`는 metadata가 없으면 `undefined`를 반환하고, `''`는 유효한 대상으로 보존합니다. 배열 입력은 등록할 때와 읽을 때 각각 복사하며 빈 문자열 원소도 유지합니다.
 
 ### 인터셉터
 - `CacheInterceptor`: 자동 GET 응답 캐싱을 처리하고 non-GET HTTP handler에서 `@CacheEvict(...)` metadata를 소비합니다.
