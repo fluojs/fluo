@@ -1,11 +1,75 @@
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CacheModule } from './module.js';
+import { MemoryStore } from './stores/memory-store.js';
 import { CACHE_OPTIONS } from './tokens.js';
 import type { CacheModuleOptions, NormalizedCacheModuleOptions } from './types.js';
 
 describe('CacheModule.forRoot', () => {
+  it.each(['mongo', ''])('rejects unsupported store %j during registration', (store) => {
+    const options: CacheModuleOptions = {};
+    Object.defineProperty(options, 'store', { enumerable: true, value: store });
+
+    expect(() => CacheModule.forRoot(options)).toThrow(/store.*"memory".*"redis"/);
+  });
+
+  describe.each(['get', 'set', 'del', 'reset'] as const)('custom store %s', (method) => {
+    it.each(['missing', 'non-callable'])('rejects a %s method during registration', (kind) => {
+      const operation = vi.fn(async () => undefined);
+      const store = { get: operation, set: operation, del: operation, reset: operation };
+      if (kind === 'missing') {
+        Reflect.deleteProperty(store, method);
+      } else {
+        Object.defineProperty(store, method, { value: 42 });
+      }
+
+      expect(() => CacheModule.forRoot({ store })).toThrow(new RegExp(`store.*${method}`));
+      expect(operation).not.toHaveBeenCalled();
+    });
+  });
+
+  it('rejects an empty custom store with all missing method names', () => {
+    const options: CacheModuleOptions = {};
+    Object.defineProperty(options, 'store', { enumerable: true, value: {} });
+
+    expect(() => CacheModule.forRoot(options)).toThrow(/store.*get.*set.*del.*reset/);
+  });
+
+  it.each(['plain', 'prototype'])('accepts a %s store without invoking operations or validating optional hooks', (kind) => {
+    const operation = vi.fn(async () => undefined);
+    const store = kind === 'plain'
+      ? { get: operation, set: operation, del: operation, reset: operation }
+      : new MemoryStore();
+    for (const method of ['close', 'dispose', 'atomicUpdate']) {
+      Object.defineProperty(store, method, {
+        get: () => {
+          throw new Error(`Registration must not inspect optional ${method}.`);
+        },
+      });
+    }
+
+    const providers = getModuleMetadata(CacheModule.forRoot({ store }))?.providers ?? [];
+
+    expect(providers).toContainEqual({
+      provide: CACHE_OPTIONS,
+      useValue: expect.objectContaining({ store, ttl: 0 }),
+    });
+    expect(operation).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { store: undefined }, { store: 'memory' }] satisfies CacheModuleOptions[])(
+    'keeps the memory store and TTL defaults for %j',
+    (options) => {
+      const providers = getModuleMetadata(CacheModule.forRoot(options))?.providers ?? [];
+
+      expect(providers).toContainEqual({
+        provide: CACHE_OPTIONS,
+        useValue: expect.objectContaining({ store: 'memory', ttl: 300 }),
+      });
+    },
+  );
+
   it.each(['full', 'route+queries'])(
     'rejects unsupported HTTP key strategy %j during registration',
     (httpKeyStrategy) => {

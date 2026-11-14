@@ -40,12 +40,12 @@ function normalizeCacheMethod(method: string): string {
 function buildSortedQueryString(query: Record<string, unknown>): string {
   const entries = Object.entries(query)
     .filter(([, value]) => value !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
     .map(([key, value]) => {
       if (Array.isArray(value)) {
         return [...value]
           .map((v) => String(v))
-          .sort((a, b) => a.localeCompare(b))
+          .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
           .map((v) => `${encodeURIComponent(key)}=${encodeURIComponent(v)}`)
           .join('&');
       }
@@ -115,11 +115,11 @@ function normalizeTtl(ttlSeconds: number | undefined, fallback: number): number 
 
 function normalizeEvictKeys(value: string | readonly string[]): string[] {
   if (typeof value === 'string') {
-    return value.length > 0 ? [value] : [];
+    return [value];
   }
 
   if (Array.isArray(value)) {
-    return value.filter((key) => key.length > 0);
+    return [...value];
   }
 
   return [];
@@ -204,7 +204,7 @@ export class CacheInterceptor implements Interceptor {
   ): Promise<void> {
     const evictMetadata = metadataBag ? getCacheEvictMetadata(metadataBag) : undefined;
 
-    if (!evictMetadata) {
+    if (evictMetadata === undefined) {
       return;
     }
 
