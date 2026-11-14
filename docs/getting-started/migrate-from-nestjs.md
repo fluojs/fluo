@@ -991,6 +991,8 @@ Kafka and RabbitMQ keep inbound consumer callbacks pending until handler executi
 - **Codemod boundary.** `fluo migrate` does not rewrite `@nestjs/cache-manager` code. Even when the CLI reports `No manual follow-ups detected`, migrate cache imports, configuration, and decorators manually using this migration map.
 - **Transport boundary.** Automatic `CacheInterceptor` and cache decorator behavior belongs to the HTTP pipeline: read-through caching for HTTP GET, and eviction through `@CacheEvict(...)` for non-GET. WebSocket subscribers and microservice handlers must call the standalone `CacheService` directly; those transports have no automatic cache interception.
 
+An ioredis `Redis` instance satisfies the public `RedisCompatibleClient` contract directly, without an adapter or type assertion. Direct registration does not require `@fluojs/redis`; memory-only consumers need neither Redis peer.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { CacheModule } from '@fluojs/cache-manager';
