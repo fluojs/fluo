@@ -140,7 +140,14 @@ HTTP `Query()`는 query-string binding이나 GraphQL Query가 아닌 RFC QUERY�
 
 트레일링 슬래시와 중복 슬래시는 라우트 매핑 단계에서 정규화되므로 `//users///:id/`는 `/users/:id`로 해석됩니다.
 
-라우트 데코레이터는 `*`, `?`, `/(.*)`, `user-:id`, `:id.json` 같은 wildcard, regex 유사 문법, mixed segment를 지원하지 않습니다. 와일드카드 매칭은 계속 `forRoutes('/users/*')` 같은 미들웨어 설정에서만 지원됩니다.
+라우트 데코레이터는 `*`, `?`, `/(.*)`, `user-:id`, `:id.json` 같은 wildcard, regex 유사 문법, mixed segment를 지원하지 않습니다. 와일드카드 매칭은 계속 `forRoutes(AuthMiddleware, '/users/*')` 같은 미들웨어 설정에서만 지원됩니다.
+
+`forRoutes(AuthMiddleware, '/*')`를 등록하면 `/`, `/users`, `/users/42`에서 handler 전에
+미들웨어가 실행됩니다. `normalizeRoutePattern(...)`은 `////*` 같은 중복 슬래시 형태도
+canonical root wildcard인 `/*`로 유지합니다. `matchRoutePattern(...)`은 pattern과 path의
+중복 및 trailing slash를 정규화합니다. `/cats/*`는 `/cats`, `/cats/42`와 매칭되지만
+`/cat`, `/cats-other`와는 매칭되지 않습니다. `/users/` 같은 exact pattern은 `/users`와
+매칭되며 `/users/42`와는 매칭되지 않습니다.
 
 Catch-all route grammar는 의도적으로 도입이 유예된 상태입니다.
 [HTTP catch-all route grammar 결정](../../docs/architecture/http-catch-all-route-grammar.ko.md)은 검토한

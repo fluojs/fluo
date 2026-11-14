@@ -142,7 +142,14 @@ HTTP route decorators such as `@Controller()`, `@Get()`, and `@Post()` accept on
 
 Trailing slashes and duplicate slashes are normalized during route mapping, so `//users///:id/` resolves to `/users/:id`.
 
-Route decorators do **not** support wildcard, regex-like, or mixed-segment syntax such as `*`, `?`, `/(.*)`, `user-:id`, or `:id.json`. Wildcard matching remains middleware-only via `forRoutes('/users/*')`.
+Route decorators do **not** support wildcard, regex-like, or mixed-segment syntax such as `*`, `?`, `/(.*)`, `user-:id`, or `:id.json`. Wildcard matching remains middleware-only via `forRoutes(AuthMiddleware, '/users/*')`.
+
+Register `forRoutes(AuthMiddleware, '/*')` to run middleware on `/`, `/users`, and `/users/42`
+before the handler. `normalizeRoutePattern(...)` preserves the canonical root wildcard `/*`,
+including duplicate-slash forms such as `////*`. `matchRoutePattern(...)` normalizes duplicate
+and trailing slashes in patterns and paths: `/cats/*` matches `/cats` and `/cats/42`, but
+does not match `/cat` or `/cats-other`. Exact patterns such as `/users/` match `/users`,
+without matching `/users/42`.
 
 Catch-all route grammar is intentionally deferred. The
 [HTTP catch-all route grammar decision](../../docs/architecture/http-catch-all-route-grammar.md)
