@@ -12,13 +12,14 @@ import type {
 import { RuntimePlatformShell } from './platform-shell.js';
 
 class ProbeFailureComponent implements PlatformComponent {
-  readonly id = 'runtime.retention';
   readonly kind = 'runtime-test';
   private healthFailureCause: string | undefined;
   private readinessFailureCause: string | undefined;
   private snapshotFailureCause: string | undefined;
   private stopFailureCause: string | undefined;
   private validation: PlatformValidationResult = { issues: [], ok: true };
+
+  constructor(readonly id = 'runtime.retention') {}
 
   failHealthWith(cause: string): void {
     this.healthFailureCause = cause;
@@ -217,7 +218,7 @@ describe('RuntimePlatformShell diagnostic retention', () => {
     ]);
   });
 
-  it('preserves distinct lifecycle failures instead of applying probe deduplication', async () => {
+  it('snapshot: repeated stop failures retain only the latest cause and independent arrays', async () => {
     // Given
     const component = new ProbeFailureComponent();
     const shell = RuntimePlatformShell.fromInputs([component]);
@@ -226,21 +227,179 @@ describe('RuntimePlatformShell diagnostic retention', () => {
     // When
     component.failStopWith('first stop failure');
     await expect(shell.stop()).rejects.toThrow('One or more platform components failed to stop cleanly.');
-    component.failStopWith('second stop failure');
-    await expect(shell.stop()).rejects.toThrow('One or more platform components failed to stop cleanly.');
+    const firstSnapshot = await shell.snapshot();
+    for (let attempt = 2; attempt <= 1_000; attempt += 1) {
+      component.failStopWith(`stop failure ${attempt}`);
+      await expect(shell.stop()).rejects.toThrow('One or more platform components failed to stop cleanly.');
+    }
     component.recoverStop();
     const snapshot = await shell.snapshot();
 
     // Then
     expect(snapshot.diagnostics.map(({ cause, message }) => ({ cause, message }))).toEqual([
       {
-        cause: 'first stop failure',
-        message: 'Platform component failed during stop.',
-      },
-      {
-        cause: 'second stop failure',
+        cause: 'stop failure 1000',
         message: 'Platform component failed during stop.',
       },
     ]);
+    expect(firstSnapshot.diagnostics).toHaveLength(1);
+    expect(firstSnapshot.diagnostics[0]?.cause).toBe('first stop failure');
+    snapshot.diagnostics.pop();
+    expect((await shell.snapshot()).diagnostics).toHaveLength(1);
+  });
+
+  it('snapshot: repeated validation codes preserve components, order and latest diagnostic details', async () => {
+    // Given
+    const components = [new ProbeFailureComponent(), new ProbeFailureComponent('runtime.other')];
+    const shell = RuntimePlatformShell.fromInputs(components);
+    let attempt = 0;
+    for (const component of components) {
+      component.validate = () => ({
+        issues: ['ONE', 'TWO'].map((code) => ({
+          cause: `cause ${attempt}`,
+          code,
+          componentId: component.id,
+          fixHint: `fix ${attempt}`,
+          message: `arbitrary message ${attempt}`,
+          severity: 'error',
+        })),
+        ok: false,
+        warnings: [{
+          code: 'WARNING',
+          componentId: component.id,
+          message: `warning ${attempt}`,
+          severity: attempt === 1 ? 'info' : 'warning',
+        }],
+      });
+    }
+
+    // When
+    for (attempt = 1; attempt <= 1_000; attempt += 1) {
+      await expect(shell.start()).rejects.toThrow('Platform shell validation failed');
+    }
+    const snapshot = await shell.snapshot();
+
+    // Then
+    expect(snapshot.diagnostics).toEqual(components.flatMap((component) => [
+      { code: 'WARNING', componentId: component.id, message: 'warning 1000', severity: 'warning' },
+      ...['ONE', 'TWO'].map((code) => ({
+        cause: 'cause 1000',
+        code,
+        componentId: component.id,
+        fixHint: 'fix 1000',
+        message: 'arbitrary message 1000',
+        severity: 'error',
+      })),
+    ]));
+    expect(snapshot.diagnostics.every((issue) => !('phase' in issue))).toBe(true);
+  });
+
+  it('snapshot: thrown and synthesized validation failures stay bounded across retries', async () => {
+    // Given
+    const component = new ProbeFailureComponent();
+    const shell = RuntimePlatformShell.fromInputs([component]);
+    let attempt = 0;
+    component.validate = () => {
+      if (attempt % 2 === 1) {
+        throw new Error(`validation ${attempt}`);
+      }
+      return { issues: [], ok: false };
+    };
+
+    // When
+    for (attempt = 1; attempt <= 1_000; attempt += 1) {
+      await expect(shell.start()).rejects.toThrow('Platform shell validation failed');
+    }
+    const snapshot = await shell.snapshot();
+
+    // Then
+    expect(snapshot.diagnostics).toHaveLength(2);
+    expect(snapshot.diagnostics[0]).toMatchObject({
+      cause: 'validation 999',
+      code: 'RUNTIME_PLATFORM_COMPONENT_FAILURE',
+    });
+    expect(snapshot.diagnostics[1]?.code).toBe('RUNTIME_PLATFORM_VALIDATION_FAILED');
+  });
+
+  it('snapshot: validation and lifecycle failures with the same code retain separate phases', async () => {
+    // Given
+    const component = new ProbeFailureComponent();
+    const shell = RuntimePlatformShell.fromInputs([component]);
+    let attempt = 0;
+    let failStart = true;
+    component.validate = () => ({
+      issues: [],
+      ok: true,
+      warnings: [{
+        code: 'RUNTIME_PLATFORM_COMPONENT_FAILURE',
+        componentId: component.id,
+        message: `custom validation text ${attempt}`,
+        severity: 'warning',
+      }],
+    });
+    component.start = () => failStart ? Promise.reject(new Error(`start ${attempt}`)) : Promise.resolve();
+
+    // When
+    for (attempt = 1; attempt <= 1_000; attempt += 1) {
+      failStart = true;
+      await expect(shell.start()).rejects.toThrow(`failed to start: start ${attempt}`);
+      failStart = false;
+      await shell.start();
+      component.failStopWith(`stop ${attempt}`);
+      await expect(shell.stop()).rejects.toThrow('One or more platform components failed to stop cleanly.');
+      component.recoverStop();
+      await shell.stop();
+    }
+    const snapshot = await shell.snapshot();
+
+    // Then
+    expect(snapshot.diagnostics.map(({ cause, message, severity }) => ({ cause, message, severity }))).toEqual([
+      { cause: undefined, message: 'custom validation text 1000', severity: 'warning' },
+      { cause: 'start 1000', message: 'Platform component failed during start.', severity: 'error' },
+      { cause: 'stop 1000', message: 'Platform component failed during stop.', severity: 'error' },
+    ]);
+  });
+
+  it('snapshot: repeated startup rollback cycles preserve lifecycle phases and probe entries', async () => {
+    // Given
+    const dependency = new ProbeFailureComponent('runtime.dependency');
+    const component = new ProbeFailureComponent();
+    const shell = RuntimePlatformShell.fromInputs([
+      dependency,
+      { component, dependencies: [dependency.id] },
+    ]);
+    let attempt = 0;
+    let stopCalls = 0;
+    component.start = () => Promise.reject(new Error(`start ${attempt}`));
+    dependency.stop = () => {
+      stopCalls += 1;
+      return stopCalls % 2 === 1
+        ? Promise.reject(new Error(`rollback ${attempt}`))
+        : Promise.resolve();
+    };
+    component.failReadinessWith('probe before lifecycle');
+    await shell.ready();
+    component.recoverReadiness();
+
+    // When
+    for (attempt = 1; attempt <= 1_000; attempt += 1) {
+      await expect(shell.start()).rejects.toThrow(`failed to start: start ${attempt}`);
+    }
+    const snapshot = await shell.snapshot();
+
+    // Then
+    expect(snapshot.diagnostics.map(({ componentId, cause, message }) => ({ componentId, cause, message }))).toEqual([
+      { componentId: component.id, cause: 'probe before lifecycle', message: 'Platform component failed during ready.' },
+      { componentId: component.id, cause: 'start 1000', message: 'Platform component failed during start.' },
+      { componentId: dependency.id, cause: 'rollback 1000', message: 'Platform component failed during stop.' },
+      {
+        componentId: component.id,
+        cause: 'One or more platform components failed to stop cleanly.',
+        message: 'Platform component failed during start-rollback.',
+      },
+    ]);
+    expect(stopCalls).toBe(1_999);
+    await shell.stop();
+    expect(stopCalls).toBe(2_000);
   });
 });
