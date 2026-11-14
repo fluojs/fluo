@@ -49,6 +49,7 @@ function cloneEvictValue(value: CacheEvictDecoratorValue): CacheEvictDecoratorVa
  *
  * @param key Static cache key or resolver invoked with the interceptor context.
  * @returns A method decorator that stores cache-key metadata for the handler.
+ * @throws Error when the returned decorator is applied to a non-method context.
  *
  * @example
  * ```ts
@@ -59,6 +60,10 @@ function cloneEvictValue(value: CacheEvictDecoratorValue): CacheEvictDecoratorVa
  */
 export function CacheKey(key: CacheKeyDecoratorValue): StandardMethodDecoratorFn {
   return (_value, context) => {
+    if (context.kind !== 'method') {
+      throw new Error('@CacheKey can only be applied to methods.');
+    }
+
     getRouteRecord(context.metadata, context.name)[cacheKeyMetadataKey] = key;
   };
 }
@@ -68,6 +73,7 @@ export function CacheKey(key: CacheKeyDecoratorValue): StandardMethodDecoratorFn
  *
  * @param ttlSeconds Cache lifetime in seconds. Use `0` to disable expiration.
  * @returns A method decorator that stores per-handler TTL metadata.
+ * @throws Error when the returned decorator is applied to a non-method context.
  *
  * @example
  * ```ts
@@ -78,6 +84,10 @@ export function CacheKey(key: CacheKeyDecoratorValue): StandardMethodDecoratorFn
  */
 export function CacheTTL(ttlSeconds: number): StandardMethodDecoratorFn {
   return (_value, context) => {
+    if (context.kind !== 'method') {
+      throw new Error('@CacheTTL can only be applied to methods.');
+    }
+
     getRouteRecord(context.metadata, context.name)[cacheTtlMetadataKey] = ttlSeconds;
   };
 }
@@ -85,8 +95,9 @@ export function CacheTTL(ttlSeconds: number): StandardMethodDecoratorFn {
 /**
  * Evict one or more cache entries after a successful non-GET handler completes.
  *
- * @param value Static key list or resolver that derives eviction targets from the request/result.
+ * @param value Static key, key list, or resolver deriving eviction targets; empty string keys are valid.
  * @returns A method decorator that stores eviction metadata for the handler.
+ * @throws Error when the returned decorator is applied to a non-method context.
  *
  * @example
  * ```ts
@@ -97,6 +108,10 @@ export function CacheTTL(ttlSeconds: number): StandardMethodDecoratorFn {
  */
 export function CacheEvict(value: CacheEvictDecoratorValue): StandardMethodDecoratorFn {
   return (_value, context) => {
+    if (context.kind !== 'method') {
+      throw new Error('@CacheEvict can only be applied to methods.');
+    }
+
     getRouteRecord(context.metadata, context.name)[cacheEvictMetadataKey] = cloneEvictValue(value);
   };
 }
@@ -131,10 +146,10 @@ export function getCacheTtlMetadata(bag: StandardMetadataBag): number | undefine
  * Read `@CacheEvict(...)` metadata from a method metadata bag.
  *
  * @param bag Route-level metadata bag captured from the controller.
- * @returns A defensive copy of the eviction metadata, if present.
+ * @returns The stored value, preserving empty keys and copying arrays, or `undefined` when absent.
  */
 export function getCacheEvictMetadata(bag: StandardMetadataBag): CacheEvictDecoratorValue | undefined {
   const value = bag[cacheEvictMetadataKey] as CacheEvictDecoratorValue | undefined;
 
-  return value ? cloneEvictValue(value) : undefined;
+  return value === undefined ? undefined : cloneEvictValue(value);
 }

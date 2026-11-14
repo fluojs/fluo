@@ -10,6 +10,11 @@ import type { RedisClientOptions, RedisLifecycleOptions, RedisModuleOptions } fr
 const redisLifecycleTokens = new Map<string, symbol>();
 const REDIS_REGISTRATION_IDENTITIES = Symbol.for('fluo.redis.registration-identities');
 
+interface RedisRegistrationIdentity {
+  clientToken: symbol;
+  name: string;
+}
+
 function getRedisLifecycleToken(name: string): symbol {
   const existing = redisLifecycleTokens.get(name);
 
@@ -79,24 +84,27 @@ function assertValidLifecycleTimeoutMs(fieldName: keyof RedisLifecycleOptions, v
   }
 }
 
-function assertUniqueRedisRegistrationIdentities(identities: readonly string[]): void {
-  const seen = new Set<string>();
+function assertUniqueRedisRegistrationIdentities(identities: readonly RedisRegistrationIdentity[]): void {
+  const seen = new Set<symbol>();
 
   for (const identity of identities) {
-    if (seen.has(identity)) {
+    if (seen.has(identity.clientToken)) {
       throw new Error(
-        `Duplicate @fluojs/redis registration identity "${identity}". Every RedisModule.forRoot(...) registration owns one lifecycle-managed client, so pass a distinct name to each additional registration.`,
+        `Duplicate @fluojs/redis registration identity "${identity.name}". Every RedisModule.forRoot(...) registration owns one lifecycle-managed client, so pass a distinct name to each additional registration.`,
       );
     }
 
-    seen.add(identity);
+    seen.add(identity.clientToken);
   }
 }
 
 function createRedisProviders(options: RedisClientOptions, lifecycleOptions: RedisLifecycleOptions, name?: string): Provider[] {
   const clientToken = getRedisClientToken(name);
-  const registrationIdentity = name ?? DEFAULT_REDIS_CLIENT_NAME;
-  const registrationGuardToken = Symbol(`fluo.redis.registration-guard:${registrationIdentity}`);
+  const registrationIdentity: RedisRegistrationIdentity = {
+    clientToken,
+    name: name ?? DEFAULT_REDIS_CLIENT_NAME,
+  };
+  const registrationGuardToken = Symbol(`fluo.redis.registration-guard:${registrationIdentity.name}`);
   const registrationProviders: Provider[] = [
     {
       multi: true,
@@ -108,7 +116,7 @@ function createRedisProviders(options: RedisClientOptions, lifecycleOptions: Red
       provide: registrationGuardToken,
       scope: 'singleton',
       useFactory: (...deps: unknown[]) => {
-        const [identities] = deps as [readonly string[]];
+        const [identities] = deps as [readonly RedisRegistrationIdentity[]];
         assertUniqueRedisRegistrationIdentities(identities);
       },
     },
