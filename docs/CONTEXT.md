@@ -81,6 +81,8 @@ Follow Docs contract establishment → evidence verification → Korean Book app
 
 <!-- fluo:docs-navigation:end -->
 
+For unsupported NestJS cache patterns, follow the [cache-manager migration table](../packages/cache-manager/README.md#nestjs-cache-migration) and [migration guide](./getting-started/migrate-from-nestjs.md#cache-manager-ttl-key-visibility-and-store-ownership-migration). These owners cover method-only `@CacheTTL`/`@CacheKey`, the single-store-per-registration boundary for `stores`/Keyv, manual cache code conversion after `fluo migrate`, and HTTP-only automatic interception with explicit `CacheService` calls for WebSocket/microservice handlers.
+
 For validation DTO `Symbol.metadata` preload and mapped DTO source constructor
 and default boundaries, follow the [validation README](../packages/validation/README.md#quick-start)
 and [NestJS migration guidance](./getting-started/migrate-from-nestjs.md#decorator-metadata-preload-ordering).

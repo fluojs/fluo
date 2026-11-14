@@ -444,12 +444,17 @@ describe('@fluojs/redis', () => {
     );
   });
 
-  it('does not forward module-only name, global, and lifecycle fields to ioredis', async () => {
+  it.each([
+    { global: true },
+    { global: false },
+    { global: false, name: 'cache' },
+  ] as const)('does not forward module-only name, global, and lifecycle fields to ioredis for %j', async (registration) => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
         RedisModule.forRoot({
-          name: 'cache',
+          ...registration,
+          db: 2,
           host: '127.0.0.1',
           lifecycle: { connectTimeoutMs: 25, quitTimeoutMs: 30 },
           port: 6380,
@@ -460,6 +465,7 @@ describe('@fluojs/redis', () => {
     const app = await FluoFactory.create(AppModule);
 
     expect(mockRedisState.instances[0]?.options).toMatchObject({
+      db: 2,
       host: '127.0.0.1',
       lazyConnect: true,
       port: 6380,
@@ -489,6 +495,7 @@ describe('@fluojs/redis', () => {
     defineModule(AppModule, {
       imports: [
         RedisModule.forRoot({
+          global: false,
           host: '127.0.0.1',
           name: 'cache',
           port: 26379,
@@ -511,6 +518,7 @@ describe('@fluojs/redis', () => {
       sentinels: [{ host: '127.0.0.1', port: 26379 }],
     });
     expect(mockRedisState.instances[0]?.options).not.toHaveProperty('sentinelName');
+    expect(mockRedisState.instances[0]?.options).not.toHaveProperty('global');
     expect(clientConsumer.redis).toBe(mockRedisState.instances[0]);
     expect(serviceConsumer.redis.getRawClient()).toBe(clientConsumer.redis);
 
