@@ -88,7 +88,7 @@ export function ensureMetadataSymbol(): symbol {
 ## 3.3 Implementation: @CurrentUser()
 `@CurrentUser()` 데코레이터는 컨트롤러 로직을 간소화하는 데 사용되는 파라미터 데코레이터의 전형적인 예입니다. HTTP 요청 컨텍스트에서 어떤 파라미터가 인증된 사용자 객체를 전달받아야 하는지를 식별합니다.
 
-Fluo의 HTTP 패키지 내부에서는 이런 데코레이터를 패키지 소유 메타데이터 writer로 구현하여 특정 파라미터가 요청 런타임에 의해 어떻게 충족되어야 하는지 기록합니다. `path:packages/core/src/metadata/injection.ts:27-33`의 저수준 `defineInjectionMetadata` 프리미티브는 내부 메타데이터 모델의 일부이며 애플리케이션 확장 API가 아닙니다.
+Fluo의 HTTP 패키지 내부에서는 이런 데코레이터를 패키지 소유 메타데이터 writer로 구현하여 특정 파라미터가 요청 런타임에 의해 어떻게 충족되어야 하는지 기록합니다. `path:packages/core/src/metadata/injection.ts:28-34`의 저수준 `defineInjectionMetadata` 프리미티브는 내부 메타데이터 모델의 일부이며 애플리케이션 확장 API가 아닙니다.
 
 이 장의 핵심은 `@CurrentUser()`라는 이름 자체보다 "데코레이터 팩토리에서 메타데이터 writer로 이어지는 구조"입니다. 공개 `@Inject()` 데코레이터는 클래스 수준 생성자 의존성 메타데이터라는 특정 공개 계약에서 같은 "지금 기록하고 나중에 읽는" 원리를 보여 줍니다.
 
