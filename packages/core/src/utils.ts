@@ -119,6 +119,28 @@ function sourceDeclaresPrivateNames(fn: unknown): boolean {
   return declares;
 }
 
+function descriptorDeclaresPrivateNames(descriptor: PropertyDescriptor | undefined): boolean {
+  return (
+    descriptor !== undefined &&
+    (sourceDeclaresPrivateNames(descriptor.value) ||
+      sourceDeclaresPrivateNames(descriptor.get) ||
+      sourceDeclaresPrivateNames(descriptor.set))
+  );
+}
+
+// Own function-valued data properties, getters, and setters are scanned like prototype members: a
+// constructor return override can stamp private fields onto an arbitrary object (even one whose
+// prototype is `Object.prototype`) and attach functions that read them.
+function ownPropertiesDeclarePrivateMembers(value: object): boolean {
+  for (const key of Reflect.ownKeys(value)) {
+    if (descriptorDeclaresPrivateNames(Object.getOwnPropertyDescriptor(value, key))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // Node implements `Buffer.prototype` in JavaScript whose method comments contain text such as
 // `Buffer#write`; the host prototype itself declares no private members, so only that level is skipped.
 const hostBufferPrototype = (globalThis as { Buffer?: { prototype: object } }).Buffer?.prototype;
@@ -141,17 +163,8 @@ function declaresPrivateMembers(prototype: object | null): boolean {
       return true;
     }
 
-    for (const key of Reflect.ownKeys(current)) {
-      const descriptor = Object.getOwnPropertyDescriptor(current, key);
-
-      if (
-        descriptor &&
-        (sourceDeclaresPrivateNames(descriptor.value) ||
-          sourceDeclaresPrivateNames(descriptor.get) ||
-          sourceDeclaresPrivateNames(descriptor.set))
-      ) {
-        return true;
-      }
+    if (ownPropertiesDeclarePrivateMembers(current)) {
+      return true;
     }
   }
 
@@ -169,10 +182,14 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
     return existing as T;
   }
 
-  // Private slots cannot be copied onto a new object, so keep these instances intact by reference.
+  // Private slots cannot be copied onto a new object, so keep these instances (including objects
+  // stamped through a constructor return override) intact by reference.
   // This runs before every shape-specific path so built-in subclasses (for example typed arrays)
   // that declare private members are never rebuilt without their private state.
-  if (declaresPrivateMembers(Object.getPrototypeOf(value) as object | null)) {
+  if (
+    ownPropertiesDeclarePrivateMembers(value) ||
+    declaresPrivateMembers(Object.getPrototypeOf(value) as object | null)
+  ) {
     seen.set(value, value);
     return value;
   }
@@ -261,9 +278,11 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
  * as declaring private members when its source text, or the source of any method or accessor on its
  * prototype chain, contains `#` followed by an identifier-start character anywhere, including inside
  * strings, regular expressions, or comments, so a class such as one with a `pattern = /#tag/` field
- * is also returned by reference instead of copied. An instance whose prototype chain has a missing,
- * shadowed, or non-matching `constructor` is also returned by reference because its class cannot be
- * identified.
+ * is also returned by reference instead of copied. The same rule applies to the value's own
+ * function-valued properties, getters, and setters, so an object stamped with private fields through a
+ * constructor return override is returned by reference when an own accessor or function reads them.
+ * An instance whose prototype chain has a missing, shadowed, or non-matching `constructor` is also
+ * returned by reference because its class cannot be identified.
  *
  * @param value Value to clone.
  * @returns A detached clone for supported runtime shapes, or the original primitive/function.
@@ -286,7 +305,10 @@ export function cloneWithFallback<T>(value: T): T {
  * a real private member: a class counts as declaring private members when its source text, or the
  * source of any method or accessor on its prototype chain, contains `#` followed by an
  * identifier-start character anywhere, including inside strings, regular expressions, or comments.
- * An instance whose prototype chain has a missing, shadowed, or non-matching `constructor` is also
+ * The value's own function-valued properties, getters, and setters are inspected with the same rule,
+ * so an object stamped with private fields through a constructor return override (even one whose
+ * prototype is `Object.prototype`) is returned by reference when an own accessor or function reads
+ * them. An instance whose prototype chain has a missing, shadowed, or non-matching `constructor` is also
  * returned by reference because its class cannot be identified. As a known limitation, a class whose
  * source merely contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is
  * returned by reference instead of copied. Typed arrays and DataViews created in another realm are

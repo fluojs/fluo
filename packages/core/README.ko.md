@@ -156,7 +156,10 @@ private member(`#field`, `#method()`, decorator가 붙은 `accessor`)를 선언�
 우선하므로 private member를 선언한 typed array subclass도 reference로 반환합니다. 실제
 private member를 놓치지 않도록 판정은 보수적으로 수행합니다. Class source text 또는 prototype
 chain에 있는 method나 accessor의 source 어느 위치든(문자열, 정규식, 주석 내부 포함) `#` 뒤에
-identifier 시작 문자가 오면 private member를 선언한 class로 간주합니다. Prototype chain의
+identifier 시작 문자가 오면 private member를 선언한 class로 간주합니다. 같은 규칙을 값 자체의
+own function property, getter, setter에도 적용하므로, constructor return override로 private
+field가 stamp된 객체(prototype이 `Object.prototype`인 경우 포함)도 own accessor나 function이
+그 field를 읽으면 reference로 반환합니다. Prototype chain의
 `constructor`가 없거나, 가려졌거나(예: `['constructor']() {}` method), 해당 prototype과 맞지 않는
 instance도 class를 식별할 수 없으므로 reference로 반환합니다. 다른 realm(예: `node:vm`)에서
 생성한 typed array와 DataView도 복사하며 원래 prototype을 유지합니다. 알려진 한계로, source에 그런 text만 포함된 class(예: `pattern = /#tag/`

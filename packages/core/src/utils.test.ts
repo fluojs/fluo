@@ -244,6 +244,113 @@ describe('fallbackClone', () => {
     expect(cloned.opaque).toBe(opaque)
   })
 
+  it('returns private-stamped objects whose own accessors or function properties read private fields by reference', () => {
+    class Base {
+      constructor(value: object) {
+        return value
+      }
+    }
+
+    class GetterSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        Object.defineProperty(this, 'value', {
+          get: () => this.#value,
+        })
+      }
+    }
+
+    class ReviewerSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        Object.defineProperty(this, 'value', {
+          get(this: ReviewerSecret) {
+            return this.#value
+          },
+        })
+      }
+    }
+
+    class SetterSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        Object.defineProperty(this, 'value', {
+          set(this: SetterSecret, next: number) {
+            this.#value = next
+          },
+        })
+      }
+    }
+
+    class FunctionSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        ;(this as unknown as { read: () => number }).read = function (this: FunctionSecret) {
+          return this.#value
+        }
+      }
+    }
+
+    class ArrowSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        ;(this as unknown as { read: () => number }).read = () => this.#value
+      }
+    }
+
+    const getter = new GetterSecret({}) as unknown as { value: number }
+    const reviewer = new ReviewerSecret({}) as unknown as { value: number }
+    const setter = new SetterSecret({}) as unknown as { value: number }
+    const fn = new FunctionSecret({}) as unknown as { read: () => number }
+    const arrow = new ArrowSecret({}) as unknown as { read: () => number }
+
+    expect(Object.getPrototypeOf(reviewer)).toBe(Object.prototype)
+
+    const plain = { value: 1 }
+    const cloned = fallbackClone({ getter, reviewer, setter, fn, arrow, plain })
+
+    expect(cloned.getter).toBe(getter)
+    expect(cloned.reviewer).toBe(reviewer)
+    expect(cloned.reviewer.value).toBe(1)
+    expect(fallbackClone(reviewer)).toBe(reviewer)
+    expect(cloned.setter).toBe(setter)
+    expect(cloned.fn).toBe(fn)
+    expect(cloned.fn.read()).toBe(1)
+    expect(cloned.arrow).toBe(arrow)
+    expect(cloned.plain).not.toBe(plain)
+    expect(cloned.plain).toEqual(plain)
+  })
+
+  it('deep-copies objects whose own function properties contain no private-name text', () => {
+    const source = {
+      options: { retries: 1 },
+      read() {
+        return this.options.retries
+      },
+      get retries() {
+        return this.options.retries
+      },
+    }
+
+    const cloned = fallbackClone(source)
+
+    expect(cloned).not.toBe(source)
+    expect(cloned.read).toBe(source.read)
+    cloned.options.retries = 2
+    expect(source.options.retries).toBe(1)
+    expect(cloned.retries).toBe(2)
+  })
+
   it('copies typed arrays created in another realm', () => {
     const source = runInNewContext('new Uint8Array([1, 2])') as Uint8Array
     const cloned = fallbackClone({ bytes: source })
