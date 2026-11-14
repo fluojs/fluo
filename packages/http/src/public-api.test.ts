@@ -13,7 +13,9 @@ import type {
   HandlerMetadata,
   HttpConnection,
   MiddlewareRouteConfig,
+  MemoryRateLimitStoreOptions,
   MiddlewareRouteSnapshot,
+  RateLimitOptions,
   RateLimitStore,
   RateLimitStoreEntry,
   ResponseFormatter,
@@ -157,6 +159,15 @@ describe('@fluojs/http public API surface', () => {
     expect(legacy.consume).toBeUndefined();
     expect(httpPublicApi.createMemoryRateLimitStore().consume).toEqual(expect.any(Function));
     expect(portableHttpPublicApi.createMemoryRateLimitStore().consume).toEqual(expect.any(Function));
+  });
+
+  it('exposes the additive memory rate-limit key capacity option', () => {
+    expectTypeOf<MemoryRateLimitStoreOptions>().toEqualTypeOf<{ maxKeys?: number }>();
+    expectTypeOf<RateLimitOptions['maxKeys']>().toEqualTypeOf<number | undefined>();
+    expect(httpPublicApi.createMemoryRateLimitStore({ maxKeys: 1 }).consume?.('a', { now: 0, windowMs: 1 })).toEqual({
+      count: 1, resetAt: 1,
+    });
+    expect(portableHttpPublicApi.createMemoryRateLimitStore({ maxKeys: 1 }).consume).toEqual(expect.any(Function));
   });
 
   it('declares portable response cookie APIs', () => {
