@@ -155,7 +155,10 @@ export function defineDtoFieldBindingMetadata(
 
 /**
  * Clone and append a field validation rule to the target's own list.
- * Existing rules are retained in order, without deduplication.
+ * Existing rules are retained in order, without deduplication. Rules are cloned through
+ * cloneMutableValue, which keeps by reference any object with an own getter or setter or an own
+ * function whose source mentions `this` or a private name, and any class instance whose class or
+ * prototype-chain methods reference a private name, so caller mutations of such rules stay visible.
  *
  * @param target Object whose own field-rule map receives the rule.
  * @param propertyKey DTO field whose stored rule list is extended.
@@ -172,6 +175,8 @@ export function appendDtoFieldValidationRule(
 /**
  * Clone and append a class validation rule to the target's own list.
  * Existing rules are retained in order, without inheriting or deduplicating them on write.
+ * Rules are cloned on write and read with the reference-preserving exceptions described in
+ * appendDtoFieldValidationRule.
  *
  * @param target DTO constructor whose own stored rule list is extended.
  * @param rule Class validation rule to clone before appending.
@@ -226,6 +231,7 @@ export function getDtoBindingSchema(dto: Constructor): DtoBindingSchemaEntry[] {
 /**
  * Collect cloned field rules standard-first, then inherited stored rules base-to-leaf.
  * Stored maps are read along the target's prototype chain; rules are not deduplicated.
+ * Cloning keeps the reference-preserving exceptions described in appendDtoFieldValidationRule.
  *
  * @param target Object whose prototype chain supplies stored validation maps.
  * @param propertyKey DTO field whose validation rules are collected.
@@ -245,6 +251,7 @@ export function getDtoFieldValidationRules(target: object, propertyKey: Metadata
  * Collect field-rule entries in stored-key-first order, followed by standard-only keys.
  * For each field, cloned standard rules precede inherited stored rules collected
  * along the prototype chain base-to-leaf, without deduplication. Empty rule lists are skipped.
+ * Cloning keeps the reference-preserving exceptions described in appendDtoFieldValidationRule.
  *
  * @param dto DTO constructor whose prototype supplies stored and standard field rules.
  * @returns A fresh mutable schema containing cloned validation rules.
@@ -271,6 +278,7 @@ export function getDtoValidationSchema(dto: Constructor): DtoValidationSchemaEnt
 /**
  * Collect cloned class rules standard-first, then inherited stored rules base-to-leaf.
  * Stored lists are read along the constructor prototype chain, without deduplication.
+ * Cloning keeps the reference-preserving exceptions described in appendDtoFieldValidationRule.
  *
  * @param target DTO constructor whose class validation rules are collected.
  * @returns A fresh array of cloned rules, empty when neither source provides rules.

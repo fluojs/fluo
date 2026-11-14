@@ -79,9 +79,15 @@ function getStandardRouteMetadata(target: object, propertyKey: MetadataPropertyK
 
 /**
  * Clone and replace the controller record stored on this exact target, without merging on write.
- * Guard and interceptor collections are copied. Entries that are arrays, Date, Map, Set,
- * or plain objects (prototype Object.prototype or null) are deep-cloned through cloneMutableValue;
- * other entries, including functions and other class instances, are returned unchanged.
+ * Guard and interceptor collections are copied on write and on read. Entries that are arrays, Date,
+ * Map, Set, or plain objects (prototype Object.prototype or null) pass through cloneMutableValue,
+ * which deep-clones them with reference-preserving exceptions at every nesting level: an object
+ * with any own getter or setter, an object with an own function whose source mentions `this` or a
+ * private name (for example `{ allowed: true, canActivate() { return this.allowed; } }`), and a
+ * class instance whose class or prototype-chain methods reference a private name, or whose
+ * constructor is missing or mismatched, are kept by reference, so caller mutations of such objects
+ * remain visible in stored metadata. Other top-level entries, including functions and class
+ * instances, are kept by reference.
  *
  * @param target Controller constructor whose own stored record is replaced.
  * @param metadata Complete controller record to copy into the store.
@@ -95,7 +101,8 @@ export function defineControllerMetadata(target: Function, metadata: ControllerM
  * Stored records are not inherited through the prototype chain. Non-nullish stored basePath
  * and version take precedence; basePath defaults to ''. Guards and interceptors merge
  * stored-first and deduplicate by reference after both sources' collections and supported
- * mutable entries are cloned as described in defineControllerMetadata.
+ * mutable entries are cloned as described in defineControllerMetadata, including its
+ * reference-preserving exceptions.
  *
  * @param target Controller constructor to inspect.
  * @returns A fresh merged record, or undefined when neither source has a record.
@@ -118,7 +125,9 @@ export function getControllerMetadata(target: Function): ControllerMetadata | un
 
 /**
  * Clone and replace the route record for one property on this exact target, without merging on write.
- * Headers, redirect, and guard/interceptor collections are copied.
+ * Each header entry and the redirect record are shallow-copied, and guard/interceptor
+ * collections are copied with entries cloned as described in defineControllerMetadata,
+ * including its reference-preserving exceptions.
  *
  * @param target Object whose own route map receives the record.
  * @param propertyKey Route property whose previous stored record is replaced.
@@ -172,9 +181,10 @@ function mergeRouteMetadata(
  * Merge one route's stored and standard records into a new mutable record.
  * Only this exact target's stored map is read, without prototype inheritance.
  * Non-nullish stored fields take precedence over standard fields; guards and interceptors
- * merge stored-first and deduplicate by reference. Headers and redirect are cloned.
- * Guard and interceptor arrays are new, but their stored entries are returned without cloning;
- * standard entries are cloned as described in defineControllerMetadata before merging.
+ * merge stored-first and deduplicate by reference. Headers and redirect pass through
+ * cloneMutableValue. Guard and interceptor arrays are new, but their stored entries are returned
+ * without cloning; standard entries are cloned before merging. Every clone here follows
+ * defineControllerMetadata, including its reference-preserving exceptions.
  *
  * @param target Object whose route metadata is inspected.
  * @param propertyKey Route property to read from both sources.
