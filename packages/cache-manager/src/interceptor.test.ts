@@ -10,6 +10,7 @@ import { MemoryStore } from './stores/memory-store.js';
 import type { NormalizedCacheModuleOptions } from './types.js';
 
 const cacheOptions: NormalizedCacheModuleOptions = {
+  rememberCacheErrors: 'throw',
   global: false,
   keyPrefix: 'fluo:cache:',
   store: 'memory',
@@ -723,6 +724,81 @@ describe('CacheInterceptor', () => {
   });
 
   describe('httpKeyStrategy', () => {
+    it.each(['route', 'route+query'] as const)(
+      'strategy %s escapes path separators and percent signs without changing ordinary keys',
+      async (httpKeyStrategy) => {
+        class ItemController {
+          detail() {}
+        }
+        const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy });
+        const paths = ['/items/1', '/items/1|principal:issuer-a:alice', '/items/1%7Cprincipal:issuer-a:alice', '/items/1%257Cprincipal:issuer-a:alice'];
+        const keys = ['/items/1', '/items/1%7Cprincipal:issuer-a:alice', '/items/1%257Cprincipal:issuer-a:alice', '/items/1%25257Cprincipal:issuer-a:alice'];
+
+        for (const [index, path] of paths.entries()) {
+          const context = createContext(ItemController, 'detail', createRequestContext('GET', path));
+          await interceptor.intercept(context, { handle: async () => ({ index }) });
+        }
+
+        for (const [index, key] of keys.entries()) {
+          await expect(cacheService.get(key)).resolves.toEqual({ index });
+        }
+      },
+    );
+
+    it.each(['route', 'route+query'] as const)(
+      'strategy %s keeps issuer and subject boundaries distinct for reserved characters',
+      async (httpKeyStrategy) => {
+        class ItemController {
+          detail() {}
+        }
+        const { interceptor } = createInterceptor({ httpKeyStrategy });
+        const principals: Principal[] = [
+          { issuer: 'issuer:a', subject: 'alice', claims: {} },
+          { issuer: 'issuer', subject: 'a:alice', claims: {} },
+          { issuer: 'issuer|a', subject: 'alice%7C', claims: {} },
+          { issuer: 'issuer%7Ca', subject: 'alice|', claims: {} },
+        ];
+        const contexts = principals.map((principal) => createContext(
+          ItemController, 'detail', createRequestContext('GET', '/items/1', '/items/1', {}, principal),
+        ));
+        let handlerCalls = 0;
+        const next = { handle: vi.fn(async () => ({ handlerCalls: ++handlerCalls })) };
+
+        for (const [index, context] of contexts.entries()) {
+          await expect(interceptor.intercept(context, next)).resolves.toEqual({ handlerCalls: index + 1 });
+        }
+        for (const [index, context] of contexts.entries()) {
+          await expect(interceptor.intercept(context, next)).resolves.toEqual({ handlerCalls: index + 1 });
+        }
+
+        expect(next.handle).toHaveBeenCalledTimes(principals.length);
+      },
+    );
+
+    it.each(['strategy', 'literal'] as const)(
+      'custom %s keys preserve separators and percent signs exactly',
+      async (source) => {
+        const key = '/items/%7C|principal:custom';
+        class ItemController {
+          @CacheKey(key)
+          literal() {}
+          strategy() {}
+        }
+        const { interceptor, cacheService } = createInterceptor({
+          httpKeyStrategy: () => key,
+          principalScopeResolver: () => 'ignored|scope',
+        });
+        const context = createContext(ItemController, source, createRequestContext('GET', '/items/1'));
+        const next = { handle: vi.fn(async () => ({ source })) };
+
+        await interceptor.intercept(context, next);
+        await interceptor.intercept(context, next);
+
+        await expect(cacheService.get(key)).resolves.toEqual({ source });
+        expect(next.handle).toHaveBeenCalledTimes(1);
+      },
+    );
+
     it.each([
       ['route', '/users/1', '/users/2'],
       ['route+query', '/users/1?page=1', '/users/2?page=1'],

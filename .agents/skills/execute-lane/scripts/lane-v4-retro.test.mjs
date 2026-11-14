@@ -636,6 +636,25 @@ test("normal record automatically retains unsuccessful implementation stage evid
 		Object.hasOwn(JSON.parse(readFileSync(path)), "retrospective"),
 		false,
 	);
+	const stageBytes = readFileSync(resolve(root, events[0].path));
+	const lane = JSON.parse(readFileSync(path));
+	lane.issues[1].blocker = { type: "attempts-exhausted", phase: "implement" };
+	writeFileSync(path, JSON.stringify(lane));
+
+	execFileSync(process.execPath, [
+		cli, "clear-blocker", "--root", root, "--lane", path,
+		"--issue", "1", "--phase", "implement",
+	]);
+
+	assert.deepEqual(readFileSync(resolve(root, events[0].path)), stageBytes);
+	const retained = readRetroEvents(root, laneId);
+	assert.equal(retained.length, 2);
+	const { operation_id, ...cleared } = retained.find((event) => event.kind === "incident").data;
+	assert.match(operation_id, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
+	assert.deepEqual(cleared, {
+		action: "clear-blocker", phase: "implement",
+		blocker: { type: "attempts-exhausted", phase: "implement" },
+	});
 });
 
 test("CI collector queries each run attempt separately and reuses completed observations", (t) => {

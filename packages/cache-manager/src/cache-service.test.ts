@@ -6,6 +6,7 @@ import { CacheService } from './service.js';
 import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 
 const baseOptions: NormalizedCacheModuleOptions = {
+  rememberCacheErrors: 'throw',
   global: false,
   keyPrefix: 'fluo:cache:',
   store: 'memory',
@@ -134,6 +135,161 @@ function createCacheService(store: CacheStore, options: Partial<NormalizedCacheM
 }
 
 describe('CacheService — general cache contract (outside HTTP interceptor)', () => {
+  describe.each(['throw', 'bypass'] as const)('rememberCacheErrors: %s', (rememberCacheErrors) => {
+    it.each(['get', 'set'] as const)('remember preserves the policy for synchronous and rejected %s failures', async (operation) => {
+      for (const synchronous of [true, false]) {
+        for (const observed of [true, false]) {
+          const failure = new Error('private store error');
+          const store = new MemoryStore();
+          const fail = () => {
+            if (synchronous) throw failure;
+            return Promise.reject(failure);
+          };
+          vi.spyOn(store, operation).mockImplementation(fail);
+          const onCacheOperation = vi.fn();
+          const cache = createCacheService(store, {
+            rememberCacheErrors,
+            observer: observed ? { onCacheOperation } : undefined,
+          });
+          const value = { private: 'loaded' };
+          const loader = vi.fn(async () => value);
+
+          const result = cache.remember('private:key', loader);
+
+          if (rememberCacheErrors === 'bypass') {
+            await expect(result).resolves.toBe(value);
+            expect(loader).toHaveBeenCalledTimes(1);
+            if (operation === 'get') {
+              // The read failure still allows the normal write.
+              vi.mocked(store.get).mockRestore();
+              await expect(store.get('private:key')).resolves.toEqual(value);
+            }
+          } else {
+            await expect(result).rejects.toBe(failure);
+            expect(loader).toHaveBeenCalledTimes(operation === 'get' ? 0 : 1);
+          }
+          expect(onCacheOperation).toHaveBeenCalledTimes(observed ? 1 : 0);
+          if (observed) {
+            expect(onCacheOperation).toHaveBeenCalledWith({
+              operation: 'remember', outcome: 'error', durationMs: expect.any(Number),
+            });
+          }
+        }
+      }
+    });
+
+    it('remember returns hits without invoking the loader', async () => {
+      const store = new MemoryStore();
+      await store.set('key', 'cached');
+      const loader = vi.fn(async () => 'unused');
+      const cache = createCacheService(store, { rememberCacheErrors });
+
+      await expect(cache.remember('key', loader)).resolves.toBe('cached');
+      expect(loader).not.toHaveBeenCalled();
+    });
+
+    it.each([true, false])('remember preserves loader failure identity without retries (synchronous=%s)', async (synchronous) => {
+      const failure = new Error('origin failure');
+      const store = new MemoryStore();
+      const set = vi.spyOn(store, 'set');
+      const loader = vi.fn(() => {
+        if (synchronous) throw failure;
+        return Promise.reject(failure);
+      });
+      const cache = createCacheService(store, { rememberCacheErrors });
+
+      const results = await Promise.allSettled([
+        cache.remember('key', loader), cache.remember('key', loader),
+      ]);
+
+      for (const result of results) {
+        expect(result.status).toBe('rejected');
+        if (result.status === 'rejected') {
+          expect(result.reason).toBe(failure);
+        }
+      }
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(set).not.toHaveBeenCalled();
+      await expect(cache.remember('key', async () => 'recovered')).resolves.toBe('recovered');
+    });
+  });
+
+  it('remember bypass does not contain TTL preparation failures or change direct operation failures', async () => {
+    const failure = new Error('random failed');
+    const store = new MemoryStore();
+    const set = vi.spyOn(store, 'set');
+    const cache = createCacheService(store, {
+      rememberCacheErrors: 'bypass',
+      ttl: 60,
+      ttlJitter: { ratio: 0.1, mode: 'symmetric', random: () => { throw failure; } },
+    });
+
+    await expect(cache.remember('key', async () => 'loaded')).rejects.toBe(failure);
+    expect(set).not.toHaveBeenCalled();
+    await expect(cache.set('key', 'value')).rejects.toBe(failure);
+    for (const method of ['get', 'del', 'reset'] as const) {
+      vi.spyOn(store, method).mockRejectedValueOnce(failure);
+      await expect(cache[method]('key')).rejects.toBe(failure);
+    }
+  });
+
+  it.each([true, false])('remember bypass shares original loader errors after failed reads (synchronous=%s)', async (synchronous) => {
+    const failure = new Error('origin failure');
+    const store = new MemoryStore();
+    vi.spyOn(store, 'get').mockRejectedValue(new Error('store read failed'));
+    const set = vi.spyOn(store, 'set');
+    const loader = vi.fn(() => {
+      if (synchronous) throw failure;
+      return Promise.reject(failure);
+    });
+    const cache = createCacheService(store, { rememberCacheErrors: 'bypass' });
+
+    const results = await Promise.allSettled([
+      cache.remember('key', loader), cache.remember('key', loader),
+    ]);
+
+    for (const result of results) {
+      expect(result.status).toBe('rejected');
+      if (result.status === 'rejected') {
+        expect(result.reason).toBe(failure);
+      }
+    }
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(set).not.toHaveBeenCalled();
+    await expect(cache.remember('key', async () => 'recovered')).resolves.toBe('recovered');
+  });
+
+  it('remember bypass rejects invalid jitter samples before reaching the store', async () => {
+    const store = new MemoryStore();
+    const set = vi.spyOn(store, 'set');
+    const cache = createCacheService(store, {
+      rememberCacheErrors: 'bypass', ttl: 60,
+      ttlJitter: { ratio: 0.1, mode: 'symmetric', random: () => Number.NaN },
+    });
+    const loader = vi.fn(async () => 'loaded');
+
+    await expect(cache.remember('key', loader)).rejects.toThrow('ttlJitter.random must return a finite number');
+
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('remember bypass keeps direct store and lifecycle errors unchanged', async () => {
+    const failure = new Error('store failure');
+    const fail = async () => { throw failure; };
+    const store: CacheStore = { get: fail, set: fail, del: fail, reset: fail, close: fail };
+    const cache = createCacheService(store, { rememberCacheErrors: 'bypass' });
+
+    await expect(cache.get('key')).rejects.toBe(failure);
+    await expect(cache.set('key', 'value')).rejects.toBe(failure);
+    await expect(cache.del('key')).rejects.toBe(failure);
+    await expect(cache.reset()).rejects.toBe(failure);
+    const firstClose = cache.close();
+    expect(cache.close()).toBe(firstClose);
+    await expect(firstClose).rejects.toBe(failure);
+    await expect(cache.close()).rejects.toBe(failure);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });

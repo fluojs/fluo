@@ -126,6 +126,7 @@ describe('create-lane generated conflicts', () => {
     const value = { ...readyLedger(plan, artifact, '.omo/search-issue/artifacts/generated-fixture.json'), predicted_conflicts: [hint] };
 
     expect(laneV2ToInitSpecs(value).predictedConflicts).toEqual([hint]);
+    expect(laneV2ToInitSpecs(value).retryPolicy).toEqual(value.retry_policy);
     expect(laneV2ToInitSpecs(value).specs).toEqual([{ n: 42, deps: [] }, { n: 43, deps: [] }]);
     expect(planIsCanonical(plan, artifact)).toBe(true);
   });
@@ -189,6 +190,7 @@ describe('create-lane generated conflicts', () => {
       ], { encoding: 'utf8' }).trim();
       const imported = JSON.parse(readFileSync(path, 'utf8'));
       expect(imported.predicted_conflicts).toEqual(produced.predicted_conflicts);
+      expect(imported.retry_policy).toEqual(prepared.ledger.retry_policy);
       expect(imported.issues['42'].depends_on).toEqual([]);
       const substituted = structuredClone(prepared.ledger);
       substituted.predicted_conflicts[0].generated.inputs[0].sha256 = 'f'.repeat(64);
