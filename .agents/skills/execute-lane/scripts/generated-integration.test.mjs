@@ -25,6 +25,45 @@ const coordinate = (rows, lane = { preflight_overlap: 1 }) => {
   return integration.coordinatePreflightOverlap(lane, rows);
 };
 
+const grant = (row, sequence) => {
+  const policy = evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue }).policy;
+  row.obs.facts = { 'review-readiness': { head: row.obs.headSha,
+    value: { policy_sha256: policy.sha256, sequence, active: true } } };
+};
+
+test('readiness ordering: valid grants survive lower numbers and late OPEN PRs in every permutation', () => {
+  const rows = [overlapRow(42), overlapRow(43), overlapRow(44)];
+  grant(rows[1], 1);
+  rows[0].obs.pr = { state: 'OPEN', number: 142, headSha: head };
+
+  for (const order of [[0, 1, 2], [2, 0, 1], [1, 2, 0]]) {
+    const result = coordinate(order.map(index => rows[index])).sort((a, b) => a.issue - b.issue);
+    assert.deepEqual(result.map(row => row.decision.action), ['wait-preflight-overlap', 'review', 'wait-preflight-overlap']);
+    assert.deepEqual(result[2].decision.siblings.map(row => row.issue), [43]);
+  }
+  rows[1].obs.facts['review-readiness'].value.active = false;
+  assert.equal(coordinate(rows)[0].decision.action, 'review');
+  grant(rows[1], 1);
+  rows[1].obs.facts['review-readiness'].value.policy_sha256 = 'f'.repeat(64);
+  assert.equal(coordinate(rows)[0].decision.action, 'review');
+});
+
+test('readiness ordering: fix-back, conflict and failed observation do not occupy or propagate', () => {
+  for (const action of ['fix-back', 'resolve-conflict', 'observation-failed']) {
+    const failure = { source: 'pr', subject: 'issue-42', code: 'command-failed' };
+    const rows = [overlapRow(42, ['README.md'], action,
+      { pr: { state: 'OPEN', number: 142 }, ...(action === 'observation-failed' ? { observationFailures: [failure] } : {}) }),
+    overlapRow(43)];
+    grant(rows[0], 1);
+
+    const result = coordinate(rows);
+
+    assert.equal(result[0].decision.action, action);
+    assert.equal(result[1].decision.action, 'review');
+    assert.equal(result[1].decision.overlaps[0].state, action);
+  }
+});
+
 test('preflight overlap measurement: identical source and gates -> per-issue distinct review heads and CI runs', async () => {
   const path = new URL('../../../../tooling/governance/fixtures/preflight-overlap/measure.mjs', import.meta.url);
   assert.equal(existsSync(path), true, 'comparison fixture must be executable');
@@ -70,10 +109,11 @@ test('preflight overlap: full overlap and every permutation -> one selected revi
   assert.deepEqual(rows.map(r => r.decision.action), ['review', 'review', 'review']);
 });
 
-test('preflight overlap: A-B B-C chain -> greedy independent set follows OPEN PR then valid PASS priority', () => {
+test('preflight overlap: A-B B-C chain -> a returned grant survives OPEN PR and valid PASS transitions', () => {
   const rows = [overlapRow(42, ['docs/a.md']), overlapRow(43, ['docs/a.md', 'docs/c.md']), overlapRow(44, ['docs/c.md'])];
 
   assert.deepEqual(coordinate(rows).map(r => r.decision.action), ['review', 'wait-preflight-overlap', 'review']);
+  grant(rows[1], 1);
   rows[1].obs.pr = { state: 'OPEN', number: 143, headSha: head };
   assert.deepEqual(coordinate(rows).map(r => r.decision.action), ['wait-preflight-overlap', 'review', 'wait-preflight-overlap']);
   rows[1].obs.pr = null;
@@ -86,6 +126,7 @@ test('preflight overlap: A-B B-C chain -> greedy independent set follows OPEN PR
   rows[1].decision.action = 'create-pr';
   assert.deepEqual(coordinate(rows).map(r => r.decision.action), ['wait-preflight-overlap', 'create-pr', 'wait-preflight-overlap']);
   rows[1].obs.review.head = 'f'.repeat(40);
+  rows[1].obs.facts['review-readiness'].value.active = false;
   assert.equal(coordinate(rows)[0].decision.action, 'review');
 });
 
@@ -111,22 +152,26 @@ test('preflight overlap: all non-review actions -> never replaced with the new w
   }
 });
 
-test('preflight overlap: relevant sibling observation failure -> fail closed only on affected reviews', () => {
+test('preflight overlap: relevant sibling observation failure -> failed issue alone loses eligibility', () => {
   const failure = { source: 'pr', subject: 'issue-42', code: 'command-failed' };
   const rows = [overlapRow(42, ['README.md'], 'observation-failed', { observationFailures: [failure] }), overlapRow(43)];
+  rows[0].decision.failures = [failure];
 
-  assert.equal(coordinate(rows)[1].decision.action, 'observation-failed');
-  assert.deepEqual(coordinate(rows)[1].decision.failures, [failure]);
+  assert.equal(coordinate(rows)[0].decision.action, 'observation-failed');
+  assert.deepEqual(coordinate(rows)[0].decision.failures, [failure]);
+  assert.equal(coordinate(rows)[1].decision.action, 'review');
   assert.equal(coordinate([rows[0], overlapRow(43, ['src/other.ts'])])[1].decision.action, 'review');
 });
 
-test('preflight overlap: failed issue observation loses current digest -> relevant accepted prediction still fails closed', () => {
+test('preflight overlap: failed issue observation loses current digest -> sibling review remains eligible', () => {
   const failure = { source: 'issue', subject: 42, code: 'command-failed' };
   const rows = [overlapRow(42, ['README.md'], 'observation-failed',
     { issueSha256: null, observationFailures: [failure] }), overlapRow(43)];
+  rows[0].decision.failures = [failure];
 
-  assert.equal(coordinate(rows)[1].decision.action, 'observation-failed');
-  assert.deepEqual(coordinate(rows)[1].decision.failures, [failure]);
+  assert.equal(coordinate(rows)[0].decision.action, 'observation-failed');
+  assert.deepEqual(coordinate(rows)[0].decision.failures, [failure]);
+  assert.equal(coordinate(rows)[1].decision.action, 'review');
 });
 
 test('preflight overlap: merged sibling -> base integration only without occupants and verified ancestry', () => {

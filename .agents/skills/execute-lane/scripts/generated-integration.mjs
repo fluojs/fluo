@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
-import { validateReviewFact } from '../../review-head/scripts/contracts.mjs';
 
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) &&
@@ -27,7 +26,24 @@ export const coordinateGeneratedIntegration = (lane, snapshots) => snapshots.map
     surfaces: hints.filter((hint) => ready.some((sibling) => hint.issues.includes(sibling.issue))).map((hint) => hint.surface) } };
 });
 
-/** Fresh accepted predictions coordinate review entry, without storing wait state. */
+const readinessActions = new Set(['review', 'create-pr', 'push', 'wait-ci',
+  'wait-mergeability', 'request-merge-approval', 'merge']);
+
+/** Shared head/policy admission for pure ordering and transactional CLI recording. */
+export const reviewReadinessState = (row) => {
+  const preflight = evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue });
+  const candidate = preflight.valid && sha(row.obs.headSha) && row.obs.hasNewCommits === true &&
+    readinessActions.has(row.decision.action) && !row.obs.observationFailures?.length &&
+    row.obs.issueState !== 'CLOSED' && !['CLOSED', 'MERGED'].includes(row.obs.pr?.state);
+  const fact = row.obs.facts?.['review-readiness'];
+  const current = candidate && fact?.head === row.obs.headSha && fact.value?.active === true &&
+    fact.value.policy_sha256 === preflight.policy.sha256 &&
+    Number.isSafeInteger(fact.value.sequence) && fact.value.sequence > 0;
+  return { candidate, current: Boolean(current), policy: preflight.valid ? preflight.policy : null,
+    sequence: current ? fact.value.sequence : null };
+};
+
+/** Accepted predictions coordinate review entry using already returned grants. */
 export const coordinatePreflightOverlap = (lane, snapshots) => {
   if (lane.preflight_overlap !== 1) return snapshots;
   const policies = new Map(snapshots.map((row) => [row.issue,
@@ -35,53 +51,24 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
   const overlaps = (left, right) => policies.get(left.issue).valid && policies.get(right.issue).valid
     ? [...new Set(left.obs.preflight.predicted_files.filter(file =>
       right.obs.preflight.predicted_files.includes(file)))].sort() : [];
-  const occupants = new Set(['review', 'fix-back', 'create-pr', 'push', 'resolve-conflict',
-    'wait-ci', 'wait-mergeability', 'request-merge-approval', 'merge']);
-  const priority = (row) => {
-    if (row.obs.pr?.state === 'OPEN') return 0;
-    if (!row.obs.pr) {
-      try {
-        if (validateReviewFact(row.obs.review, row.obs.headSha, policies.get(row.issue).policy).verdict === 'pass') return 1;
-      } catch {
-        // An absent, stale or invalid PASS cannot reserve priority.
-      }
-    }
-    return 2;
-  };
-  const candidates = snapshots.filter(row => policies.get(row.issue).valid && row.obs.headSha &&
-    row.obs.hasNewCommits && occupants.has(row.decision.action) &&
-    row.obs.issueState !== 'CLOSED' && !['CLOSED', 'MERGED'].includes(row.obs.pr?.state) &&
-    !row.obs.observationFailures?.length)
-    .sort((a, b) => priority(a) - priority(b) || a.issue - b.issue);
+  const readiness = new Map(snapshots.map(row => [row.issue, reviewReadinessState(row)]));
+  const candidates = snapshots.filter(row => readiness.get(row.issue).candidate)
+    .sort((a, b) => Number(readiness.get(b.issue).current) - Number(readiness.get(a.issue).current) ||
+      (readiness.get(a.issue).sequence ?? 0) - (readiness.get(b.issue).sequence ?? 0) || a.issue - b.issue);
   const selected = [];
   for (const candidate of candidates) {
     if (!selected.some(other => overlaps(candidate, other).length)) selected.push(candidate);
   }
   return snapshots.map(row => {
-    // Failed issue reads cannot prove an accepted sibling became unrelated.
-    // This potential intersection blocks review only; it never admits a candidate.
-    if (row.decision.action === 'review' && policies.get(row.issue).valid) {
-      const uncertain = snapshots.filter(sibling => sibling.issue !== row.issue &&
-        sibling.obs.observationFailures?.some(failure => failure.source === 'issue') &&
-        !policies.get(sibling.issue).valid &&
-        evaluatePreflight(sibling.obs.preflight, { ...sibling.obs, issue: sibling.issue,
-          issueSha256: sibling.obs.preflight?.issue_sha256 }).valid &&
-        row.obs.preflight.predicted_files.some(file => sibling.obs.preflight.predicted_files.includes(file)));
-      if (uncertain.length) return { ...row, decision: { action: 'observation-failed',
-        failures: uncertain.flatMap(sibling => sibling.obs.observationFailures) } };
-    }
     const related = snapshots.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length)
       .sort((a, b) => a.issue - b.issue);
     if (!related.length) return row;
     const targets = related.map(sibling => ({
       issue: sibling.issue, head: sibling.obs.headSha, pr: sibling.obs.pr?.number ?? null,
-      files: overlaps(row, sibling), state: sibling.obs.pr?.state ??
-        (sibling.obs.issueState === 'CLOSED' ? 'CLOSED' : sibling.decision.action),
+      files: overlaps(row, sibling), state: sibling.decision.action,
     }));
     const decision = { ...row.decision, overlaps: targets };
     if (row.decision.action !== 'review') return { ...row, decision };
-    const failures = related.flatMap(sibling => sibling.obs.observationFailures ?? []);
-    if (failures.length) return { ...row, decision: { action: 'observation-failed', failures, overlaps: targets } };
     const merged = related.filter(sibling => sibling.obs.pr?.state === 'MERGED');
     const integrations = merged.map(sibling => ({
       sibling, evidence: row.obs.overlapIntegrations?.find(item => item.issue === sibling.issue),

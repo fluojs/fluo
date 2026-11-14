@@ -292,14 +292,43 @@ Only two currently valid accepted preflights' explicit `predicted_files`
 intersect; scope prefixes and file kinds do not alter that rule. Ready
 preflights and implementations remain parallel.
 
-`wait-preflight-overlap` replaces only a new `review` action. From the fresh
-snapshot, select non-overlapping candidates greedily: OPEN PRs first, then
-valid current-head PASS without a PR, then remaining implemented candidates;
-break ties by issue number. A waiting review names only directly overlapping
-selected siblings. Existing publication, CI, fix-back and merge work continues.
-Closed, merged, blocked and completed siblings do not occupy a slot.
-Recompute targets after each observation; do not persist locks, waits or edges.
-Failed relevant observations block review as `observation-failed`.
+`wait-preflight-overlap` replaces only a new `review` action. Before dispatching
+background reviewers, wait until `plan` actually returns `review`. On marker
+lanes that return, `plan-all` and each `watch` tick save a head-bound
+`facts["review-readiness"] = { head, value: { policy_sha256, sequence, active } }`
+before exposing a first review grant. `plan` grants only its requested issue;
+`plan-all` and `watch` grant only review rows they output, never internal or
+waiting rows. Replanning a current grant does not rewrite it.
+
+The shared snapshot takes the existing SQLite write transaction around fresh
+lane reading, observation, invalidation, coordination and saving. `watch`
+releases it every tick, before reviewer work, CI or waiting for another tick.
+This transaction protects the fact write; the fact stores neither a lock nor
+a selected sibling, owner, session or lease. Legacy snapshots stay read-only.
+
+Select candidates greedily by valid active readiness sequence, then issue
+number; ungranted candidates follow by issue number. OPEN PRs and current PASS
+give no priority. Candidates require a valid accepted preflight, implementation
+head, successful own observation and a pre-coordination action of `review`,
+`create-pr`, `push`, `wait-ci`, `wait-mergeability`, `request-merge-approval` or
+`merge`. Existing publication and CI keep their grant. A waiting review names
+only directly overlapping selected candidates, which never wait on each other.
+
+Head or effective-policy changes and observing fix-back, conflict resolution,
+blockers, failed observation, dependencies, preflight, implementation or
+termination deactivate the grant. `record`, `set-fact` and `clear-blocker`
+invalidate directly established changes in their own write transaction.
+Keep inactive facts: a new grant uses the lane-wide maximum preserved sequence
+plus one. Independent reviews first returned in one snapshot share a sequence.
+Neither timestamps nor clock movement affect ordering. New heads and recovered
+issues receive new grants rather than inheriting their former place.
+
+Failed observations remove only that issue from occupancy and preserve its
+`observation-failed`; they do not block another sibling's review. The merged
+sibling ancestry gate below remains mandatory. Recompute targets on each
+snapshot; `overlaps[].state` shows each sibling's pre-coordination action.
+`watch` prints selected siblings and reports same-action changes to siblings,
+files or overlaps, including a blocker that changes which sibling is selected.
 
 When an overlapping sibling merges, verify its actual PR `mergeCommit` is in
 observed origin/base and the review head. Missing or unreadable base ancestry

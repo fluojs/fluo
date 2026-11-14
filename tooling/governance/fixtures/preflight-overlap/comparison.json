@@ -1279,7 +1279,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "wait-ci"
             }
           ],
           "files": [
@@ -1293,7 +1293,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "wait-ci"
             }
           ]
         }
@@ -1368,7 +1368,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "merge"
             }
           ],
           "files": [
@@ -1382,7 +1382,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "merge"
             }
           ]
         }
@@ -1436,7 +1436,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "merge"
             }
           ],
           "files": [
@@ -1450,7 +1450,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "merge"
             }
           ]
         }
@@ -1504,7 +1504,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "merge"
             }
           ],
           "files": [
@@ -1518,7 +1518,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "merge"
             }
           ]
         }
@@ -1579,7 +1579,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1640,7 +1640,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1714,7 +1714,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1767,7 +1767,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1799,7 +1799,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "wait-ci"
             }
           ]
         }
@@ -1820,7 +1820,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1852,7 +1852,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "OPEN"
+              "state": "merge"
             }
           ]
         }
@@ -1874,7 +1874,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1906,7 +1906,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1927,7 +1927,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1959,7 +1959,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -1980,7 +1980,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -2012,7 +2012,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }
@@ -2033,7 +2033,7 @@
               "files": [
                 "src/shared.ts"
               ],
-              "state": "MERGED"
+              "state": "cleanup"
             }
           ]
         }

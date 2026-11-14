@@ -56,7 +56,7 @@ import {
 	buildReviewFact,
 	validateReviewFact,
 } from "../../review-head/scripts/contracts.mjs";
-import { coordinateGeneratedIntegration, coordinatePreflightOverlap, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
+import { coordinateGeneratedIntegration, coordinatePreflightOverlap, reviewReadinessState, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
 import { observeKnownBaseline, validateKnownBaseline } from "./known-baseline.mjs";
 import { assertAgentIdentity, dispatchFor, DispatchPreparationError, readRegisteredAgents, validateDispatchTarget, validateUnavailableTarget } from "./dispatch-targets.mjs";
 import {
@@ -847,10 +847,23 @@ const main = async () => {
 		? await lockLane(lanePath) : null;
 	try {
 	const lane = loadLane(lanePath);
+	const invalidateReadiness = (number, force = false) => {
+		if (lane.preflight_overlap !== 1) return;
+		const current = issueEntry(lane, number);
+		const fact = current.facts?.["review-readiness"];
+		if (fact?.value?.active !== true) return;
+		const obs = observeIssue(root, lane, number);
+		if (force || !reviewReadinessState({ issue: number,
+			obs: { ...obs, facts: current.facts }, decision: decideNext(current, obs) }).current) {
+			fact.value.active = false;
+		}
+	};
 
 	// Watch runs for a long time: re-load the lane file every tick so
 	// facts/approvals recorded by concurrent operator commands are seen.
-	const snapshotAll = (withObservations = false) => {
+	const snapshotAll = (withObservations = false, previous = null) => {
+		const unlock = lane.preflight_overlap === 1 ? lockLane(lanePath) : null;
+		try {
 		const fresh = loadLane(lanePath);
 		assertPredictedConflicts(fresh.predicted_conflicts, Object.keys(fresh.issues).map(Number));
 		const snapshots = Object.keys(fresh.issues).map((key) => {
@@ -896,13 +909,52 @@ const main = async () => {
 				}));
 			}
 		}
-		const coordinated = coordinatePreflightOverlap(fresh, coordinateGeneratedIntegration(fresh, snapshots));
+		const legacy = coordinateGeneratedIntegration(fresh, snapshots);
+		let changed = false;
+		const deactivate = (row) => {
+			const fact = fresh.issues[String(row.issue)].facts?.["review-readiness"];
+			if (fact?.value?.active === true && !reviewReadinessState(row).current) {
+				fact.value.active = false;
+				changed = true;
+			}
+		};
+		if (fresh.preflight_overlap === 1) legacy.forEach(deactivate);
+		const coordinated = coordinatePreflightOverlap(fresh, legacy);
+		if (fresh.preflight_overlap === 1) {
+			coordinated.forEach(deactivate);
+			const outputIssue = command === "plan" ? Number(arg(args, "--issue")) : null;
+			const watchReviews = command === "watch" ? new Set(summarizeTransitions(previous, coordinated).changes
+				.filter(change => change.to === "review").map(change => change.issue)) : null;
+			const grants = coordinated.filter(row => row.decision.action === "review" &&
+				(command === "plan" ? row.issue === outputIssue : command === "watch"
+					? watchReviews.has(row.issue) : command === "plan-all") &&
+				reviewReadinessState(row).candidate && !reviewReadinessState(row).current);
+			if (grants.length) {
+				const sequences = Object.values(fresh.issues).map(entry => entry.facts?.["review-readiness"]?.value?.sequence)
+					.filter(value => Number.isSafeInteger(value) && value > 0);
+				const sequence = Math.max(0, ...sequences) + 1;
+				if (!Number.isSafeInteger(sequence)) throw new TypeError("review-readiness sequence exhausted");
+				for (const row of grants) {
+					const state = reviewReadinessState(row);
+					const entry = fresh.issues[String(row.issue)];
+					entry.facts ??= {};
+					entry.facts["review-readiness"] = { head: row.obs.headSha,
+						value: { policy_sha256: state.policy.sha256, sequence, active: true } };
+					row.obs.facts = entry.facts;
+				}
+				changed = true;
+			}
+			if (changed) saveLane(lanePath, fresh);
+		}
 		if (fresh.predicted_conflicts?.some((hint) => hint.generated) &&
 			["plan", "plan-all", "watch"].includes(command)) {
 			for (const row of coordinated) recordObservation(fresh.lane_id, row);
 		}
 		return coordinated.map(({ obs, ...row }) =>
 			({ ...row, ...(withObservations ? { obs } : {}) }));
+		} finally {
+			unlock?.();
+		}
 	};
 
 	if (["retro-plan", "retro-evidence", "retro-report"].includes(command)) {
@@ -962,7 +1014,7 @@ const main = async () => {
 			let prev = null;
 			let stallCounts = null;
 			for (;;) {
-				const next = snapshotAll(true);
+				const next = snapshotAll(true, prev);
 				const { changes, settled } = summarizeTransitions(prev, next);
 				for (const c of changes) {
 					if (
@@ -975,7 +1027,9 @@ const main = async () => {
 					process.stdout.write(
 						`${new Date().toISOString()} issue ${c.issue}: ${
 							c.from ?? "(start)"
-						} -> ${c.to}${next.find(item => item.issue === c.issue).decision.overlaps
+						} -> ${c.to}${c.to === "wait-preflight-overlap"
+							? ` siblings=${JSON.stringify(next.find(item => item.issue === c.issue).decision.siblings)}` : ""
+						}${next.find(item => item.issue === c.issue).decision.overlaps
 							? ` overlaps=${JSON.stringify(next.find(item => item.issue === c.issue).decision.overlaps)}`
 							: c.to === "wait-generated-integration"
 							? ` siblings=${JSON.stringify(next.find((item) => item.issue === c.issue).decision.siblings)}` : ""}\n`,
@@ -1062,6 +1116,7 @@ const main = async () => {
 		const phase = arg(args, "--phase");
 		const result = JSON.parse(arg(args, "--result-json"));
 		const observed = observeIssue(root, lane, issue);
+		invalidateReadiness(issue);
 		validateStageMeasurements(result?.measurements, observed.headSha);
 		const unavailable = result?.error?.code === "dispatch-target-unavailable";
 		if (unavailable) {
@@ -1138,6 +1193,7 @@ const main = async () => {
 			};
 		}
 		lane.issues[String(issue)] = next;
+		invalidateReadiness(issue, ["fix-back", "resolve-conflict"].includes(phase));
 		saveLane(lanePath, lane);
 		recordRetroEvent(root, lane.lane_id, issue, "stage", {
 			phase,
@@ -1285,6 +1341,7 @@ const main = async () => {
 					: {}),
 			};
 		}
+		for (const target of kind === "known-baseline" ? value.issues : [issue]) invalidateReadiness(target);
 		saveLane(lanePath, lane);
 		process.stdout.write("ok\n");
 		return;
@@ -1301,6 +1358,7 @@ const main = async () => {
 			throw new TypeError("clear-blocker requires the current blocker's phase");
 		}
 		const blocker = entry.blocker;
+		invalidateReadiness(issue, true);
 		entry.blocker = null;
 		entry.attempts[phase] = 0;
 		if (entry.retry_telemetry) delete entry.retry_telemetry[phase];
