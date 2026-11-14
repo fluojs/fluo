@@ -474,6 +474,202 @@ describe('dispatch response policy', () => {
     expect(response.statusCode).toBe(500);
   });
 
+  type FinalizerInterruption = 'none' | 'signal-abort' | 'probe-abort' | 'external-commit';
+
+  type InterruptedFinalizerScenario = {
+    readonly conditional?: boolean;
+    readonly finalizedValue: () => unknown;
+    readonly method?: 'GET' | 'HEAD';
+    readonly requestHeaders?: FrameworkRequest['headers'];
+    readonly withFormatter?: boolean;
+  };
+
+  async function dispatchWithInterruptedFinalizer(
+    scenario: InterruptedFinalizerScenario,
+    interruption: FinalizerInterruption,
+  ) {
+    let enterFinalizer!: () => void;
+    const finalizerEntered = new Promise<void>((resolve) => {
+      enterFinalizer = resolve;
+    });
+    let releaseFinalizer!: () => void;
+    const finalizerReleased = new Promise<void>((resolve) => {
+      releaseFinalizer = resolve;
+    });
+    const writes: unknown[] = [];
+    const formatCalls: unknown[] = [];
+
+    @Controller('/interrupted-finalizer')
+    class InterruptedFinalizerController {
+      @Get('/')
+      getValue() {
+        return { kind: 'handler' };
+      }
+
+      @Head('/')
+      headValue() {
+        return { kind: 'handler' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      appMiddleware: [{
+        async handle(context: MiddlewareContext, next: Next) {
+          registerFrameworkResponseValueFinalizer(context.requestContext, async () => {
+            enterFinalizer();
+            await finalizerReleased;
+            return scenario.finalizedValue();
+          });
+          await next();
+        },
+      }],
+      ...(scenario.conditional
+        ? {
+          conditionalRequest: {
+            resolve() {
+              return { exists: true, validators: { etag: { opaqueValue: 'finalized-v1', strength: 'strong' as const } } };
+            },
+          },
+        }
+        : {}),
+      ...(scenario.withFormatter
+        ? {
+          contentNegotiation: {
+            formatters: [{
+              format(body: unknown) {
+                formatCalls.push(body);
+                return JSON.stringify(body);
+              },
+              mediaType: 'application/json',
+            }],
+          },
+        }
+        : {}),
+      handlerMapping: createHandlerMapping([{ controllerToken: InterruptedFinalizerController }]),
+      rootContainer: new Container().register(InterruptedFinalizerController),
+    });
+    const response = createResponse();
+    const send = response.send.bind(response);
+    response.send = (body) => {
+      writes.push(body);
+      return send(body);
+    };
+    const redirect = response.redirect.bind(response);
+    response.redirect = (status, location) => {
+      writes.push(`redirect:${location}`);
+      return redirect(status, location);
+    };
+    Object.assign(response, {
+      sendSimpleJson(body: unknown) {
+        writes.push(body);
+        response.body = body;
+        response.committed = true;
+      },
+    });
+    const abort = new AbortController();
+    let probeAborted = false;
+    const request = createRequest('/interrupted-finalizer', scenario.requestHeaders, scenario.method ?? 'GET');
+    request.signal = abort.signal;
+    request.isAborted = () => probeAborted;
+
+    const dispatched = dispatcher.dispatch(request, response);
+    await finalizerEntered;
+    switch (interruption) {
+      case 'signal-abort':
+        abort.abort();
+        break;
+      case 'probe-abort':
+        probeAborted = true;
+        break;
+      case 'external-commit':
+        await response.send('committed elsewhere');
+        break;
+      case 'none':
+        break;
+    }
+    releaseFinalizer();
+    await dispatched;
+
+    return { formatCalls, response, writes };
+  }
+
+  function createFinalizedWriterValue() {
+    const page = { html: '<main>Finalized writer page</main>' };
+    registerFrameworkResponseWriter(page, (context) => {
+      context.applySuccessResponseMetadata();
+      return context.response.send(`writer:${page.html}`);
+    });
+    return page;
+  }
+
+  const interruptedFinalizerScenarios: ReadonlyArray<readonly [string, InterruptedFinalizerScenario]> = [
+    ['simple JSON fast path', { finalizedValue: () => ({ kind: 'finalized' }) }],
+    ['text body', { finalizedValue: () => 'finalized text' }],
+    ['negotiated formatter', {
+      finalizedValue: () => ({ kind: 'finalized' }),
+      requestHeaders: { accept: 'application/json' },
+      withFormatter: true,
+    }],
+    ['integration-owned response writer', { finalizedValue: createFinalizedWriterValue }],
+    ['byte range', {
+      finalizedValue: () => new Uint8Array([1, 2, 3, 4]),
+      requestHeaders: { range: 'bytes=0-1' },
+    }],
+    ['If-Range byte range', {
+      conditional: true,
+      finalizedValue: () => new Uint8Array([1, 2, 3, 4]),
+      requestHeaders: { 'if-range': '"finalized-v1"', range: 'bytes=0-1' },
+    }],
+    ['HEAD', { finalizedValue: () => ({ kind: 'finalized' }), method: 'HEAD' }],
+    ['conditional GET 304', {
+      conditional: true,
+      finalizedValue: () => ({ kind: 'finalized' }),
+      requestHeaders: { 'if-none-match': '"finalized-v1"' },
+    }],
+    ['conditional HEAD 304', {
+      conditional: true,
+      finalizedValue: () => ({ kind: 'finalized' }),
+      method: 'HEAD',
+      requestHeaders: { 'if-none-match': '"finalized-v1"' },
+    }],
+  ];
+
+  it.each(interruptedFinalizerScenarios)('writes the %s response once when the finalizer settles uninterrupted', async (_name, scenario) => {
+    // Given: a pending finalizer that settles without abort or a competing commit.
+    // When: the ordinary success path resumes.
+    const { response, writes } = await dispatchWithInterruptedFinalizer(scenario, 'none');
+
+    // Then: exactly one final write commits the response.
+    expect(writes).toHaveLength(1);
+    expect(response.committed).toBe(true);
+  });
+
+  it.each(interruptedFinalizerScenarios.flatMap(([name, scenario]) => [
+    [name, 'signal-abort', scenario] as const,
+    [name, 'probe-abort', scenario] as const,
+  ]))('suppresses the %s response when the request aborts (%s) while the finalizer is pending', async (_name, interruption, scenario) => {
+    // Given: a pending finalizer and a request cancelled before it settles.
+    // When: the finalizer resolves its value.
+    const { formatCalls, response, writes } = await dispatchWithInterruptedFinalizer(scenario, interruption);
+
+    // Then: no writer, formatter, or send runs after the abort.
+    expect(writes).toEqual([]);
+    expect(formatCalls).toEqual([]);
+    expect(response.committed).toBe(false);
+    expect(response.body).toBeUndefined();
+  });
+
+  it.each(interruptedFinalizerScenarios)('does not write the %s response twice when another path commits during the finalizer', async (_name, scenario) => {
+    // Given: a pending finalizer while another path commits the response.
+    // When: the finalizer resolves its value.
+    const { formatCalls, response, writes } = await dispatchWithInterruptedFinalizer(scenario, 'external-commit');
+
+    // Then: the earlier commit is the only write.
+    expect(writes).toEqual(['committed elsewhere']);
+    expect(formatCalls).toEqual([]);
+    expect(response.body).toBe('committed elsewhere');
+  });
+
   it('retains resolved validators when a custom response writer commits the response', async () => {
     const htmlEntry = { html: '<main>Validator writer</main>' };
 
