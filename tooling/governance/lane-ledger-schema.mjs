@@ -162,6 +162,7 @@ export function validateLedgerShape(path, ledger) {
   assert(hasExactKeys(ledger.root_main_sync, ['status', 'sha']), path, 'root_main_sync must contain exactly status/sha');
   assert(rootMainSyncStatuses.has(ledger.root_main_sync.status), path, `invalid root_main_sync.status: ${String(ledger.root_main_sync.status)}`);
   const optionalRootKeys = [
+    ...(Object.hasOwn(ledger, 'preflight_overlap') ? ['preflight_overlap'] : []),
     ...(Object.hasOwn(ledger, 'predicted_conflicts') ? ['predicted_conflicts'] : []),
     ...(ledger.created_at === undefined ? [] : ['created_at']),
     ...(ledger.lane_plan_approval_sha256 === undefined
@@ -171,6 +172,8 @@ export function validateLedgerShape(path, ledger) {
   const expectedRootKeys = [...rootKeys, ...optionalRootKeys];
   assert(hasExactKeys(ledger, expectedRootKeys), path, 'ledger must contain exactly the canonical root keys');
   assertPredictedConflicts(ledger.predicted_conflicts, ledger.confirmed_issues);
+  assert(!Object.hasOwn(ledger, 'preflight_overlap') || ledger.preflight_overlap === 1,
+    path, 'preflight_overlap must equal 1 when present');
 }
 
 export function validateLaneShape(lanePath, lane, validation) {

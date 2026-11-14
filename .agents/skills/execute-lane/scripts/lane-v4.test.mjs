@@ -865,3 +865,28 @@ test('C4: a dependency outside the lane is rejected, not silently dropped', () =
 		/dependency 99 of issue 1 is not in confirmed_issues/,
 	);
 });
+test('watch: same action with changed overlap head, sibling or file -> coordination transition', () => {
+  const before = [{ issue: 42, decision: { action: 'review',
+    overlaps: [{ issue: 43, head: 'a'.repeat(40), pr: null, files: ['README.md'], state: 'review' }] } }];
+  for (const patch of [{ issue: 44 }, { head: 'b'.repeat(40) }, { files: ['CONTEXT.md'] }]) {
+    const after = structuredClone(before);
+    Object.assign(after[0].decision.overlaps[0], patch);
+
+    assert.deepEqual(summarizeTransitions(before, after).changes, [{
+      issue: 42, from: 'review', to: 'review', reason: 'coordination-targets-changed',
+    }]);
+  }
+});
+
+test('watch selected siblings: identical overlaps and changed sibling or wait files -> coordination transition', () => {
+  const before = [{ issue: 44, decision: { action: 'wait-preflight-overlap', files: ['README.md'],
+    siblings: [{ issue: 42, head: 'a'.repeat(40) }], overlaps: [{ issue: 42 }, { issue: 43 }] } }];
+  for (const patch of [{ siblings: [{ issue: 43, head: 'a'.repeat(40) }] }, { files: ['CONTEXT.md'] }]) {
+    const next = structuredClone(before);
+    Object.assign(next[0].decision, patch);
+
+    assert.deepEqual(summarizeTransitions(before, next).changes, [{
+      issue: 44, from: 'wait-preflight-overlap', to: 'wait-preflight-overlap', reason: 'coordination-targets-changed',
+    }]);
+  }
+});

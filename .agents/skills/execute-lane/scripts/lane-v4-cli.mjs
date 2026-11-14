@@ -2,7 +2,7 @@
 // execute-lane v4 CLI: observation + lane file IO around the pure engine.
 //
 // Commands:
-//   init            --root . --lane-id <id> --issue <n> [--issue <n> ...]
+//   init            --root . --lane-id <id> --issue <n> [--issue <n> ...] [--preflight-overlap]
 //   plan            --root . --lane <path> --issue <n>
 //   plan-all        --root . --lane <path> [--with-retro]
 //   watch           --root . --lane <path> [--interval 60] [--once] [--stall-after 15]
@@ -56,7 +56,7 @@ import {
 	buildReviewFact,
 	validateReviewFact,
 } from "../../review-head/scripts/contracts.mjs";
-import { coordinateGeneratedIntegration, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
+import { coordinateGeneratedIntegration, coordinatePreflightOverlap, reviewReadinessState, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
 import { observeKnownBaseline, validateKnownBaseline } from "./known-baseline.mjs";
 import { assertAgentIdentity, dispatchFor, DispatchPreparationError, readRegisteredAgents, validateDispatchTarget, validateUnavailableTarget } from "./dispatch-targets.mjs";
 import {
@@ -205,7 +205,56 @@ export const captureRetroCi = (root, lane, issue, query = run) => {
 	return recorded;
 };
 
-const loadLane = (path) => JSON.parse(readFileSync(path, "utf8"));
+const validateOverlapMarker = (lane) => {
+	if (Object.hasOwn(lane, "preflight_overlap") && lane.preflight_overlap !== 1) {
+		throw new TypeError("preflight_overlap must equal 1 when present");
+	}
+	return lane;
+};
+class ReviewReadinessError extends TypeError {
+	constructor(issue, field, reason) {
+		super(`Issue ${issue} ${field}: ${reason}`);
+		this.name = "ReviewReadinessError";
+		this.code = "invalid-review-readiness";
+		this.issue = Number(issue);
+		this.field = field;
+	}
+}
+
+const loadLane = (path) => {
+	const lane = validateOverlapMarker(JSON.parse(readFileSync(path, "utf8")));
+	if (lane.preflight_overlap !== 1) return lane;
+	for (const [issue, entry] of Object.entries(lane.issues)) {
+		if (!entry.facts || !Object.hasOwn(entry.facts, "review-readiness")) continue;
+		const fact = entry.facts["review-readiness"];
+		const prefix = "facts.review-readiness";
+		for (const [record, keys, field] of [
+			[fact, ["head", "value"], prefix],
+			[fact?.value, ["policy_sha256", "sequence", "active"], `${prefix}.value`],
+		]) {
+			if (record === null || typeof record !== "object" || Array.isArray(record)) {
+				throw new ReviewReadinessError(issue, field, "must be an object");
+			}
+			const unknown = Object.keys(record).find(key => !keys.includes(key));
+			if (unknown !== undefined) throw new ReviewReadinessError(issue, `${field}.${unknown}`, "unknown field");
+			const missing = keys.find(key => !Object.hasOwn(record, key));
+			if (missing !== undefined) throw new ReviewReadinessError(issue, `${field}.${missing}`, "is required");
+		}
+		if (typeof fact.head !== "string" || !/^[a-f0-9]{40}$/u.test(fact.head)) {
+			throw new ReviewReadinessError(issue, `${prefix}.head`, "must be a lowercase Git SHA");
+		}
+		if (typeof fact.value.policy_sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(fact.value.policy_sha256)) {
+			throw new ReviewReadinessError(issue, `${prefix}.value.policy_sha256`, "must be a lowercase SHA-256 digest");
+		}
+		if (!Number.isSafeInteger(fact.value.sequence) || fact.value.sequence < 1) {
+			throw new ReviewReadinessError(issue, `${prefix}.value.sequence`, "must be a positive safe integer");
+		}
+		if (typeof fact.value.active !== "boolean") {
+			throw new ReviewReadinessError(issue, `${prefix}.value.active`, "must be a boolean");
+		}
+	}
+	return lane;
+};
 const saveLane = (path, lane, create = false) => {
 	const temporary = `${path}.${randomUUID()}.tmp`;
 	writeFileSync(temporary, `${JSON.stringify(lane, null, 2)}\n`, { flag: "wx" });
@@ -407,6 +456,7 @@ export const laneV2ToInitSpecs = (laneV2) => {
 	if (laneV2?.version !== 2) {
 		throw new TypeError('lane v2 intake requires "version": 2');
 	}
+	validateOverlapMarker(laneV2);
 	const issues = laneV2.confirmed_issues;
 	if (
 		!Array.isArray(issues) || issues.length === 0 ||
@@ -442,6 +492,7 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		mergeApproved: laneV2.authority_scope?.pr_merge === true,
 		...(Object.hasOwn(laneV2, "retry_policy") ? { retryPolicy: structuredClone(laneV2.retry_policy) } : {}),
 		...(Object.hasOwn(laneV2, "predicted_conflicts") ? { predictedConflicts: laneV2.predicted_conflicts } : {}),
+		...(Object.hasOwn(laneV2, "preflight_overlap") ? { preflightOverlap: laneV2.preflight_overlap } : {}),
 	};
 };
 
@@ -758,6 +809,9 @@ const main = async () => {
 		const fromLaneV2 = args.includes("--from-lane-v2")
 			? arg(args, "--from-lane-v2")
 			: null;
+		if (fromLaneV2 !== null && args.includes("--preflight-overlap")) {
+			throw new TypeError("--preflight-overlap cannot be combined with --from-lane-v2");
+		}
 		let laneId;
 		let baseBranch = "main";
 		let specs;
@@ -765,6 +819,7 @@ const main = async () => {
 		let mergeApproved = false;
 		let predictedConflicts;
 		let retryPolicy;
+		let preflightOverlap = args.includes("--preflight-overlap") ? 1 : undefined;
 		if (fromLaneV2 !== null) {
 			const raw = readFileSync(resolve(root, fromLaneV2), "utf8");
 			const translated = laneV2ToInitSpecs(JSON.parse(raw));
@@ -777,6 +832,7 @@ const main = async () => {
 			mergeApproved = translated.mergeApproved;
 			predictedConflicts = translated.predictedConflicts;
 			retryPolicy = translated.retryPolicy;
+			preflightOverlap = translated.preflightOverlap;
 		} else {
 			laneId = arg(args, "--lane-id");
 			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
@@ -803,6 +859,7 @@ const main = async () => {
 		mkdirSync(dir, { recursive: true });
 		const lane = {
 			version: 4,
+			...(preflightOverlap === undefined ? {} : { preflight_overlap: preflightOverlap }),
 			lane_id: laneId,
 			base_branch: baseBranch,
 			// Present only for --from-lane-v2 inits; a hand-built lane has no
@@ -833,10 +890,23 @@ const main = async () => {
 		? await lockLane(lanePath) : null;
 	try {
 	const lane = loadLane(lanePath);
+	const invalidateReadiness = (number, force = false) => {
+		if (lane.preflight_overlap !== 1) return;
+		const current = issueEntry(lane, number);
+		const fact = current.facts?.["review-readiness"];
+		if (fact?.value?.active !== true) return;
+		const obs = observeIssue(root, lane, number);
+		if (force || !reviewReadinessState({ issue: number,
+			obs: { ...obs, facts: current.facts }, decision: decideNext(current, obs) }).current) {
+			fact.value.active = false;
+		}
+	};
 
 	// Watch runs for a long time: re-load the lane file every tick so
 	// facts/approvals recorded by concurrent operator commands are seen.
-	const snapshotAll = (withObservations = false) => {
+	const snapshotAll = (withObservations = false, previous = null) => {
+		const unlock = lane.preflight_overlap === 1 ? lockLane(lanePath) : null;
+		try {
 		const fresh = loadLane(lanePath);
 		assertPredictedConflicts(fresh.predicted_conflicts, Object.keys(fresh.issues).map(Number));
 		const snapshots = Object.keys(fresh.issues).map((key) => {
@@ -853,13 +923,81 @@ const main = async () => {
 						},
 			};
 		});
-		const coordinated = coordinateGeneratedIntegration(fresh, snapshots);
+		// Legacy lanes take the exact old observation path, without ancestry probes.
+		if (fresh.preflight_overlap === 1) {
+			const accepted = snapshots.filter(row =>
+				evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue }).valid);
+			const merged = accepted.filter(row => row.obs.pr?.state === "MERGED");
+			for (const row of accepted.filter(row => row.decision.action === "review")) {
+				const related = merged.filter(sibling => sibling.issue !== row.issue &&
+					row.obs.preflight.predicted_files.some(file => sibling.obs.preflight.predicted_files.includes(file)));
+				if (!related.length) continue;
+				const base = run(root, "git", ["rev-parse", "--verify", `refs/remotes/origin/${fresh.base_branch}^{commit}`]);
+				const ancestor = (commit, target) => {
+					if (!/^[a-f0-9]{40}$/u.test(commit ?? "") || !target ||
+						run(root, "git", ["rev-parse", "--verify", `${commit}^{commit}`]) !== commit) return null;
+					try {
+						execFileSync("git", ["merge-base", "--is-ancestor", commit, target],
+							{ cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+						return true;
+					} catch (error) {
+						if (error.status === 1) return false;
+						return null;
+					}
+				};
+				row.obs.overlapIntegrations = related.map(sibling => ({
+					issue: sibling.issue, commit: sibling.obs.pr.mergeCommit, base,
+					inBase: ancestor(sibling.obs.pr.mergeCommit, base),
+					inHead: ancestor(sibling.obs.pr.mergeCommit, row.obs.headSha),
+				}));
+			}
+		}
+		const legacy = coordinateGeneratedIntegration(fresh, snapshots);
+		let changed = false;
+		const deactivate = (row) => {
+			const fact = fresh.issues[String(row.issue)].facts?.["review-readiness"];
+			if (fact?.value?.active === true && !reviewReadinessState(row).current) {
+				fact.value.active = false;
+				changed = true;
+			}
+		};
+		if (fresh.preflight_overlap === 1) legacy.forEach(deactivate);
+		const coordinated = coordinatePreflightOverlap(fresh, legacy);
+		if (fresh.preflight_overlap === 1) {
+			coordinated.forEach(deactivate);
+			const outputIssue = command === "plan" ? Number(arg(args, "--issue")) : null;
+			const watchReviews = command === "watch" ? new Set(summarizeTransitions(previous, coordinated).changes
+				.filter(change => change.to === "review").map(change => change.issue)) : null;
+			const grants = coordinated.filter(row => reviewReadinessState(row).grantable &&
+				(command === "plan" ? row.issue === outputIssue : command === "watch"
+					? watchReviews.has(row.issue) : command === "plan-all") &&
+				!reviewReadinessState(row).current);
+			if (grants.length) {
+				const sequences = Object.values(fresh.issues).map(entry => entry.facts?.["review-readiness"]?.value?.sequence)
+					.filter(value => Number.isSafeInteger(value) && value > 0);
+				const sequence = Math.max(0, ...sequences) + 1;
+				if (!Number.isSafeInteger(sequence)) throw new TypeError("review-readiness sequence exhausted");
+				for (const row of grants) {
+					const state = reviewReadinessState(row);
+					const entry = fresh.issues[String(row.issue)];
+					entry.facts ??= {};
+					entry.facts["review-readiness"] = { head: row.obs.headSha,
+						value: { policy_sha256: state.policy.sha256, sequence, active: true } };
+					row.obs.facts = entry.facts;
+				}
+				changed = true;
+			}
+			if (changed) saveLane(lanePath, fresh);
+		}
 		if (fresh.predicted_conflicts?.some((hint) => hint.generated) &&
 			["plan", "plan-all", "watch"].includes(command)) {
 			for (const row of coordinated) recordObservation(fresh.lane_id, row);
 		}
 		return coordinated.map(({ obs, ...row }) =>
 			({ ...row, ...(withObservations ? { obs } : {}) }));
+		} finally {
+			unlock?.();
+		}
 	};
 
 	if (["retro-plan", "retro-evidence", "retro-report"].includes(command)) {
@@ -919,7 +1057,7 @@ const main = async () => {
 			let prev = null;
 			let stallCounts = null;
 			for (;;) {
-				const next = snapshotAll(true);
+				const next = snapshotAll(true, prev);
 				const { changes, settled } = summarizeTransitions(prev, next);
 				for (const c of changes) {
 					if (
@@ -932,7 +1070,11 @@ const main = async () => {
 					process.stdout.write(
 						`${new Date().toISOString()} issue ${c.issue}: ${
 							c.from ?? "(start)"
-						} -> ${c.to}${c.to === "wait-generated-integration"
+						} -> ${c.to}${c.to === "wait-preflight-overlap"
+							? ` siblings=${JSON.stringify(next.find(item => item.issue === c.issue).decision.siblings)}` : ""
+						}${next.find(item => item.issue === c.issue).decision.overlaps
+							? ` overlaps=${JSON.stringify(next.find(item => item.issue === c.issue).decision.overlaps)}`
+							: c.to === "wait-generated-integration"
 							? ` siblings=${JSON.stringify(next.find((item) => item.issue === c.issue).decision.siblings)}` : ""}\n`,
 					);
 				}
@@ -1017,6 +1159,7 @@ const main = async () => {
 		const phase = arg(args, "--phase");
 		const result = JSON.parse(arg(args, "--result-json"));
 		const observed = observeIssue(root, lane, issue);
+		invalidateReadiness(issue);
 		validateStageMeasurements(result?.measurements, observed.headSha);
 		const unavailable = result?.error?.code === "dispatch-target-unavailable";
 		if (unavailable) {
@@ -1093,6 +1236,7 @@ const main = async () => {
 			};
 		}
 		lane.issues[String(issue)] = next;
+		invalidateReadiness(issue, ["fix-back", "resolve-conflict"].includes(phase));
 		saveLane(lanePath, lane);
 		recordRetroEvent(root, lane.lane_id, issue, "stage", {
 			phase,
@@ -1240,6 +1384,7 @@ const main = async () => {
 					: {}),
 			};
 		}
+		for (const target of kind === "known-baseline" ? value.issues : [issue]) invalidateReadiness(target);
 		saveLane(lanePath, lane);
 		process.stdout.write("ok\n");
 		return;
@@ -1256,6 +1401,7 @@ const main = async () => {
 			throw new TypeError("clear-blocker requires the current blocker's phase");
 		}
 		const blocker = entry.blocker;
+		invalidateReadiness(issue, true);
 		entry.blocker = null;
 		entry.attempts[phase] = 0;
 		if (entry.retry_telemetry) delete entry.retry_telemetry[phase];
@@ -1280,9 +1426,14 @@ if (
 ) {
 	try { await main(); }
 	catch (error) {
-		if (!(error instanceof DispatchPreparationError)) throw error;
-		process.stderr.write(`${JSON.stringify({ status: "blocked", kind: error.kind,
-			code: error.code, error: error.message, subagent_type: error.subagent_type, fix_back_eligible: false })}\n`);
+		if (error instanceof ReviewReadinessError) {
+			process.stderr.write(`${JSON.stringify({ status: "blocked", name: error.name, code: error.code,
+				issue: error.issue, field: error.field, error: error.message })}\n`);
+		} else {
+			if (!(error instanceof DispatchPreparationError)) throw error;
+			process.stderr.write(`${JSON.stringify({ status: "blocked", kind: error.kind,
+				code: error.code, error: error.message, subagent_type: error.subagent_type, fix_back_eligible: false })}\n`);
+		}
 		process.exitCode = 1;
 	}
 }
