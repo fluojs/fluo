@@ -1714,7 +1714,7 @@ export class Container {
 
     const requestScopedDependency = this.findRequestScopedDependency(provider.inject, new Set<Token>([provider.provide]));
 
-    if (requestScopedDependency) {
+    if (requestScopedDependency !== undefined) {
       throw new ScopeMismatchError(
         `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(requestScopedDependency)}.`,
         {
@@ -1739,7 +1739,7 @@ export class Container {
 
       const requestScopedToken = this.findRequestScopedDependencyToken(depToken, visited);
 
-      if (requestScopedToken) {
+      if (requestScopedToken !== undefined) {
         return requestScopedToken;
       }
     }
@@ -1757,7 +1757,7 @@ export class Container {
     try {
       const multiRequestScopedToken = this.findRequestScopedMultiContribution(token, visited);
 
-      if (multiRequestScopedToken) {
+      if (multiRequestScopedToken !== undefined) {
         return multiRequestScopedToken;
       }
 
@@ -1804,7 +1804,7 @@ export class Container {
             ? this.findRequestScopedDependencyToken(multiProvider.useExisting, visited)
             : this.findRequestScopedDependency(multiProvider.inject, visited);
 
-        if (requestScopedToken) {
+        if (requestScopedToken !== undefined) {
           return requestScopedToken;
         }
       }
