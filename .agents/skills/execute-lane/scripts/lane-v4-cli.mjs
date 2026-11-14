@@ -968,7 +968,7 @@ const main = async () => {
 			const outputIssue = command === "plan" ? Number(arg(args, "--issue")) : null;
 			const watchReviews = command === "watch" ? new Set(summarizeTransitions(previous, coordinated).changes
 				.filter(change => change.to === "review").map(change => change.issue)) : null;
-			const grants = coordinated.filter(row => reviewReadinessState(row).reviewable &&
+			const grants = coordinated.filter(row => reviewReadinessState(row).grantable &&
 				(command === "plan" ? row.issue === outputIssue : command === "watch"
 					? watchReviews.has(row.issue) : command === "plan-all") &&
 				!reviewReadinessState(row).current);

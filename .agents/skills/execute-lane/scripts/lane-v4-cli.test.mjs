@@ -10,7 +10,7 @@ import test from 'node:test';
 import { buildVerificationPlan, digest, readVerificationManifest } from '../../../../tooling/ci/local-verification.mjs';
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
 import { generatedHintDigest } from '../../../workflow-contracts/contracts.mjs';
-import { createPreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { readRetroEvents } from '../../retrospective-lane/scripts/retro.mjs';
 import { summarizeIntegrationMeasurements } from './generated-integration.mjs';
 import { localCheckBinding } from './lane-v4.mjs';
@@ -349,6 +349,32 @@ if (args[0] === 'pr' && args[1] === 'view') {
     assert.equal(result.error, undefined);
     if (ok) assert.equal(result.status, 0, result.stderr);
     else assert.notEqual(result.status, 0, result.stdout);
+    if (result.status === 0 && ['plan', 'plan-all', 'watch'].includes(command)) {
+      const saved = JSON.parse(readFileSync(args[args.indexOf('--lane') + 1]));
+      if (saved.preflight_overlap === 1) {
+        const value = command === 'watch' ? null : JSON.parse(result.stdout);
+        const rows = command === 'watch'
+          ? [...result.stdout.matchAll(/issue (\d+): [^\n]* -> review(?=\s|$)/gu)]
+            .map(match => ({ issue: Number(match[1]), decision: { action: 'review' } }))
+          : command === 'plan' ? [value] : Array.isArray(value) ? value : value.issues;
+        for (const row of rows.filter(row => row.decision.action === 'review')) {
+          const entry = saved.issues[String(row.issue)];
+          const accepted = entry.facts.preflight.value;
+          const head = git(root, 'rev-parse', entry.branch);
+          const policy = row.decision.policy ?? evaluatePreflight(accepted, {
+            issue: row.issue, issueSha256: accepted.issue_sha256, baseSha: accepted.base_sha,
+            changedFiles: git(root, 'diff', '--name-only', accepted.base_sha, head).split('\n').filter(Boolean),
+            reviewAxisFloor: entry.facts.review?.value?.active_axes ?? [],
+          }).policy;
+          const fact = entry.facts['review-readiness'];
+          assert.ok(fact, `returned review ${row.issue} requires a saved grant`);
+          assert.equal(fact.head, head);
+          assert.equal(fact.value.policy_sha256, policy.sha256);
+          assert.equal(fact.value.active, true);
+          assert.equal(Number.isSafeInteger(fact.value.sequence) && fact.value.sequence > 0, true);
+        }
+      }
+    }
     return result;
   };
   const lanePath = cli('init', ['--lane-id', 'fixture', '--issue', '42']).stdout.trim();
@@ -1851,6 +1877,108 @@ const readinessFixture = (t, predictions = { 42: ['docs/shared.md'], 43: ['docs/
 };
 
 for (const termination of ['closed-pr', 'closed-issue']) {
+  for (const [command, flags] of [
+    ['plan', ['--issue', '42']], ['plan-all', []], ['plan-all', ['--with-retro']], ['watch', ['--once']],
+  ]) {
+    test(`readiness isolated: ${termination} ${command} ${flags.join(' ')} -> base review is granted without churn until overlap`, (t) => {
+      const f = readinessFixture(t, { 42: ['docs/shared.md'] });
+      f.implementIssue(42);
+      const head = f.git(f.root, 'rev-parse', 'issue-42');
+      f.state.prs = { 'issue-42': { number: 142, state: termination === 'closed-pr' ? 'CLOSED' : 'OPEN',
+        headRefOid: head, mergeable: 'MERGEABLE', statusCheckRollup: [] } };
+      if (termination === 'closed-issue') f.state.issues = { 42: { ...f.state.issue, state: 'CLOSED' } };
+      f.update();
+      const markerBytes = readFileSync(f.lanePath);
+      const legacy = JSON.parse(markerBytes);
+      const accepted = legacy.issues['42'].facts.preflight.value;
+      delete legacy.preflight_overlap;
+      writeFileSync(f.lanePath, JSON.stringify(legacy));
+      const base = f.planIssue(42).decision;
+      assert.equal(base.action, 'review');
+      writeFileSync(f.lanePath, markerBytes);
+      assert.equal(f.readiness(42), undefined);
+      const outputGuard = join(f.root, 'bin/readiness-output.mjs');
+      writeFileSync(outputGuard, `import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+if(process.argv[1]?.endsWith('/lane-v4-cli.mjs')) {
+  const write=process.stdout.write;
+  process.stdout.write=function(chunk,...args) {
+    if(/"action"\\s*:\\s*"review"| -> review/u.test(String(chunk))) {
+      const lane=JSON.parse(readFileSync(${JSON.stringify(f.lanePath)}));
+      const fact=lane.issues['42'].facts['review-readiness'];
+      assert.deepEqual(fact,{head:${JSON.stringify(head)},value:{
+        policy_sha256:${JSON.stringify(base.policy.sha256)},sequence:1,active:true}},
+        'review output requires its grant already on disk');
+    }
+    return write.call(this,chunk,...args);
+  };
+}
+`);
+      const originalOptions = f.env.NODE_OPTIONS;
+      f.env.NODE_OPTIONS = `${originalOptions ?? ''} --import ${outputGuard}`.trim();
+
+      const result = f.cli(command, ['--lane', f.lanePath, ...flags]);
+
+      if (command === 'watch') assert.match(result.stdout, /issue 42:.*-> review/u);
+      else {
+        const value = JSON.parse(result.stdout);
+        const row = command === 'plan' ? value : (Array.isArray(value) ? value : value.issues)[0];
+        assert.deepEqual(row.decision, base);
+      }
+      const fact = f.readiness(42);
+      assert.deepEqual(fact, { head, value: { policy_sha256: base.policy.sha256, sequence: 1, active: true } });
+      const unchanged = readFileSync(f.lanePath);
+      assert.deepEqual(f.planIssue(42).decision, base);
+      assert.deepEqual(readFileSync(f.lanePath), unchanged);
+      if (originalOptions === undefined) delete f.env.NODE_OPTIONS;
+      else f.env.NODE_OPTIONS = originalOptions;
+      f.recordIssue(42, 'implement', { ok: true, agent: 'fluo-issue-implementer' });
+      assert.deepEqual(f.readiness(42), fact, 'same-head record preserves a grantable non-occupant');
+      assert.deepEqual(f.planIssue(42).decision, base);
+      assert.deepEqual(f.readiness(42), fact);
+      const lane = JSON.parse(readFileSync(f.lanePath));
+      lane.issues['43'] = { issue: 43, branch: 'issue-43', depends_on: [], approvals: { merge: false },
+        attempts: {}, blocker: null, facts: {} };
+      writeFileSync(f.lanePath, JSON.stringify(lane));
+      f.implementIssue(43);
+      f.cli('set-fact', ['--lane', f.lanePath, '--issue', '43', '--kind', 'preflight',
+        '--value', JSON.stringify(createPreflight({ ...accepted, issue: 43 }))]);
+
+      const rows = f.all();
+
+      assert.deepEqual(rows.map(row => row.decision.action), ['blocked', 'review']);
+      assert.equal(rows[0].decision.reason, termination === 'closed-pr' ? 'pr-closed-externally' : 'issue-closed-externally');
+      assert.deepEqual(f.readiness(42), { ...fact, value: { ...fact.value, active: false } });
+      assert.equal(rows[1].decision.siblings, undefined);
+      assert.equal(f.readiness(43).value.sequence, 2);
+      assert.equal(f.readiness(43).value.active, true);
+    });
+  }
+
+  test(`readiness isolated: ${termination} with an existing grant -> re-observation preserves exact bytes and sequence`, (t) => {
+    const f = readinessFixture(t, { 42: ['docs/shared.md'] });
+    f.implementIssue(42);
+    const head = f.git(f.root, 'rev-parse', 'issue-42');
+    f.state.prs = { 'issue-42': { number: 142, state: termination === 'closed-pr' ? 'CLOSED' : 'OPEN',
+      headRefOid: head, mergeable: 'MERGEABLE', statusCheckRollup: [] } };
+    if (termination === 'closed-issue') f.state.issues = { 42: { ...f.state.issue, state: 'CLOSED' } };
+    f.update();
+    const lane = JSON.parse(readFileSync(f.lanePath));
+    const accepted = lane.issues['42'].facts.preflight.value;
+    const { policy } = evaluatePreflight(accepted, { issue: 42, issueSha256: accepted.issue_sha256,
+      baseSha: accepted.base_sha, changedFiles: ['docs/guide.md'] });
+    const fact = { head, value: { policy_sha256: policy.sha256, sequence: 7, active: true } };
+    lane.issues['42'].facts['review-readiness'] = fact;
+    writeFileSync(f.lanePath, JSON.stringify(lane));
+    const bytes = readFileSync(f.lanePath);
+
+    const result = f.planIssue(42);
+
+    assert.equal(result.decision.action, 'review');
+    assert.deepEqual(f.readiness(42), fact);
+    assert.deepEqual(readFileSync(f.lanePath), bytes);
+  });
+
   test(`review eligibility CLI: ${termination} with an overlap -> no ungranted review through any output path`, (t) => {
     const f = readinessFixture(t);
     f.implementIssue(43);

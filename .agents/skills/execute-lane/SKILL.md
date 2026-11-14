@@ -306,17 +306,27 @@ releases it every tick, before reviewer work, CI or waiting for another tick.
 This transaction protects the fact write; the fact stores neither a lock nor
 a selected sibling, owner, session or lease. Legacy snapshots stay read-only.
 
-Select candidates greedily by valid active readiness sequence, then issue
-number; ungranted candidates follow by issue number. OPEN PRs and current PASS
-give no priority. Candidates require a valid accepted preflight, implementation
-head, successful own observation and a pre-coordination action of `review`,
+GRANTABLE means the final coordinated decision is `review`, with a valid
+accepted preflight, implementation head and successful own observation. Every
+returned GRANTABLE row receives its head/policy-bound fact before output,
+including rows with no overlap and a CLOSED PR or CLOSED issue.
+
+OCCUPANT is the separate sibling selection predicate: a valid accepted
+preflight, implementation head, successful own observation and an action of `review`,
 `create-pr`, `push`, `wait-ci`, `wait-mergeability`, `request-merge-approval` or
-`merge`. Existing publication and CI keep their grant. A waiting review names
+`merge`, excluding CLOSED issues and CLOSED/MERGED PRs. Select occupants
+greedily by valid active readiness sequence, then issue number; ungranted
+occupants follow by issue number. OPEN PRs and current PASS give no priority.
+A GRANTABLE row that is not an OCCUPANT reserves no place against siblings.
+Existing publication and CI keep their grant. A waiting review names
 only directly overlapping selected candidates, which never wait on each other.
 
 Head or effective-policy changes and observing fix-back, conflict resolution,
 blockers, failed observation, dependencies, preflight, implementation or
-termination deactivate the grant. `record`, `set-fact` and `clear-blocker`
+non-review termination deactivate the grant. A GRANTABLE non-occupant still at
+`review` keeps its valid fact: unchanged re-plans neither rewrite nor renumber it,
+and same-head re-observation does not deactivate it.
+`record`, `set-fact` and `clear-blocker`
 invalidate directly established changes in their own write transaction.
 Keep inactive facts: a new grant uses the lane-wide maximum preserved sequence
 plus one. Independent reviews first returned in one snapshot share a sequence.
@@ -336,8 +346,11 @@ place or become another review's wait target. A terminated overlapping row
 cannot expose an ungranted `review`: an unmerged CLOSED PR uses the existing
 `pr-closed-externally` blocker, while a CLOSED issue with an OPEN PR is blocked
 as `issue-closed-externally` rather than authorizing review, merge or cleanup.
-Rows with no overlap retain their base decisions. The coordinator and grant
-writer share the same `reviewable` predicate.
+Rows with no overlap retain their base decisions exactly. If an overlapping
+accepted sibling preflight appears later, the terminated row takes the blocked
+outcome above and its fact becomes inactive while preserving its sequence.
+It holds no place against the sibling. The coordinator uses OCCUPANT for
+overlap admission and shares GRANTABLE with the grant writer for returned reviews.
 
 On marker lanes, loading validates the exact readiness fact fields before
 observation or mutation: `head` and `policy_sha256` have their SHA formats,

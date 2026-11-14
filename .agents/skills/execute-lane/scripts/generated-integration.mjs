@@ -29,18 +29,19 @@ export const coordinateGeneratedIntegration = (lane, snapshots) => snapshots.map
 const readinessActions = new Set(['review', 'create-pr', 'push', 'wait-ci',
   'wait-mergeability', 'request-merge-approval', 'merge']);
 
-/** Shared head/policy admission for pure ordering and transactional CLI recording. */
+/** Grant validity and sibling occupancy are distinct head/policy-bound states. */
 export const reviewReadinessState = (row) => {
   const preflight = evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue });
-  const candidate = preflight.valid && sha(row.obs.headSha) && row.obs.hasNewCommits === true &&
-    readinessActions.has(row.decision.action) && !row.obs.observationFailures?.length &&
+  const implemented = preflight.valid && sha(row.obs.headSha) && row.obs.hasNewCommits === true &&
+    !row.obs.observationFailures?.length;
+  const grantable = implemented && row.decision.action === 'review';
+  const occupant = implemented && readinessActions.has(row.decision.action) &&
     row.obs.issueState !== 'CLOSED' && !['CLOSED', 'MERGED'].includes(row.obs.pr?.state);
   const fact = row.obs.facts?.['review-readiness'];
-  const current = candidate && fact?.head === row.obs.headSha && fact.value?.active === true &&
+  const current = (grantable || occupant) && fact?.head === row.obs.headSha && fact.value?.active === true &&
     fact.value.policy_sha256 === preflight.policy.sha256 &&
     Number.isSafeInteger(fact.value.sequence) && fact.value.sequence > 0;
-  return { candidate, reviewable: candidate && row.decision.action === 'review',
-    current: Boolean(current), policy: preflight.valid ? preflight.policy : null,
+  return { grantable, occupant, current: Boolean(current), policy: preflight.valid ? preflight.policy : null,
     sequence: current ? fact.value.sequence : null };
 };
 
@@ -62,7 +63,7 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
     }));
     const decision = { ...row.decision, overlaps: targets };
     if (row.decision.action !== 'review') return { ...row, decision };
-    if (!reviewReadinessState(row).reviewable) {
+    if (!reviewReadinessState(row).occupant) {
       const pr = row.obs.pr;
       if (pr?.state === 'MERGED') return { ...row, decision: {
         action: row.obs.branch || row.obs.worktree ? 'cleanup' : 'done', pr: pr.number, overlaps: targets,
@@ -100,15 +101,15 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
   // Integration failures and pending integration are ineligible before greedy
   // selection, so a row which cannot review never reserves a sibling's place.
   const readiness = new Map(eligible.map(row => [row.issue, reviewReadinessState(row)]));
-  const candidates = eligible.filter(row => readiness.get(row.issue).candidate)
+  const occupants = eligible.filter(row => readiness.get(row.issue).occupant)
     .sort((a, b) => Number(readiness.get(b.issue).current) - Number(readiness.get(a.issue).current) ||
       (readiness.get(a.issue).sequence ?? 0) - (readiness.get(b.issue).sequence ?? 0) || a.issue - b.issue);
   const selected = [];
-  for (const candidate of candidates) {
-    if (!selected.some(other => overlaps(candidate, other).length)) selected.push(candidate);
+  for (const occupant of occupants) {
+    if (!selected.some(other => overlaps(occupant, other).length)) selected.push(occupant);
   }
   return eligible.map(row => {
-    if (!reviewReadinessState(row).reviewable || !row.decision.overlaps) return row;
+    if (!reviewReadinessState(row).grantable || !row.decision.overlaps) return row;
     const waiting = selected.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length);
     if (selected.some(sibling => sibling.issue === row.issue) || !waiting.length) return row;
     const siblings = row.decision.overlaps.filter(target => waiting.some(sibling => sibling.issue === target.issue));
