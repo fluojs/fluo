@@ -211,7 +211,50 @@ const validateOverlapMarker = (lane) => {
 	}
 	return lane;
 };
-const loadLane = (path) => validateOverlapMarker(JSON.parse(readFileSync(path, "utf8")));
+class ReviewReadinessError extends TypeError {
+	constructor(issue, field, reason) {
+		super(`Issue ${issue} ${field}: ${reason}`);
+		this.name = "ReviewReadinessError";
+		this.code = "invalid-review-readiness";
+		this.issue = Number(issue);
+		this.field = field;
+	}
+}
+
+const loadLane = (path) => {
+	const lane = validateOverlapMarker(JSON.parse(readFileSync(path, "utf8")));
+	if (lane.preflight_overlap !== 1) return lane;
+	for (const [issue, entry] of Object.entries(lane.issues)) {
+		if (!entry.facts || !Object.hasOwn(entry.facts, "review-readiness")) continue;
+		const fact = entry.facts["review-readiness"];
+		const prefix = "facts.review-readiness";
+		for (const [record, keys, field] of [
+			[fact, ["head", "value"], prefix],
+			[fact?.value, ["policy_sha256", "sequence", "active"], `${prefix}.value`],
+		]) {
+			if (record === null || typeof record !== "object" || Array.isArray(record)) {
+				throw new ReviewReadinessError(issue, field, "must be an object");
+			}
+			const unknown = Object.keys(record).find(key => !keys.includes(key));
+			if (unknown !== undefined) throw new ReviewReadinessError(issue, `${field}.${unknown}`, "unknown field");
+			const missing = keys.find(key => !Object.hasOwn(record, key));
+			if (missing !== undefined) throw new ReviewReadinessError(issue, `${field}.${missing}`, "is required");
+		}
+		if (typeof fact.head !== "string" || !/^[a-f0-9]{40}$/u.test(fact.head)) {
+			throw new ReviewReadinessError(issue, `${prefix}.head`, "must be a lowercase Git SHA");
+		}
+		if (typeof fact.value.policy_sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(fact.value.policy_sha256)) {
+			throw new ReviewReadinessError(issue, `${prefix}.value.policy_sha256`, "must be a lowercase SHA-256 digest");
+		}
+		if (!Number.isSafeInteger(fact.value.sequence) || fact.value.sequence < 1) {
+			throw new ReviewReadinessError(issue, `${prefix}.value.sequence`, "must be a positive safe integer");
+		}
+		if (typeof fact.value.active !== "boolean") {
+			throw new ReviewReadinessError(issue, `${prefix}.value.active`, "must be a boolean");
+		}
+	}
+	return lane;
+};
 const saveLane = (path, lane, create = false) => {
 	const temporary = `${path}.${randomUUID()}.tmp`;
 	writeFileSync(temporary, `${JSON.stringify(lane, null, 2)}\n`, { flag: "wx" });
@@ -925,10 +968,10 @@ const main = async () => {
 			const outputIssue = command === "plan" ? Number(arg(args, "--issue")) : null;
 			const watchReviews = command === "watch" ? new Set(summarizeTransitions(previous, coordinated).changes
 				.filter(change => change.to === "review").map(change => change.issue)) : null;
-			const grants = coordinated.filter(row => row.decision.action === "review" &&
+			const grants = coordinated.filter(row => reviewReadinessState(row).reviewable &&
 				(command === "plan" ? row.issue === outputIssue : command === "watch"
 					? watchReviews.has(row.issue) : command === "plan-all") &&
-				reviewReadinessState(row).candidate && !reviewReadinessState(row).current);
+				!reviewReadinessState(row).current);
 			if (grants.length) {
 				const sequences = Object.values(fresh.issues).map(entry => entry.facts?.["review-readiness"]?.value?.sequence)
 					.filter(value => Number.isSafeInteger(value) && value > 0);
@@ -1383,9 +1426,14 @@ if (
 ) {
 	try { await main(); }
 	catch (error) {
-		if (!(error instanceof DispatchPreparationError)) throw error;
-		process.stderr.write(`${JSON.stringify({ status: "blocked", kind: error.kind,
-			code: error.code, error: error.message, subagent_type: error.subagent_type, fix_back_eligible: false })}\n`);
+		if (error instanceof ReviewReadinessError) {
+			process.stderr.write(`${JSON.stringify({ status: "blocked", name: error.name, code: error.code,
+				issue: error.issue, field: error.field, error: error.message })}\n`);
+		} else {
+			if (!(error instanceof DispatchPreparationError)) throw error;
+			process.stderr.write(`${JSON.stringify({ status: "blocked", kind: error.kind,
+				code: error.code, error: error.message, subagent_type: error.subagent_type, fix_back_eligible: false })}\n`);
+		}
 		process.exitCode = 1;
 	}
 }

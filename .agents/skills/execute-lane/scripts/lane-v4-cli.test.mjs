@@ -313,7 +313,8 @@ if (args[0] === 'pr' && args[1] === 'view') {
   if (!pr) { process.stderr.write('no pull requests found for branch "' + args[2] + '"'); process.exit(1); }
   process.stdout.write(JSON.stringify(pr));
 } else if (args[0] === 'issue' && args[1] === 'view') {
-  process.stdout.write(args.includes('--jq') ? state.issue.state : JSON.stringify(state.issue));
+  const issue = state.issues?.[args[2]] ?? state.issue;
+  process.stdout.write(args.includes('--jq') ? issue.state : JSON.stringify(issue));
 } else { process.stderr.write('unexpected gh invocation'); process.exit(2); }
 `);
   chmodSync(join(bin, 'gh'), 0o755);
@@ -1848,6 +1849,287 @@ const readinessFixture = (t, predictions = { 42: ['docs/shared.md'], 43: ['docs/
   const all = () => JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout);
   return { ...f, planIssue, implementIssue, recordIssue, readiness, all };
 };
+
+for (const termination of ['closed-pr', 'closed-issue']) {
+  test(`review eligibility CLI: ${termination} with an overlap -> no ungranted review through any output path`, (t) => {
+    const f = readinessFixture(t);
+    f.implementIssue(43);
+    f.state.prs = { 'issue-43': { number: 143, state: termination === 'closed-pr' ? 'CLOSED' : 'OPEN',
+      headRefOid: f.git(f.root, 'rev-parse', 'issue-43'), mergeable: 'MERGEABLE', statusCheckRollup: [] } };
+    if (termination === 'closed-issue') f.state.issues = { 43: { ...f.state.issue, state: 'CLOSED' } };
+    f.update();
+    const reason = termination === 'closed-pr' ? 'pr-closed-externally' : 'issue-closed-externally';
+    const args = ['--lane', f.lanePath];
+
+    assert.equal(f.planIssue(43).decision.action, 'blocked');
+    assert.equal(f.planIssue(43).decision.reason, reason);
+    for (const flags of [[], ['--with-retro']]) {
+      const value = JSON.parse(f.cli('plan-all', [...args, ...flags]).stdout);
+      const rows = Array.isArray(value) ? value : value.issues;
+      assert.equal(rows.find(row => row.issue === 43).decision.action, 'blocked');
+    }
+    assert.match(f.cli('watch', [...args, '--once']).stdout, /issue 43:.*-> blocked/u);
+    assert.equal(f.readiness(43), undefined);
+    f.implementIssue(42);
+    assert.equal(f.planIssue(42).decision.action, 'review');
+    assert.equal(f.readiness(42).value.active, true);
+    assert.equal(f.readiness(43), undefined);
+  });
+}
+
+for (const mode of ['missing', 'unknown', 'integrate']) {
+  test(`review eligibility CLI: merged x and ${mode} x/y -> y can review and the old x/y grant is inactive`, (t) => {
+    const f = readinessFixture(t, { 42: ['docs/x.md', 'docs/y.md'], 43: ['docs/y.md'], 41: ['docs/x.md'] });
+    f.implementIssue(42);
+    f.planIssue(42);
+    assert.equal(f.readiness(42).value.sequence, 1);
+    f.implementIssue(41);
+    f.implementIssue(43);
+    const head = f.git(f.root, 'rev-parse', 'issue-41');
+    if (mode === 'integrate') {
+      f.git(f.root, 'merge', '--ff-only', 'issue-41');
+      f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    }
+    f.state.prs = { 'issue-41': { number: 141, state: 'MERGED', headRefOid: head,
+      mergeCommit: mode === 'missing' ? null : { oid: mode === 'unknown' ? 'f'.repeat(40) : head },
+      mergeable: 'MERGEABLE', statusCheckRollup: [] } };
+    f.update();
+
+    const rows = f.all();
+
+    assert.equal(rows.find(row => row.issue === 42).decision.action,
+      mode === 'integrate' ? 'resolve-conflict' : 'observation-failed');
+    assert.equal(rows.find(row => row.issue === 43).decision.action, 'review');
+    assert.equal(f.readiness(42).value.active, false);
+    assert.equal(f.readiness(43).value.sequence, 2);
+    assert.equal(f.planIssue(43).decision.action, 'review');
+  });
+}
+
+test('readiness boundary: malformed persisted grant -> typed field error before every decision or ledger write', (t) => {
+  const f = readinessFixture(t);
+  f.implementIssue(43);
+  f.planIssue(43);
+  f.implementIssue(42);
+  const original = JSON.parse(readFileSync(f.lanePath));
+  const cases = [
+    ...[0, -1, 1.5, '1', null, Number.MAX_SAFE_INTEGER + 1].map(sequence =>
+      ({ field: 'sequence', corrupt: fact => { fact.value.sequence = sequence; } })),
+    { field: 'sequence', corrupt: fact => { delete fact.value.sequence; } },
+    { field: 'sequence', corrupt: fact => { fact.value.active = false; fact.value.sequence = 0; } },
+    ...['true', 1, null].map(active => ({ field: 'active', corrupt: fact => { fact.value.active = active; } })),
+    { field: 'active', corrupt: fact => { delete fact.value.active; } },
+    { field: 'policy_sha256', corrupt: fact => { delete fact.value.policy_sha256; } },
+    { field: 'policy_sha256', corrupt: fact => { fact.value.policy_sha256 = 'bad'; } },
+    { field: 'head', corrupt: fact => { delete fact.head; } },
+    { field: 'head', corrupt: fact => { fact.head = 'bad'; } },
+    { field: 'value', corrupt: fact => { fact.value = null; } },
+    { field: 'owner', corrupt: fact => { fact.owner = 'unexpected'; } },
+    { field: 'lease', corrupt: fact => { fact.value.lease = 1; } },
+  ];
+  const commands = [
+    ['plan', ['--issue', '42']], ['plan-all', []], ['watch', ['--once']],
+    ['approve-merge', ['--issue', '42']],
+  ];
+  for (const { field, corrupt } of cases) {
+    const lane = structuredClone(original);
+    corrupt(lane.issues['43'].facts['review-readiness']);
+    writeFileSync(f.lanePath, JSON.stringify(lane));
+    const bytes = readFileSync(f.lanePath);
+
+    for (const [command, args] of commands) {
+      const result = f.cli(command, ['--lane', f.lanePath, ...args], false);
+      const error = JSON.parse(result.stderr);
+      assert.equal(error.code, 'invalid-review-readiness');
+      assert.equal(error.issue, 43);
+      assert.equal(error.field.endsWith(`.${field}`), true, error.field);
+      assert.equal(result.stdout, '');
+      assert.deepEqual(readFileSync(f.lanePath), bytes);
+    }
+  }
+  for (const fact of [null, [], { head: original.issues['43'].facts['review-readiness'].head }]) {
+    const lane = structuredClone(original);
+    lane.issues['43'].facts['review-readiness'] = fact;
+    writeFileSync(f.lanePath, JSON.stringify(lane));
+    const bytes = readFileSync(f.lanePath);
+    for (const [command, args] of [
+      ['plan-all', ['--with-retro']], ['retro-plan', []],
+      ['record', ['--issue', '42', '--phase', 'implement', '--result-json', '{"ok":false}']],
+      ['set-fact', ['--issue', '42', '--kind', 'preflight', '--value', '{}']],
+      ['clear-blocker', ['--issue', '42', '--phase', 'implement']],
+    ]) {
+      const result = f.cli(command, ['--lane', f.lanePath, ...args], false);
+      const error = JSON.parse(result.stderr);
+      assert.equal(error.code, 'invalid-review-readiness');
+      assert.equal(error.issue, 43);
+      assert.equal(error.field.startsWith('facts.review-readiness'), true);
+      assert.equal(result.stdout, '');
+      assert.deepEqual(readFileSync(f.lanePath), bytes);
+    }
+  }
+});
+
+test('readiness boundary: well-formed stale facts deactivate and legacy malformed keys stay unvalidated and read-only', (t) => {
+  const f = readinessFixture(t);
+  f.implementIssue(43);
+  f.planIssue(43);
+  const saved = JSON.parse(readFileSync(f.lanePath));
+  for (const field of ['head', 'policy_sha256']) {
+    const lane = structuredClone(saved);
+    if (field === 'head') lane.issues['43'].facts['review-readiness'].head = 'f'.repeat(40);
+    else lane.issues['43'].facts['review-readiness'].value.policy_sha256 = 'f'.repeat(64);
+    writeFileSync(f.lanePath, JSON.stringify(lane));
+    f.cli('retro-plan', ['--lane', f.lanePath]);
+    assert.equal(f.readiness(43).value.active, false);
+    assert.equal(f.readiness(43).value.sequence, 1);
+    assert.equal(f.planIssue(43).decision.action, 'review');
+    assert.equal(f.readiness(43).value.sequence, 2);
+  }
+  const legacy = structuredClone(saved);
+  delete legacy.preflight_overlap;
+  legacy.issues['43'].facts['review-readiness'] = { value: { sequence: 'bad', active: 'bad' }, arbitrary: [] };
+  writeFileSync(f.lanePath, JSON.stringify(legacy));
+  const bytes = readFileSync(f.lanePath);
+
+  assert.equal(f.planIssue(43).decision.action, 'review');
+  assert.equal(f.all().find(row => row.issue === 43).decision.action, 'review');
+  assert.match(f.cli('watch', ['--lane', f.lanePath, '--once']).stdout, /issue 43:.*-> review/u);
+  assert.deepEqual(readFileSync(f.lanePath), bytes);
+});
+
+test('readiness outputs: JSON plan, all, retro variant and first watch tick -> every returned review has its saved grant', (t) => {
+  for (const [command, flags] of [
+    ['plan', ['--issue', '43']], ['plan-all', []], ['plan-all', ['--with-retro']], ['watch', ['--once']],
+  ]) {
+    const f = readinessFixture(t);
+    f.implementIssue(43);
+    assert.equal(f.readiness(43), undefined);
+
+    const result = f.cli(command, ['--lane', f.lanePath, ...flags]);
+
+    if (command === 'watch') assert.match(result.stdout, /issue 43:.*-> review/u);
+    else {
+      const value = JSON.parse(result.stdout);
+      const row = command === 'plan' ? value : (Array.isArray(value) ? value : value.issues).find(row => row.issue === 43);
+      assert.equal(row.decision.action, 'review');
+    }
+    assert.equal(f.readiness(43).value.active, true);
+    assert.equal(f.readiness(43).value.sequence, 1);
+    assert.equal(f.readiness(42), undefined);
+  }
+});
+
+test('readiness concurrency control: two real plan processes and a late implementation -> only the saved first grant can occupy', async (t) => {
+  const f = readinessFixture(t);
+  f.implementIssue(43);
+  const signal = AbortSignal.timeout(20_000);
+  const sockets = [];
+  const server = createServer(socket => {
+    sockets.push(socket);
+    socket.once('data', bytes => server.emit(bytes.toString().trim(), socket));
+  });
+  const listening = once(server, 'listening', { signal });
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const port = String(server.address().port);
+  const gh = join(f.root, 'bin/gh');
+  const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
+  writeFileSync(gh, `#!${process.execPath}
+import { connect as fixtureConnect } from 'node:net';
+if(process.env.PLAN_BARRIER && process.argv[2]==='pr' && process.argv[4]==='issue-42') {
+  await new Promise((done,reject)=>{
+    const socket=fixtureConnect(Number(process.env.PLAN_BARRIER),'127.0.0.1');
+    socket.on('connect',()=>socket.write('held\\n'));
+    socket.on('end',done); socket.on('error',reject); socket.resume();
+  });
+}
+${original}`);
+  const startedFile = join(f.root, 'bin/started.mjs');
+  writeFileSync(startedFile, `import {connect} from 'node:net';
+await new Promise((done,reject)=>{
+ const socket=connect(Number(process.env.STARTED_PORT),'127.0.0.1');
+ socket.on('connect',()=>socket.end('started\\n')); socket.on('close',done); socket.on('error',reject);
+});
+`);
+  const children = [];
+  const planning = (issue, env) => {
+    const child = spawn(process.execPath, [script, 'plan', '--root', f.root, '--lane', f.lanePath,
+      '--issue', String(issue)], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    const closed = once(child, 'close', { signal });
+    children.push({ child, closed });
+    return { child, closed, result: () => JSON.parse(stdout), stderr: () => stderr };
+  };
+  t.after(async () => {
+    for (const { child } of children) child.kill('SIGKILL');
+    for (const socket of sockets) socket.destroy();
+    server.close();
+    await Promise.all(children.map(({ closed }) => closed));
+  });
+  const held = once(server, 'held', { signal });
+  const first = planning(43, { ...f.env, PLAN_BARRIER: port });
+  const [holder] = await held;
+  f.implementIssue(42);
+  const started = once(server, 'started', { signal });
+  const second = planning(42, { ...f.env, STARTED_PORT: port,
+    NODE_OPTIONS: `${f.env.NODE_OPTIONS ?? ''} --import ${startedFile}`.trim() });
+  await started;
+  holder.end('release\n');
+  const [[firstCode], [secondCode]] = await Promise.all([first.closed, second.closed]);
+
+  assert.equal(firstCode, 0, first.stderr());
+  assert.equal(secondCode, 0, second.stderr());
+  assert.equal(first.result().decision.action, 'review');
+  assert.equal(second.result().decision.action, 'wait-preflight-overlap');
+  assert.deepEqual(second.result().decision.siblings.map(row => row.issue), [43]);
+  assert.equal(f.readiness(43).value.sequence, 1);
+  assert.equal(f.readiness(42), undefined);
+});
+
+for (const action of ['review', 'wait-ci']) {
+test(`readiness wait control: watch ${action} awaiting its next tick -> independent writer finishes before watch is stopped`, async (t) => {
+  const f = readinessFixture(t);
+  f.implementIssue(43);
+  if (action === 'wait-ci') {
+    const { obs } = f.planIssue(43);
+    const value = { head_sha: obs.headSha, preflight_sha256: obs.preflightPolicy.sha256,
+      active_axes: obs.preflightPolicy.active_axes, reviews: obs.preflightPolicy.active_axes.map(reviewer => ({
+        reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha,
+        preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [],
+      })) };
+    f.cli('set-fact', ['--lane', f.lanePath, '--issue', '43', '--kind', 'review', '--head', obs.headSha,
+      '--value', JSON.stringify(value)]);
+    f.state.prs = { 'issue-43': { number: 143, state: 'OPEN', headRefOid: obs.headSha,
+      mergeable: 'MERGEABLE', statusCheckRollup: [{ state: 'PENDING' }] } };
+    f.update();
+  }
+  const signal = AbortSignal.timeout(15_000);
+  const child = spawn(process.execPath, [script, 'watch', '--root', f.root, '--lane', f.lanePath,
+    '--interval', '3600'], { env: f.env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '';
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const ready = new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new Error(`watch not ready: ${stdout}\n${stderr}`)), { once: true });
+    child.stdout.on('data', chunk => {
+      stdout += chunk;
+      if (stdout.split('\n').some(line => line.includes('issue 43:') && line.includes(`-> ${action}`))) resolve();
+    });
+  });
+  const closed = once(child, 'close');
+  t.after(async () => { child.kill('SIGKILL'); await closed; });
+  await ready;
+
+  f.cli('approve-merge', ['--lane', f.lanePath, '--issue', '43']);
+
+  assert.equal(child.exitCode, null, 'writer completed while watch is still waiting');
+  assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['43'].approvals.merge, true);
+  assert.equal(f.readiness(43).value.active, true);
+});
+}
 
 test('readiness: first returned review survives a later implementation, late PR and same-head record across processes', (t) => {
   const f = readinessFixture(t);

@@ -64,6 +64,41 @@ test('readiness ordering: fix-back, conflict and failed observation do not occup
   }
 });
 
+test('review eligibility: terminated overlapping row -> typed blocker while disjoint rows retain base decisions', () => {
+  for (const [patch, reason] of [
+    [{ pr: { state: 'CLOSED', number: 143 } }, 'pr-closed-externally'],
+    [{ issueState: 'CLOSED', pr: { state: 'OPEN', number: 143 } }, 'issue-closed-externally'],
+  ]) {
+    const rows = [overlapRow(42, ['README.md'], 'implement'), overlapRow(43, ['README.md'], 'review', patch)];
+
+    const result = coordinate(rows);
+
+    assert.equal(result[1].decision.action, 'blocked');
+    assert.equal(result[1].decision.reason, reason);
+    const disjoint = [overlapRow(42, ['src/other.ts']), rows[1]];
+    assert.deepEqual(coordinate(disjoint), disjoint);
+  }
+});
+
+test('review eligibility: merged x, failed or integrating x/y, independent y -> failed integration never occupies', () => {
+  for (const mode of ['unreadable', 'integrate']) {
+    const merged = overlapRow(41, ['docs/x.md'], 'cleanup',
+      { pr: { state: 'MERGED', number: 141, mergeCommit: mode === 'unreadable' ? null : 'd'.repeat(40) } });
+    const target = overlapRow(42, ['docs/x.md', 'docs/y.md']);
+    grant(target, 1);
+    if (mode === 'integrate') target.obs.overlapIntegrations = [{
+      issue: 41, commit: 'd'.repeat(40), base: 'e'.repeat(40), inBase: true, inHead: false,
+    }];
+    const independent = overlapRow(43, ['docs/y.md']);
+
+    const result = coordinate([merged, target, independent]);
+
+    assert.equal(result[1].decision.action, mode === 'unreadable' ? 'observation-failed' : 'resolve-conflict');
+    assert.equal(result[2].decision.action, 'review');
+    assert.equal(result[2].decision.siblings, undefined);
+  }
+});
+
 test('preflight overlap measurement: identical source and gates -> per-issue distinct review heads and CI runs', async () => {
   const path = new URL('../../../../tooling/governance/fixtures/preflight-overlap/measure.mjs', import.meta.url);
   assert.equal(existsSync(path), true, 'comparison fixture must be executable');

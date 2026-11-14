@@ -330,10 +330,27 @@ snapshot; `overlaps[].state` shows each sibling's pre-coordination action.
 `watch` prints selected siblings and reports same-action changes to siblings,
 files or overlaps, including a blocker that changes which sibling is selected.
 
+Resolve each overlapping row's eligibility before selecting occupants. An
+integration `observation-failed` or `resolve-conflict` row cannot reserve a
+place or become another review's wait target. A terminated overlapping row
+cannot expose an ungranted `review`: an unmerged CLOSED PR uses the existing
+`pr-closed-externally` blocker, while a CLOSED issue with an OPEN PR is blocked
+as `issue-closed-externally` rather than authorizing review, merge or cleanup.
+Rows with no overlap retain their base decisions. The coordinator and grant
+writer share the same `reviewable` predicate.
+
+On marker lanes, loading validates the exact readiness fact fields before
+observation or mutation: `head` and `policy_sha256` have their SHA formats,
+`sequence` is a positive safe integer, and `active` is boolean. Missing,
+unknown or malformed fields produce `invalid-review-readiness` with the
+issue and field, leaving the ledger unchanged. A well-formed stale binding
+still deactivates normally. Legacy lanes skip this validation entirely,
+including when they happen to contain a malformed readiness key.
+
 When an overlapping sibling merges, verify its actual PR `mergeCommit` is in
 observed origin/base and the review head. Missing or unreadable base ancestry
-fails closed. If no active selected sibling remains to wait for and the head
-lacks that commit, handle `resolve-conflict` with reason
+fails closed. If the head lacks that commit, resolve its integration eligibility
+before selecting occupants: handle `resolve-conflict` with reason
 `preflight-overlap-base-integration` through the existing lead integration path,
 including when the issue has no PR (the decision then omits `pr`). Merge the
 specified `base` in the assigned issue worktree, run focused checks and record

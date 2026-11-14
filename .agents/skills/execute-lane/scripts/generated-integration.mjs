@@ -39,7 +39,8 @@ export const reviewReadinessState = (row) => {
   const current = candidate && fact?.head === row.obs.headSha && fact.value?.active === true &&
     fact.value.policy_sha256 === preflight.policy.sha256 &&
     Number.isSafeInteger(fact.value.sequence) && fact.value.sequence > 0;
-  return { candidate, current: Boolean(current), policy: preflight.valid ? preflight.policy : null,
+  return { candidate, reviewable: candidate && row.decision.action === 'review',
+    current: Boolean(current), policy: preflight.valid ? preflight.policy : null,
     sequence: current ? fact.value.sequence : null };
 };
 
@@ -51,15 +52,7 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
   const overlaps = (left, right) => policies.get(left.issue).valid && policies.get(right.issue).valid
     ? [...new Set(left.obs.preflight.predicted_files.filter(file =>
       right.obs.preflight.predicted_files.includes(file)))].sort() : [];
-  const readiness = new Map(snapshots.map(row => [row.issue, reviewReadinessState(row)]));
-  const candidates = snapshots.filter(row => readiness.get(row.issue).candidate)
-    .sort((a, b) => Number(readiness.get(b.issue).current) - Number(readiness.get(a.issue).current) ||
-      (readiness.get(a.issue).sequence ?? 0) - (readiness.get(b.issue).sequence ?? 0) || a.issue - b.issue);
-  const selected = [];
-  for (const candidate of candidates) {
-    if (!selected.some(other => overlaps(candidate, other).length)) selected.push(candidate);
-  }
-  return snapshots.map(row => {
+  const eligible = snapshots.map(row => {
     const related = snapshots.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length)
       .sort((a, b) => a.issue - b.issue);
     if (!related.length) return row;
@@ -69,6 +62,22 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
     }));
     const decision = { ...row.decision, overlaps: targets };
     if (row.decision.action !== 'review') return { ...row, decision };
+    if (!reviewReadinessState(row).reviewable) {
+      const pr = row.obs.pr;
+      if (pr?.state === 'MERGED') return { ...row, decision: {
+        action: row.obs.branch || row.obs.worktree ? 'cleanup' : 'done', pr: pr.number, overlaps: targets,
+      } };
+      if (row.obs.issueState === 'CLOSED' && !pr) return { ...row, decision: {
+        action: 'done', reason: 'issue-closed-externally', overlaps: targets,
+      } };
+      if (row.obs.observationFailures?.length) return { ...row, decision: {
+        action: 'observation-failed', failures: row.obs.observationFailures, overlaps: targets,
+      } };
+      return { ...row, decision: { action: 'blocked',
+        reason: pr?.state === 'CLOSED' ? 'pr-closed-externally'
+          : row.obs.issueState === 'CLOSED' ? 'issue-closed-externally' : 'preflight-overlap-review-ineligible',
+        ...(pr ? { pr: pr.number } : {}), overlaps: targets } };
+    }
     const merged = related.filter(sibling => sibling.obs.pr?.state === 'MERGED');
     const integrations = merged.map(sibling => ({
       sibling, evidence: row.obs.overlapIntegrations?.find(item => item.issue === sibling.issue),
@@ -80,13 +89,6 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
       failures: unreadable.map(({ sibling }) => ({
         source: 'preflight-overlap', subject: sibling.issue, code: 'merge-ancestry-unavailable',
       })) } };
-    const waiting = selected.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length);
-    if (!selected.some(sibling => sibling.issue === row.issue) && waiting.length) {
-      const siblings = targets.filter(target => waiting.some(sibling => sibling.issue === target.issue));
-      return { ...row, decision: { action: 'wait-preflight-overlap', reason: 'selected-overlapping-sibling',
-        head: row.obs.headSha, siblings, files: [...new Set(siblings.flatMap(sibling => sibling.files))].sort(),
-        overlaps: targets } };
-    }
     const missing = integrations.filter(({ evidence }) => !evidence.inHead);
     if (missing.length) return { ...row, decision: { action: 'resolve-conflict',
       reason: 'preflight-overlap-base-integration', head: row.obs.headSha,
@@ -94,6 +96,25 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
       siblings: missing.map(({ sibling, evidence }) => ({ issue: sibling.issue, commit: evidence.commit })),
       overlaps: targets } };
     return { ...row, decision };
+  });
+  // Integration failures and pending integration are ineligible before greedy
+  // selection, so a row which cannot review never reserves a sibling's place.
+  const readiness = new Map(eligible.map(row => [row.issue, reviewReadinessState(row)]));
+  const candidates = eligible.filter(row => readiness.get(row.issue).candidate)
+    .sort((a, b) => Number(readiness.get(b.issue).current) - Number(readiness.get(a.issue).current) ||
+      (readiness.get(a.issue).sequence ?? 0) - (readiness.get(b.issue).sequence ?? 0) || a.issue - b.issue);
+  const selected = [];
+  for (const candidate of candidates) {
+    if (!selected.some(other => overlaps(candidate, other).length)) selected.push(candidate);
+  }
+  return eligible.map(row => {
+    if (!reviewReadinessState(row).reviewable || !row.decision.overlaps) return row;
+    const waiting = selected.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length);
+    if (selected.some(sibling => sibling.issue === row.issue) || !waiting.length) return row;
+    const siblings = row.decision.overlaps.filter(target => waiting.some(sibling => sibling.issue === target.issue));
+    return { ...row, decision: { action: 'wait-preflight-overlap', reason: 'selected-overlapping-sibling',
+      head: row.obs.headSha, siblings, files: [...new Set(siblings.flatMap(sibling => sibling.files))].sort(),
+      overlaps: row.decision.overlaps } };
   });
 };
 
