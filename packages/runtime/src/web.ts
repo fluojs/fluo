@@ -467,7 +467,7 @@ function createDeferredWebFrameworkRequest(
   const contentType = requestHeaders.get('content-type') ?? undefined;
   const isMultipart = readPrimaryMediaType(contentType) === 'multipart/form-data';
   const hasRequestBody = request.body !== null;
-  const materializeBody = hasRequestBody ? createMemoizedAsyncValue(async () => {
+  const materializeBody = hasRequestBody || isMultipart ? createMemoizedAsyncValue(async () => {
     if (isMultipart) {
       const resolvedMultipartOptions = {
         ...multipartOptions,

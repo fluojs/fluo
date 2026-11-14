@@ -1067,6 +1067,32 @@ describe('Web multipart and media-type classification', () => {
     expect(seen).toEqual([]);
   });
 
+  it('returns 400 for a body-less multipart request before dispatch', async () => {
+    // Given
+    const seen: unknown[] = [];
+
+    // When
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          seen.push(request.body);
+          await frameworkResponse.send({ ok: true });
+        },
+      },
+      request: new Request('https://runtime.test/upload', {
+        headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+        method: 'POST',
+      }),
+    });
+
+    // Then
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'BAD_REQUEST', status: 400 },
+    });
+    expect(seen).toEqual([]);
+  });
+
   it('does not treat a parameter-embedded multipart media type as multipart', async () => {
     // Given
     const seen: unknown[] = [];
