@@ -301,9 +301,10 @@ function isSafeMethod(method: string): boolean {
  * Determines whether `If-Range` permits applying a requested byte range.
  *
  * A missing field permits the range. Entity-tag validation requires an exact
- * strong match; valid dates match when the selected representation has not
- * changed since that instant. All malformed or unavailable validators fall
- * back to the complete representation.
+ * strong match; valid HTTP dates match only when they exactly equal the
+ * selected `Last-Modified` date at HTTP-date (one-second) precision, so older
+ * and newer dates both select the complete representation. All malformed or
+ * unavailable validators fall back to the complete representation.
  *
  * @param request Incoming request whose `If-Range` field is evaluated.
  * @param validators Selected response validators used to match `If-Range`.
@@ -333,7 +334,7 @@ export function matchesIfRange(
 
   return ifRangeDate !== undefined
     && lastModified !== undefined
-    && lastModified <= ifRangeDate;
+    && lastModified === ifRangeDate;
 }
 
 /**
