@@ -936,12 +936,17 @@ function toError(error: unknown): Error {
 }
 
 function appendMultipartField(fields: Record<string, string | string[]>, name: string, value: string): void {
-  const existing = fields[name];
-
-  if (existing === undefined) {
-    fields[name] = value;
+  if (!Object.hasOwn(fields, name)) {
+    Object.defineProperty(fields, name, {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    });
     return;
   }
+
+  const existing = fields[name];
 
   if (Array.isArray(existing)) {
     existing.push(value);
