@@ -87,9 +87,11 @@ export class ProductCards {
 }
 ```
 
-Here, reads and writes are separate rather than using `remember()`. Manual `CacheService` calls propagate store failures to the caller. Catching the entire `remember()` call and querying the DB again can misclassify an original DB error as a cache failure, or query the DB twice when the query succeeded and only the cache write failed. The code above proceeds to the source when only the cache fails, while propagating source query failures unchanged. The application contract for `CacheFailures.record()` is a local counter update that does not throw. Instrumentation must not become a new dependency whose failure breaks the query.
+Here, reads and writes are separate rather than using `remember()`. Direct `get`/`set` and `remember` with its default `'throw'` policy propagate store failures. Catching the entire `remember()` call and querying the DB again can misclassify an original DB error as a cache failure, or query the DB twice when the query succeeded and only the cache write failed. [Opt-in `rememberCacheErrors: 'bypass'`](../../packages/cache-manager/README.md#remember-store-error-policy) bypasses only store failures while retaining same-instance loader coalescing and invalidation. The code above proceeds to the source when only the cache fails, while propagating source query failures unchanged. The application contract for `CacheFailures.record()` is a local counter update that does not throw. Instrumentation must not become a new dependency whose failure breaks the query.
 
 A cache miss is `undefined`, while a product absent from the source is `null`. This first implementation does not cache missing products. To use caching against attacks involving nonexistent SKUs, decide on a separate short-lived negative-cache policy and a limit on the number of inputs. This implementation also does not coalesce concurrent misses. Within one process, `remember()` coalesces in-flight loaders for the same key, but it is not a distributed lock that combines loaders across instances. Measure DB load first, and add coalescing if needed while retaining the distinction between failures.
+
+Selecting bypass does not replace this manual example's no-`null` caching choice, deletion-failure handling, or distributed-invalidation limits. Preserve these domain policies separately when moving to `remember`.
 
 ## Separate Ownership of the Redis Connection and the Cache
 

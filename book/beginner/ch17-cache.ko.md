@@ -128,6 +128,8 @@ CacheModule.forRootAsync({
 
 Option이 이미 준비된 경우에는 동기 `CacheModule.forRoot(options)` 경로가 적합합니다. Lifecycle-managed Redis 경로는 `store: 'redis'`와 선택적 `redis.clientName`을 통해 `@fluojs/redis`의 기본 또는 named raw client를 해석할 수 있습니다. 애플리케이션이 compatible Redis client를 이미 소유한다면 `redis.client`로 직접 전달하세요. 이 경로에는 `@fluojs/redis`가 필요하지 않습니다. 객체는 export된 `RedisCompatibleClient` operation(`get`, `set`, `del`, tuple-returning `scan`)만 제공하면 됩니다. 직접 전달한 client는 `redis.clientName`보다 우선하며, connect와 close 책임은 애플리케이션에 남습니다.
 
+ioredis `Redis` 인스턴스는 adapter나 type assertion 없이 공개 `RedisCompatibleClient` 계약을 직접 만족합니다. Memory-only 소비자에게는 `ioredis`와 `@fluojs/redis` 모두 필요하지 않습니다.
+
 ```typescript
 import Redis from 'ioredis';
 import { Module } from '@fluojs/core';
@@ -157,7 +159,7 @@ export class AppModule {}
 ### 17.3.4 Cache Persistence and Reliability
 캐시는 일반적으로 "휘발성" 저장소로 간주되지만, Redis와 같은 일부 제공자는 **영속성(Persistence)** 기능을 제공합니다. 캐시 데이터의 주기적인 스냅샷(RDB)을 생성하거나 모든 수정 사항을 로그(AOF)로 기록함으로써, 시스템 재부팅 후에도 캐시를 "따뜻하게(warm)" 유지할 수 있습니다. 이는 데이터베이스에서 캐시를 재구축하는 데 수 시간이 걸리는 대규모 데이터 세트를 가진 애플리케이션에 특히 유용합니다.
 
-그러나 영속성은 쓰기 성능에 영향을 줄 수 있으므로 주의해야 합니다. 대부분의 Fluo 애플리케이션에서는 최대 속도를 위해 영속성이 없는 기본 모드를 선호합니다. 실패 동작은 캐시 호출 방식에 따라 달라집니다. `CacheInterceptor`가 감싼 HTTP route에서는 interceptor가 store read 실패를 cache miss로 취급하고 store write 또는 eviction 실패를 내부에 격리하므로, 캐시 저장소 오류 외에는 정상인 handler가 계속 완료될 수 있습니다. 이 route 전용 격리는 명시적인 `CacheService` operation에는 적용되지 않습니다. `get`, `set`, `remember`, `del`, `reset`은 store 작업을 기다리며, 애플리케이션이 오류를 catch하지 않으면 해당 작업 실패로 reject됩니다. 각 수동 호출 지점에서 cache가 필수인지 fail-soft여야 하는지 결정하고, 오류를 격리할 때도 log나 metric을 남기세요.
+그러나 영속성은 쓰기 성능에 영향을 줄 수 있으므로 주의해야 합니다. 대부분의 Fluo 애플리케이션에서는 최대 속도를 위해 영속성이 없는 기본 모드를 선호합니다. 실패 동작은 캐시 호출 방식에 따라 달라집니다. `CacheInterceptor`가 감싼 HTTP route에서는 interceptor가 store read 실패를 cache miss로 취급하고 store write 또는 eviction 실패를 내부에 격리하므로, 캐시 저장소 오류 외에는 정상인 handler가 계속 완료될 수 있습니다. 직접 `get`, `set`, `del`, `reset`과 기본 `'throw'` 정책의 `remember`는 store 실패를 reject합니다. [선택적 `rememberCacheErrors: 'bypass'`](../../packages/cache-manager/README.ko.md#remember-저장소-오류-정책)는 `remember`의 store 읽기·쓰기 실패만 우회하면서 같은 인스턴스의 병합·무효화를 유지하고 loader 실패를 그대로 전파합니다. 전체 `remember`를 catch해서 원본을 재호출하지 마세요. 각 수동 호출 지점에서 cache가 필수인지 결정하고 오류를 격리할 때도 log나 metric을 남기세요.
 
 ## 17.4 Automatic Response Caching
 성능을 향상시키는 가장 쉬운 방법은 전체 HTTP 응답을 캐싱하는 것입니다. Fluo는 이 목적을 위해 `CacheInterceptor`를 제공합니다. 특정 라우트에 이 인터셉터를 적용하면 아직 commit되지 않은 성공적인 GET 결과가 자동으로 캐싱되어, 이후 들어오는 동일한 요청에 대해 캐시된 내용을 즉시 반환합니다. 다만 interceptor는 store를 읽고 miss일 때 곧바로 handler를 호출하며 동시 miss를 합치지 않습니다. 따라서 같은 키를 동시에 miss한 요청은 각각 handler를 실행합니다.

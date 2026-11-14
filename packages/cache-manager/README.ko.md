@@ -16,6 +16,7 @@
   - [Redis 저장소 사용](#redis-저장소-사용)
   - [원자 갱신](#원자-갱신)
   - [TTL 지터](#ttl-지터)
+  - [remember 저장소 오류 정책](#remember-저장소-오류-정책)
   - [쿼리 매개변수 기반 캐싱](#쿼리-매개변수-기반-캐싱)
   - [캐시 소유권과 reset 범위](#캐시-소유권과-reset-범위)
   - [캐시 작업 관찰](#캐시-작업-관찰)
@@ -152,6 +153,8 @@ CacheModule.forRoot({
 
 `redis.client`는 가장 높은 우선순위의 override이며 DI 기반 client 선택을 완전히 우회합니다. Export된 `RedisCompatibleClient` 계약을 만족하는 모든 client를 받을 수 있고, 이 경로에서는 `@fluojs/redis`를 load하거나 요구하지 않습니다. 직접 전달한 client의 connection startup과 shutdown은 애플리케이션이 소유합니다.
 
+ioredis `Redis` 인스턴스는 adapter나 type assertion 없이 공개 `RedisCompatibleClient` 계약을 직접 만족합니다. 같은 client를 `CacheModule.forRootAsync(...)`나 `RedisStore` 생성자에도 전달할 수 있습니다.
+
 ```typescript
 import Redis from 'ioredis';
 import { Module } from '@fluojs/core';
@@ -249,7 +252,7 @@ CacheModule.forRoot({
 
 직접 `RedisStore`를 조합할 때는 `RedisStoreOptions.atomicUpdates: true`를 사용합니다. Compatible client는 `duplicate({ lazyConnect: false, retryStrategy: () => null, reconnectOnError: () => false })`로 export된 구조적 `RedisAtomicClient` seam(`watch`, `get`, `multi`, `disconnect`)을 반환해야 하며, `multi()`는 `RedisAtomicTransaction`(`set`, `del`, `exec`)을 반환합니다. 이 선택적 타입의 소유자는 `@fluojs/cache-manager`입니다. [`@fluojs/redis`](../redis/README.ko.md#원시-클라이언트-접근-raw-client-access)가 이미 노출하는 full raw ioredis client가 이 seam을 제공하며 RedisService runtime API가 추가되는 것은 아닙니다. 각 atomic operation은 격리 duplicate를 소유하고 `finally`에서 disconnect하여 실패 시에도 WATCH를 해제합니다. 주입/공유 client는 Redis module 또는 애플리케이션 소유로 남으며 cache가 닫지 않습니다. 작업 전용 연결은 재접속하지 않으며, 연결이 끊기면 WATCH 없는 새 연결에서 commit하지 않고 원래 client 오류를 전파합니다. 공유 client의 재접속 정책은 유지됩니다.
 
-새 `RedisAtomicClient` seam은 실제 ioredis와 호환되지만 raw ioredis 인스턴스 전체가 기존 `RedisCompatibleClient` 타입에 구조적으로 할당 가능하다는 뜻은 아닙니다. 기존 `scan(cursor, ...args: Array<string | number>)` 시그니처는 ioredis overload와 다릅니다. 이 공개 계약은 그대로이며, 예제와 native fixture에는 이 차이를 cast로 숨기지 말고 canonical RedisModule DI 경로를 사용하세요.
+ioredis `Redis` 인스턴스는 `RedisCompatibleClient`와 선택적 `RedisAtomicClient` seam을 모두 만족합니다. 공개 `scan` 계약은 reset이 사용하는 `scan(cursor, 'MATCH', pattern, 'COUNT', count)` 호출을 나타내며, string 또는 number cursor를 담은 tuple을 동기나 비동기로 반환합니다. 더 넓은 string/number rest parameter를 받는 custom client도 계속 호환됩니다. `redis.client`로 직접 등록할 때도 명시적으로 활성화하면 원자 갱신을 지원하며, 원본 client의 lifecycle은 애플리케이션이 소유합니다.
 
 `PXAT`를 위해 Redis **6.2 이상**, standalone/single-primary 트랜잭션, 비어 있지 않은 앱 전용 prefix를 사용하세요. 빈 prefix는 `RangeError`, `duplicate` 없는 client는 `unsupported`로 reject됩니다. Redis Cluster 지원은 주장하지 않습니다. Namespace prefix 전체가 같은 hash tag를 사용하지 않으면 data, epoch, marker key가 cross-slot이 되며, 이 조건만 충족해도 Cluster 지원을 보장하는 것은 아닙니다.
 
@@ -291,6 +294,27 @@ CacheModule.forRoot({
 `ttlJitter`를 생략하거나 `undefined`로 설정한 경우에만 지터가 비활성화됩니다. `null`, primitive, array 및 invalid option field는 module 등록 중 거부됩니다. Optional `random` 함수는 deterministic test seam이며 `[0, 1]` 범위의 유한한 값을 반환해야 합니다. Invalid sample은 coercion하지 않고 write를 거부합니다. Production code에서는 일반적으로 기본 `Math.random`을 유지하세요.
 
 지터가 적용된 모든 양수 TTL은 선택한 방향 범위 안에서 양수이자 유한한 값으로 유지됩니다. 완전히 단축된 TTL은 no-expiry sentinel이 되지 않고 JavaScript의 가장 작은 양수 유한값을 사용하며, 표현 가능한 범위를 넘는 증가 결과는 `Number.MAX_VALUE`에서 포화됩니다. TTL 지터는 만료 시점을 분산할 뿐입니다. Distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
+
+### remember 저장소 오류 정책
+
+기본 `rememberCacheErrors: 'throw'`는 `remember`의 store 읽기·쓰기 실패와 loader 실패를 원래 오류 그대로 전파합니다. 옵션 생략이나 `undefined`도 `'throw'`입니다. 읽기가 실패하면 loader를 실행하지 않고, 쓰기가 실패하면 한 번 얻은 loader 결과 대신 reject합니다.
+
+캐시 장애만 우회하려면 등록 시 명시적으로 설정하세요.
+
+```typescript
+CacheModule.forRoot({
+  store: 'memory',
+  rememberCacheErrors: 'bypass',
+});
+```
+
+`'bypass'`에서는 store `get`의 throw/rejection을 miss로 처리하고 loader를 한 번 실행한 뒤 정상 TTL·lifecycle 규칙에 따라 저장을 시도합니다. Store `set`의 throw/rejection은 이미 얻은 loader 값을 반환하며 loader를 다시 실행하지 않습니다. Hit는 loader 없이 캐시 값을 반환합니다. Observer 유무는 결과에 영향을 주지 않습니다.
+
+우회 경계는 설정된 store의 `get`/`set` 호출뿐입니다. Loader의 동기 throw나 Promise rejection은 원래 오류 그대로 전파됩니다. TTL 준비, jitter random callback의 실패나 잘못된 sample, 무효화 정리 실패, lifecycle 실패는 우회하지 않습니다. `get`, `set`, `del`, `reset`, `close`, `update`를 직접 호출할 때의 오류 계약과 HTTP `CacheInterceptor` 동작은 그대로입니다.
+
+하나의 `CacheService`와 현재 reset generation 안에서 같은 key의 정상 miss와 우회한 읽기 실패는 진행 중 loader의 결과 또는 원래 오류를 공유합니다. 다른 key는 독립적이며 실패한 load가 끝나면 이후 호출은 새로 로드할 수 있습니다. 읽기 대기·loader·쓰기와 겹친 `del` 무효화, reset/close 이전의 늦은 저장 억제를 유지합니다. 쓰기가 값을 변경한 뒤 reject해도 같은 generation의 `del`에 필요한 stale write 정리를 수행하며, 이전 generation의 정리가 reset 이후 새 값을 삭제하지 않습니다. Reset/close는 이미 시작된 store 작업을 drain하지만 아직 store에 진입하지 않은 origin loader 완료를 기다린다는 보장은 없습니다. 분산 병합, 재시도, stale 반환을 추가하지 않습니다.
+
+`CacheModuleOptions.rememberCacheErrors`는 `'throw' | 'bypass'`만 받습니다. 다른 untyped 값은 허용값을 안내하는 구성 오류가 됩니다. `forRoot`는 등록 중 동기 검증하고 `forRootAsync`의 동기·비동기 factory는 결과 resolve 시 같은 정규화를 적용합니다.
 
 ### 쿼리 매개변수 기반 캐싱
 
@@ -384,7 +408,7 @@ CacheModule.forRoot({
 
 - **프라이버시**: observation은 `operation`, `outcome`, `durationMs`만 전달합니다. cache key, 캐시된 값, loader 결과, error 객체는 observer로 전달되지 않으므로 계측이 애플리케이션 데이터를 유출할 수 없습니다.
 - **operation taxonomy**: `operation`은 `get`, `set`, `del`, `remember`, `reset`, `close` 중 하나입니다. `remember`는 호출당 한 번 보고되며, 내부 read는 별도의 `get`으로 보고되지 않습니다. `update`는 이 observation을 내보내지 않습니다.
-- **outcome**: `CacheObservation`은 discriminated union입니다. read 작업(`get`, `remember`)은 `hit`, `miss`, `error`만 보고할 수 있고, write, invalidation, lifecycle 작업은 `success`, `error`만 보고할 수 있습니다. 같은 key의 in-flight load에 합류한 `remember` 호출은 캐시된 값을 읽지 않았으므로 `miss`를 보고합니다.
+- **outcome**: `CacheObservation`은 discriminated union입니다. read 작업(`get`, `remember`)은 `hit`, `miss`, `error`만 보고할 수 있고, write, invalidation, lifecycle 작업은 `success`, `error`만 보고할 수 있습니다. 오류 없는 miss와 in-flight load 합류는 `miss`, 캐시 hit는 `hit`입니다. 자신의 읽기를 우회했거나 공유 load의 쓰기를 우회한 `remember` 호출은 값이 resolve되어도 `error`를 정확히 한 번 보고합니다. 읽기와 쓰기가 모두 실패해도 중복 보고하지 않으며 내부 `get`/`set` event는 없습니다. 한 호출의 읽기 실패가 다른 정상 호출의 outcome을 바꾸지 않습니다.
 - **timing**: `durationMs`는 런타임의 monotonic `performance.now()` clock을 사용하여 store queue 직렬화를 포함한 전체 `CacheService` 작업 시간을 측정합니다.
 - **실패 격리**: observer 오류는 삼켜집니다. throw된 error나 rejected promise는 caller가 받는 값을 바꾸지 않고 unhandled rejection으로도 노출되지 않습니다. observer 작업은 cache 작업이 await하지 않습니다.
 - **HTTP fail-soft 상호작용**: `CacheInterceptor`는 여전히 store 실패를 삼켜서 캐시 문제가 정상 핸들러를 실패시키지 않도록 합니다. observer는 그 실패를 `error` observation으로 확인하므로, 요청 처리를 유지하면서 저하된 캐시를 알림하는 지원 경로가 됩니다.
@@ -401,6 +425,8 @@ Lifecycle diagnostic은 shutdown이 실제로 사용하는 teardown 소유자를
 ### 비동기 설정
 
 최종 store, TTL, `keyPrefix`, key strategy를 DI나 비동기 bootstrap 작업에서 결정해야 한다면 `CacheModule.forRootAsync(...)`를 사용합니다. 의존성 토큰을 `inject`에 나열하고 `useFactory`에서 일반 `CacheModuleOptions`를 반환하면, module이 `CacheModule.forRoot(...)`와 동일한 기본값으로 그 결과를 정규화합니다.
+
+Factory 결과의 `rememberCacheErrors`도 같은 규칙을 따릅니다. 생략/`undefined`는 `'throw'`, `'bypass'`는 [remember 저장소 오류 정책](#remember-저장소-오류-정책)을 선택하며 잘못된 값은 결과 해석 시 bootstrap을 실패시킵니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -524,7 +550,7 @@ class ProductController {
 - `CacheModule.forRootAsync({ inject, useFactory, global? })`: cache 설정을 DI나 비동기 bootstrap 작업에서 만드는 애플리케이션을 위해 동일한 옵션을 injected factory로 해석합니다. `global`은 이 등록 호출이 소유하며, factory가 reject되면 bootstrap이 실패합니다.
 
 ### 공개 타입
-- `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정이며 optional `ttlJitter`와 `observer`를 포함합니다.
+- `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정이며 optional `ttlJitter`, `observer`, `rememberCacheErrors: 'throw' | 'bypass'`(기본 `'throw'`)를 포함합니다.
 - `CacheTtlJitterOptions`, `CacheTtlJitterMode`: Opt-in 양수 TTL 지터의 범위, 방향, deterministic randomness seam을 정의합니다.
 - `CacheObserver`: 단일 `onCacheOperation(observation)` 메서드를 가지는 opt-in 관찰 hook입니다.
 - `CacheObservation`: 각 operation category를 유효한 outcome과 결합하고 `durationMs`를 전달하는 privacy-safe discriminated union입니다.

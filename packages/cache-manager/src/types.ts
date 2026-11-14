@@ -41,8 +41,18 @@ export interface RedisCompatibleClient {
   }): RedisAtomicClient;
   del(key: string, ...keys: string[]): Promise<number> | number;
   get(key: string): Promise<string | null> | string | null;
-  scan(cursor: string, ...args: Array<string | number>): Promise<[string | number, string[]]> | [string | number, string[]];
-  set(key: string, value: string, ...args: Array<string | number>): Promise<unknown> | unknown;
+  /** Scan the literal cache namespace during reset using the ioredis-compatible MATCH/COUNT form. */
+  scan(
+    cursor: string,
+    matchToken: 'MATCH',
+    pattern: string,
+    countToken: 'COUNT',
+    count: number,
+  ): Promise<[string | number, string[]]> | [string | number, string[]];
+  /** Write a persistent cache entry or atomic invalidation identity. */
+  set(key: string, value: string): Promise<unknown> | unknown;
+  /** Write a cache entry with the seconds-based expiry used by ordinary RedisStore writes. */
+  set(key: string, value: string, expiryMode: 'EX', ttlSeconds: number): Promise<unknown> | unknown;
 }
 
 /** Isolated WATCH connection owned and disconnected by the atomic cache operation. */
@@ -189,6 +199,12 @@ export interface CacheModuleOptions extends CacheModuleInternalOptions {
   ttl?: number;
   /** Opt-in positive-TTL jitter applied before store handoff. Only omission or `undefined` disables jitter. */
   ttlJitter?: CacheTtlJitterOptions;
+  /**
+   * Store-error policy for `remember` only. Omission or `undefined` selects `'throw'`.
+   * `'bypass'` treats failed store reads as misses and returns loaded values after failed writes.
+   * Loader, TTL preparation, invalidation cleanup, and lifecycle failures still propagate unchanged.
+   */
+  rememberCacheErrors?: 'throw' | 'bypass';
   httpKeyStrategy?: CacheKeyStrategy;
   principalScopeResolver?: PrincipalScopeResolver;
   /** Opt-in privacy-safe observer notified after each cache operation completes. */
@@ -210,6 +226,8 @@ export interface NormalizedCacheModuleOptions {
   store: 'memory' | 'redis' | CacheStore;
   ttl: number;
   ttlJitter?: NormalizedCacheTtlJitterOptions;
+  /** Validated `remember` store-error policy; defaults to `'throw'` at module registration. */
+  rememberCacheErrors: 'throw' | 'bypass';
   httpKeyStrategy: CacheKeyStrategy;
   principalScopeResolver: PrincipalScopeResolver | undefined;
   /** Opt-in privacy-safe observer notified after each cache operation completes. */

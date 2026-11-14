@@ -7,6 +7,22 @@ import { CACHE_OPTIONS } from './tokens.js';
 import type { CacheModuleOptions, NormalizedCacheModuleOptions } from './types.js';
 
 describe('CacheModule.forRoot', () => {
+  it.each([undefined, 'throw', 'bypass'] as const)('normalizes rememberCacheErrors %s', (rememberCacheErrors) => {
+    const providers = getModuleMetadata(CacheModule.forRoot({ rememberCacheErrors }))?.providers ?? [];
+
+    expect(providers).toContainEqual({
+      provide: CACHE_OPTIONS,
+      useValue: expect.objectContaining({ rememberCacheErrors: rememberCacheErrors ?? 'throw' }),
+    });
+  });
+
+  it.each([null, '', 'ignore', false, 0, {}, []])('rejects invalid rememberCacheErrors %j during registration', (value) => {
+    const options: CacheModuleOptions = {};
+    Object.defineProperty(options, 'rememberCacheErrors', { enumerable: true, value });
+
+    expect(() => CacheModule.forRoot(options)).toThrow(/rememberCacheErrors.*"throw".*"bypass"/);
+  });
+
   it.each(['mongo', ''])('rejects unsupported store %j during registration', (store) => {
     const options: CacheModuleOptions = {};
     Object.defineProperty(options, 'store', { enumerable: true, value: store });
