@@ -2713,8 +2713,11 @@ describe('Recovery-oriented error context', () => {
     expect(message).toContain('Hint:');
   });
 
-  it('ScopeMismatchError includes hint when registering singleton on request scope', () => {
-    const token = Symbol('singleton-token');
+  it.each([
+    { token: class SingletonService {}, name: 'SingletonService' },
+    { token: 'singleton-token', name: 'singleton-token' },
+    { token: Symbol('singleton-token'), name: 'Symbol(singleton-token)' },
+  ])('ScopeMismatchError formats $name when registering singleton on request scope (#4022)', ({ token, name }) => {
     const root = new Container();
     const requestScope = root.createRequestScope();
 
@@ -2723,8 +2726,21 @@ describe('Recovery-oriented error context', () => {
       expect.unreachable('should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(ScopeMismatchError);
-      expect((error as ScopeMismatchError).message).toContain('Hint:');
-      expect((error as ScopeMismatchError).message).toContain('root container');
+      if (!(error instanceof ScopeMismatchError)) {
+        throw error;
+      }
+
+      expect(error.message.split('\n')[0]).toBe(
+        `Singleton provider ${name} cannot be registered on a request-scope container.`,
+      );
+      expect(error.code).toBe('SCOPE_MISMATCH');
+      expect(error.meta).toEqual({
+        token: name,
+        scope: 'singleton',
+        hint: 'Register it on the root container before creating the request scope, or use container.override() within the request scope instead.',
+      });
+      expect(error.message).toContain('Hint:');
+      expect(error.message).toContain('root container');
     }
   });
 

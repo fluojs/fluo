@@ -2241,6 +2241,49 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it.each(['/*', '////*'])('preserves unprefixed routes with root wildcard globalPrefixExclude %s', async (pattern) => {
+    @Controller()
+    class AppController {
+      @Get()
+      getRoot() {
+        return { route: 'root' };
+      }
+
+      @Get('/users/42')
+      getUser() {
+        return { route: 'user' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController],
+    });
+
+    const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
+      cors: false,
+      globalPrefix: '///api//',
+      globalPrefixExclude: [pattern],
+      port: 0,
+    }));
+    await app.listen();
+    const url = await resolveNodeApplicationUrl(app);
+
+    const [root, user, prefixedUser] = await Promise.all([
+      fetchForTest(`${url}/`),
+      fetchForTest(`${url}/users/42`),
+      fetchForTest(`${url}/api/users/42`),
+    ]);
+
+    expect(root.status).toBe(200);
+    await expect(root.json()).resolves.toEqual({ route: 'root' });
+    expect(user.status).toBe(200);
+    await expect(user.json()).resolves.toEqual({ route: 'user' });
+    expect(prefixedUser.status).toBe(404);
+
+    await app.close();
+  });
+
   it('treats a root global prefix as a no-op', async () => {
     @Controller('/app')
     class AppController {

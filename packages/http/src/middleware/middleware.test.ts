@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Container } from '@fluojs/di';
 
 import type { FrameworkResponse, Middleware, MiddlewareContext, MiddlewareLike, Next } from '../types.js';
-import { forRoutes, isMiddlewareRouteConfig, runMiddlewareChain } from './middleware.js';
+import { forRoutes, isMiddlewareRouteConfig, matchRoutePattern, normalizeRoutePattern, runMiddlewareChain } from './middleware.js';
 
 function createResponse(): FrameworkResponse {
   return {
@@ -14,6 +14,49 @@ function createResponse(): FrameworkResponse {
     setStatus(_code: number) {},
   };
 }
+
+describe('normalizeRoutePattern', () => {
+  it.each([
+    ['/*', '/*'],
+    ['//*', '/*'],
+    ['////*', '/*'],
+    ['//cats///*', '/cats/*'],
+    ['/cats/*', '/cats/*'],
+    ['//users///42/', '/users/42'],
+    ['///', '/'],
+  ])('normalizes %s to stable %s', (pattern, expected) => {
+    const normalized = normalizeRoutePattern(pattern);
+
+    expect(normalized).toBe(expected);
+    expect(normalizeRoutePattern(normalized)).toBe(expected);
+  });
+});
+
+describe('matchRoutePattern', () => {
+  it.each([
+    ['/*', '/', true],
+    ['/*', '/users', true],
+    ['/*', '/users/42', true],
+    ['/*', '///', true],
+    ['/*', '//users///42/', true],
+    ['////*', '//users///42/', true],
+    ['/cats/*', '/cats', true],
+    ['/cats/*', '/cats/', true],
+    ['/cats/*', '/cats/42/posts', true],
+    ['//cats///*', '//cats///42/', true],
+    ['/cats/*', '/cat', false],
+    ['/cats/*', '/cats-other', false],
+    ['//cats///*', '//cats-other///42/', false],
+    ['/users/', '//users///', true],
+    ['/users', '/users/42', false],
+    ['/', '///', true],
+    ['/', '/users', false],
+  ])('matches %s against %s as %s', (pattern, path, expected) => {
+    const matches = matchRoutePattern(pattern, path);
+
+    expect(matches).toBe(expected);
+  });
+});
 
 describe('isMiddlewareRouteConfig', () => {
   it('returns true for a MiddlewareRouteConfig object', () => {
@@ -72,6 +115,31 @@ describe('forRoutes', () => {
 });
 
 describe('matchRoute behavior via runMiddlewareChain', () => {
+  it.each(['/', '/users', '/users/42', '//users///42/'])('runs root wildcard middleware before terminal for %s', async (path) => {
+    const events: string[] = [];
+
+    class AuthMiddleware implements Middleware {
+      async handle(_context: MiddlewareContext, next: Next) {
+        events.push('auth');
+        await next();
+        events.push('auth:after');
+      }
+    }
+
+    const container = new Container().register(AuthMiddleware);
+    const context = {
+      request: { path },
+      requestContext: { container },
+      response: createResponse(),
+    } as unknown as MiddlewareContext;
+
+    await runMiddlewareChain([forRoutes(AuthMiddleware, '/*')], context, async () => {
+      events.push('terminal');
+    });
+
+    expect(events).toEqual(['auth', 'terminal', 'auth:after']);
+  });
+
   it('normalizes trailing slashes for exact matching', async () => {
     const events: string[] = [];
 
