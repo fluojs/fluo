@@ -355,7 +355,7 @@ describe('frozen compiler object association', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('generates strict aliased converter query from a non-exported DTO and factory-local router', async () => {
     // Given: real generation, two strict compiler programs and HTTP share a bounded integration budget.
