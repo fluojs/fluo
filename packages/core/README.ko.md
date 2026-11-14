@@ -315,6 +315,8 @@ driver가 소유하며 공통 observation 선언은 persistence에 있습니다.
 
 공개 fluo 오류는 버전과 패키지 소유자를 포함한 규약을 가집니다. 오류가 패키지 경계를 넘을 수 있으면 constructor identity 대신 `isFluoError(...)` 또는 소유 패키지의 더 좁은 판별 함수를 사용하세요. 브랜드가 없는 유사 객체와 호환되지 않는 규약 버전은 거부됩니다.
 
+내부 `Symbol.for('fluo.metadata.registry.v1')` key의 non-configurable 값이 호환되는 metadata registry가 아니면, core metadata 접근은 metadata store를 조용히 분리하는 대신 `InvariantError` (`INVARIANT_ERROR`)를 던집니다. Configurable인 잘못된 값은 공유 registry로 교체하며, legacy `fluo.metadata.registry` key는 무시합니다.
+
 ## 예제 소스
 
 - `packages/core/src/index.ts`
