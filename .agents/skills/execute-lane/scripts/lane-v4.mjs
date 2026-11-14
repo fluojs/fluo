@@ -97,7 +97,8 @@ export const applyChildResult = (lane, phase, result, { retryPolicy, now } = {})
 	next.attempts ??= {};
 	const wellFormed =
 		typeof result === 'object' && result !== null && result.ok === true;
-	if (wellFormed) {
+	if (wellFormed && !(retryPolicy?.stop_on_child_contract_error &&
+		result.error?.type === 'child-contract-error')) {
 		next.attempts[phase] = 0;
 		if (next.retry_telemetry) delete next.retry_telemetry[phase];
 		return next;

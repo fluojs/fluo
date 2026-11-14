@@ -407,6 +407,20 @@ test('retry policy: malformed child and explicit contract error -> policy blocke
 	assert.equal(retry.blocker, null);
 });
 
+test('retry policy: explicit contract error with ok true -> blocker before success, legacy unchanged', () => {
+	const lane = makeLane({ attempts: { implement: 2 },
+		retry_telemetry: { implement: { started_at: 0, elapsed_ms: 2, failure: 'old', same_failure_repeats: 1 } } });
+	const result = { ok: true, error: { type: 'child-contract-error' } };
+
+	const next = applyChildResult(lane, 'implement', result, { retryPolicy: adaptivePolicy, now: 3 });
+
+	assert.deepEqual(next.blocker, { type: 'child-contract-error', phase: 'implement' });
+	assert.equal(next.attempts.implement, 3);
+	assert.equal(next.retry_telemetry.implement.elapsed_ms, 3);
+	assert.deepEqual(applyChildResult(lane, 'implement', result),
+		{ ...lane, attempts: { implement: 0 }, retry_telemetry: {} });
+});
+
 test('decision: failed required observations -> typed failure before every write action', () => {
 	const observationFailures = [{ source: 'pr', subject: 'issue-3096', code: 'command-failed' }];
 	for (const patch of [{}, { preflight: null }, { hasNewCommits: false }, { pr: { state: 'MERGED' } }]) {

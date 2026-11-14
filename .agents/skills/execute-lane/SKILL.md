@@ -34,9 +34,13 @@ not authorize expanding its issue set.
 intake, preserving its bytes. It never resets an active lane. State writers
 (`record`, `set-fact`, `approve-merge`, `clear-blocker`) serialize the entire
 read/validate/update operation with a per-file exclusive lock and publish complete
-JSON atomically. Readers can continue during a write. Lock contention waits for
-filesystem events, with a 60 second timeout that fails without changing state.
-A lock left by a killed writer is not automatically stolen.
+JSON atomically. Readers can continue during a write. Node's built-in SQLite
+holds an OS-owned write transaction on the persistent `.lock` file, with a
+60 second contention timeout that fails without changing lane state. The OS
+releases a killed writer's ownership, so subsequent writers recover without
+deleting the lock file or stealing ownership from a live process. Concurrent
+recovery contenders serialize through that same OS lock; no PID reuse or
+elapsed-time guess determines ownership. Lane data remains JSON, not SQL.
 
 ## Canonical order
 
@@ -162,7 +166,7 @@ limit. Bounded policies enforce `max_same_failure_repeats` for consecutive equal
 failure payloads and `max_wall_clock_minutes` from the phase's first failure.
 Failure identity uses `result.error`, then `result.failed_command`, then the
 result itself. `stop_on_child_contract_error` parks malformed results (no boolean
-`ok`) and explicit `error: {type: "child-contract-error"}` as
+`ok`) and explicit `error: {type: "child-contract-error"}` (even with `ok: true`) as
 `child-contract-error`. A success resets only that phase's attempts and telemetry.
 Existing v4 files without `retry_policy` load unchanged and retain the legacy
 ceiling of 3, including retrying malformed results.
@@ -180,8 +184,9 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs clear-blocker --root . 
 The phase must match the current blocker's phase. This clears that blocker and
 resets only that phase's attempts and retry telemetry, preserving all other
 issues, facts, approvals and counters. It appends an `incident` with
-`action: "clear-blocker"` and the removed blocker to the existing retrospective
-store. Run a fresh `plan` afterward; clearing a blocker supplies no passing
+`action: "clear-blocker"`, a fresh `operation_id` and the removed blocker to the
+existing retrospective store, retaining every clear even after identical repeated
+exhaustion. Run a fresh `plan` afterward; clearing a blocker supplies no passing
 evidence or additional authority.
 
 Required PR, issue and dependency GitHub observations fail closed.

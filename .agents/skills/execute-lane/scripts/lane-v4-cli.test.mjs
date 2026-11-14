@@ -282,6 +282,110 @@ if (args[0] === 'pr' && args[1] === 'view') {
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog, env };
 };
 
+const heldWriter = async (t) => {
+  const f = fixture(t);
+  const signal = AbortSignal.timeout(20_000);
+  const sockets = [];
+  const server = createServer(socket => {
+    sockets.push(socket);
+    socket.once('data', data => server.emit('holder-ready', socket, data.toString()));
+  });
+  const ready = once(server, 'holder-ready', { signal });
+  const listening = once(server, 'listening', { signal });
+  server.listen(0, '127.0.0.1');
+  await listening;
+  writeFileSync(join(f.root, 'bin/gh'), `#!${process.execPath}
+import { connect } from 'node:net';
+import { readFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+if (args[0] === 'pr') {
+  const socket = connect(Number(process.env.HOLDER_PORT), '127.0.0.1');
+  socket.on('connect', () => socket.write('locked\\n'));
+  socket.on('data', () => {
+    process.stderr.write('no pull requests found for branch "' + args[2] + '"');
+    process.exitCode = 1;
+    socket.end();
+  });
+  socket.on('close', () => process.exit(process.exitCode ?? 0));
+} else process.stdout.write(JSON.stringify(JSON.parse(readFileSync(process.env.GH_STATE)).issue));
+`);
+  const child = spawn(process.execPath, [script, 'record', '--root', f.root, ...f.common,
+    '--phase', 'implement', '--result-json', '{"ok":false}'], {
+    env: { ...f.env, HOLDER_PORT: String(server.address().port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stdout.resume();
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const closed = once(child, 'close', { signal });
+  t.after(() => {
+    child.kill('SIGKILL');
+    for (const socket of sockets) socket.destroy();
+    server.close();
+  });
+  const [socket, message] = await ready;
+  assert.equal(message, 'locked\n');
+  return { f, child, closed, socket, stderr: () => stderr };
+};
+
+test('lock: SIGKILL after acquisition -> later separate process recovers and commits state', async (t) => {
+  const holder = await heldWriter(t);
+  holder.child.kill('SIGKILL');
+  holder.socket.destroy();
+  const [code, signal] = await holder.closed;
+  assert.equal(code, null);
+  assert.equal(signal, 'SIGKILL');
+
+  holder.f.cli('approve-merge', holder.f.common);
+
+  assert.equal(JSON.parse(readFileSync(holder.f.lanePath)).issues['42'].approvals.merge, true);
+});
+
+test('lock: live separate holder -> contender cannot replace it or mutate state', async (t) => {
+  const holder = await heldWriter(t);
+  const before = readFileSync(holder.f.lanePath);
+
+  const contender = spawnSync(process.execPath,
+    [script, 'approve-merge', '--root', holder.f.root, ...holder.f.common],
+    { env: holder.f.env, encoding: 'utf8', timeout: 1000, killSignal: 'SIGKILL' });
+
+  assert.equal(contender.error?.code, 'ETIMEDOUT');
+  assert.equal(contender.signal, 'SIGKILL');
+  assert.deepEqual(readFileSync(holder.f.lanePath), before);
+  assert.equal(holder.child.exitCode, null);
+  assert.equal(holder.child.signalCode, null);
+  holder.socket.write('release\n');
+  const [code, signal] = await holder.closed;
+  assert.equal(code, 0, holder.stderr());
+  assert.equal(signal, null);
+  holder.f.cli('approve-merge', holder.f.common);
+  assert.equal(JSON.parse(readFileSync(holder.f.lanePath)).issues['42'].approvals.merge, true);
+});
+
+test('clear-blocker: repeated exhaustion and reset -> each clear remains a distinct retro event', (t) => {
+  const f = fixture(t);
+  for (let cycle = 0; cycle < 2; cycle++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      f.cli('record', [...f.common, '--phase', 'implement', '--result-json', '{"ok":false}']);
+    }
+    assert.deepEqual(JSON.parse(readFileSync(f.lanePath)).issues['42'].blocker,
+      { type: 'attempts-exhausted', phase: 'implement' });
+    f.cli('clear-blocker', [...f.common, '--phase', 'implement']);
+  }
+
+  const events = readRetroEvents(f.root, 'fixture').filter(event => event.data?.action === 'clear-blocker');
+
+  assert.equal(events.length, 2);
+  assert.notEqual(events[0].eventId, events[1].eventId);
+  assert.notEqual(events[0].data.operation_id, events[1].data.operation_id);
+  for (const event of events) {
+    assert.equal(typeof event.data.operation_id, 'string');
+    assert.equal(event.data.phase, 'implement');
+    assert.deepEqual(event.data.blocker, { type: 'attempts-exhausted', phase: 'implement' });
+  }
+  assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['42'].attempts.implement, 0);
+});
+
 test('init: existing manual or imported lane -> reject and preserve all bytes', (t) => {
   const f = fixture(t);
   const lane = JSON.parse(readFileSync(f.lanePath));

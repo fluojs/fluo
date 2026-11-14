@@ -25,8 +25,9 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, watch, writeFileSync } from "node:fs";
-import { dirname, relative, resolve, sep } from "node:path";
+import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { relative, resolve, sep } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import {
 	buildVerificationPlan,
@@ -211,40 +212,20 @@ const saveLane = (path, lane, create = false) => {
 	}
 };
 
-// Subscribe before attempting acquisition so a release between EEXIST and
-// waiting cannot be missed. The whole read/validate/modify/publish is exclusive.
-const lockLane = (path) => new Promise((resolveLock, reject) => {
-	const lock = `${path}.lock`;
-	const watcher = watch(dirname(path), () => acquire());
-	const timeout = setTimeout(() => {
-		watcher.close();
-		reject(new Error(`lane lock timeout: ${lock}`));
-	}, 60_000);
-	const acquire = () => {
-		let descriptor;
-		try {
-			descriptor = openSync(lock, "wx");
-		} catch (error) {
-			if (error.code === "EEXIST") return;
-			clearTimeout(timeout);
-			watcher.close();
-			reject(error);
-			return;
-		}
-		clearTimeout(timeout);
-		watcher.close();
-		resolveLock(() => {
-			closeSync(descriptor);
-			unlinkSync(lock);
-		});
-	};
-	watcher.on("error", (error) => {
-		clearTimeout(timeout);
-		watcher.close();
-		reject(error);
-	});
-	acquire();
-});
+// SQLite supplies an OS-owned cross-process write lock, not a stale-file
+// timeout. SIGKILL releases ownership; concurrent waiters serialize without
+// unlinking an inode that a live owner or another waiter might still hold.
+// The lock file persists, and all lane data stays in the atomic JSON file.
+const lockLane = (path) => {
+	const database = new DatabaseSync(`${path}.lock`, { timeout: 60_000 });
+	try {
+		database.exec("BEGIN IMMEDIATE");
+	} catch (error) {
+		database.close();
+		throw error;
+	}
+	return () => database.close();
+};
 
 const issueEntry = (lane, issue) => {
 	const entry = lane.issues[String(issue)];
@@ -1241,7 +1222,7 @@ const main = async () => {
 		if (entry.retry_telemetry) delete entry.retry_telemetry[phase];
 		saveLane(lanePath, lane);
 		recordRetroEvent(root, lane.lane_id, issue, "incident", {
-			action: "clear-blocker", phase, blocker,
+			action: "clear-blocker", phase, blocker, operation_id: randomUUID(),
 		});
 		process.stdout.write("ok\n");
 		return;

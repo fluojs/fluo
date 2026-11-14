@@ -649,7 +649,9 @@ test("normal record automatically retains unsuccessful implementation stage evid
 	assert.deepEqual(readFileSync(resolve(root, events[0].path)), stageBytes);
 	const retained = readRetroEvents(root, laneId);
 	assert.equal(retained.length, 2);
-	assert.deepEqual(retained.find((event) => event.kind === "incident").data, {
+	const { operation_id, ...cleared } = retained.find((event) => event.kind === "incident").data;
+	assert.match(operation_id, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
+	assert.deepEqual(cleared, {
 		action: "clear-blocker", phase: "implement",
 		blocker: { type: "attempts-exhausted", phase: "implement" },
 	});
