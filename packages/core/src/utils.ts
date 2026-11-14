@@ -12,6 +12,193 @@ function cloneIntoDescriptorValue(
   };
 }
 
+// Intrinsic getters read internal slots, so they work for views and buffers from any realm and ignore
+// subclass overrides. %TypedArray%.prototype[Symbol.toStringTag] names the element type of a typed
+// array and returns `undefined` for a DataView.
+function intrinsicGetter<T>(prototype: object, key: PropertyKey): (this: unknown) => T {
+  return Object.getOwnPropertyDescriptor(prototype, key)?.get as (this: unknown) => T;
+}
+
+const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype) as object;
+const typedArrayNameGetter = intrinsicGetter<string | undefined>(typedArrayPrototype, Symbol.toStringTag);
+const typedArrayBufferGetter = intrinsicGetter<ArrayBufferLike>(typedArrayPrototype, 'buffer');
+const typedArrayByteOffsetGetter = intrinsicGetter<number>(typedArrayPrototype, 'byteOffset');
+const typedArrayByteLengthGetter = intrinsicGetter<number>(typedArrayPrototype, 'byteLength');
+const typedArrayLengthGetter = intrinsicGetter<number>(typedArrayPrototype, 'length');
+const dataViewBufferGetter = intrinsicGetter<ArrayBufferLike>(DataView.prototype, 'buffer');
+const dataViewByteOffsetGetter = intrinsicGetter<number>(DataView.prototype, 'byteOffset');
+const dataViewByteLengthGetter = intrinsicGetter<number>(DataView.prototype, 'byteLength');
+const arrayBufferByteLengthGetter = intrinsicGetter<number>(ArrayBuffer.prototype, 'byteLength');
+const arrayIndexPattern = /^(?:0|[1-9]\d*)$/;
+const privateMemberDeclarations = new WeakMap<object, boolean>();
+
+// Copies bytes into a fresh intrinsic ArrayBuffer instead of `slice()`, whose species lookup would
+// invoke an ArrayBuffer subclass constructor.
+function copyBytes(buffer: ArrayBufferLike, byteOffset: number, byteLength: number): ArrayBuffer {
+  const copy = new ArrayBuffer(byteLength);
+  new Uint8Array(copy).set(new Uint8Array(buffer, byteOffset, byteLength));
+  return copy;
+}
+
+// Copies typed arrays (including Node `Buffer`), DataViews, and ArrayBuffers through the current
+// realm's intrinsics, so subclass constructors such as Node's deprecated `new Buffer(buffer)` path are
+// never invoked and values from another realm are copied too. The original prototype is restored and
+// own string/symbol properties are copied like any custom instance, sharing `seen` for circular state.
+function cloneBinaryValue(value: ArrayBufferView | ArrayBuffer, seen: WeakMap<object, unknown>): object {
+  let cloned: object;
+  let indexedLength = 0;
+
+  if (!ArrayBuffer.isView(value)) {
+    cloned = copyBytes(value, 0, arrayBufferByteLengthGetter.call(value));
+  } else {
+    const name = typedArrayNameGetter.call(value);
+
+    if (name === undefined) {
+      cloned = new DataView(
+        copyBytes(
+          dataViewBufferGetter.call(value),
+          dataViewByteOffsetGetter.call(value),
+          dataViewByteLengthGetter.call(value),
+        ),
+      );
+    } else {
+      const Intrinsic = (globalThis as unknown as Record<string, new (buffer: ArrayBuffer) => ArrayBufferView>)[name];
+      cloned = new Intrinsic(
+        copyBytes(
+          typedArrayBufferGetter.call(value),
+          typedArrayByteOffsetGetter.call(value),
+          typedArrayByteLengthGetter.call(value),
+        ),
+      );
+      indexedLength = typedArrayLengthGetter.call(value);
+    }
+  }
+
+  const prototype = Object.getPrototypeOf(value) as object | null;
+
+  if (Object.getPrototypeOf(cloned) !== prototype) {
+    Object.setPrototypeOf(cloned, prototype);
+  }
+
+  seen.set(value, cloned);
+
+  for (const key of Reflect.ownKeys(value)) {
+    // Element indices are already copied with the bytes and cannot be redefined as own properties.
+    if (typeof key === 'string' && arrayIndexPattern.test(key) && Number(key) < indexedLength) {
+      continue;
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+    if (descriptor) {
+      Object.defineProperty(cloned, key, cloneIntoDescriptorValue(descriptor, seen));
+    }
+  }
+
+  return cloned;
+}
+
+// Conservative private-name probe: any `#` followed by an identifier-start character (or a `\`
+// starting a Unicode escape such as `#\u0061`) in the class source counts, without lexing strings,
+// regular expressions, or comments. This can never miss a real private member; text such as
+// `/#tag/` or `'#id'` is a documented false positive.
+const privateNamePattern = /#[A-Za-z_$\\\u0080-\uffff]/;
+
+function sourceDeclaresPrivateNames(fn: unknown): boolean {
+  if (typeof fn !== 'function') {
+    return false;
+  }
+
+  let declares = privateMemberDeclarations.get(fn);
+
+  if (declares === undefined) {
+    declares = privateNamePattern.test(Function.prototype.toString.call(fn));
+    privateMemberDeclarations.set(fn, declares);
+  }
+
+  return declares;
+}
+
+function descriptorDeclaresPrivateNames(descriptor: PropertyDescriptor | undefined): boolean {
+  return (
+    descriptor !== undefined &&
+    (sourceDeclaresPrivateNames(descriptor.value) ||
+      sourceDeclaresPrivateNames(descriptor.get) ||
+      sourceDeclaresPrivateNames(descriptor.set))
+  );
+}
+
+function ownPropertiesDeclarePrivateMembers(value: object): boolean {
+  for (const key of Reflect.ownKeys(value)) {
+    if (descriptorDeclaresPrivateNames(Object.getOwnPropertyDescriptor(value, key))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+const thisReferencePattern = /\bthis\b/;
+
+// A constructor return override can stamp private fields onto an arbitrary object (even one whose
+// prototype is `Object.prototype`) and attach accessors or functions that read them, possibly through
+// a helper whose source names no private member. Any own accessor therefore keeps the object by
+// reference, as does an own function whose source mentions `this` or a private name. Own functions
+// without either (for example a config `onReload` callback) are not treated as readers.
+function ownPropertiesMayReadPrivateState(value: object): boolean {
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+    if (!descriptor) {
+      continue;
+    }
+
+    if (descriptor.get || descriptor.set) {
+      return true;
+    }
+
+    if (
+      typeof descriptor.value === 'function' &&
+      (sourceDeclaresPrivateNames(descriptor.value) ||
+        thisReferencePattern.test(Function.prototype.toString.call(descriptor.value)))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Node implements `Buffer.prototype` in JavaScript whose method comments contain text such as
+// `Buffer#write`; the host prototype itself declares no private members, so only that level is skipped.
+const hostBufferPrototype = (globalThis as { Buffer?: { prototype: object } }).Buffer?.prototype;
+
+function declaresPrivateMembers(prototype: object | null): boolean {
+  for (let current = prototype; current && current !== Object.prototype; current = Object.getPrototypeOf(current)) {
+    if (current === hostBufferPrototype) {
+      continue;
+    }
+
+    const constructor = Object.getOwnPropertyDescriptor(current, 'constructor')?.value as unknown;
+
+    // A missing, shadowed (for example a `['constructor']() {}` method), or foreign constructor
+    // hides the class source, so the instance may carry private slots that cannot be inspected.
+    if (typeof constructor !== 'function' || (constructor as { prototype?: unknown }).prototype !== current) {
+      return true;
+    }
+
+    if (sourceDeclaresPrivateNames(constructor)) {
+      return true;
+    }
+
+    if (ownPropertiesDeclarePrivateMembers(current)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
   if (typeof value !== 'object' || value === null) {
     return value;
@@ -23,10 +210,34 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
     return existing as T;
   }
 
+  // Private slots cannot be copied onto a new object, so keep these instances (including objects
+  // stamped through a constructor return override) intact by reference.
+  // This runs before every shape-specific path so built-in subclasses (for example typed arrays)
+  // that declare private members are never rebuilt without their private state.
+  if (
+    ownPropertiesMayReadPrivateState(value) ||
+    declaresPrivateMembers(Object.getPrototypeOf(value) as object | null)
+  ) {
+    seen.set(value, value);
+    return value;
+  }
+
   if (Array.isArray(value)) {
-    const cloned: unknown[] = [];
+    const cloned: unknown[] = new Array(value.length);
     seen.set(value, cloned);
-    cloned.push(...value.map((item) => cloneFallbackValue(item, seen)));
+
+    for (const key of Reflect.ownKeys(value)) {
+      if (key === 'length') {
+        continue;
+      }
+
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+      if (descriptor) {
+        Object.defineProperty(cloned, key, cloneIntoDescriptorValue(descriptor, seen));
+      }
+    }
+
     return cloned as T;
   }
 
@@ -65,25 +276,12 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
     return cloned as T;
   }
 
-  if (value instanceof DataView) {
-    const cloned = new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
-    seen.set(value, cloned);
-    return cloned as T;
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+    return cloneBinaryValue(value, seen) as T;
   }
 
-  if (ArrayBuffer.isView(value)) {
-    const cloned = new (value.constructor as new (source: typeof value) => typeof value)(value);
-    seen.set(value, cloned);
-    return cloned as T;
-  }
-
-  if (value instanceof ArrayBuffer) {
-    const cloned = value.slice(0);
-    seen.set(value, cloned);
-    return cloned as T;
-  }
-
-  const cloned = Object.create(Object.getPrototypeOf(value)) as Record<PropertyKey, unknown>;
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  const cloned = Object.create(prototype) as Record<PropertyKey, unknown>;
   seen.set(value, cloned);
 
   for (const key of Reflect.ownKeys(value)) {
@@ -98,25 +296,58 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
 }
 
 /**
- * Clones a value through `structuredClone()` and falls back to the hardened internal clone path when needed.
+ * Creates a deterministic deep clone with prototypes preserved at every supported nesting level.
+ *
+ * Uses the prototype-preserving fallback contract regardless of whether `structuredClone()` is
+ * available, succeeds, or throws. Functions are returned by reference. Node `Buffer` values are
+ * copied without the deprecated `Buffer()` constructor. Instances whose class or ancestor class
+ * declares ECMAScript private members (`#field` or `#method()`) are returned by reference because
+ * private slots cannot be copied onto a detached instance. Detection is conservative: a class counts
+ * as declaring private members when its source text, or the source of any method or accessor on its
+ * prototype chain, contains `#` followed by an identifier-start character anywhere, including inside
+ * strings, regular expressions, or comments, so a class such as one with a `pattern = /#tag/` field
+ * is also returned by reference instead of copied. An object with any own getter or setter, or with an
+ * own function-valued property whose source mentions `this` or a private name, is returned by
+ * reference, so an object stamped with private fields through a constructor return override keeps
+ * working even when its accessor reads them through a helper. An instance whose prototype chain has a
+ * missing, shadowed, or non-matching `constructor` is also returned by reference because its class
+ * cannot be identified. As a known limitation, private or identity-keyed state reached only
+ * indirectly, through closures that capture the instance without `this` or through external helpers
+ * or WeakMaps called from prototype methods whose source contains no private name, is not detected.
  *
  * @param value Value to clone.
- * @returns A cloned value produced by `structuredClone()` when available, or `fallbackClone()` when the runtime clone fails.
+ * @returns A detached clone for supported runtime shapes, or the original primitive/function.
  */
 export function cloneWithFallback<T>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    return fallbackClone(value);
-  }
+  return fallbackClone(value);
 }
 
 /**
- * Creates a best-effort deep clone for runtimes where `structuredClone()` is not available or throws.
+ * Creates a prototype-preserving deep clone independently of runtime `structuredClone()` support.
  *
  * Supported fallback shapes include arrays, dates, regular expressions, maps, sets, typed arrays,
  * array buffers, plain objects, and custom prototype-based instances with symbol-keyed properties
- * and circular references preserved.
+ * and circular references preserved. ArrayBuffers, typed arrays, and DataViews, including Node
+ * `Buffer` and other subclasses, keep their prototype and own string/symbol properties and receive
+ * detached contents without invoking the subclass constructor. Functions are returned by reference. Instances whose class or ancestor class declares
+ * ECMAScript private members (`#field` or `#method()`) are returned by reference instead of as a
+ * detached copy that would fail later when private state is read; this takes precedence over every
+ * shape-specific copy, including typed array subclasses. Detection is conservative and never misses
+ * a real private member: a class counts as declaring private members when its source text, or the
+ * source of any method or accessor on its prototype chain, contains `#` followed by an
+ * identifier-start character anywhere, including inside strings, regular expressions, or comments.
+ * An object with any own getter or setter, or with an own function-valued property whose source
+ * mentions `this` or a private name, is returned by reference, so an object stamped with private fields
+ * through a constructor return override (even one whose prototype is `Object.prototype`) keeps working
+ * even when its accessor reads them through a helper; own functions mentioning neither (for example a
+ * callback sibling) do not prevent copying. An instance whose prototype chain has a missing, shadowed,
+ * or non-matching `constructor` is also returned by reference because its class cannot be identified.
+ * As a known limitation, a class whose source merely contains such text (for example a
+ * `pattern = /#tag/` field or a `'#id'` string) is returned by reference instead of copied, while
+ * private or identity-keyed state reached only indirectly, through closures that capture the instance
+ * without `this` or through external helpers or WeakMaps called from prototype methods whose source
+ * contains no private name, is not detected and such an instance is copied. Typed arrays and DataViews created in another realm are
+ * copied as well and keep their original prototype.
  *
  * @param value Value to clone through the fallback path.
  * @returns A deep clone for supported runtime shapes, or the original value for primitives/functions.

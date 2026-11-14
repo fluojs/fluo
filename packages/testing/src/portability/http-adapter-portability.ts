@@ -1,8 +1,10 @@
 import {
   Controller,
+  createByteRangeResponse,
   type ContentNegotiationOptions,
   Get,
   Head,
+  HttpCode,
   Post,
   Produces,
   Query,
@@ -482,7 +484,11 @@ export class HttpAdapterPortabilityHarness<
     });
   }
 
-  /** Verifies single-byte-range metadata and payload slicing through a real network listener. */
+  /**
+   * Verifies GET-only, effective-200 byte ranges through a real network listener.
+   *
+   * @returns A promise that resolves when range, status, and full HEAD framing assertions pass.
+   */
   async assertSupportsSingleByteRanges(): Promise<void> {
     const createBootstrapOptions = this.options.createConditionalRequestBootstrapOptions;
     if (createBootstrapOptions === undefined) {
@@ -507,6 +513,55 @@ export class HttpAdapterPortabilityHarness<
       @Post('/logo')
       postLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+
+      @Get('/writer')
+      writerLogo() {
+        return createByteRangeResponse(this.getLogo());
+      }
+
+      @Head('/stream')
+      headStream() {
+        return createByteRangeResponse(() => {
+          throw new Error('HEAD must not open a byte stream.');
+        }, { size: 6 });
+      }
+
+      @HttpCode(403)
+      @Get('/denied')
+      deniedLogo() {
+        return createByteRangeResponse(this.getLogo());
+      }
+
+      @Produces('application/octet-stream')
+      @Get('/handler-status')
+      handlerStatusLogo(_input: undefined, context: RequestContext) {
+        context.response.setStatus(403);
+        return this.getLogo();
+      }
+
+      @Produces('application/octet-stream')
+      @Get('/buffer')
+      bufferLogo() {
+        return createLogoArrayBuffer();
+      }
+
+      @Produces('application/octet-stream')
+      @HttpCode(403)
+      @Get('/buffer-denied')
+      deniedBufferLogo() {
+        return createLogoArrayBuffer();
+      }
+
+      @Get('/stream')
+      streamLogo() {
+        return createByteRangeResponse(() => createChunkedLogoStream(), { size: 6 });
+      }
+
+      @HttpCode(403)
+      @Get('/stream-denied')
+      deniedStreamLogo() {
+        return createByteRangeResponse(() => createChunkedLogoStream(), { size: 6 });
       }
     }
 
@@ -594,7 +649,7 @@ export class HttpAdapterPortabilityHarness<
         || malformed.status !== 200
         || multiple.status !== 200
         || unsatisfiable.status !== 416
-        || head.status !== 206
+        || head.status !== 200
         || post.status !== 201
         || matchingEtag.status !== 206
         || nonmatchingEtag.status !== 200
@@ -610,8 +665,8 @@ export class HttpAdapterPortabilityHarness<
         || unsatisfiable.headers.get('content-range') !== 'bytes */6'
         || unsatisfiable.headers.get('content-length') !== '0'
         || unsatisfiableBody !== ''
-        || head.headers.get('content-range') !== bounded.headers.get('content-range')
-        || head.headers.get('content-length') !== bounded.headers.get('content-length')
+        || head.headers.get('content-range') !== null
+        || head.headers.get('content-length') !== '6'
         || headBody !== ''
         || matchingEtag.headers.get('content-range') !== 'bytes 2-4/6'
         || matchingEtag.headers.get('etag') !== '"asset-v1"'
@@ -629,6 +684,37 @@ export class HttpAdapterPortabilityHarness<
         || !equalByteArrays(nonmatchingDateBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
       ) {
         throw new Error(`${this.options.name} adapter changed single byte-range or If-Range response semantics.`);
+      }
+
+      for (const range of ['bytes=2-4', 'bytes=9-', 'items=2-4', 'bytes=0-999999999999999999999']) {
+        for (const path of ['logo', 'stream']) {
+          const response = await fetch(`${baseUrl}/assets/${path}`, { method: 'HEAD', headers: { range } });
+          if (response.status !== 200 || response.headers.get('content-length') !== '6'
+            || response.headers.has('content-range') || await response.text() !== '') {
+            throw new Error(`${this.options.name} adapter changed full HEAD framing for ${range}.`);
+          }
+        }
+      }
+      for (const path of ['logo', 'writer', 'buffer', 'stream', 'denied', 'handler-status', 'buffer-denied', 'stream-denied']) {
+        for (const range of ['bytes=2-4', 'bytes=0-999999999999999999999', 'bytes=-999999999999999999999', 'bytes=9-']) {
+          const response = await fetch(`${baseUrl}/assets/${path}`, { headers: { range } });
+          const denied = path === 'denied' || path === 'handler-status' || path.endsWith('-denied');
+          const unsatisfiable = !denied && range === 'bytes=9-';
+          const bounded = !denied && range === 'bytes=2-4';
+          const expectedBody = unsatisfiable
+            ? new Uint8Array()
+            : bounded ? Uint8Array.from([2, 3, 4]) : Uint8Array.from([0, 1, 2, 3, 4, 5]);
+          const expectedRange = denied
+            ? null
+            : unsatisfiable ? 'bytes */6' : bounded ? 'bytes 2-4/6' : 'bytes 0-5/6';
+          const body = await response.bytes();
+          if (response.status !== (denied ? 403 : unsatisfiable ? 416 : 206)
+            || response.headers.get('content-range') !== expectedRange
+            || response.headers.get('content-length') !== String(expectedBody.byteLength)
+            || !equalByteArrays(body, expectedBody)) {
+            throw new Error(`${this.options.name} adapter changed effective status or range semantics for ${path} with ${range}.`);
+          }
+        }
       }
     });
   }
@@ -1229,6 +1315,27 @@ export class HttpAdapterPortabilityHarness<
       throw new Error(`${this.options.name} adapter leaked shutdown signal listeners after close().`);
     }
   }
+}
+
+function createLogoArrayBuffer(): ArrayBuffer {
+  const buffer = new ArrayBuffer(6);
+  new Uint8Array(buffer).set([0, 1, 2, 3, 4, 5]);
+  return buffer;
+}
+
+function createChunkedLogoStream(): ReadableStream<Uint8Array> {
+  const chunks = [Uint8Array.from([0, 1]), Uint8Array.from([2, 3, 4]), Uint8Array.from([5])];
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks.shift();
+      if (chunk === undefined) {
+        controller.close();
+        return;
+      }
+
+      controller.enqueue(chunk);
+    },
+  });
 }
 
 function equalByteArrays(left: Uint8Array, right: Uint8Array): boolean {

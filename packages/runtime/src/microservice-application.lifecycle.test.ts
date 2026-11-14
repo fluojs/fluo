@@ -278,7 +278,7 @@ it('caches a failed shell close without retrying terminal teardown', async () =>
   }
 });
 
-it('caches a synchronous shutdown-mark failure without retrying it', async () => {
+it('continues teardown and caches a synchronous shutdown-mark failure without retrying it', async () => {
   // Given
   const microserviceToken = Symbol.for('fluo.microservices.service');
   const shutdownError = new Error('shutdown mark failed');
@@ -320,7 +320,7 @@ it('caches a synchronous shutdown-mark failure without retrying it', async () =>
 
     // Then
     expect(shutdownMarkCalls).toBe(1);
-    expect(closeCalls).toBe(0);
+    expect(closeCalls).toBe(1);
   } finally {
     await disposeApp(app);
   }

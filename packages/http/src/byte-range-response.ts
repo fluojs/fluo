@@ -136,36 +136,38 @@ function resolveByteRange(
   const [, startText, endText] = match;
 
   if ((startText?.length ?? 0) === 0) {
-    const suffixLength = Number(endText);
+    const suffixLength = BigInt(endText ?? '');
 
-    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0 || size === 0) {
+    if (suffixLength === 0n || size === 0) {
       return { kind: 'unsatisfiable' };
     }
 
     return {
       end: size - 1,
       kind: 'partial',
-      start: Math.max(size - suffixLength, 0),
+      start: suffixLength >= BigInt(size) ? 0 : size - Number(suffixLength),
     };
   }
 
-  const start = Number(startText);
+  const requestedStart = BigInt(startText ?? '');
 
-  if (!Number.isSafeInteger(start) || start < 0 || start >= size) {
+  if (requestedStart >= BigInt(size)) {
     return { kind: 'unsatisfiable' };
   }
+
+  const start = Number(requestedStart);
 
   if ((endText?.length ?? 0) === 0) {
     return { end: size - 1, kind: 'partial', start };
   }
 
-  const requestedEnd = Number(endText);
+  const requestedEnd = BigInt(endText ?? '');
 
-  if (!Number.isSafeInteger(requestedEnd) || requestedEnd < start) {
+  if (requestedEnd < requestedStart) {
     return { kind: 'unsatisfiable' };
   }
 
-  return { end: Math.min(requestedEnd, size - 1), kind: 'partial', start };
+  return { end: requestedEnd >= BigInt(size) ? size - 1 : Number(requestedEnd), kind: 'partial', start };
 }
 
 function parseByteRangeHeader(rangeHeader: string | undefined): RegExpExecArray | undefined {
@@ -195,7 +197,14 @@ export async function writeByteRangeResponse(
     return;
   }
 
-  const acceptsByteRange = isByteRangeRequestMethod(request.method);
+  options.applySuccessResponseMetadata();
+
+  if (response.statusCode === 204 || response.statusCode === 205 || response.statusCode === 304) {
+    await response.send(undefined, sendOptions(options.compression));
+    return;
+  }
+
+  const acceptsByteRange = isByteRangeRequestMethod(request.method) && response.statusCode === 200;
   const range = resolveByteRange(
     acceptsByteRange
       ? readFirstNonEmptyRequestHeaderValue(request, 'range')
@@ -207,8 +216,6 @@ export async function writeByteRangeResponse(
   const bytes = toBytes(entry.source);
 
   if (range.kind === 'unsatisfiable') {
-    options.applySuccessResponseMetadata();
-
     if (acceptsByteRange) {
       response.setHeader('Accept-Ranges', 'bytes');
     }
@@ -248,8 +255,6 @@ export async function writeByteRangeResponse(
       throw new TypeError('The active HTTP adapter cannot write a portable byte stream.');
     }
   }
-
-  options.applySuccessResponseMetadata();
 
   if (acceptsByteRange) {
     response.setHeader('Accept-Ranges', 'bytes');
@@ -316,8 +321,7 @@ function toBytes(source: ByteRangeResponseSource): Uint8Array | undefined {
 }
 
 function isByteRangeRequestMethod(method: string): boolean {
-  const normalizedMethod = method.toUpperCase();
-  return normalizedMethod === 'GET' || normalizedMethod === 'HEAD';
+  return method.toUpperCase() === 'GET';
 }
 
 function isReadableStream(source: unknown): source is ReadableStream<Uint8Array> {

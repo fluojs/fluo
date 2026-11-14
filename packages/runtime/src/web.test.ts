@@ -1016,3 +1016,119 @@ describe('Web multipart consumption boundary', () => {
     );
   });
 });
+
+describe('Web multipart and media-type classification', () => {
+  const boundary = 'fluo-web-syntax';
+
+  function dispatchBody(contentType: string, body: string, seen: unknown[] = []) {
+    return dispatchWebRequest({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          seen.push(request.body);
+          await frameworkResponse.send({ ok: true });
+        },
+      },
+      request: new Request('https://runtime.test/upload', {
+        body,
+        headers: { 'content-type': contentType },
+        method: 'POST',
+      }),
+    });
+  }
+
+  it.each([
+    {
+      body: `--${boundary}\r\ncontent-disposition: form-data; name="title"\r\n\r\nvalue\r\n--${boundary}--\r\n`,
+      contentType: 'multipart/form-data',
+      label: 'a missing boundary parameter',
+    },
+    {
+      body: `--${boundary}\r\ncontent-disposition form-data; name="title"\r\n\r\nvalue\r\n--${boundary}--\r\n`,
+      contentType: `multipart/form-data; boundary=${boundary}`,
+      label: 'an invalid part header',
+    },
+    {
+      body: `--${boundary}\r\ncontent-disposition: form-data; name="title"\r\n\r\nunterminated`,
+      contentType: `multipart/form-data; boundary=${boundary}`,
+      label: 'a missing closing boundary',
+    },
+  ])('returns 400 for $label', async ({ body, contentType }) => {
+    // Given
+    const seen: unknown[] = [];
+
+    // When
+    const response = await dispatchBody(contentType, body, seen);
+
+    // Then
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'BAD_REQUEST', status: 400 },
+    });
+    expect(seen).toEqual([]);
+  });
+
+  it('returns 400 for a body-less multipart request before dispatch', async () => {
+    // Given
+    const seen: unknown[] = [];
+
+    // When
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          seen.push(request.body);
+          await frameworkResponse.send({ ok: true });
+        },
+      },
+      request: new Request('https://runtime.test/upload', {
+        headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+        method: 'POST',
+      }),
+    });
+
+    // Then
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'BAD_REQUEST', status: 400 },
+    });
+    expect(seen).toEqual([]);
+  });
+
+  it('does not treat a parameter-embedded multipart media type as multipart', async () => {
+    // Given
+    const seen: unknown[] = [];
+
+    // When
+    const response = await dispatchBody('text/plain; x=multipart/form-data', 'plain text', seen);
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(seen).toEqual(['plain text']);
+  });
+
+  it('detects multipart from a case-insensitive primary media type', async () => {
+    // Given
+    const seen: unknown[] = [];
+    const body = `--${boundary}\r\ncontent-disposition: form-data; name="title"\r\n\r\nvalue\r\n--${boundary}--\r\n`;
+
+    // When
+    const response = await dispatchBody(`MULTIPART/FORM-DATA; boundary=${boundary}`, body, seen);
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(seen).toEqual([{ title: 'value' }]);
+  });
+
+  it('parses JSON only when the primary media type is application/json', async () => {
+    // Given
+    const seen: unknown[] = [];
+
+    // When
+    const embedded = await dispatchBody('text/plain; x=application/json', '{"a":1}', seen);
+    const uppercase = await dispatchBody('APPLICATION/JSON; charset=utf-8', '{"a":1}', seen);
+
+    // Then
+    expect(embedded.status).toBe(200);
+    expect(uppercase.status).toBe(200);
+    expect(seen).toEqual(['{"a":1}', { a: 1 }]);
+  });
+});

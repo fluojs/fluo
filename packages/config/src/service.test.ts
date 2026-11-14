@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ConfigService } from './service.js';
 
@@ -40,6 +40,23 @@ describe('ConfigService – get() isolation (issue #451)', () => {
     options.options.retries = 999;
 
     expect(service.getOrThrow('app')).toEqual({ flags: ['alpha'], options: { retries: 3 } });
+  });
+
+  it('returns detached Buffer values on the fallback clone path without deprecation warnings', () => {
+    const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
+
+    try {
+      const service = new ConfigService({ tls: { cert: Buffer.from('ab'), onReload: () => undefined } });
+
+      const tls = service.get('tls') as { cert: Buffer };
+      tls.cert[0] = 0x7a;
+
+      expect(emitWarning).not.toHaveBeenCalled();
+      expect(Buffer.isBuffer(tls.cert)).toBe(true);
+      expect((service.get('tls') as { cert: Buffer }).cert.toString()).toBe('ab');
+    } finally {
+      emitWarning.mockRestore();
+    }
   });
 
   it('returns scalar values directly without cloning', () => {

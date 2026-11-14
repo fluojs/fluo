@@ -30,6 +30,7 @@ import {
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
+  enforceHttpRuntimeCancellationAndContextIsolation,
   enforceMandatoryFirstPartyDependencyEngineAlignment,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInCloudflareWorkerServices,
@@ -51,6 +52,44 @@ import {
   migrationGuideSnapshotsFromGit,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
+
+describe('HTTP byte-range contract governance', () => {
+  it.each([
+    [
+      'GET-only selection',
+      'packages/http/src/byte-range-response.ts',
+      "return method.toUpperCase() === 'GET';",
+      "return ['GET', 'HEAD'].includes(method.toUpperCase());",
+      /GET-only and effective-200-only/u,
+    ],
+    [
+      'effective-200-only selection',
+      'packages/http/src/byte-range-response.ts',
+      'isByteRangeRequestMethod(request.method) && response.statusCode === 200',
+      'isByteRangeRequestMethod(request.method)',
+      /GET-only and effective-200-only/u,
+    ],
+    [
+      'full HEAD byte length',
+      'packages/http/src/dispatch/dispatch-response-policy.ts',
+      "response.setHeader('Content-Length', String(headRepresentation.byteLength));",
+      "response.setHeader('Content-Length', '0');",
+      /HEAD full-length/u,
+    ],
+  ])('rejects byte-range contract drift in %s', (_label, path, original, replacement, expectedError) => {
+    // Given: a runtime source that regresses one corrected byte-range guarantee.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === path ? content.replace(original, replacement) : content;
+    };
+
+    // When: the central HTTP runtime content guard checks that source.
+    const enforceContract = () => enforceHttpRuntimeCancellationAndContextIsolation(readText);
+
+    // Then: it rejects the regression rather than accepting the old contract.
+    expect(enforceContract).toThrow(expectedError);
+  });
+});
 
 describe('cache-manager direct Redis client documentation guard', () => {
   it('accepts the direct ioredis contract and consumer evidence in both locales', () => {
@@ -2987,7 +3026,7 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 
     // When: the implementation and path-anchored documentation examples are extracted.
     const implementationMatch = /export function mergeMetadataPropertyKeys[\s\S]*?\n\}\n/u.exec(source);
-    const documentedExamplePattern = /`path:packages\/core\/src\/metadata\/shared\.ts:369-397`\n```typescript\n([\s\S]*?)\n```/u;
+    const documentedExamplePattern = /`path:packages\/core\/src\/metadata\/shared\.ts:396-417`\n```typescript\n([\s\S]*?)\n```/u;
     const englishMatch = documentedExamplePattern.exec(english);
     const koreanMatch = documentedExamplePattern.exec(korean);
 

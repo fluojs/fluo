@@ -252,13 +252,21 @@ describe('@fluojs/event-bus', () => {
       async close() {},
     } satisfies EventBusTransport & { published: Array<{ channel: string; payload: unknown }> };
 
+    class EventMeta {
+      role = 'original';
+      get label() {
+        return `role:${this.role}`;
+      }
+    }
+
     class MutableEvent {
-      constructor(public readonly meta: { role: string }) {}
+      constructor(public readonly meta: EventMeta) {}
     }
 
     class EventStore {
       firstSeen = '';
       secondSeen = '';
+      received: MutableEvent[] = [];
     }
 
     @Inject(EventStore)
@@ -267,6 +275,7 @@ describe('@fluojs/event-bus', () => {
 
       @OnEvent(MutableEvent)
       handle(event: MutableEvent) {
+        this.store.received.push(event);
         this.store.firstSeen = event.meta.role;
         event.meta.role = 'mutated';
       }
@@ -278,6 +287,7 @@ describe('@fluojs/event-bus', () => {
 
       @OnEvent(MutableEvent)
       handle(event: MutableEvent) {
+        this.store.received.push(event);
         this.store.secondSeen = event.meta.role;
       }
     }
@@ -292,10 +302,20 @@ describe('@fluojs/event-bus', () => {
     const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
-    await eventBus.publish(new MutableEvent({ role: 'original' }));
+    const original = new MutableEvent(new EventMeta());
+    await eventBus.publish(original);
 
     expect(store.firstSeen).toBe('original');
     expect(store.secondSeen).toBe('original');
+    expect(store.received).toHaveLength(2);
+    expect(store.received[0]).not.toBe(store.received[1]);
+    for (const received of store.received) {
+      expect(received).toBeInstanceOf(MutableEvent);
+      expect(received).not.toBe(original);
+      expect(received.meta).toBeInstanceOf(EventMeta);
+      expect(received.meta).not.toBe(original.meta);
+    }
+    expect(original.meta.label).toBe('role:original');
     expect(transport.published).toHaveLength(1);
     expect((transport.published[0]?.payload as { meta: { role: string } }).meta.role).toBe('original');
 

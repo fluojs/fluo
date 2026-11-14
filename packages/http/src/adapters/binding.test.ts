@@ -118,6 +118,164 @@ function createContext(
 }
 
 describe('DefaultBinder', () => {
+  describe.each([
+    { source: 'body', requestKey: 'body', From: FromBody },
+    { source: 'query', requestKey: 'query', From: FromQuery },
+    { source: 'path', requestKey: 'params', From: FromPath },
+    { source: 'cookie', requestKey: 'cookies', From: FromCookie },
+  ] as const)('own-property $source binding', ({ source, requestKey, From }) => {
+    describe.each(['none', 'global', 'field', 'both'] as const)('%s converters', (mode) => {
+      function setup(key: string) {
+        const globalConvert = vi.fn((value: unknown) => value);
+        const fieldConvert = vi.fn((value: unknown) => value);
+        const fieldConverter = { convert: fieldConvert };
+        const globalConverter = { convert: globalConvert };
+        function Bind(value: undefined, context: ClassFieldDecoratorContext) {
+          From(key)(value, context);
+          if (mode === 'field' || mode === 'both') {
+            Convert(fieldConverter)(value, context);
+          }
+        }
+
+        class RequiredInput {
+          @Bind
+          value: unknown = 'initialized';
+        }
+
+        class OptionalInput {
+          @Bind
+          @Optional()
+          value: unknown = 'initialized';
+        }
+
+        return {
+          binder: new DefaultBinder(mode === 'global' || mode === 'both' ? [globalConverter] : []),
+          fieldConvert,
+          globalConvert,
+          OptionalInput,
+          RequiredInput,
+        };
+      }
+
+      it.each(['toString', 'constructor', '__proto__', 'hasOwnProperty'])(
+        'bind: inherited or absent %s -> required reports MISSING_FIELD',
+        async (key) => {
+          const { binder, fieldConvert, globalConvert, RequiredInput } = setup(key);
+          for (const values of [{}, Object.create(null)]) {
+            const request = createRequest({ [requestKey]: values });
+            const context = createContext(request);
+
+            await expect(binder.bind(RequiredInput, context)).rejects.toMatchObject({
+              details: [{ code: 'MISSING_FIELD', field: 'value', source }],
+              status: 400,
+            });
+            expect(context.requestContext.request).toBe(request);
+            expect(request[requestKey]).toBe(values);
+          }
+          expect(globalConvert).not.toHaveBeenCalled();
+          expect(fieldConvert).not.toHaveBeenCalled();
+        },
+      );
+
+      it.each(['toString', 'constructor', '__proto__', 'hasOwnProperty'])(
+        'bind: inherited or absent optional %s -> preserves initializer',
+        async (key) => {
+          const { binder, fieldConvert, globalConvert, OptionalInput } = setup(key);
+          for (const values of [{}, Object.create(null)]) {
+            const context = createContext(createRequest({ [requestKey]: values }));
+
+            const bound = await binder.bind(OptionalInput, context);
+
+            expect(bound).toBeInstanceOf(OptionalInput);
+            expect(bound).toEqual({ value: 'initialized' });
+          }
+          expect(globalConvert).not.toHaveBeenCalled();
+          expect(fieldConvert).not.toHaveBeenCalled();
+        },
+      );
+
+      it.each(['alias', 'toString', 'constructor', '__proto__', 'hasOwnProperty'])(
+        'bind: own %s -> binds permitted values and preserves body key guards',
+        async (key) => {
+          const { binder, fieldConvert, globalConvert, RequiredInput } = setup(key);
+          for (const values of [{}, Object.create(null)]) {
+            Object.defineProperty(values, key, { enumerable: true, value: 'own' });
+            const request = createRequest({ [requestKey]: values });
+            const context = createContext(request);
+
+            const binding = binder.bind(RequiredInput, context);
+
+            if (source === 'body' && (key === 'constructor' || key === '__proto__')) {
+              await expect(binding).rejects.toMatchObject({
+                details: [{ code: 'DANGEROUS_KEY', field: key, source: 'body' }],
+                status: 400,
+              });
+              expect(globalConvert).not.toHaveBeenCalled();
+              expect(fieldConvert).not.toHaveBeenCalled();
+            } else {
+              const bound = await binding;
+              expect(bound).toBeInstanceOf(RequiredInput);
+              expect(bound).toEqual({ value: 'own' });
+              if (mode === 'global' || mode === 'both') {
+                expect(globalConvert).toHaveBeenLastCalledWith('own', expect.objectContaining({
+                  key, propertyKey: 'value', source,
+                }));
+              }
+              if (mode === 'field' || mode === 'both') {
+                expect(fieldConvert).toHaveBeenLastCalledWith('own', expect.objectContaining({
+                  key, propertyKey: 'value', source,
+                }));
+              }
+              if (mode === 'both') {
+                expect(globalConvert.mock.invocationCallOrder.at(-1))
+                  .toBeLessThan(fieldConvert.mock.invocationCallOrder.at(-1) as number);
+              }
+            }
+            expect(context.requestContext.request).toBe(request);
+            expect(request[requestKey]).toBe(values);
+            expect(Object.getOwnPropertyDescriptor(values, key)?.value).toBe('own');
+          }
+        },
+      );
+
+      it('bind: own undefined -> follows required and optional omission paths', async () => {
+        const { binder, fieldConvert, globalConvert, OptionalInput, RequiredInput } = setup('alias');
+        const values = Object.defineProperty({}, 'alias', { enumerable: true, value: undefined });
+        const context = createContext(createRequest({ [requestKey]: values }));
+
+        await expect(binder.bind(RequiredInput, context)).rejects.toMatchObject({
+          details: [{ code: 'MISSING_FIELD', field: 'value', source }],
+          status: 400,
+        });
+        await expect(binder.bind(OptionalInput, context)).resolves.toEqual({ value: 'initialized' });
+        expect(globalConvert).not.toHaveBeenCalled();
+        expect(fieldConvert).not.toHaveBeenCalled();
+      });
+
+      if (source === 'body' || source === 'query') {
+        it('bind: own array -> preserves the source array', async () => {
+          const { binder, RequiredInput } = setup('alias');
+          const array = ['first', 'second'];
+          const context = createContext(createRequest({ [requestKey]: { alias: array } }));
+
+          const bound = await binder.bind(RequiredInput, context) as InstanceType<typeof RequiredInput>;
+
+          expect(bound.value).toBe(array);
+        });
+      }
+
+      if (source === 'body') {
+        it('bind: explicit null -> assigns null instead of omitting it', async () => {
+          const { binder, OptionalInput, RequiredInput } = setup('alias');
+          const context = createContext(createRequest({ body: { alias: null } }));
+
+          await expect(binder.bind(RequiredInput, context)).resolves.toEqual({ value: null });
+          await expect(binder.bind(OptionalInput, context)).resolves.toEqual({ value: null });
+        });
+      }
+    });
+  });
+
   it('honors opt-in body projection without replacing the original request body', async () => {
     class ProjectedRequest {
       @FromBody('post_title')

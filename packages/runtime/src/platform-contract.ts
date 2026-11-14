@@ -40,10 +40,19 @@ export interface PlatformComponent {
   stop(): Promise<void>;
 }
 
-/** Registration wrapper used when a component declares platform dependencies. */
+/** Registration wrapper for platform dependencies and runtime probe policy. */
 export interface PlatformComponentRegistration {
   component: PlatformComponent;
   dependencies?: readonly string[];
+  /** Runtime policy; pass PlatformOptionsBase.readiness here explicitly. */
+  readiness?: {
+    /** Timeout readiness is critical by default; false contributes degraded. */
+    critical?: boolean;
+    /** Independent ready/health budget, default 5000 ms. Positive finite values
+     * are floored to at least 1 ms; other inputs use the default. No cancellation.
+     */
+    timeoutMs?: number;
+  };
 }
 
 /** Component registration input accepted by runtime bootstrap options. */
