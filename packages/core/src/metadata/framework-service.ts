@@ -49,7 +49,9 @@ export function defineFrameworkServiceIdentity(target: Function, identity: Frame
  * @returns A class decorator that records the explicit service identity.
  * @internal
  */
-export function FrameworkService(identity: FrameworkServiceIdentity): ClassDecorator {
+export function FrameworkService(
+  identity: FrameworkServiceIdentity,
+): (value: Function, context: ClassDecoratorContext) => void {
   validateIdentity(identity);
   return (target) => defineFrameworkServiceIdentity(target, identity);
 }
