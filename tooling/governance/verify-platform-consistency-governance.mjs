@@ -1027,6 +1027,57 @@ function read(relativePath) {
 
 export function enforceCacheManagerNestjsMigrationDocs(readText = read) {
   enforceCacheManagerNestjsMigrationSourceDocs(readText);
+  for (const locale of ['', '.ko']) {
+    const compatibilityGuarantee = locale === ''
+      ? 'An ioredis `Redis` instance satisfies the public `RedisCompatibleClient` contract directly, without an adapter or type assertion.'
+      : 'ioredis `Redis` 인스턴스는 adapter나 type assertion 없이 공개 `RedisCompatibleClient` 계약을 직접 만족합니다.';
+    for (const [document, heading] of [
+      [`packages/cache-manager/README${locale}.md`, locale === '' ? '### Redis Storage' : '### Redis 저장소 사용'],
+      [
+        `docs/getting-started/migrate-from-nestjs${locale}.md`,
+        locale === ''
+          ? '### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration'
+          : '### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션',
+      ],
+      [
+        `book/beginner/ch17-cache${locale}.md`,
+        '### 17.3.2 Injected Async Configuration and Secret Management: Best Practices',
+      ],
+    ]) {
+      const markdown = readText(document).replace(/<!--[\s\S]*?(?:-->|$)/gu, '');
+      const lines = markdown.split(/\r?\n/u);
+      assert(
+        lines.filter((line) => line === heading).length === 1,
+        `${document} must contain exactly one direct ioredis contract section: ${heading}.`,
+      );
+      const remainder = lines.slice(lines.indexOf(heading) + 1);
+      const nextHeading = remainder.findIndex((line) => /^#{1,3}\s/u.test(line));
+      const section = (nextHeading === -1 ? remainder : remainder.slice(0, nextHeading)).join('\n');
+      const directClientParagraph = section.split(/\n\s*\n/u).find((paragraph) =>
+        paragraph.replace(/\s+/gu, ' ').trim().startsWith(compatibilityGuarantee));
+      assert(directClientParagraph, `${document} must describe direct ioredis RedisCompatibleClient compatibility without assertions.`);
+      const examples = [...section.matchAll(/```(?:typescript|ts)\n([\s\S]*?)```/gu)]
+        .map((match) => match[1])
+        .filter((source) => source.includes("import Redis from 'ioredis'"));
+      assert(
+        examples.some((source) => source.includes('redis: { client: cacheClient }')),
+        `${document} must retain a direct ioredis redis.client example.`,
+      );
+      assert(
+        !/not a claim that a raw ioredis instance|raw ioredis 인스턴스 전체가 기존/u.test(markdown),
+        `${document} must not contradict direct ioredis compatibility.`,
+      );
+    }
+    const contextPath = `docs/CONTEXT${locale}.md`;
+    const context = readText(contextPath);
+    for (const target of [
+      `../packages/cache-manager/README${locale}.md#`,
+      `./getting-started/migrate-from-nestjs${locale}.md#cache-manager-`,
+      '../packages/cache-manager/src/redis-client.consumer.test.ts',
+    ]) {
+      assert(context.includes(target), `${contextPath} must link the direct Redis client contract and evidence: ${target}.`);
+    }
+  }
 
   const documents = [
     ['packages/cache-manager/README.md', '### NestJS Cache Migration'],
