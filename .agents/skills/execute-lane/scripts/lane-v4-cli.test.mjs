@@ -591,6 +591,7 @@ for (const [name, retry_policy] of Object.entries({
 
     const lane = JSON.parse(readFileSync(lanePath));
     assert.deepEqual(lane.retry_policy, retry_policy);
+    assert.equal(Object.hasOwn(lane, 'preflight_overlap'), false, 'legacy v2 imports stay legacy after saves');
     assert.equal(lane.issues['42'].attempts.implement, 2);
     assert.deepEqual(lane.issues['42'].blocker, retry_policy.retry_count_is_terminal
       ? { type: 'attempts-exhausted', phase: 'implement' } : null);
@@ -1731,6 +1732,9 @@ test('CLI: rename observes both old and new paths, including excluded source', (
 
 const generatedFixture = (t) => {
   const f = fixture(t);
+  const legacy = JSON.parse(readFileSync(f.lanePath));
+  delete legacy.preflight_overlap;
+  writeFileSync(f.lanePath, JSON.stringify(legacy));
   f.set('preflight', f.preflight({ scope: ['docs/', 'src/'], non_scope: [] }));
   f.implement();
   const ready = (issue) => {
@@ -1781,6 +1785,182 @@ const generatedFixture = (t) => {
   f.update();
   return { ...f, hint, ready };
 };
+
+const overlapFixture = (t, enabled = true) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  if (enabled) lane.preflight_overlap = 1;
+  lane.issues['43'] = { issue: 43, branch: 'issue-43', depends_on: [], approvals: { merge: true },
+    attempts: {}, blocker: null, facts: {} };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const sibling = join(f.root, '.worktrees/issue-43');
+  f.git(f.root, 'worktree', 'add', '-b', 'issue-43', sibling, 'main');
+  writeFileSync(join(sibling, 'docs/sibling.md'), 'sibling\n');
+  f.git(sibling, 'add', '.');
+  f.git(sibling, '-c', 'commit.gpgsign=false', 'commit', '-m', 'overlapping sibling');
+  const args = ['--lane', f.lanePath, '--issue', '43'];
+  const obs = JSON.parse(f.cli('plan', args).stdout).obs;
+  const accepted = createPreflight({ issue: 43, issue_sha256: obs.issueSha256, base_sha: obs.baseSha,
+    scope: ['docs/'], non_scope: [], acceptance: ['Retain docs'], validation: ['node --test'],
+    predicted_files: ['docs/guide.md'] });
+  f.cli('set-fact', [...args, '--kind', 'preflight', '--value', JSON.stringify(accepted)]);
+  const siblingHead = f.git(sibling, 'rev-parse', 'HEAD');
+  f.state.prs = { 'issue-43': { number: 143, state: 'OPEN', headRefOid: siblingHead,
+    mergeable: 'MERGEABLE', statusCheckRollup: [{ state: 'PENDING' }] } };
+  f.update();
+  return { ...f, siblingHead };
+};
+
+test('CLI overlap: plan, plan-all and watch -> identical sibling/file targets before review', (t) => {
+  const f = overlapFixture(t);
+
+  const decision = f.plan().decision;
+  assert.equal(decision.action, 'wait-preflight-overlap');
+  assert.deepEqual(decision.siblings.map(s => s.issue), [43]);
+  assert.deepEqual(decision.files, ['docs/guide.md']);
+  assert.deepEqual(JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision, decision);
+  const watched = f.cli('watch', ['--lane', f.lanePath, '--once']).stdout;
+  assert.match(watched, /wait-preflight-overlap.*43.*docs\/guide\.md/u);
+  const legacy = JSON.parse(readFileSync(f.lanePath));
+  delete legacy.preflight_overlap;
+  writeFileSync(f.lanePath, JSON.stringify(legacy));
+  assert.equal(f.plan().decision.action, 'review');
+  f.cli('approve-merge', f.common);
+  assert.equal(Object.hasOwn(JSON.parse(readFileSync(f.lanePath)), 'preflight_overlap'), false);
+});
+
+test('CLI overlap: wait then sibling merge -> real base integration, focused check and fresh review before publication', (t) => {
+  const f = overlapFixture(t);
+  assert.equal(f.plan().decision.action, 'wait-preflight-overlap');
+  const stale = f.review();
+  f.state.prs['issue-43'].state = 'MERGED';
+  f.state.prs['issue-43'].mergeCommit = { oid: f.siblingHead };
+  f.update();
+  assert.equal(f.plan().decision.action, 'observation-failed', 'merge not yet visible in origin/base');
+  f.git(f.root, 'merge', '--ff-only', 'issue-43');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+
+  const integration = f.plan().decision;
+  assert.equal(integration.action, 'resolve-conflict');
+  assert.equal(integration.reason, 'preflight-overlap-base-integration');
+  assert.equal(integration.base, f.siblingHead);
+  assert.equal(Object.hasOwn(integration, 'pr'), false);
+  f.git(f.worktree, 'merge', '--no-edit', integration.base);
+  const newHead = f.git(f.worktree, 'rev-parse', 'HEAD');
+  assert.notEqual(newHead, stale.head_sha);
+  const check = spawnSync(process.execPath, ['--input-type=module', '-e',
+    "import assert from 'node:assert/strict'; import { readFileSync } from 'node:fs'; assert.equal(readFileSync('docs/sibling.md','utf8'),'sibling\\n'); assert.equal(readFileSync('docs/guide.md','utf8'),'implemented\\n');"],
+    { cwd: f.worktree, env: f.env, encoding: 'utf8', timeout: 10_000 });
+  assert.equal(check.status, 0, check.stderr);
+  f.cli('record', [...f.common, '--phase', 'resolve-conflict', '--result-json',
+    JSON.stringify({ ok: true, head_sha: newHead })]);
+  f.set('review', stale, newHead, false);
+  assert.equal(f.plan().decision.action, 'review');
+  const review = f.review();
+  f.set('review', review, newHead);
+  assert.equal(f.plan().decision.action, 'create-pr');
+  f.state.pr = { number: 142, state: 'OPEN', headRefOid: stale.head_sha,
+    mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }] };
+  f.update();
+  assert.equal(f.plan().decision.action, 'push', 'old-head remote CI cannot validate integrated head');
+  f.state.pr.headRefOid = newHead;
+  f.state.pr.statusCheckRollup = [{ state: 'PENDING' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-ci');
+});
+
+test('CLI overlap: unreadable merge commit and unrelated base movement -> fail closed only for actual integration targets', (t) => {
+  const f = overlapFixture(t);
+  f.state.prs['issue-43'].state = 'MERGED';
+
+  for (const mergeCommit of [undefined, null, { oid: 'f'.repeat(40) }]) {
+    if (mergeCommit === undefined) delete f.state.prs['issue-43'].mergeCommit;
+    else f.state.prs['issue-43'].mergeCommit = mergeCommit;
+    f.update();
+
+    assert.equal(f.plan().decision.action, 'observation-failed');
+  }
+  f.state.prs['issue-43'].state = 'CLOSED';
+  f.update();
+  writeFileSync(join(f.root, 'docs/unrelated.md'), 'unrelated\n');
+  f.git(f.root, 'add', 'docs/unrelated.md');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'unrelated base advance');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  assert.equal(f.plan().decision.action, 'review');
+});
+
+test('CLI overlap marker: default direct init -> legacy decisions and byte preservation on conflicting opt-in', (t) => {
+  const f = overlapFixture(t, false);
+  const bytes = readFileSync(f.lanePath);
+
+  assert.equal(Object.hasOwn(JSON.parse(bytes), 'preflight_overlap'), false);
+  assert.equal(f.plan().decision.action, 'review');
+  f.cli('init', ['--lane-id', 'fixture', '--issue', '42', '--preflight-overlap'], false);
+  assert.deepEqual(readFileSync(f.lanePath), bytes);
+  f.cli('approve-merge', f.common);
+  assert.equal(Object.hasOwn(JSON.parse(readFileSync(f.lanePath)), 'preflight_overlap'), false);
+  f.state.prs['issue-43'].state = 'MERGED';
+  f.update();
+  assert.equal(f.plan().decision.action, 'review', 'legacy recovery never requires new merge ancestry evidence');
+});
+
+test('CLI overlap marker: explicit flag -> opt-in; invalid v4 values reject without mutation', (t) => {
+  const f = fixture(t);
+  const path = f.cli('init', ['--lane-id', 'opt-in', '--issue', '42', '--preflight-overlap']).stdout.trim();
+  const lane = JSON.parse(readFileSync(path));
+  assert.equal(lane.preflight_overlap, 1);
+  assert.equal(lane.issues['42'].approvals.merge, false);
+  for (const marker of [null, true, '1', 0, 2]) {
+    writeFileSync(f.lanePath, JSON.stringify({ ...lane, preflight_overlap: marker }));
+    const bytes = readFileSync(f.lanePath);
+
+    f.cli('plan', f.common, false);
+    f.cli('approve-merge', f.common, false);
+    assert.deepEqual(readFileSync(f.lanePath), bytes);
+  }
+});
+
+test('CLI overlap marker: explicit flag with v2 import -> reject without creating a lane or changing the source', (t) => {
+  const f = fixture(t);
+  const ledger = join(f.root, 'overlap-v2-flag.json');
+  for (const marker of [undefined, 1]) {
+    const value = { version: 2, lane_id: `flag-${String(marker)}`, confirmed_issues: [42],
+      ...(marker === undefined ? {} : { preflight_overlap: marker }) };
+    writeFileSync(ledger, JSON.stringify(value));
+    const bytes = readFileSync(ledger);
+
+    const result = f.cli('init', ['--from-lane-v2', ledger, '--preflight-overlap'], false);
+
+    assert.match(result.stderr, /--preflight-overlap.*--from-lane-v2/u);
+    assert.deepEqual(readFileSync(ledger), bytes);
+    assert.equal(existsSync(join(f.root, `.omo/lanes-v4/${value.lane_id}.json`)), false);
+  }
+});
+
+test('CLI overlap marker: v2 import -> exact presence preserved and invalid markers rejected', (t) => {
+  const f = fixture(t);
+  const ledger = join(f.root, 'overlap-v2.json');
+  for (const marker of [undefined, 1, null, true, '1', 0, 2]) {
+    const value = { version: 2, lane_id: `overlap-${String(marker)}`, confirmed_issues: [42],
+      ...(marker === undefined ? {} : { preflight_overlap: marker }) };
+    writeFileSync(ledger, JSON.stringify(value));
+
+    const valid = marker === undefined || marker === 1;
+    const result = f.cli('init', ['--from-lane-v2', ledger], valid);
+    if (valid) {
+      const path = result.stdout.trim();
+      assert.equal(Object.hasOwn(JSON.parse(readFileSync(path)), 'preflight_overlap'), marker === 1);
+      f.cli('approve-merge', ['--lane', path, '--issue', '42']);
+      const saved = JSON.parse(readFileSync(path));
+      assert.equal(Object.hasOwn(saved, 'preflight_overlap'), marker === 1);
+      if (marker === 1) assert.equal(saved.preflight_overlap, 1);
+    } else {
+      assert.match(result.stderr, /preflight_overlap/u);
+    }
+  }
+});
 
 test('CLI generated coordination: successive ready merges -> one wait then release on fresh loss/restart', (t) => {
   const f = generatedFixture(t);

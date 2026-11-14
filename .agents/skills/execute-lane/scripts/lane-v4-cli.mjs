@@ -2,7 +2,7 @@
 // execute-lane v4 CLI: observation + lane file IO around the pure engine.
 //
 // Commands:
-//   init            --root . --lane-id <id> --issue <n> [--issue <n> ...]
+//   init            --root . --lane-id <id> --issue <n> [--issue <n> ...] [--preflight-overlap]
 //   plan            --root . --lane <path> --issue <n>
 //   plan-all        --root . --lane <path> [--with-retro]
 //   watch           --root . --lane <path> [--interval 60] [--once] [--stall-after 15]
@@ -56,7 +56,7 @@ import {
 	buildReviewFact,
 	validateReviewFact,
 } from "../../review-head/scripts/contracts.mjs";
-import { coordinateGeneratedIntegration, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
+import { coordinateGeneratedIntegration, coordinatePreflightOverlap, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
 import { observeKnownBaseline, validateKnownBaseline } from "./known-baseline.mjs";
 import { assertAgentIdentity, dispatchFor, DispatchPreparationError, readRegisteredAgents, validateDispatchTarget, validateUnavailableTarget } from "./dispatch-targets.mjs";
 import {
@@ -205,7 +205,13 @@ export const captureRetroCi = (root, lane, issue, query = run) => {
 	return recorded;
 };
 
-const loadLane = (path) => JSON.parse(readFileSync(path, "utf8"));
+const validateOverlapMarker = (lane) => {
+	if (Object.hasOwn(lane, "preflight_overlap") && lane.preflight_overlap !== 1) {
+		throw new TypeError("preflight_overlap must equal 1 when present");
+	}
+	return lane;
+};
+const loadLane = (path) => validateOverlapMarker(JSON.parse(readFileSync(path, "utf8")));
 const saveLane = (path, lane, create = false) => {
 	const temporary = `${path}.${randomUUID()}.tmp`;
 	writeFileSync(temporary, `${JSON.stringify(lane, null, 2)}\n`, { flag: "wx" });
@@ -407,6 +413,7 @@ export const laneV2ToInitSpecs = (laneV2) => {
 	if (laneV2?.version !== 2) {
 		throw new TypeError('lane v2 intake requires "version": 2');
 	}
+	validateOverlapMarker(laneV2);
 	const issues = laneV2.confirmed_issues;
 	if (
 		!Array.isArray(issues) || issues.length === 0 ||
@@ -442,6 +449,7 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		mergeApproved: laneV2.authority_scope?.pr_merge === true,
 		...(Object.hasOwn(laneV2, "retry_policy") ? { retryPolicy: structuredClone(laneV2.retry_policy) } : {}),
 		...(Object.hasOwn(laneV2, "predicted_conflicts") ? { predictedConflicts: laneV2.predicted_conflicts } : {}),
+		...(Object.hasOwn(laneV2, "preflight_overlap") ? { preflightOverlap: laneV2.preflight_overlap } : {}),
 	};
 };
 
@@ -758,6 +766,9 @@ const main = async () => {
 		const fromLaneV2 = args.includes("--from-lane-v2")
 			? arg(args, "--from-lane-v2")
 			: null;
+		if (fromLaneV2 !== null && args.includes("--preflight-overlap")) {
+			throw new TypeError("--preflight-overlap cannot be combined with --from-lane-v2");
+		}
 		let laneId;
 		let baseBranch = "main";
 		let specs;
@@ -765,6 +776,7 @@ const main = async () => {
 		let mergeApproved = false;
 		let predictedConflicts;
 		let retryPolicy;
+		let preflightOverlap = args.includes("--preflight-overlap") ? 1 : undefined;
 		if (fromLaneV2 !== null) {
 			const raw = readFileSync(resolve(root, fromLaneV2), "utf8");
 			const translated = laneV2ToInitSpecs(JSON.parse(raw));
@@ -777,6 +789,7 @@ const main = async () => {
 			mergeApproved = translated.mergeApproved;
 			predictedConflicts = translated.predictedConflicts;
 			retryPolicy = translated.retryPolicy;
+			preflightOverlap = translated.preflightOverlap;
 		} else {
 			laneId = arg(args, "--lane-id");
 			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
@@ -803,6 +816,7 @@ const main = async () => {
 		mkdirSync(dir, { recursive: true });
 		const lane = {
 			version: 4,
+			...(preflightOverlap === undefined ? {} : { preflight_overlap: preflightOverlap }),
 			lane_id: laneId,
 			base_branch: baseBranch,
 			// Present only for --from-lane-v2 inits; a hand-built lane has no
@@ -853,7 +867,36 @@ const main = async () => {
 						},
 			};
 		});
-		const coordinated = coordinateGeneratedIntegration(fresh, snapshots);
+		// Legacy lanes take the exact old observation path, without ancestry probes.
+		if (fresh.preflight_overlap === 1) {
+			const accepted = snapshots.filter(row =>
+				evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue }).valid);
+			const merged = accepted.filter(row => row.obs.pr?.state === "MERGED");
+			for (const row of accepted.filter(row => row.decision.action === "review")) {
+				const related = merged.filter(sibling => sibling.issue !== row.issue &&
+					row.obs.preflight.predicted_files.some(file => sibling.obs.preflight.predicted_files.includes(file)));
+				if (!related.length) continue;
+				const base = run(root, "git", ["rev-parse", "--verify", `refs/remotes/origin/${fresh.base_branch}^{commit}`]);
+				const ancestor = (commit, target) => {
+					if (!/^[a-f0-9]{40}$/u.test(commit ?? "") || !target ||
+						run(root, "git", ["rev-parse", "--verify", `${commit}^{commit}`]) !== commit) return null;
+					try {
+						execFileSync("git", ["merge-base", "--is-ancestor", commit, target],
+							{ cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+						return true;
+					} catch (error) {
+						if (error.status === 1) return false;
+						return null;
+					}
+				};
+				row.obs.overlapIntegrations = related.map(sibling => ({
+					issue: sibling.issue, commit: sibling.obs.pr.mergeCommit, base,
+					inBase: ancestor(sibling.obs.pr.mergeCommit, base),
+					inHead: ancestor(sibling.obs.pr.mergeCommit, row.obs.headSha),
+				}));
+			}
+		}
+		const coordinated = coordinatePreflightOverlap(fresh, coordinateGeneratedIntegration(fresh, snapshots));
 		if (fresh.predicted_conflicts?.some((hint) => hint.generated) &&
 			["plan", "plan-all", "watch"].includes(command)) {
 			for (const row of coordinated) recordObservation(fresh.lane_id, row);
@@ -932,7 +975,9 @@ const main = async () => {
 					process.stdout.write(
 						`${new Date().toISOString()} issue ${c.issue}: ${
 							c.from ?? "(start)"
-						} -> ${c.to}${c.to === "wait-generated-integration"
+						} -> ${c.to}${next.find(item => item.issue === c.issue).decision.overlaps
+							? ` overlaps=${JSON.stringify(next.find(item => item.issue === c.issue).decision.overlaps)}`
+							: c.to === "wait-generated-integration"
 							? ` siblings=${JSON.stringify(next.find((item) => item.issue === c.issue).decision.siblings)}` : ""}\n`,
 					);
 				}

@@ -276,6 +276,44 @@ Do not poll from the coordinator or create a child merely to wait.
 
 ### Generated consumer integration coordination
 
+New create-lane plans opt into preflight overlap coordination with
+`preflight_overlap: 1`. Direct `init --issue` also serves lane recovery and
+omits the marker by default. Activate a new manual lane explicitly with
+`init --lane-id <id> --issue <n> --preflight-overlap`; this boolean flag records 1
+and grants no merge authority. Combining it with `--from-lane-v2` is rejected:
+import preserves the plan's own marker presence or absence. Conflicting init
+preserves the existing file byte for byte. Legacy lanes without the marker
+retain the exact old decisions and observation path, including on recovery
+and save. Never backfill existing lane files.
+
+For opted-in lanes, `plan`, `plan-all` and `watch` expose `overlaps` with
+the sibling issue, observed head, PR, state and sorted intersecting files.
+Only two currently valid accepted preflights' explicit `predicted_files`
+intersect; scope prefixes and file kinds do not alter that rule. Ready
+preflights and implementations remain parallel.
+
+`wait-preflight-overlap` replaces only a new `review` action. From the fresh
+snapshot, select non-overlapping candidates greedily: OPEN PRs first, then
+valid current-head PASS without a PR, then remaining implemented candidates;
+break ties by issue number. A waiting review names only directly overlapping
+selected siblings. Existing publication, CI, fix-back and merge work continues.
+Closed, merged, blocked and completed siblings do not occupy a slot.
+Recompute targets after each observation; do not persist locks, waits or edges.
+Failed relevant observations block review as `observation-failed`.
+
+When an overlapping sibling merges, verify its actual PR `mergeCommit` is in
+observed origin/base and the review head. Missing or unreadable base ancestry
+fails closed. If no active selected sibling remains to wait for and the head
+lacks that commit, handle `resolve-conflict` with reason
+`preflight-overlap-base-integration` through the existing lead integration path,
+including when the issue has no PR (the decision then omits `pr`). Merge the
+specified `base` in the assigned issue worktree, run focused checks and record
+`resolve-conflict` with the new `head_sha`. Existing generated-integration
+receipts still apply when required. Reuse workflow-preparation's focused
+receipt and exact-head review gates: old-head review, local evidence and
+remote CI never validate the new head. Reviewers remain read-only.
+Unrelated base movement alone does not request integration.
+
 `plan`, `plan-all` and `watch` share fresh lane-wide observations. For an actual
 `CONFLICTING` PR at the local head, a generated-consumer hint can defer integration
 with `wait-generated-integration` while a related sibling is independently ready

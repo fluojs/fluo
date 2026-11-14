@@ -77,6 +77,17 @@ self-consistent forged receipt.
 
 ## Validation and publication
 
+Create new plans with `preflight_overlap: 1` before computing receipt digests.
+Its presence and value are copied by `readyLedger` and v4 import. Absent fields
+in historical plans, ledgers and v4 files remain absent on save; only an absent
+field or the exact integer 1 is supported.
+
+Dependency edges express semantic requirements on another issue's outcome.
+Sharing a file or package alone never creates an edge. Preserve
+`predicted_conflicts` as compatibility hints; execution derives actual file
+overlap ordering from valid accepted preflights' `predicted_files`, allowing
+ready preflight and implementation work to proceed in parallel.
+
 Before receipt binding, derive generated-consumer planning evidence through
 `scripts/generated-conflicts.mjs` (relative to the owning skill): read the actual
 consumer with `generatedConsumerGraph(root)`, then call

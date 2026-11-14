@@ -865,3 +865,15 @@ test('C4: a dependency outside the lane is rejected, not silently dropped', () =
 		/dependency 99 of issue 1 is not in confirmed_issues/,
 	);
 });
+test('watch: same action with changed overlap head, sibling or file -> coordination transition', () => {
+  const before = [{ issue: 42, decision: { action: 'review',
+    overlaps: [{ issue: 43, head: 'a'.repeat(40), pr: null, files: ['README.md'], state: 'review' }] } }];
+  for (const patch of [{ issue: 44 }, { head: 'b'.repeat(40) }, { files: ['CONTEXT.md'] }]) {
+    const after = structuredClone(before);
+    Object.assign(after[0].decision.overlaps[0], patch);
+
+    assert.deepEqual(summarizeTransitions(before, after).changes, [{
+      issue: 42, from: 'review', to: 'review', reason: 'coordination-targets-changed',
+    }]);
+  }
+});

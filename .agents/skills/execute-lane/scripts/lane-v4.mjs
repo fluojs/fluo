@@ -180,8 +180,9 @@ export const summarizeTransitions = (prev, next) => {
 		const from = previous?.action ?? null;
 		const to = row.decision.action;
 		if (from !== to) changes.push({ issue: row.issue, from, to });
-		else if (to === 'wait-generated-integration' &&
-			JSON.stringify(previous.siblings) !== JSON.stringify(row.decision.siblings)) {
+		else if ((to === 'wait-generated-integration' &&
+			JSON.stringify(previous.siblings) !== JSON.stringify(row.decision.siblings)) ||
+			JSON.stringify(previous?.overlaps) !== JSON.stringify(row.decision.overlaps)) {
 			changes.push({ issue: row.issue, from, to, reason: 'coordination-targets-changed' });
 		}
 	}
