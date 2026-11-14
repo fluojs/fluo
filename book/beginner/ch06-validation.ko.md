@@ -54,13 +54,15 @@ DTO에 TypeScript 인터페이스(interface) 대신 클래스(class)를 사용�
 이제 FluoBlog에서 유효한 게시글 생성 요청이 무엇인지 설명하는 규칙을 추가해 봅시다.
 
 ```typescript
-import { IsBoolean, IsOptional, IsString, MinLength } from '@fluojs/validation';
+import { IsBoolean, IsDefined, IsOptional, IsString, MinLength } from '@fluojs/validation';
 
 export class CreatePostDto {
+  @IsDefined()
   @IsString()
   @MinLength(3)
   title = '';
 
+  @IsDefined()
   @IsString()
   @MinLength(10)
   body = '';
@@ -90,9 +92,11 @@ fluo g request-dto posts UpdatePost --dry-run
 
 DTO 필드가 간단한 기본값으로 초기화된 예제를 자주 보게 됩니다. 이 패턴은 클래스를 materialize하고 눈으로 확인하기 쉽게 만들어 주며, 클래스 기반 검증을 처음 읽는 독자도 흐름을 파악하기 쉽습니다. 기본값은 예제의 의도를 더 명확하게 보여 주는 작은 안내판 역할을 합니다.
 
+기본값은 존재 여부 검증을 대체하지 않습니다. `title`이나 `body`를 생략하면 빈 문자열 기본값이 유지되어 `@MinLength(3)` 또는 `@MinLength(10)`에서 실패합니다. 명시적인 `null`이나 `undefined`는 기본값을 덮어쓰므로 `@IsDefined()`에서 실패합니다. 일반 문자열·길이 validator는 이 누락 값을 건너뜁니다.
+
 ### What These Rules Mean
 
-`title`은 문자열이어야 하며 최소 세 글자여야 하고, `body`는 문자열이어야 하며 최소 열 글자여야 합니다. `published`는 생략할 수 있지만 존재한다면 boolean이어야 합니다. 규칙은 작지만, 이 정도만으로도 요청 계약이 코드에 명확히 남고 잘못된 입력을 초기에 걸러 내는 시스템의 가치를 보여 주기에 충분합니다.
+`title`과 `body`는 필수이며 `null`이나 `undefined`일 수 없습니다. `title`은 문자열이어야 하며 최소 세 글자여야 하고, `body`는 문자열이어야 하며 최소 열 글자여야 합니다. 이 규칙을 만족하는 값은 검증을 통과합니다. `published`는 계속 선택 사항이며 `null`이나 `undefined`가 아닌 값을 주면 boolean이어야 합니다. 규칙은 작지만, 이 정도만으로도 요청 계약이 코드에 명확히 남고 잘못된 입력을 초기에 걸러 내는 시스템의 가치를 보여 주기에 충분합니다.
 
 ### Why Decorators?
 

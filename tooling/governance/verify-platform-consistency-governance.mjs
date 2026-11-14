@@ -10,6 +10,7 @@ import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs
 import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { behavioralChangedFiles, isNavigationDocument } from './docs-navigation-changes.mjs';
 import { enforceValidationMappedTypesImportBoundary } from './validation-mapped-types-import-boundary.mjs';
+import { enforceValidationRequirednessDocs } from './validation-requiredness-docs.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import {
   emailNestjsMigrationMarkerPrefix,
@@ -4595,6 +4596,7 @@ export async function main() {
   enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
   enforceValidationMappedTypesImportBoundary();
+  enforceValidationRequirednessDocs();
   enforceCliMigrationTransformDocs();
   enforceGraphqlAsyncRegistrationContract();
   enforceJwtAsyncRegistrationContract();
