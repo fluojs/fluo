@@ -145,6 +145,71 @@ describe('HTTP-owned error representations', () => {
     expect(render).not.toHaveBeenCalled();
   });
 
+  describe.each(['/missing', '/failures/bad-request'])('strict Accept parsing for %s', (path) => {
+    it.each([
+      'text/html;q=0x1',
+      'text/html/garbage',
+      '*/html',
+      'text/html;q=0.1234',
+      'text/html;q=1.0000',
+      'text/html;q=0.5;q=1',
+      'text/html;q=0.5;q=0.5',
+      'text/html;q',
+      'text/html;q=',
+      'text/html;q=-0.1',
+      'text/html;q=1.001',
+    ])('returns canonical 406 without consulting HTML for malformed Accept=%s', async (accept) => {
+      const canRender = vi.fn(() => true);
+      const render = vi.fn(() => '<main>unused</main>');
+      const { dispatcher } = createTestDispatcher({ canRender, render });
+      const response = createResponse();
+      response.setHeader('Vary', 'Accept-Encoding');
+
+      await dispatcher.dispatch(createRequest(path, accept), response);
+
+      expect(response.statusCode).toBe(406);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_ACCEPTABLE', status: 406 } });
+      expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+      expect(response.headers.Vary).toBe('Accept-Encoding, Accept');
+      expect(canRender).not.toHaveBeenCalled();
+      expect(render).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    ['text/html;q=0x1, application/json;q=0.1', 'application/json; charset=utf-8', 0],
+    ['text/html/garbage, application/json', 'application/json; charset=utf-8', 0],
+    ['*/html, application/json;q=0.1', 'application/json; charset=utf-8', 0],
+    ['text/html;q=0.1234, application/json;q=0.1', 'application/json; charset=utf-8', 0],
+    ['text/html;q=1.0000, application/json;q=0.1', 'application/json; charset=utf-8', 0],
+    ['text/html;q=0.5;q=1, application/json;q=0.1', 'application/json; charset=utf-8', 0],
+    ['text/html;q=0.5;q=0.5, application/json;q=0.1', 'application/json; charset=utf-8', 0],
+    ['text/html;q=0x1, text/html;q=0.2', 'text/html; charset=utf-8', 1],
+    ['text/html;q=, text/html;q=1.', 'text/html; charset=utf-8', 1],
+    ['text/html;q=2, text/html;q=0.001', 'text/html; charset=utf-8', 1],
+    ['text/html;q=0., */*;q=1.', 'application/json; charset=utf-8', 0],
+    ['text/html;q=0.123, application/json;q=0.122', 'text/html; charset=utf-8', 1],
+    ['TEXT/HTML;Q=1.000', 'text/html; charset=utf-8', 1],
+    ['text/html;q=0.5, application/json;q=0.5', 'application/json; charset=utf-8', 0],
+    ['text/html;q=0, text/html;q=1, */*', 'application/json; charset=utf-8', 0],
+  ] as const)('keeps valid alternatives and selection order for Accept=%s', async (accept, contentType, htmlCalls) => {
+    const render = vi.fn(() => '<main>NOT_FOUND</main>');
+    const { dispatcher } = createTestDispatcher({ render });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/missing', accept), response);
+
+    expect(response.statusCode).toBe(404);
+    expect(response.headers['Content-Type']).toBe(contentType);
+    expect(response.headers.Vary).toBe('Accept');
+    expect(render).toHaveBeenCalledTimes(htmlCalls);
+    if (htmlCalls === 0) {
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', status: 404 } });
+    } else {
+      expect(response.body).toBe('<main>NOT_FOUND</main>');
+    }
+  });
+
   it('negotiates HTML from mixed-case Accept headers', async () => {
     const render = vi.fn(async ({ error }: HttpErrorRepresentationContext) => `<main>${error.code}</main>`);
     const { dispatcher } = createTestDispatcher({ render });

@@ -712,6 +712,13 @@ every request-derived or error-derived value before interpolation, as the exampl
 `Accept` negotiation is deterministic: absent `Accept` and wildcard/tie cases select JSON; quality
 and specificity select between `application/json` and available `text/html`; unsupported ranges
 produce canonical JSON 406. `canRender(...)` may constrain HTML per application or matched handler.
+Success and error negotiation share strict media-range and quality parsing. Malformed ranges
+(such as `text/html/garbage` or `*/html`) and malformed qualities (such as `q=0x1`,
+`q=0.1234`, `q=1.0000`, a missing value, or duplicate `q` even with equal values) are ignored
+individually; valid alternatives in the same field still participate. Quality values use RFC
+qvalues from `0` to `1` with at most three fractional digits, including valid `q=0.` and `q=1.`.
+If no valid acceptable offer remains, HTTP returns canonical JSON `406 NOT_ACCEPTABLE` with
+`Vary: Accept`; invalid-only HTML input never invokes `canRender(...)` or `render(...)`.
 An exact GET `Accept: application/vnd.fluo.react-navigation+json;v=2` error instead retains
 the original HTTP status (including 401/403/404) in canonical JSON without consulting HTML.
 It is not a successful navigation payload or public prefetch grant. Other methods, versions

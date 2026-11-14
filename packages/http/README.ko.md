@@ -706,6 +706,13 @@ text-node contract가 해당 escape를 수행하는 rendering framework를 사�
 `Accept` negotiation은 deterministic하다. `Accept`가 없거나 wildcard/tie이면 JSON을 선택하고 quality와
 specificity가 `application/json`과 available `text/html` 사이를 선택하며 unsupported range는 canonical JSON
 406을 만든다. `canRender(...)`로 application 또는 matched handler별 HTML availability를 제한할 수 있다.
+Success와 error negotiation은 엄격한 media-range 및 quality 파서를 공유한다. 잘못된 range
+(`text/html/garbage`, `*/html` 등)와 quality (`q=0x1`, `q=0.1234`, `q=1.0000`,
+누락된 값, 같은 값이더라도 중복된 `q` 등)는 각각 무시하며 같은 field의 유효한 alternative는
+계속 참여한다. Quality는 `0`부터 `1`까지 소수점 이하 세 자리 이하의 RFC qvalue를 사용하고
+`q=0.`과 `q=1.`도 유효하다. 유효한 acceptable offer가 남지 않으면 HTTP는 `Vary: Accept`와
+함께 canonical JSON `406 NOT_ACCEPTABLE`을 반환하며, 잘못된 HTML 입력만 있으면
+`canRender(...)`와 `render(...)`를 호출하지 않는다.
 정확히 GET `Accept: application/vnd.fluo.react-navigation+json;v=2`의 error는 HTML을 조회하지 않고
 canonical JSON으로 원래 HTTP status(401/403/404 포함)를 유지한다. Successful navigation payload나
 public prefetch grant가 아니다. 다른 method/version과 거절된 quality range는 기존 negotiation 및

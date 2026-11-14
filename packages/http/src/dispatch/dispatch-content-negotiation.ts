@@ -1,3 +1,4 @@
+import { type AcceptToken, parseAcceptHeader, selectMostSpecificAcceptToken } from './dispatch-accept.js';
 import { NotAcceptableException } from '../exceptions.js';
 import { readJoinedNonEmptyRequestHeaderValues } from '../header-helpers.js';
 import type {
@@ -6,13 +7,6 @@ import type {
   HandlerDescriptor,
   ResponseFormatter,
 } from '../types.js';
-
-interface AcceptToken {
-  mediaRange: string;
-  order: number;
-  quality: number;
-  specificity: number;
-}
 
 /**
  * Describes the resolved content negotiation contract.
@@ -35,14 +29,6 @@ function readAcceptHeader(request: FrameworkRequest): string | undefined {
   return readJoinedNonEmptyRequestHeaderValues(request, 'accept');
 }
 
-function parseQuality(value: string): number | undefined {
-  if (!/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(value)) {
-    return undefined;
-  }
-
-  return Number(value);
-}
-
 /**
  * Determines whether an error originated from response content negotiation.
  *
@@ -53,144 +39,6 @@ export function isContentNegotiationNotAcceptableException(
   error: unknown,
 ): error is NotAcceptableException {
   return error instanceof ContentNegotiationNotAcceptableException;
-}
-
-function isValidMediaRange(mediaRange: string): boolean {
-  const [type, subtype, extra] = mediaRange.split('/');
-
-  if (!type || !subtype || extra !== undefined) {
-    return false;
-  }
-
-  if (type === '*') {
-    return subtype === '*';
-  }
-
-  if (type.includes('*')) {
-    return false;
-  }
-
-  if (subtype === '*') {
-    return true;
-  }
-
-  if (subtype.startsWith('*+')) {
-    return subtype.length > 2 && !subtype.slice(2).includes('*');
-  }
-
-  return !subtype.includes('*');
-}
-
-function getMediaRangeSpecificity(mediaRange: string): number {
-  if (mediaRange === '*/*') {
-    return 0;
-  }
-
-  if (mediaRange.endsWith('/*')) {
-    return 1;
-  }
-
-  return mediaRange.includes('/*+') ? 2 : 3;
-}
-
-function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
-  const tokens: AcceptToken[] = [];
-
-  for (const [order, token] of acceptHeader.split(',').entries()) {
-    const [rawMediaRange, ...parameterParts] = token.trim().split(';');
-    const mediaRange = normalizeMediaType(rawMediaRange ?? '');
-
-    if (!isValidMediaRange(mediaRange)) {
-      continue;
-    }
-
-    let quality = 1;
-    let qualityDefined = false;
-    let malformed = false;
-
-    for (const parameterPart of parameterParts) {
-      const [name, ...rawValues] = parameterPart.trim().split('=');
-
-      if (name?.toLowerCase() === 'q') {
-        if (qualityDefined || rawValues.length !== 1) {
-          malformed = true;
-          break;
-        }
-
-        const parsedQuality = parseQuality(rawValues[0]?.trim() ?? '');
-        if (parsedQuality === undefined) {
-          malformed = true;
-          break;
-        }
-
-        quality = parsedQuality;
-        qualityDefined = true;
-      }
-    }
-
-    if (malformed) {
-      continue;
-    }
-
-    tokens.push({
-      mediaRange,
-      order,
-      quality,
-      specificity: getMediaRangeSpecificity(mediaRange),
-    });
-  }
-
-  return tokens;
-}
-
-function matchesMediaRange(mediaRange: string, mediaType: string): boolean {
-  if (mediaRange === '*/*') {
-    return true;
-  }
-
-  const [rangeType, rangeSubtype] = mediaRange.split('/');
-  const [mediaTypeType, mediaTypeSubtype] = mediaType.split('/');
-
-  if (!rangeType || !rangeSubtype || !mediaTypeType || !mediaTypeSubtype) {
-    return false;
-  }
-
-  if (rangeType !== '*' && rangeType !== mediaTypeType) {
-    return false;
-  }
-
-  if (rangeSubtype === '*') {
-    return true;
-  }
-
-  if (rangeSubtype.startsWith('*+')) {
-    return mediaTypeSubtype.endsWith(rangeSubtype.slice(1));
-  }
-
-  return rangeSubtype === mediaTypeSubtype;
-}
-
-function selectMostSpecificAcceptToken(
-  mediaType: string,
-  acceptTokens: readonly AcceptToken[],
-): AcceptToken | undefined {
-  let selected: AcceptToken | undefined;
-
-  for (const token of acceptTokens) {
-    if (!matchesMediaRange(token.mediaRange, mediaType)) {
-      continue;
-    }
-
-    if (
-      !selected
-      || token.specificity > selected.specificity
-      || (token.specificity === selected.specificity && token.order < selected.order)
-    ) {
-      selected = token;
-    }
-  }
-
-  return selected;
 }
 
 /**
