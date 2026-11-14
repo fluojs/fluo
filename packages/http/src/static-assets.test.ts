@@ -334,7 +334,9 @@ describe('static asset middleware', () => {
     const notModified = await invokeStaticMiddleware(middleware, createRequest('/assets/app.js', {
       'if-none-match': '"asset-v1"',
     }));
-    const head = await invokeStaticMiddleware(middleware, createRequest('/assets/stream.js', {}, 'HEAD'));
+    const head = await invokeStaticMiddleware(middleware, createRequest('/assets/stream.js', {
+      range: 'bytes=2-4',
+    }, 'HEAD'));
 
     expect(range.response.statusCode).toBe(206);
     expect(range.response.headers).toMatchObject({
@@ -360,6 +362,71 @@ describe('static asset middleware', () => {
       ETag: '"stream-v1"',
     });
     expect(head.response.sentBodies).toEqual([undefined]);
+    expect(head.response.headers['Content-Range']).toBeUndefined();
     expect(openedStreams).toBe(0);
   });
+
+  it.each(['bytes=2-4', 'bytes=9-', 'items=2-4', 'bytes=0-999999999999999999999'])(
+    'HEAD static asset with %s keeps full framing without opening its source',
+    async (range) => {
+      let opened = 0;
+      let disposed = 0;
+      const middleware = createStaticAssetsMiddleware({
+        source: {
+          resolve() {
+            return {
+              contentType: 'application/octet-stream',
+              size: 6,
+              source: () => {
+                opened += 1;
+                return new ReadableStream<Uint8Array>();
+              },
+              dispose() { disposed += 1; },
+            };
+          },
+        },
+      });
+
+      const { response } = await invokeStaticMiddleware(middleware, createRequest('/asset', { range }, 'HEAD'));
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['Content-Length']).toBe('6');
+      expect(response.headers['Content-Range']).toBeUndefined();
+      expect(response.sentBodies).toEqual([undefined]);
+      expect(opened).toBe(0);
+      expect(disposed).toBe(1);
+    },
+  );
+
+  it.each(['bytes=0-999999999999999999999', 'bytes=-999999999999999999999'])(
+    'GET static encoded asset with %s clamps to selected bytes',
+    async (range) => {
+      const bytes = Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      const middleware = createStaticAssetsMiddleware({
+        source: {
+          resolve() {
+            return {
+              contentEncoding: 'gzip',
+              contentType: 'application/javascript',
+              size: 6,
+              source: bytes,
+              validators: { etag: { opaqueValue: 'gzip-v1', strength: 'strong' } },
+            };
+          },
+        },
+      });
+
+      const { response } = await invokeStaticMiddleware(middleware, createRequest('/asset', {
+        'accept-encoding': 'gzip',
+        range,
+      }));
+
+      expect(response.statusCode).toBe(206);
+      expect(response.headers['Content-Range']).toBe('bytes 0-5/6');
+      expect(response.headers['Content-Length']).toBe('6');
+      expect(response.headers['Content-Encoding']).toBe('gzip');
+      expect(response.headers.ETag).toBe('"gzip-v1"');
+      expect(response.sentBodies).toEqual([bytes]);
+    },
+  );
 });
