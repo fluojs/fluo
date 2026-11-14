@@ -22,9 +22,12 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Async Configuration](#async-configuration)
   - [Manual Module Composition](#manual-module-composition)
   - [NestJS Cache Migration](#nestjs-cache-migration)
+  - [Memory Store Operational Limits](#memory-store-operational-limits)
+  - [Deferred eviction timing](#deferred-eviction-timing)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
+- [Compatible service copies](#compatible-service-copies)
 
 ## Installation
 
@@ -60,6 +63,8 @@ This controller/module fragment extends an existing HTTP app. Follow [Applicatio
 Register the `CacheModule` and use the `CacheInterceptor` on your controllers.
 
 The built-in memory path is intentionally bounded by default: when you omit `ttl`, fluo applies a 300-second default TTL and keeps at most 1,000 live memory-store entries before evicting the oldest keys.
+
+The `store` option accepts `'memory'`, `'redis'`, or a custom `CacheStore` object. Omitting `store` or setting it to `undefined` keeps the memory default. `CacheModule.forRoot(...)` validates the store synchronously during registration: unsupported strings such as `'mongo'` throw a configuration error naming the built-in choices instead of silently falling back to memory.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -350,6 +355,8 @@ When the application closes, `CacheService` stops new store reads/writes, waits 
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
+Validation checks that `get`, `set`, `del`, and `reset` are callable and names any missing or non-function methods in the configuration error. It does not call store operations and accepts both plain objects and class instances with prototype methods. Optional `close`, `dispose`, and `atomicUpdate` capabilities remain optional and are not validated at registration.
+
 ### Observing Cache Operations
 
 The platform status helpers report cache availability only. To measure hit rate, latency, and error outcomes, pass an opt-in `observer` to `CacheModule.forRoot(...)`. The observer is independent of `@fluojs/metrics`; wire it to whichever metrics backend the application already uses.
@@ -429,6 +436,8 @@ CacheModule.forRootAsync({
 
 The async path supports the same store selection as `forRoot(...)`: `'memory'`, `'redis'` with a DI-resolved or directly supplied client, and any custom `CacheStore` instance.
 
+The same store validation runs when the factory result resolves, whether `useFactory` returns options directly or through a Promise. Invalid store configuration rejects option resolution/bootstrap before a cache service backed by that store is usable. The `forRootAsync(...)` registration call does not run the factory, so it cannot synchronously reject a store value that the factory has not yet returned.
+
 ### Manual Module Composition
 
 Use `CacheModule.forRoot(...)` for normal application setup, including custom `defineModule(...)` composition.
@@ -454,10 +463,14 @@ defineModule(ManualCacheModule, {
 | `ttl` when the installed underlying `cache-manager` generation uses milliseconds | `ttl` in seconds | Inspect the installed underlying `cache-manager` dependency/version. Divide by 1000 only when that generation defines TTLs in milliseconds. Omitting `ttl` applies `300` seconds on the memory path and `0` for the `redis` and custom-store paths. |
 | `ttl: 0` | `ttl: 0` | Means no expiry, not "do not cache". Negative or non-finite values are invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and write for that handler. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | Accepts one static number only. Move per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`. |
+| `@CacheTTL(...)` / `@CacheKey(...)` placement | Method-only `@CacheTTL(...)` / `@CacheKey(...)` | Both fluo decorators apply only to methods. For a controller-wide TTL, repeat `@CacheTTL(...)` on the relevant methods or configure module `ttl`. Module `ttl` is the default for that cache module; it does not add controller-level metadata support. |
 | implicit query-sensitive keys | `httpKeyStrategy` | Defaults to query-aware `'route+query'`. Select `'route'` only when query parameters do not affect the response; a function strategy or `@CacheKey(...)` remains available for explicit custom keys. |
 | `isGlobal: true` | `global: true` | Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules are module-local unless you opt in or import the module everywhere it is resolved. |
+| NestJS `stores` arrays / Keyv instances | No direct configuration equivalent; one `store` per `CacheModule` registration | Implement multi-tier or fallback caching inside an application-owned custom `CacheStore` that satisfies the existing contract. Do not pass a `stores` array or an unadapted Keyv instance directly. |
 | NestJS store adapters such as `cache-manager-redis-store` | `store: 'redis'` or a `CacheStore` object | NestJS adapters do not satisfy the `CacheStore` contract; use the built-in Redis path or wrap the adapter so callback/options completion becomes a Promise, `ttlSeconds` maps to the legacy TTL in seconds, and `reset()` clears only the cache namespace. Never forward `reset()` blindly to a whole-database `flushDb`. |
 | adapter-owned client teardown | `close()` / `dispose()` on the store | Application shutdown forwards teardown only to those optional hooks. A raw client passed through `redis.client` stays application-owned and must be closed from the application lifecycle. |
+| Cache code conversion through `fluo migrate` | Manual migration using this table | `fluo migrate` does not rewrite `@nestjs/cache-manager` code. Even when the CLI reports `No manual follow-ups detected`, migrate cache imports, configuration, and decorators manually using this table. |
+| Automatic caching on WebSocket subscribers / microservice handlers | Explicit standalone `CacheService` calls | Automatic `CacheInterceptor` and cache decorator behavior belongs to the HTTP pipeline: read-through caching for HTTP GET, and eviction through `@CacheEvict(...)` for non-GET. WebSocket subscribers and microservice handlers must call `CacheService` directly; those transports have no automatic cache interception. |
 
 ```typescript
 CacheModule.forRoot({
