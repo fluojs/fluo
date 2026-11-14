@@ -5,6 +5,7 @@ import { MemoryStore } from './stores/memory-store.js';
 import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 
 const cacheOptions: NormalizedCacheModuleOptions = {
+  rememberCacheErrors: 'throw',
   global: false,
   httpKeyStrategy: 'route',
   keyPrefix: 'fluo:cache:',
@@ -52,6 +53,231 @@ async function awaitSignal(signal: Promise<void>, description: string): Promise<
 }
 
 describe('CacheService store operation concurrency', () => {
+  it('remember bypass releases invalidated read cycles across key churn and reset generations', async () => {
+    const backing = new MemoryStore();
+    let gates: Array<{ entered: Deferred<void>; release: Deferred<void> }> = [];
+    const store: CacheStore = {
+      async get<T>(key: string) {
+        const gate = gates.shift();
+        if (gate) {
+          gate.entered.resolve();
+          await gate.release.promise;
+          throw new Error('read failed');
+        }
+        return backing.get<T>(key);
+      },
+      set: (key, value, ttl) => backing.set(key, value, ttl),
+      del: (key) => backing.del(key),
+      reset: () => backing.reset(),
+    };
+    const cache = new CacheService(store, { ...cacheOptions, rememberCacheErrors: 'bypass' });
+
+    try {
+      for (let index = 0; index < 20; index += 1) {
+        const key = `churn:${index}`;
+        const firstGate = { entered: createDeferred<void>(), release: createDeferred<void>() };
+        const secondGate = { entered: createDeferred<void>(), release: createDeferred<void>() };
+        gates = [firstGate, secondGate];
+        const first = cache.remember(key, async () => 'first');
+        const second = cache.remember(key, async () => 'second');
+        const settled = Promise.allSettled([first, second]);
+
+        try {
+          await awaitSignal(
+            Promise.all([firstGate.entered.promise, secondGate.entered.promise]).then(() => undefined),
+            'both failing reads',
+          );
+          await cache.del(key);
+          firstGate.release.resolve();
+          await expect(first).resolves.toBe('first');
+          // This pending read must retain del's marker after the first loader settles.
+          secondGate.release.resolve();
+          await expect(second).resolves.toBe('second');
+          await expect(backing.get(key)).resolves.toBeUndefined();
+          for (const field of ['inflight', 'pendingLoads', 'pendingInvalidations']) {
+            expect(Reflect.get(cache, field)).toEqual(new Map());
+          }
+          expect(Reflect.get(cache, 'invalidatedInflight')).toEqual(new Set());
+          await expect(cache.remember(key, async () => 'fresh')).resolves.toBe('fresh');
+          await expect(backing.get(key)).resolves.toBe('fresh');
+          await cache.reset();
+        } finally {
+          firstGate.release.resolve();
+          secondGate.release.resolve();
+          await settled;
+        }
+      }
+    } finally {
+      await cache.close();
+    }
+  });
+
+  it.each([false, true])('remember bypass coalesces mixed reads and shares only write errors (write fails=%s)', async (writeFails) => {
+    const entered = createDeferred<void>();
+    const release = createDeferred<void>();
+    const readError = new Error('private read');
+    const writeError = new Error('private write');
+    const observations: Array<{ operation: string; outcome: string; durationMs: number }> = [];
+    let reads = 0;
+    const store: CacheStore = {
+      get() {
+        reads += 1;
+        return reads === 1 ? Promise.reject(readError) : Promise.resolve(undefined);
+      },
+      async set() {
+        entered.resolve();
+        await release.promise;
+        if (writeFails) throw writeError;
+      },
+      async del() {},
+      async reset() {},
+    };
+    const cache = new CacheService(store, {
+      ...cacheOptions, rememberCacheErrors: 'bypass',
+      observer: { onCacheOperation: (event) => { observations.push(event); } },
+    });
+    const loader = vi.fn(async () => 'private value');
+    const first = cache.remember('private key', loader);
+    const firstSettled = Promise.allSettled([first]);
+    const second = cache.remember('private key', loader);
+    const secondSettled = Promise.allSettled([second]);
+
+    try {
+      await awaitSignal(entered.promise, 'shared store write');
+      release.resolve();
+
+      expect(await firstSettled).toEqual([{ status: 'fulfilled', value: 'private value' }]);
+      expect(await secondSettled).toEqual([{ status: 'fulfilled', value: 'private value' }]);
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(observations).toEqual([
+        { operation: 'remember', outcome: 'error', durationMs: expect.any(Number) },
+        { operation: 'remember', outcome: writeFails ? 'error' : 'miss', durationMs: expect.any(Number) },
+      ]);
+    } finally {
+      release.resolve();
+      await Promise.all([firstSettled, secondSettled]);
+      await cache.close();
+    }
+  });
+
+  it.each(['del', 'reset', 'close', 'cleanup failure'] as const)(
+    'remember bypass preserves invalidation after a mutating rejected write during %s',
+    async (boundary) => {
+      const backing = new MemoryStore();
+      const entered = createDeferred<void>();
+      const release = createDeferred<void>();
+      const writeError = new Error('write failed after mutation');
+      const cleanupError = new Error('cleanup failed');
+      const events: string[] = [];
+      let deletes = 0;
+      const store: CacheStore = {
+        get: (key) => backing.get(key),
+        async set(key, value, ttl) {
+          if (value === 'stale') {
+            entered.resolve();
+            await release.promise;
+            await backing.set(key, value, ttl);
+            events.push('write failed');
+            throw writeError;
+          }
+          events.push('fresh write');
+          await backing.set(key, value, ttl);
+        },
+        async del(key) {
+          deletes += 1;
+          if (boundary === 'cleanup failure' && deletes === 2) throw cleanupError;
+          await backing.del(key);
+        },
+        async reset() { events.push('reset'); await backing.reset(); },
+        async close() { events.push('close'); },
+      };
+      const cache = new CacheService(store, { ...cacheOptions, rememberCacheErrors: 'bypass' });
+      const pending = cache.remember('key', async () => 'stale');
+      const settled = Promise.allSettled([pending]);
+      const lifecycle: Promise<unknown>[] = [];
+
+      try {
+        await awaitSignal(entered.promise, 'the stale store write');
+        await cache.del('key');
+        if (boundary === 'reset') {
+          lifecycle.push(cache.reset(), cache.set('key', 'fresh'));
+        } else if (boundary === 'close') {
+          const close = cache.close();
+          expect(cache.close()).toBe(close);
+          lifecycle.push(close);
+        }
+        release.resolve();
+        await Promise.all(lifecycle);
+
+        expect(await settled).toEqual([boundary === 'cleanup failure'
+          ? { status: 'rejected', reason: cleanupError }
+          : { status: 'fulfilled', value: 'stale' }]);
+        if (boundary === 'del') {
+          await expect(backing.get('key')).resolves.toBeUndefined();
+          expect(deletes).toBe(2);
+        } else if (boundary === 'reset') {
+          await expect(backing.get('key')).resolves.toBe('fresh');
+          expect(events).toEqual(['write failed', 'reset', 'fresh write']);
+          expect(deletes).toBe(1);
+        } else if (boundary === 'close') {
+          expect(events).toEqual(['write failed', 'close']);
+          expect(deletes).toBe(1);
+        }
+      } finally {
+        release.resolve();
+        await Promise.allSettled([settled, ...lifecycle]);
+        await cache.close();
+      }
+    },
+  );
+
+  it.each(['del', 'reset', 'close'] as const)('remember bypass suppresses late writes after pending read %s', async (boundary) => {
+    const entered = createDeferred<void>();
+    const release = createDeferred<void>();
+    const loaderEntered = createDeferred<void>();
+    const loaderRelease = createDeferred<void>();
+    const events: string[] = [];
+    const store: CacheStore = {
+      async get() {
+        entered.resolve();
+        await release.promise;
+        events.push('read failed');
+        throw new Error('read failure');
+      },
+      set: vi.fn(async () => undefined),
+      async del() {},
+      async reset() { events.push('reset'); },
+      async close() { events.push('close'); },
+    };
+    const cache = new CacheService(store, { ...cacheOptions, rememberCacheErrors: 'bypass' });
+    const pending = cache.remember('key', async () => {
+      loaderEntered.resolve();
+      await loaderRelease.promise;
+      return 'loaded';
+    });
+    const settled = Promise.allSettled([pending]);
+    let boundaryDone: Promise<void> | undefined;
+
+    try {
+      await awaitSignal(entered.promise, 'pending store read');
+      boundaryDone = boundary === 'del' ? cache.del('key') : cache[boundary]();
+      release.resolve();
+      await boundaryDone;
+      await awaitSignal(loaderEntered.promise, 'origin loader');
+      // Close/reset drain the store read, not this still-pending origin loader.
+      loaderRelease.resolve();
+
+      expect(await settled).toEqual([{ status: 'fulfilled', value: 'loaded' }]);
+      expect(store.set).not.toHaveBeenCalled();
+      expect(events).toEqual(boundary === 'del' ? ['read failed'] : ['read failed', boundary]);
+    } finally {
+      release.resolve();
+      loaderRelease.resolve();
+      await Promise.allSettled([settled, boundaryDone]);
+      await cache.close();
+    }
+  });
+
   it.each(['loader', 'store.set'] as const)(
     'remember preserves a post-reset set when old work is paused in %s',
     async (pauseAt) => {
@@ -306,7 +532,7 @@ describe('CacheService store operation concurrency', () => {
     }
   });
 
-  it('remember keeps newer pending invalidation when an old reset generation settles', async () => {
+  it.each(['throw', 'bypass'] as const)('remember keeps newer pending invalidation when an old %s generation settles', async (rememberCacheErrors) => {
     const backing = new MemoryStore();
     const oldEntered = createDeferred<void>();
     const oldRelease = createDeferred<void>();
@@ -319,6 +545,7 @@ describe('CacheService store operation concurrency', () => {
         if (reads === 2) {
           newEntered.resolve();
           await newRelease.promise;
+          if (rememberCacheErrors === 'bypass') throw new Error('read failed');
           return undefined;
         }
         return backing.get<T>(key);
@@ -327,7 +554,7 @@ describe('CacheService store operation concurrency', () => {
       reset: () => backing.reset(),
       set: (key, value, ttl) => backing.set(key, value, ttl),
     };
-    const cache = new CacheService(store, cacheOptions);
+    const cache = new CacheService(store, { ...cacheOptions, rememberCacheErrors });
     const old = cache.remember('key', async () => {
       oldEntered.resolve();
       await oldRelease.promise;
