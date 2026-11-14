@@ -24,11 +24,21 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
   }
 
   if (Array.isArray(value)) {
-    const cloned: unknown[] = [];
+    const cloned: unknown[] = new Array(value.length);
     seen.set(value, cloned);
-    for (let index = 0; index < value.length; index += 1) {
-      cloned.push(cloneFallbackValue(value[index], seen));
+
+    for (const key of Reflect.ownKeys(value)) {
+      if (key === 'length') {
+        continue;
+      }
+
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+      if (descriptor) {
+        Object.defineProperty(cloned, key, cloneIntoDescriptorValue(descriptor, seen));
+      }
     }
+
     return cloned as T;
   }
 

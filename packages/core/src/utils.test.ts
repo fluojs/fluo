@@ -51,6 +51,26 @@ describe('cloneWithFallback', () => {
     expect(source[0]).toBe(0)
   })
 
+  it('preserves array own properties and holes', () => {
+    const marker = Symbol('marker')
+    const items: unknown[] = new Array(3)
+    items[0] = 1
+    items[2] = { nested: true }
+    const source = Object.assign(items, { meta: { id: 1 }, [marker]: 'tag' })
+    Object.defineProperty(source, 'hidden', { value: { secret: true }, enumerable: false })
+
+    const cloned = cloneWithFallback(source)
+
+    expect(Reflect.ownKeys(cloned)).toEqual(Reflect.ownKeys(source))
+    expect(1 in cloned).toBe(false)
+    expect(cloned).toHaveLength(3)
+    expect(cloned.meta).toEqual({ id: 1 })
+    expect(cloned.meta).not.toBe(source.meta)
+    expect(cloned[marker]).toBe('tag')
+    expect(Object.getOwnPropertyDescriptor(cloned, 'hidden')).toMatchObject({ value: { secret: true }, enumerable: false })
+    expect(cloned[2]).not.toBe(source[2])
+  })
+
   it('preserves the issue #4014 event prototype regardless of function siblings', () => {
     class Ev {
       id = 1
