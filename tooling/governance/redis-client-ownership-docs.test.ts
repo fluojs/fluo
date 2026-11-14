@@ -97,7 +97,46 @@ function compileExamples(sources: ReadonlyMap<string, string>) {
   return createProgram([...sources.keys()], compilerOptions, host);
 }
 
-function evaluateNamedClients(source: string): Record<string, unknown> {
+function assertDocumentedExamples(documents: ReadonlyMap<string, string>): void {
+  const sources = new Map<string, string>();
+  for (const [relativePath, markdown] of documents) {
+    const examples = typescriptExamples(markdown).filter((source) =>
+      source.includes('RedisPubSubMicroserviceTransport') || source.includes('class AnalyticsStore'),
+    );
+    expect(examples, relativePath).toHaveLength(2);
+    examples.forEach((source, index) => {
+      // Resolve ioredis from the package's installed peer, without replacing its declarations.
+      const examplePath = join(repoRoot, 'packages/redis', `${relativePath.replaceAll('/', '-')}-${index}.ts`);
+      sources.set(examplePath, source);
+    });
+  }
+
+  const program = compileExamples(sources);
+  const diagnostics = getPreEmitDiagnostics(program).map((diagnostic) => {
+    const message = flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+    if (diagnostic.file === undefined || diagnostic.start === undefined) {
+      return `TS${diagnostic.code}: ${message}`;
+    }
+    const position = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
+    return `${diagnostic.file.fileName}:${position.line + 1}:${position.character + 1} TS${diagnostic.code}: ${message}`;
+  });
+
+  expect(diagnostics, diagnostics.join('\n')).toEqual([]);
+  expect(program.getSourceFiles().some((file) => file.fileName.endsWith('/ioredis/built/index.d.ts'))).toBe(true);
+  const checker = program.getTypeChecker();
+  for (const [sourcePath, exported] of [
+    ['packages/microservices/src/index.ts', false],
+    ['packages/microservices/src/transports/redis-transport.ts', true],
+  ] as const) {
+    const source = program.getSourceFile(join(repoRoot, sourcePath));
+    const symbol = source === undefined ? undefined : checker.getSymbolAtLocation(source);
+    expect(symbol, sourcePath).toBeDefined();
+    const exports = symbol === undefined ? [] : checker.getExportsOfModule(symbol).map((entry) => entry.name);
+    expect(exports.includes('RedisPubSubMicroserviceTransport'), sourcePath).toBe(exported);
+  }
+}
+
+function evaluateNamedClients(source: string): void {
   const compiled = transpileModule(source, {
     compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 },
     reportDiagnostics: true,
@@ -120,7 +159,14 @@ function evaluateNamedClients(source: string): Record<string, unknown> {
     },
   }, { timeout: 1_000 });
 
-  return exports;
+  const { AppModule, AnalyticsStore } = exports;
+  if (typeof AppModule !== 'function' || typeof AnalyticsStore !== 'function') {
+    throw new Error('Missing Named Clients classes');
+  }
+  expect(
+    core.getModuleMetadata(AppModule)?.providers,
+    'must register AnalyticsStore in AppModule.providers',
+  ).toEqual([AnalyticsStore]);
 }
 
 function getOwningModuleBlock(content: string, factoryName: string): string {
@@ -145,42 +191,21 @@ function getOwningModuleBlock(content: string, factoryName: string): string {
 
 describe('Redis client ownership documentation', () => {
   it('typechecks all documented Pub/Sub and Named Clients fences against real public exports', () => {
-    const sources = new Map<string, string>();
-    for (const relativePath of documentPairs.flat()) {
-      const examples = typescriptExamples(read(relativePath)).filter((source) =>
-        source.includes('RedisPubSubMicroserviceTransport') || source.includes('class AnalyticsStore'),
-      );
-      expect(examples, relativePath).toHaveLength(2);
-      examples.forEach((source, index) => {
-        // Resolve ioredis from the package's installed peer, without replacing its declarations.
-        const examplePath = join(repoRoot, 'packages/redis', `${relativePath.replaceAll('/', '-')}-${index}.ts`);
-        sources.set(examplePath, source);
-      });
-    }
+    const documents = new Map(documentPairs.flat().map((relativePath) => [relativePath, read(relativePath)]));
 
-    const program = compileExamples(sources);
-    const diagnostics = getPreEmitDiagnostics(program).map((diagnostic) => {
-      const message = flattenDiagnosticMessageText(diagnostic.messageText, '\n');
-      if (diagnostic.file === undefined || diagnostic.start === undefined) {
-        return `TS${diagnostic.code}: ${message}`;
-      }
-      const position = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
-      return `${diagnostic.file.fileName}:${position.line + 1}:${position.character + 1} TS${diagnostic.code}: ${message}`;
-    });
+    assertDocumentedExamples(documents);
+  }, 30_000);
 
-    expect(diagnostics).toEqual([]);
-    expect(program.getSourceFiles().some((file) => file.fileName.endsWith('/ioredis/built/index.d.ts'))).toBe(true);
-    const checker = program.getTypeChecker();
-    for (const [sourcePath, exported] of [
-      ['packages/microservices/src/index.ts', false],
-      ['packages/microservices/src/transports/redis-transport.ts', true],
-    ] as const) {
-      const source = program.getSourceFile(join(repoRoot, sourcePath));
-      const symbol = source === undefined ? undefined : checker.getSymbolAtLocation(source);
-      expect(symbol, sourcePath).toBeDefined();
-      const exports = symbol === undefined ? [] : checker.getExportsOfModule(symbol).map((entry) => entry.name);
-      expect(exports.includes('RedisPubSubMicroserviceTransport'), sourcePath).toBe(exported);
-    }
+  it.each(documentPairs.flat())('%s rejects a Pub/Sub import restored to the package root', (relativePath) => {
+    const documents = new Map(documentPairs.flat().map((path) => [path, read(path)]));
+    documents.set(relativePath, read(relativePath).replaceAll(
+      "from '@fluojs/microservices/redis'",
+      "from '@fluojs/microservices'",
+    ));
+
+    expect(() => assertDocumentedExamples(documents)).toThrow(
+      'TS2305: Module \'"@fluojs/microservices"\' has no exported member \'RedisPubSubMicroserviceTransport\'.',
+    );
   }, 30_000);
 
   it('keeps the manifest root, Pub/Sub and Streams entrypoints on their declared public boundaries', () => {
@@ -204,12 +229,17 @@ describe('Redis client ownership documentation', () => {
       throw new Error(`Missing Named Clients example in ${relativePath}`);
     }
 
-    const { AppModule, AnalyticsStore } = evaluateNamedClients(example);
+    evaluateNamedClients(example);
+  });
 
-    if (typeof AppModule !== 'function' || typeof AnalyticsStore !== 'function') {
-      throw new Error(`Missing Named Clients classes in ${relativePath}`);
+  it.each(documentPairs[0])('%s rejects Named Clients without AnalyticsStore registration', (relativePath) => {
+    const markdown = read(relativePath).replace('providers: [AnalyticsStore]', 'providers: []');
+    const example = typescriptExamples(markdown).find((source) => source.includes('class AnalyticsStore'));
+    if (example === undefined) {
+      throw new Error(`Missing Named Clients example in ${relativePath}`);
     }
-    expect(core.getModuleMetadata(AppModule)?.providers).toEqual([AnalyticsStore]);
+
+    expect(() => evaluateNamedClients(example)).toThrow('must register AnalyticsStore in AppModule.providers');
   });
 
   it('rejects a Named Clients example that registers AnalyticsStore before declaring it', () => {
