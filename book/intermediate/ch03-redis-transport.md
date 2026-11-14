@@ -33,7 +33,8 @@ To use Redis Pub/Sub, provide publisher and subscriber clients to `RedisPubSubMi
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices/redis';
 import Redis from 'ioredis';
 
 const publisher = new Redis({ host: 'localhost', port: 6379 });
@@ -82,7 +83,7 @@ The ownership boundary depends on how you create the subscriber. A `publisher.du
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { getRedisClientToken, RedisModule } from '@fluojs/redis';
-import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices/redis';
 import type Redis from 'ioredis';
 
 const COMMAND_REDIS = getRedisClientToken();
