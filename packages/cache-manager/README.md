@@ -305,6 +305,8 @@ CacheModule.forRoot({
 
 For fully custom keying, pass a function as `httpKeyStrategy` or use `@CacheKey(...)` with either a literal key or a key factory. An empty literal `@CacheKey('')` remains an explicit key; only absent decorator metadata selects the configured `httpKeyStrategy`. These function-based hooks are the supported extension path for request-aware keys; do not subclass `CacheInterceptor` just to replace cache-key generation.
 
+Eviction uses the same key domain: `@CacheEvict('')`, `@CacheEvict([''])`, and synchronous or asynchronous resolvers returning `''` or an array containing `''` target that exact empty key. Mixed arrays preserve both empty and non-empty keys, duplicate targets are deleted once, and an empty array deletes nothing. These targets follow the same [response commit timing](#deferred-eviction-timing) as other eviction keys.
+
 ```typescript
 CacheModule.forRoot({
   store: 'memory',
@@ -521,10 +523,15 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `CacheUpdateError`: Error with the stable `CacheUpdateErrorCode` categories described in [Atomic Updates](#atomic-updates); related reducer, capability, and Redis structural types are exported from the same package root.
 
 ### Decorators
+
+`@CacheKey`, `@CacheTTL`, and `@CacheEvict` accept method placement only. Applying them to a class, field, getter, setter, or accessor throws a synchronous error naming the decorator and the method-only requirement before any metadata is registered. Controller-level defaults are not supported; place the decorators on individual HTTP handler methods.
+
 - `@CacheTTL(seconds)`: Sets the TTL for a specific handler.
 - `@CacheKey(key)`: Sets a custom cache key or key factory for a specific handler.
 - `@CacheEvict(key)`: Stores HTTP route metadata that `CacheInterceptor` consumes after a successful non-GET controller handler completes; it does not intercept arbitrary service calls.
 - `cacheRouteMetadataKey`, `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, and `getCacheEvictMetadata(...)`: Low-level metadata helpers exported for first-party interceptor integration, diagnostics, and advanced tooling that needs to inspect cache decorator metadata without reimplementing the metadata keys.
+
+`getCacheEvictMetadata(...)` returns `undefined` for absent metadata and preserves `''` as a valid target. Array inputs are copied when registered and when read, including their empty string elements.
 
 ### Interceptors
 - `CacheInterceptor`: Handles automatic GET response caching and consumes `@CacheEvict(...)` metadata for non-GET HTTP handlers.
