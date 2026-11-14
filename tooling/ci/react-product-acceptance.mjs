@@ -805,7 +805,8 @@ function domainEvidence(root, domain, head, tree) {
   for (const command of plan) {
     const observed = commands.get(command.id);
     requireValue(observed && observed.signal === null
-      && observed.command === [command.id === 'packed-product' ? domain.runtime.executable : command.executable,
+      && observed.command === [['packed-product', 'prepare-react-typegen'].includes(command.id)
+        ? domain.runtime.executable : command.executable,
         ...command.args].join(' ') && isDeepStrictEqual(observed.env, command.env)
       && resolve(root, observed.log.path) === resolve(root, `${command.id}.log`)
       && isDeepStrictEqual(observed, checks.get(command.id)),

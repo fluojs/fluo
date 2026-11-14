@@ -789,6 +789,56 @@ function domainFixture(root, domain) {
     status: 'domain-evidence-complete', domain, commands, checks, artifacts };
 }
 
+function producerRuntimeFixture(t) {
+  const executable = process.execPath;
+  try {
+    Object.defineProperty(process, 'execPath', { value: '/opt/fluo-fixture/node/bin/node' });
+    return externalFixture(t);
+  } finally {
+    Object.defineProperty(process, 'execPath', { value: executable });
+  }
+}
+
+test('final CI runtime: different producer Node path -> accepts authenticated preparation on the consumer', (t) => {
+  const value = producerRuntimeFixture(t);
+  for (const domain of value.domains) {
+    assert.notEqual(domain.runtime.executable, process.execPath);
+    assert.equal(domain.commands.find(({ id }) => id === 'prepare-react-typegen').command,
+      `${domain.runtime.executable} tooling/ci/prepare-react-typegen.mjs`);
+  }
+
+  assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+});
+
+for (const domain of ['tooling', 'starters']) {
+  for (const defect of ['consumer-node', 'other-node', 'args', 'env', 'log', 'other-command']) {
+    test(`final CI runtime: ${domain} ${defect} -> rejects matching but unauthenticated command and check`, (t) => {
+      const value = producerRuntimeFixture(t);
+      const receipt = value.domains.find((entry) => entry.domain === domain);
+      const id = defect === 'other-command'
+        ? domain === 'tooling' ? 'source-http' : 'packed-cold-dev' : 'prepare-react-typegen';
+      const command = receipt.commands.find((entry) => entry.id === id);
+      if (defect === 'consumer-node' || defect === 'other-node') {
+        const executable = defect === 'consumer-node' ? process.execPath : '/unrecorded/node';
+        command.command = `${executable} tooling/ci/prepare-react-typegen.mjs`;
+      }
+      if (defect === 'args') command.command += ' --check';
+      if (defect === 'env') command.env = { UNRECORDED_PREPARATION: '1' };
+      if (defect === 'log') command.log = structuredClone(receipt.commands.find((entry) => entry.id !== id).log);
+      if (defect === 'other-command') {
+        command.command = command.command.replace(/^pnpm/u, receipt.runtime.executable);
+      }
+      const check = receipt.checks.findIndex((entry) => entry.id === id);
+      receipt.checks[check] = structuredClone(command);
+      value.receipt.external.ciDomains[domain === 'tooling' ? 0 : 1] =
+        value.save(`${domain}/${domain}-receipt.json`, receipt);
+
+      assert.throws(() => externalEvidence(value.root, value.receipt, head),
+        new RegExp(`CI domain canonical command/check mismatch: ${id}`, 'u'));
+    });
+  }
+}
+
 for (const domain of ['tooling', 'starters']) {
   for (const defect of ['fixture-only', 'missing-command', 'missing-check', 'wrong-head', 'failed-exit',
     'missing-log', 'wrong-log-digest', 'missing-report', 'removed-case', 'missing-artifact', 'wrong-input',
