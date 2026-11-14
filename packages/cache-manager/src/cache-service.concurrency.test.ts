@@ -209,9 +209,11 @@ describe('CacheService store operation concurrency', () => {
         release.resolve();
         await Promise.all(lifecycle);
 
-        expect(await settled).toEqual([boundary === 'cleanup failure'
-          ? { status: 'rejected', reason: cleanupError }
-          : { status: 'fulfilled', value: 'stale' }]);
+        if (boundary === 'cleanup failure') {
+          await expect(pending).rejects.toBe(cleanupError);
+        } else {
+          await expect(pending).resolves.toBe('stale');
+        }
         if (boundary === 'del') {
           await expect(backing.get('key')).resolves.toBeUndefined();
           expect(deletes).toBe(2);

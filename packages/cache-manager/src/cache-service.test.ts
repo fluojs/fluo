@@ -202,9 +202,12 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
         cache.remember('key', loader), cache.remember('key', loader),
       ]);
 
-      expect(results).toEqual([
-        { status: 'rejected', reason: failure }, { status: 'rejected', reason: failure },
-      ]);
+      for (const result of results) {
+        expect(result.status).toBe('rejected');
+        if (result.status === 'rejected') {
+          expect(result.reason).toBe(failure);
+        }
+      }
       expect(loader).toHaveBeenCalledTimes(1);
       expect(set).not.toHaveBeenCalled();
       await expect(cache.remember('key', async () => 'recovered')).resolves.toBe('recovered');
@@ -245,9 +248,12 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
       cache.remember('key', loader), cache.remember('key', loader),
     ]);
 
-    expect(results).toEqual([
-      { status: 'rejected', reason: failure }, { status: 'rejected', reason: failure },
-    ]);
+    for (const result of results) {
+      expect(result.status).toBe('rejected');
+      if (result.status === 'rejected') {
+        expect(result.reason).toBe(failure);
+      }
+    }
     expect(loader).toHaveBeenCalledTimes(1);
     expect(set).not.toHaveBeenCalled();
     await expect(cache.remember('key', async () => 'recovered')).resolves.toBe('recovered');
