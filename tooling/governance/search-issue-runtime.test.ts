@@ -23,39 +23,8 @@ const setup = () => {
   const bin = resolve(directory, 'bin');
   mkdirSync(bin);
   const stub = resolve(bin, 'gh');
-  writeFileSync(stub, `#!${process.execPath}
-const fs = require('node:fs');
-const path = require('node:path');
-const root = process.env.SEARCH_STUB_ROOT;
-const args = process.argv.slice(2);
-fs.appendFileSync(path.join(root, 'calls.jsonl'), JSON.stringify(args) + '\\n');
-const config = JSON.parse(fs.readFileSync(path.join(root, 'gh.json'), 'utf8'));
-if (args[0] === 'label') {
-  console.log(JSON.stringify(config.labels.map(name => ({name}))));
-} else if (args[0] === 'api') {
-  if (config.lookup_failure) process.exit(1);
-  const file = path.join(root, 'remote.json');
-  const remote = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
-  console.log(JSON.stringify([remote.map(issue => ({...issue, html_url: issue.url}))]));
-} else if (args[1] === 'list') {
-  if (config.lookup_failure) process.exit(1);
-  if (config.search_stale) { console.log('[]'); process.exit(0); }
-  const file = path.join(root, 'remote.json');
-  console.log(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '[]');
-} else if (args[1] === 'create') {
-  const body = args[args.indexOf('--body') + 1];
-  fs.writeFileSync(path.join(root, 'remote.json'), JSON.stringify([
-    {number: 8001, url: 'https://github.com/fluojs/fluo/issues/8001', body}
-  ]));
-  if (config.interrupt === 'kill') {
-    process.kill(process.ppid, 'SIGKILL');
-    process.exit(1);
-  }
-  if (config.interrupt === 'malformed') { console.log('invalid-receipt'); process.exit(0); }
-  if (config.interrupt) process.exit(1);
-  console.log('https://github.com/fluojs/fluo/issues/8001');
-} else process.exit(2);
-`);
+  writeFileSync(stub, `#!${process.execPath}\n${readFileSync(
+    resolve(scripts, 'fixtures/runtime-gh.cjs'), 'utf8')}`);
   chmodSync(stub, 0o755);
   const domain = json(resolve(root, '.agents/skills/search-issue/references/domain.json'));
   put(resolve(directory, 'gh.json'), { labels: domain.labels });
@@ -102,6 +71,41 @@ afterEach(() => {
 });
 
 describe('#4095 search runtime', () => {
+  it.each(['recover', 'create', 'failed', 'truncated', 'malformed', 'ambiguous'])(
+    'registration: large paginated history %s preserves safe registration', async (mode) => {
+      const run = setup();
+      run.ready();
+      const { registrationMarker } = await import(resolve(scripts, 'ledger-contract.mjs'));
+      const ledger = run.ledger();
+      const marker = registrationMarker(ledger, ledger.drafts[0]);
+      const remote = Array.from({ length: 30 }, (_, index) => ({
+        number: 9000 + index, url: `https://github.com/fluojs/fluo/issues/${9000 + index}`,
+        body: `${'x'.repeat(64000)}\n${mode !== 'create' &&
+          (index === 29 || (index === 0 && mode !== 'recover')) ? marker : ''}`,
+      }));
+      if (mode === 'malformed') remote[15].number = -1;
+      expect(Buffer.byteLength(JSON.stringify(remote))).toBeGreaterThan(1024 * 1024);
+      put(resolve(run.directory, 'remote.json'), remote);
+      const config = resolve(run.directory, 'gh.json');
+      put(config, { ...json(config), failed_page: mode === 'failed' ? 2 : null,
+        truncated_page: mode === 'truncated' ? 2 : null });
+
+      const result = run.cli('register');
+
+      const creates = run.calls().filter((args) => args[1] === 'create');
+      if (mode === 'recover' || mode === 'create') {
+        expect(result.status, result.stderr).toBe(0);
+        const number = mode === 'recover' ? 9029 : 8001;
+        expect(run.ledger().registration_results[0]).toMatchObject({
+          issue_number: number, issue_url: `https://github.com/fluojs/fluo/issues/${number}`,
+        });
+        expect(creates).toHaveLength(mode === 'recover' ? 0 : 1);
+      } else {
+        expect(result.status).not.toBe(0);
+        expect(run.ledger().status).toBe('blocked');
+        expect(creates).toEqual([]);
+      }
+    });
   it.each(['fake_issue_numbers', 'reviewer_results'])('intake: synthetic %s creates no runtime state', (key) => {
     const run = setup();
     put(run.input, { ...json(run.input), [key]: fixture[key] });

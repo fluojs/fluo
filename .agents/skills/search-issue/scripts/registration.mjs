@@ -2,8 +2,8 @@ import { spawnSync } from 'node:child_process';
 
 import { assertLedger, assertTriage, registrationMarker } from './ledger-contract.mjs';
 
-const gh = (args) => {
-  const result = spawnSync('gh', args, { encoding: 'utf8', timeout: 30000 });
+const gh = (args, options = {}) => {
+  const result = spawnSync('gh', args, { encoding: 'utf8', timeout: 30000, ...options });
   if (result.error || result.status !== 0) {
     throw new TypeError(`gh ${args.slice(0, 2).join(' ')} failed: ${result.error?.message ?? result.stderr}`);
   }
@@ -19,20 +19,58 @@ export const githubTransport = ({ repository, intake }) => ({
   },
   lookup: (marker) => {
     // Search indexing can lag behind a successful create. Read every REST page
-    // instead, including closed issues, before concluding that no marker exists.
-    const pages = JSON.parse(gh(['api', '--paginate', '--slurp',
-      `repos/${repository}/issues?state=all&per_page=100`]));
-    if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
-      throw new TypeError('Invalid or truncated issue lookup.');
+    // including closed issues, retaining only matches. Ten issues per response
+    // bound memory to 8 MiB; each request has its own two-minute deadline, rather
+    // than imposing a deadline on downloading the repository's entire history.
+    const matches = [];
+    let page = 1;
+    while (true) {
+      const response = gh(['api', '--include',
+        `repos/${repository}/issues?state=all&sort=created&direction=asc&per_page=10&page=${page}`],
+      { maxBuffer: 8 * 1024 * 1024, timeout: 120000 });
+      const boundary = response.search(/\r?\n\r?\n/u);
+      if (boundary === -1) throw new TypeError('Missing issue lookup response headers.');
+      const headers = response.slice(0, boundary).split(/\r?\n/u);
+      if (!/^HTTP\/[\d.]+\s+200(?:\s|$)/u.test(headers[0])) {
+        throw new TypeError('Unsuccessful issue lookup response.');
+      }
+      const candidates = JSON.parse(response.slice(boundary).trim());
+      if (!Array.isArray(candidates) || candidates.length > 10 ||
+          candidates.some((candidate) => !candidate ||
+            !Number.isSafeInteger(candidate.number) || candidate.number <= 0 ||
+            typeof candidate.html_url !== 'string' ||
+            (candidate.body !== null && typeof candidate.body !== 'string'))) {
+        throw new TypeError('Malformed issue lookup page.');
+      }
+      for (const candidate of candidates) {
+        if (candidate.body?.split('\n').includes(marker)) {
+          matches.push({ number: candidate.number, url: candidate.html_url });
+          if (matches.length > 1) throw new TypeError('Ambiguous registration lookup.');
+        }
+      }
+      const linkHeaders = headers.filter((header) => /^link:/iu.test(header));
+      if (linkHeaders.length > 1) throw new TypeError('Ambiguous issue pagination headers.');
+      let nextPage = null;
+      if (linkHeaders.length) {
+        for (const link of linkHeaders[0].slice(5).trim().split(/,\s*/u)) {
+          const relation = /^<([^>]+)>;\s*rel="(next|prev|first|last)"$/u.exec(link);
+          if (relation === null) throw new TypeError('Malformed issue pagination link.');
+          const target = new URL(relation[1]);
+          if (target.origin !== 'https://api.github.com') throw new TypeError('Invalid issue pagination origin.');
+          if (relation[2] === 'next') {
+            const number = Number(target.searchParams.get('page'));
+            if (nextPage !== null || !Number.isSafeInteger(number) || number !== page + 1 ||
+                target.searchParams.get('per_page') !== '10') {
+              throw new TypeError('Invalid next issue page.');
+            }
+            nextPage = number;
+          }
+        }
+      }
+      if (nextPage === null) return matches;
+      if (candidates.length === 0) throw new TypeError('Truncated issue pagination.');
+      page = nextPage;
     }
-    const candidates = pages.flat();
-    if (candidates.some((candidate) => !candidate ||
-        !Number.isSafeInteger(candidate.number) || typeof candidate.html_url !== 'string' ||
-        (candidate.body !== null && typeof candidate.body !== 'string'))) {
-      throw new TypeError('Malformed issue lookup.');
-    }
-    return candidates.filter((candidate) => candidate.body?.split('\n').includes(marker))
-      .map((candidate) => ({ number: candidate.number, url: candidate.html_url }));
   },
   create: ({ draft, decision, marker }) => {
     const body = [
