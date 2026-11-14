@@ -22,9 +22,12 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Async Configuration](#async-configuration)
   - [Manual Module Composition](#manual-module-composition)
   - [NestJS Cache Migration](#nestjs-cache-migration)
+  - [Memory Store Operational Limits](#memory-store-operational-limits)
+  - [Deferred eviction timing](#deferred-eviction-timing)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
+- [Compatible service copies](#compatible-service-copies)
 
 ## Installation
 
@@ -60,6 +63,8 @@ This controller/module fragment extends an existing HTTP app. Follow [Applicatio
 Register the `CacheModule` and use the `CacheInterceptor` on your controllers.
 
 The built-in memory path is intentionally bounded by default: when you omit `ttl`, fluo applies a 300-second default TTL and keeps at most 1,000 live memory-store entries before evicting the oldest keys.
+
+The `store` option accepts `'memory'`, `'redis'`, or a custom `CacheStore` object. Omitting `store` or setting it to `undefined` keeps the memory default. `CacheModule.forRoot(...)` validates the store synchronously during registration: unsupported strings such as `'mongo'` throw a configuration error naming the built-in choices instead of silently falling back to memory.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -293,6 +298,8 @@ Built-in HTTP cache key strategies derive their path segment from the concrete r
 
 By default, anonymous requests use the concrete request path plus its canonical query string. Authenticated requests append a principal scope when one is available; use `principalScopeResolver` to customize that suffix. Query-aware keys canonicalize both parameter names and repeated values, so `/products?tag=a&tag=b` and `/products?tag=b&tag=a` share one cache entry. Set `httpKeyStrategy: 'route'` only when query values intentionally do not affect the response.
 
+The built-in `route+query` strategy sorts decoded parameter names and each parameter's repeated string values in deterministic UTF-16 code-unit order, independently of process locale or collation settings, before URI-encoding them. Undefined entries are omitted, values are converted to strings, and repeated values retain their multiplicity without mutating input arrays. Case and Unicode normalization forms remain distinct: `é` and `e\u0301` are ordered separately, not normalized or deduplicated.
+
 ```typescript
 CacheModule.forRoot({
   store: 'memory',
@@ -302,6 +309,8 @@ CacheModule.forRoot({
 ```
 
 For fully custom keying, pass a function as `httpKeyStrategy` or use `@CacheKey(...)` with either a literal key or a key factory. An empty literal `@CacheKey('')` remains an explicit key; only absent decorator metadata selects the configured `httpKeyStrategy`. These function-based hooks are the supported extension path for request-aware keys; do not subclass `CacheInterceptor` just to replace cache-key generation.
+
+Eviction uses the same key domain: `@CacheEvict('')`, `@CacheEvict([''])`, and synchronous or asynchronous resolvers returning `''` or an array containing `''` target that exact empty key. Mixed arrays preserve both empty and non-empty keys, duplicate targets are deleted once, and an empty array deletes nothing. These targets follow the same [response commit timing](#deferred-eviction-timing) as other eviction keys.
 
 ```typescript
 CacheModule.forRoot({
@@ -347,6 +356,8 @@ Avoid sharing a Redis cache prefix with non-cache data. `del(key)` removes the e
 When the application closes, `CacheService` stops new store reads/writes, waits for already-started store operations, and then forwards shutdown to a custom store `close()` hook. Existing stores that only expose `dispose()` remain compatible and are called when `close()` is absent. Concurrent and repeated `close()` or lifecycle-hook calls share that first teardown completion and failure, so every caller observes the same shutdown boundary while store teardown runs once. New resource-owning stores should implement `close()` for sockets, pools, timers, or other external resources.
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
+
+Validation checks that `get`, `set`, `del`, and `reset` are callable and names any missing or non-function methods in the configuration error. It does not call store operations and accepts both plain objects and class instances with prototype methods. Optional `close`, `dispose`, and `atomicUpdate` capabilities remain optional and are not validated at registration.
 
 ### Observing Cache Operations
 
@@ -427,6 +438,8 @@ CacheModule.forRootAsync({
 
 The async path supports the same store selection as `forRoot(...)`: `'memory'`, `'redis'` with a DI-resolved or directly supplied client, and any custom `CacheStore` instance.
 
+The same store validation runs when the factory result resolves, whether `useFactory` returns options directly or through a Promise. Invalid store configuration rejects option resolution/bootstrap before a cache service backed by that store is usable. The `forRootAsync(...)` registration call does not run the factory, so it cannot synchronously reject a store value that the factory has not yet returned.
+
 ### Manual Module Composition
 
 Use `CacheModule.forRoot(...)` for normal application setup, including custom `defineModule(...)` composition.
@@ -452,10 +465,14 @@ defineModule(ManualCacheModule, {
 | `ttl` when the installed underlying `cache-manager` generation uses milliseconds | `ttl` in seconds | Inspect the installed underlying `cache-manager` dependency/version. Divide by 1000 only when that generation defines TTLs in milliseconds. Omitting `ttl` applies `300` seconds on the memory path and `0` for the `redis` and custom-store paths. |
 | `ttl: 0` | `ttl: 0` | Means no expiry, not "do not cache". Negative or non-finite values are invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and write for that handler. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | Accepts one static number only. Move per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`. |
+| `@CacheTTL(...)` / `@CacheKey(...)` placement | Method-only `@CacheTTL(...)` / `@CacheKey(...)` | Both fluo decorators apply only to methods. For a controller-wide TTL, repeat `@CacheTTL(...)` on the relevant methods or configure module `ttl`. Module `ttl` is the default for that cache module; it does not add controller-level metadata support. |
 | implicit query-sensitive keys | `httpKeyStrategy` | Defaults to query-aware `'route+query'`. Select `'route'` only when query parameters do not affect the response; a function strategy or `@CacheKey(...)` remains available for explicit custom keys. |
 | `isGlobal: true` | `global: true` | Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules are module-local unless you opt in or import the module everywhere it is resolved. |
+| NestJS `stores` arrays / Keyv instances | No direct configuration equivalent; one `store` per `CacheModule` registration | Implement multi-tier or fallback caching inside an application-owned custom `CacheStore` that satisfies the existing contract. Do not pass a `stores` array or an unadapted Keyv instance directly. |
 | NestJS store adapters such as `cache-manager-redis-store` | `store: 'redis'` or a `CacheStore` object | NestJS adapters do not satisfy the `CacheStore` contract; use the built-in Redis path or wrap the adapter so callback/options completion becomes a Promise, `ttlSeconds` maps to the legacy TTL in seconds, and `reset()` clears only the cache namespace. Never forward `reset()` blindly to a whole-database `flushDb`. |
 | adapter-owned client teardown | `close()` / `dispose()` on the store | Application shutdown forwards teardown only to those optional hooks. A raw client passed through `redis.client` stays application-owned and must be closed from the application lifecycle. |
+| Cache code conversion through `fluo migrate` | Manual migration using this table | `fluo migrate` does not rewrite `@nestjs/cache-manager` code. Even when the CLI reports `No manual follow-ups detected`, migrate cache imports, configuration, and decorators manually using this table. |
+| Automatic caching on WebSocket subscribers / microservice handlers | Explicit standalone `CacheService` calls | Automatic `CacheInterceptor` and cache decorator behavior belongs to the HTTP pipeline: read-through caching for HTTP GET, and eviction through `@CacheEvict(...)` for non-GET. WebSocket subscribers and microservice handlers must call `CacheService` directly; those transports have no automatic cache interception. |
 
 ```typescript
 CacheModule.forRoot({
@@ -519,10 +536,15 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `CacheUpdateError`: Error with the stable `CacheUpdateErrorCode` categories described in [Atomic Updates](#atomic-updates); related reducer, capability, and Redis structural types are exported from the same package root.
 
 ### Decorators
+
+`@CacheKey`, `@CacheTTL`, and `@CacheEvict` accept method placement only. Applying them to a class, field, getter, setter, or accessor throws a synchronous error naming the decorator and the method-only requirement before any metadata is registered. Controller-level defaults are not supported; place the decorators on individual HTTP handler methods.
+
 - `@CacheTTL(seconds)`: Sets the TTL for a specific handler.
 - `@CacheKey(key)`: Sets a custom cache key or key factory for a specific handler.
 - `@CacheEvict(key)`: Stores HTTP route metadata that `CacheInterceptor` consumes after a successful non-GET controller handler completes; it does not intercept arbitrary service calls.
 - `cacheRouteMetadataKey`, `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, and `getCacheEvictMetadata(...)`: Low-level metadata helpers exported for first-party interceptor integration, diagnostics, and advanced tooling that needs to inspect cache decorator metadata without reimplementing the metadata keys.
+
+`getCacheEvictMetadata(...)` returns `undefined` for absent metadata and preserves `''` as a valid target. Array inputs are copied when registered and when read, including their empty string elements.
 
 ### Interceptors
 - `CacheInterceptor`: Handles automatic GET response caching and consumes `@CacheEvict(...)` metadata for non-GET HTTP handlers.

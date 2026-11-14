@@ -83,7 +83,9 @@ clearCookie(context.response, 'session', { path: '/' });
 
 ## Decorator metadata 사전 로드 순서
 
-fluo 내장 데코레이터는 runtime record를 framework-owned store에 저장하므로 import 시점의 전역 변경이 필요하지 않습니다. 반면 `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터와 `@fluojs/serialization` 데코레이터는 decorated class module이 평가되는 동안 `Symbol.metadata`가 필요합니다.
+<!-- fluo-contract: validation.metadata-preload -->
+
+fluo package import는 `Symbol.metadata`를 설치하지 않습니다. `@fluojs/validation`의 field decorator와 `@ValidateClass(...)`, `@fluojs/serialization` 데코레이터, `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터는 decorated class module이 평가되기 전에 `Symbol.metadata`가 필요합니다. 이는 TC39 decorator metadata이며, 지원하지 않는 `reflect-metadata`나 `emitDecoratorMetadata`를 활성화하라는 뜻이 아닙니다.
 
 decorated application graph를 static import한 뒤 같은 bootstrap module에서 `ensureMetadataSymbol()`을 호출하면 안 됩니다. ESM은 bootstrap module body보다 static dependency를 먼저 평가하므로 그 호출은 너무 늦습니다. symbol을 설치한 다음 일반 bootstrap graph를 dynamic import하는 preload entrypoint를 사용하세요.
 
@@ -416,6 +418,8 @@ Runtime은 `AsyncIterable`이 아닌 subscription resolver 결과를 거부합�
 
 ### Nested DTO and Mapped Type Rewrites
 
+<!-- fluo-contract: validation.mapped-defaults -->
+
 NestJS에서는 class-validator와 class-transformer를 함께 사용하여 reflected metadata 또는 transformer metadata로 중첩 constructor를 제공하는 경우가 많습니다.
 
 ```typescript
@@ -464,9 +468,21 @@ import {
 
 class UpdateUserDto extends PartialType(CreateUserDto) {}
 class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
-class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
+class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {
+  address = new AddressDto();
+}
 class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
 ```
+
+`PickType`, `OmitType`, `IntersectionType`은 source DTO 생성자를 실행하거나
+field initializer/default 값을 복사하지 않습니다. Derived class는 validation
+또는 binding metadata에서 발견한 retained field를 `undefined`로 초기화합니다.
+따라서 `CreateUserDto.address = new AddressDto()`는 자동으로 이어지지 않습니다.
+중첩 객체 기본값이 필요하면 위의 `AddressOnlyDto`처럼 subclass에서 `address`를
+다시 선언하세요. `PartialType`도 source 생성자와 기본값을 사용하지 않으며,
+누락된 patch field를 `undefined`로 유지하는 것이 목적입니다.
+`UpdateUserDto`에 create 기본값을 복원하면 누락과 명시적인 업데이트를 구별하려는
+patch 의미가 사라지므로 기본값을 다시 선언하지 않습니다.
 
 네 helper는 `@fluojs/validation/mapped-types`에서만 export되며 root import에는 compatibility alias가 없습니다. `@nestjs/mapped-types` binding과 `@nestjs/swagger`의 mapped binding을 이 subpath로 옮기세요. `PickType`, `OmitType`, `PartialType`은 적용 가능한 field-level validation과 binding metadata를 보존하지만, subset 또는 optional DTO가 base class-level validator의 field 가정을 더 이상 만족하지 않을 수 있으므로 해당 validator는 의도적으로 복사하지 않습니다. Derived DTO에서도 여전히 유효한 class-level rule은 검토 후 다시 선언하세요. `IntersectionType`은 모든 source contract를 유지하므로 각 input DTO의 field-level 및 class-level validation을 보존합니다. NestJS mapped-type의 class-level metadata 동작이 암묵적으로 이어진다고 가정하지 마세요.
 
@@ -949,10 +965,14 @@ Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할
 - **TTL 단위와 기본값.** fluo `ttl`은 초 단위입니다. NestJS TTL을 변환하기 전에 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 dependency generation이 TTL을 millisecond로 정의할 때에만 1000으로 나누며, 이 값을 그대로 옮기면 만료 시간이 1000배로 늘어납니다. `ttl`을 생략하면 `CacheModule.forRoot(...)`는 기본 memory 경로에 `300`초를, `redis` 및 custom-store 경로에는 `0`을 적용합니다.
 - **TTL `0`과 잘못된 값.** `ttl: 0`은 "캐싱하지 않음"이 아니라 "만료 없음"을 뜻합니다. 음수이거나 유한하지 않은 TTL은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고, `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뛰므로 요청마다 handler로 그대로 내려갑니다.
 - **정적 `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)`은 정적 숫자 하나를 route metadata로 저장하며 factory, context 인자, 비동기 값을 받지 않습니다. 요청마다 lifetime을 계산하던 NestJS handler는 `CacheService.set(key, value, ttlSeconds)`를 명시적으로 호출해야 합니다.
+- **Decorator 배치.** fluo `@CacheTTL(...)`과 `@CacheKey(...)`는 method 전용이며 controller 수준 metadata를 지원하지 않습니다. Controller 전체에 같은 TTL이 필요하면 대상 method마다 `@CacheTTL(...)`을 반복하거나 module `ttl`을 설정하세요. Module `ttl`은 해당 cache module의 기본값이며 controller 수준 decorator 지원을 추가하지 않습니다.
 - **Query 민감 key.** `httpKeyStrategy`의 기본값 `'route+query'`는 구체적인 요청 path와 정규화한 query 값으로 key를 만들므로 `/search?q=a`와 `/search?q=b`는 서로 다른 엔트리를 사용합니다. query 값이 의도적으로 응답에 영향을 주지 않을 때만 `httpKeyStrategy: 'route'`를 선택하고, custom key에는 function strategy 또는 `@CacheKey(...)`를 사용하세요.
 - **`isGlobal`에서 `global`로.** `isGlobal`을 `global`로 바꾸세요. NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로 두 cache module은 module-local로 유지됩니다. `global: true`를 설정하거나 cache provider를 resolve하는 각 module에 반환된 module을 import하세요. 그렇지 않으면 bootstrap이 해당 provider를 resolve하지 못하고 실패합니다.
+- **`stores`와 Keyv 경계.** NestJS `stores` 배열이나 Keyv instance에 직접 대응하는 설정은 없습니다. fluo는 `CacheModule` 등록마다 하나의 `store`를 선택합니다. 다계층 또는 fallback caching은 기존 계약을 구현하는 애플리케이션 소유 custom `CacheStore` 안에서 구성해야 하며, `stores` 배열이나 변환하지 않은 Keyv instance를 직접 전달할 수 없습니다.
 - **Custom store 적응.** `store`는 `'memory'`, `'redis'`, 또는 `CacheStore` 객체를 받습니다. `cache-manager-redis-store` 같은 NestJS store adapter는 이 계약을 만족하지 않으므로 내장 `store: 'redis'` 경로를 쓰거나 `get`, `set`, `del`, `reset`을 노출하는 객체로 adapter를 감싸세요. callback/options 완료는 `CacheStore`가 기대하는 Promise 결과로 변환하고, Fluo `ttlSeconds`는 legacy adapter TTL의 초 단위로 매핑하며, `reset()`은 cache namespace만 삭제하게 하세요. 애플리케이션이 소유한 configured cache namespace 밖의 데이터를 삭제할 수 있으므로 `CacheService.reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다.
 - **Teardown 소유권.** 애플리케이션 shutdown은 `CacheService`를 닫고, teardown은 store의 `close()` hook으로 전달합니다. `close()`가 없는 `dispose()` 전용 store도 계속 호환되지만 socket, pool, timer를 소유하는 새 custom store는 `close()`를 구현해야 합니다. `redis.client`로 직접 전달한 raw client는 module이 닫지 않으므로 애플리케이션 lifecycle에서 닫아야 하고, `@fluojs/redis`로 resolve한 client는 해당 패키지의 lifecycle 소유권을 유지합니다.
+- **Codemod 경계.** `fluo migrate`는 `@nestjs/cache-manager` 코드를 재작성하지 않습니다. CLI가 `No manual follow-ups detected`를 출력해도 cache import, 설정, decorator는 이 마이그레이션 map에 따라 수동으로 옮겨야 합니다.
+- **Transport 경계.** `CacheInterceptor`와 cache decorator의 자동 동작은 HTTP pipeline 전용입니다. HTTP GET은 read-through caching, non-GET은 `@CacheEvict(...)`를 통한 eviction 대상입니다. WebSocket subscriber와 microservice handler에서는 자동 interception 없이 standalone `CacheService`를 직접 호출해야 합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';

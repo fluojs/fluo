@@ -57,10 +57,17 @@ async function runCleanupCallbacks(cleanups: readonly RuntimeCleanupCallback[]):
  */
 export function createRuntimeCleanupRegistration(cleanups: RuntimeCleanupCallback[]): RuntimeCleanupRegistration {
   return (cleanup) => {
-    cleanups.push(cleanup);
+    let completed = false;
+    const registration = async () => {
+      if (!completed) {
+        await cleanup();
+        completed = true;
+      }
+    };
+    cleanups.push(registration);
 
     return () => {
-      const index = cleanups.indexOf(cleanup);
+      const index = cleanups.indexOf(registration);
 
       if (index >= 0) {
         cleanups.splice(index, 1);
