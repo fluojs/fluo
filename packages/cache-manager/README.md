@@ -22,9 +22,12 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Async Configuration](#async-configuration)
   - [Manual Module Composition](#manual-module-composition)
   - [NestJS Cache Migration](#nestjs-cache-migration)
+  - [Memory Store Operational Limits](#memory-store-operational-limits)
+  - [Deferred eviction timing](#deferred-eviction-timing)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
+- [Compatible service copies](#compatible-service-copies)
 
 ## Installation
 
