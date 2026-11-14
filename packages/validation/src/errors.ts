@@ -29,6 +29,15 @@ export function isDtoValidationError(value: unknown): value is DtoValidationErro
   return Array.isArray(issues) && issues.every((issue) => {
     if (typeof issue !== 'object' || issue === null || Array.isArray(issue)) return false;
     const record = issue as unknown as Record<string, unknown>;
-    return typeof record.message === 'string' && typeof record.code === 'string';
+    return typeof record.message === 'string'
+      && typeof record.code === 'string'
+      && (record.field === undefined || typeof record.field === 'string')
+      && (record.source === undefined
+        || record.source === 'path'
+        || record.source === 'query'
+        || record.source === 'header'
+        || record.source === 'cookie'
+        || record.source === 'body'
+        || record.source === 'files');
   });
 }
