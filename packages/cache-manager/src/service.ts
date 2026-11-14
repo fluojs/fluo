@@ -52,7 +52,7 @@ export class CacheService {
   private endPendingLoad(key: string, generation: number): void {
     const generations = this.pendingLoads.get(key);
 
-    if (!generations) {
+    if (!generations?.has(generation)) {
       return;
     }
 
@@ -67,6 +67,16 @@ export class CacheService {
 
     if (generations.size === 0) {
       this.pendingLoads.delete(key);
+    }
+
+    // A hit or failed read must release markers too, but only after its whole load cycle drains.
+    if (this.inflight.get(key)?.generation !== generation) {
+      if (this.pendingInvalidations.get(key) === generation) {
+        this.pendingInvalidations.delete(key);
+      }
+      if (this.resetVersion === generation) {
+        this.invalidatedInflight.delete(key);
+      }
     }
   }
 
@@ -258,7 +268,8 @@ export class CacheService {
 
         await this.writeToStore(key, value, ttlSeconds);
 
-        if (!this.closed && (entry.invalidated || this.resetVersion !== resetVersion)) {
+        // Reset drains this write and clears it itself; a later delete could erase a fresh value.
+        if (!this.closed && entry.invalidated && this.resetVersion === resetVersion) {
           await this.deleteFromStore(key);
         }
 
@@ -266,11 +277,6 @@ export class CacheService {
       }).finally(() => {
         if (this.inflight.get(key) === entry) {
           this.inflight.delete(key);
-          this.invalidatedInflight.delete(key);
-        }
-
-        if (this.pendingInvalidations.get(key) === entry.generation) {
-          this.pendingInvalidations.delete(key);
         }
       });
 
@@ -302,8 +308,10 @@ export class CacheService {
 
     if (entry) {
       entry.invalidated = true;
-      this.invalidatedInflight.add(key);
-    } else if (this.pendingLoads.has(key)) {
+    }
+
+    // Reads still pending after the current loader settles belong to the same invalidated cycle.
+    if (this.pendingLoads.get(key)?.has(this.resetVersion)) {
       this.pendingInvalidations.set(key, this.resetVersion);
       this.invalidatedInflight.add(key);
     }

@@ -296,6 +296,8 @@ Built-in HTTP cache key strategies derive their path segment from the concrete r
 
 By default, anonymous requests use the concrete request path plus its canonical query string. Authenticated requests append a principal scope when one is available; use `principalScopeResolver` to customize that suffix. Query-aware keys canonicalize both parameter names and repeated values, so `/products?tag=a&tag=b` and `/products?tag=b&tag=a` share one cache entry. Set `httpKeyStrategy: 'route'` only when query values intentionally do not affect the response.
 
+The built-in `route+query` strategy sorts decoded parameter names and each parameter's repeated string values in deterministic UTF-16 code-unit order, independently of process locale or collation settings, before URI-encoding them. Undefined entries are omitted, values are converted to strings, and repeated values retain their multiplicity without mutating input arrays. Case and Unicode normalization forms remain distinct: `é` and `e\u0301` are ordered separately, not normalized or deduplicated.
+
 ```typescript
 CacheModule.forRoot({
   store: 'memory',

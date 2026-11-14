@@ -216,16 +216,22 @@ describe('Redis WATCH atomic updates against a native server', () => {
       }
       return { action: 'set', value: (value ?? 0) + 1 };
     });
-    await entered.promise;
+    const settled = Promise.allSettled([update]);
+    try {
+      await entered.promise;
 
-    // When
-    await second.update<number>('counter', (value) => ({ action: 'set', value: (value ?? 0) + 1 }));
-    release.resolve();
+      // When
+      await second.update<number>('counter', (value) => ({ action: 'set', value: (value ?? 0) + 1 }));
+      release.resolve();
 
-    // Then
-    await expect(update).resolves.toBe(2);
-    expect(snapshots).toEqual([undefined, 1]);
-    await expect(first.get('counter')).resolves.toBe(2);
+      // Then
+      await expect(update).resolves.toBe(2);
+      expect(snapshots).toEqual([undefined, 1]);
+      await expect(first.get('counter')).resolves.toBe(2);
+    } finally {
+      release.resolve();
+      await settled;
+    }
   });
 
   it('preserves concurrent increments across independent stores and does not hold another key', async () => {
@@ -237,19 +243,25 @@ describe('Redis WATCH atomic updates against a native server', () => {
       await release.promise;
       return { action: 'set', value: 1 };
     });
-    await entered.promise;
+    const settled = Promise.allSettled([slow]);
+    try {
+      await entered.promise;
 
-    // When
-    const results = await Promise.all(Array.from({ length: 20 }, (_, index) =>
-      (index % 2 === 0 ? first : second).update<number>('counter', (value) => ({
-        action: 'set', value: (value ?? 0) + 1,
-      }))));
+      // When
+      const results = await Promise.all(Array.from({ length: 20 }, (_, index) =>
+        (index % 2 === 0 ? first : second).update<number>('counter', (value) => ({
+          action: 'set', value: (value ?? 0) + 1,
+        }))));
 
-    // Then
-    expect(results).toHaveLength(20);
-    await expect(second.get('counter')).resolves.toBe(20);
-    release.resolve();
-    await slow;
+      // Then
+      expect(results).toHaveLength(20);
+      await expect(second.get('counter')).resolves.toBe(20);
+      release.resolve();
+      await slow;
+    } finally {
+      release.resolve();
+      await settled;
+    }
   });
 
   it.each(['del', 'reset', 'delete-recreate', 'missing-delete-recreate'] as const)(
@@ -266,20 +278,25 @@ describe('Redis WATCH atomic updates against a native server', () => {
         await release.promise;
         return { action: 'set', value: (value ?? 0) + 1 };
       });
-      const rejected = expect(update).rejects.toMatchObject({ code: 'invalidated' });
-      await entered.promise;
+      const settled = Promise.allSettled([update]);
+      try {
+        await entered.promise;
 
-      // When
-      if (operation === 'reset') await second.reset();
-      else await second.del('key');
-      const recreated = operation === 'delete-recreate' || operation === 'missing-delete-recreate';
-      if (recreated) await second.set('key', 100);
-      release.resolve();
+        // When
+        if (operation === 'reset') await second.reset();
+        else await second.del('key');
+        const recreated = operation === 'delete-recreate' || operation === 'missing-delete-recreate';
+        if (recreated) await second.set('key', 100);
+        release.resolve();
 
-      // Then
-      await rejected;
-      expect(attempts).toBe(1);
-      await expect(first.get('key')).resolves.toBe(recreated ? 100 : undefined);
+        // Then
+        await expect(update).rejects.toMatchObject({ code: 'invalidated' });
+        expect(attempts).toBe(1);
+        await expect(first.get('key')).resolves.toBe(recreated ? 100 : undefined);
+      } finally {
+        release.resolve();
+        await settled;
+      }
     },
   );
 
@@ -294,18 +311,23 @@ describe('Redis WATCH atomic updates against a native server', () => {
       await release.promise;
       return { action: 'set', value: 1 };
     });
-    const rejected = expect(update).rejects.toMatchObject({ code: 'invalidated' });
-    await entered.promise;
+    const settled = Promise.allSettled([update]);
+    try {
+      await entered.promise;
 
-    // When
-    await second.reset();
-    release.resolve();
+      // When
+      await second.reset();
+      release.resolve();
 
-    // Then
-    await rejected;
-    await expect(firstClient.get(outsideKey)).resolves.toBe('unrelated');
-    await expect(first.get('missing')).resolves.toBeUndefined();
-    await firstClient.del(outsideKey);
+      // Then
+      await expect(update).rejects.toMatchObject({ code: 'invalidated' });
+      await expect(firstClient.get(outsideKey)).resolves.toBe('unrelated');
+      await expect(first.get('missing')).resolves.toBeUndefined();
+    } finally {
+      release.resolve();
+      await settled;
+      await firstClient.del(outsideKey);
+    }
   });
 
   it('preserves absolute expiry, renews in seconds, and removes expiry explicitly', async () => {
@@ -359,16 +381,21 @@ describe('Redis WATCH atomic updates against a native server', () => {
       await release.promise;
       return { action: 'set', value: (value ?? 0) + 1, ttlSeconds: 60 };
     });
-    const rejected = expect(update).rejects.toMatchObject({ code: 'invalidated' });
-    await entered.promise;
+    const settled = Promise.allSettled([update]);
+    try {
+      await entered.promise;
 
-    // When
-    await secondClient.pexpireat(`${prefix}key`, 1);
-    release.resolve();
+      // When
+      await secondClient.pexpireat(`${prefix}key`, 1);
+      release.resolve();
 
-    // Then
-    await rejected;
-    await expect(first.get('key')).resolves.toBeUndefined();
+      // Then
+      await expect(update).rejects.toMatchObject({ code: 'invalidated' });
+      await expect(first.get('key')).resolves.toBeUndefined();
+    } finally {
+      release.resolve();
+      await settled;
+    }
   });
 
   it('returns explicit deletion and cleans per-key invalidation metadata on reset', async () => {
@@ -428,16 +455,21 @@ describe('Redis WATCH atomic updates against a native server', () => {
       await release.promise;
       return { action: 'set', value: 1 };
     }, { maxAttempts: 1 });
-    const rejected = expect(update).rejects.toMatchObject({ code: 'conflict' });
-    await entered.promise;
+    const settled = Promise.allSettled([update]);
+    try {
+      await entered.promise;
 
-    // When
-    await second.set('key', 10);
-    release.resolve();
+      // When
+      await second.set('key', 10);
+      release.resolve();
 
-    // Then
-    await rejected;
-    await expect(first.get('key')).resolves.toBe(10);
+      // Then
+      await expect(update).rejects.toMatchObject({ code: 'conflict' });
+      await expect(first.get('key')).resolves.toBe(10);
+    } finally {
+      release.resolve();
+      await settled;
+    }
     const controller = new AbortController();
     const running = deferred();
     const aborted = deferred();
@@ -448,15 +480,20 @@ describe('Redis WATCH atomic updates against a native server', () => {
       await finish.promise;
       return { action: 'set', value: 2 };
     }, { signal: controller.signal });
-    const cancellation = expect(cancelled).rejects.toMatchObject({ code: 'cancelled' });
-    await running.promise;
-    controller.abort();
-    await aborted.promise;
-    const closed = first.close();
-    finish.resolve();
-    await Promise.all([cancellation, closed]);
-    await expect(second.get('key')).resolves.toBe(10);
-    await expect(firstClient.ping()).resolves.toBe('PONG');
+    const cancellationSettled = Promise.allSettled([cancelled]);
+    try {
+      await running.promise;
+      controller.abort();
+      await aborted.promise;
+      const closed = first.close();
+      finish.resolve();
+      await Promise.all([expect(cancelled).rejects.toMatchObject({ code: 'cancelled' }), closed]);
+      await expect(second.get('key')).resolves.toBe(10);
+      await expect(firstClient.ping()).resolves.toBe('PONG');
+    } finally {
+      finish.resolve();
+      await cancellationSettled;
+    }
   });
 
   it('accepts the actual ioredis atomic seam and resolves the distributed capability through DI', async () => {

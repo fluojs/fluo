@@ -296,6 +296,8 @@ CacheModule.forRoot({
 
 기본적으로 익명 요청은 구체적인 요청 경로와 정규화한 query string을 함께 사용합니다. 인증된 요청은 principal scope가 있으면 이를 suffix로 덧붙이며, `principalScopeResolver`로 이 suffix를 커스터마이즈할 수 있습니다. query-aware 키는 매개변수 이름과 반복 값 모두를 정규화하므로 `/products?tag=a&tag=b`와 `/products?tag=b&tag=a`는 같은 캐시 엔트리를 공유합니다. query 값이 의도적으로 응답에 영향을 주지 않을 때만 `httpKeyStrategy: 'route'`를 설정하세요.
 
+내장 `route+query` 전략은 디코딩된 매개변수 이름과 각 매개변수의 반복 문자열 값을 프로세스 로케일이나 collation 설정과 무관한 결정적 UTF-16 코드 유닛 순서로 정렬한 뒤 URI 인코딩합니다. Undefined 항목은 생략하고 값은 문자열로 변환하며, 입력 배열을 변경하지 않고 반복 값의 중복 개수를 보존합니다. 대소문자와 Unicode 정규화 형태는 구분됩니다. `é`와 `e\u0301`은 별도로 정렬하며 정규화하거나 중복 제거하지 않습니다.
+
 ```typescript
 CacheModule.forRoot({
   store: 'memory',
