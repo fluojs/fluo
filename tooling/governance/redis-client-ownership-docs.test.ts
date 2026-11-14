@@ -41,22 +41,29 @@ function typescriptExamples(markdown: string): string[] {
     .map((fence) => fence.slice(fence.indexOf('\n') + 1, -3));
 }
 
-function headings(markdown: string): string[] {
-  const prose = markdown.replace(/^```[^\n]*\n[\s\S]*?^```/gmu, '');
-  return Array.from(prose.matchAll(/^#{1,6} .+$/gmu), (match) => match[0]);
+function headings(markdown: string) {
+  const prose = markdown.replace(/^```[^\n]*\n[\s\S]*?^```/gmu, (fence) => ' '.repeat(fence.length));
+  return Array.from(prose.matchAll(/^ {0,3}(#{1,6})([ \t][^\r\n]*|)$/gmu), (match) => ({
+    level: match[1].length,
+    text: match[2].replace(/[ \t]+#+[ \t]*$/u, '').replace(/^[ \t]+|[ \t]+$/gu, ''),
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
 }
 
 function assertTableOfContents(markdown: string, tocHeading: string): void {
   const documentHeadings = headings(markdown);
+  const tocTitle = headings(tocHeading)[0].text;
+  const tocHeadings = documentHeadings.filter((heading) => heading.text === tocTitle);
   expect(
-    documentHeadings.filter((heading) => heading === tocHeading),
+    tocHeadings,
     'must contain exactly one table-of-contents heading',
   ).toHaveLength(1);
-  const toc = new RegExp(`^${tocHeading}\n([\\s\\S]*?)(?=^## )`, 'mu').exec(markdown)?.[1];
-  expect(toc).toBeDefined();
-  const fragments = Array.from((toc ?? '').matchAll(/\]\(#([^)]+)\)/gu), (match) => match[1]);
-  const anchors = documentHeadings.map((heading) =>
-    heading.replace(/^#+ /u, '').toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replaceAll(' ', '-'),
+  const tocIndex = documentHeadings.indexOf(tocHeadings[0]);
+  const toc = markdown.slice(tocHeadings[0].end, documentHeadings[tocIndex + 1]?.start);
+  const fragments = Array.from(toc.matchAll(/\]\(#([^)]+)\)/gu), (match) => match[1]);
+  const anchors = documentHeadings.map(({ text }) =>
+    text.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replaceAll(' ', '-'),
   );
 
   expect(fragments.length).toBeGreaterThan(0);
@@ -282,6 +289,47 @@ describe('Redis client ownership documentation', () => {
         .toThrow('must contain exactly one table-of-contents heading');
     });
 
+    it.each([
+      ['trailing whitespace', `${tocHeading} \t`],
+      ['closing hashes', `${tocHeading} ## \t`],
+      ['one leading space', ` ${tocHeading}`],
+      ['two leading spaces', `  ${tocHeading}`],
+      ['three leading spaces', `   ${tocHeading}`],
+      ...[1, 3, 4, 5, 6].map((level) => [
+        `level ${level}`,
+        tocHeading.replace(/^##/u, '#'.repeat(level)),
+      ]),
+    ])('rejects a %s normalized duplicate table of contents shadowing a broken later anchor', (_, duplicateHeading) => {
+      const markdown = read(relativePath).replace(`](${publicApiFragment})`, '](#public-api)');
+      const duplicateToc = markdown.replace(
+        `${tocHeading}\n`,
+        `${tocHeading}\n\n- [Installation](${installationFragment})\n\n${duplicateHeading}\n`,
+      );
+
+      expect(() => assertTableOfContents(duplicateToc, tocHeading))
+        .toThrow('must contain exactly one table-of-contents heading');
+    });
+
+    it.each([1, 2, 3, 4, 5, 6])('resolves normalized ATX headings at level %i within the TOC body only', (level) => {
+      const markdown = read(relativePath).replace(/^## (.+)$/gmu, (_, title: string) =>
+        `   ${'#'.repeat(level)} \t${title} ## \t`
+        + (title === tocHeading.slice(3) ? '' : '\n\n[Outside the TOC](#public-api)'));
+
+      expect(() => assertTableOfContents(markdown, tocHeading)).not.toThrow();
+    });
+
+    it.each([
+      ['four leading spaces', `    ${tocHeading}`],
+      ['seven opening hashes', tocHeading.replace(/^##/u, '#######')],
+      ['missing opening separator', tocHeading.replace(/^## /u, '##')],
+      ['missing closing separator', `${tocHeading}##`],
+      ['escaped closing hashes', `${tocHeading} \\##`],
+    ])('does not count %s as the same ATX heading', (_, otherHeading) => {
+      const markdown = `${read(relativePath)}\n\n${otherHeading}\n`;
+
+      expect(() => assertTableOfContents(markdown, tocHeading)).not.toThrow();
+    });
+
     it('rejects an empty duplicate table of contents at the end of the document', () => {
       const duplicateToc = `${read(relativePath)}\n${tocHeading}\n`;
 
@@ -290,13 +338,19 @@ describe('Redis client ownership documentation', () => {
     });
   });
 
+  it('compares normalized table-of-contents titles case-sensitively', () => {
+    const markdown = `${read(documentPairs[0][0])}\n\n   ## table of contents ## \t\n`;
+
+    expect(() => assertTableOfContents(markdown, '## Table of Contents')).not.toThrow();
+  });
+
   it.each(documentPairs)('%s and %s retain matching fences and heading structure', (englishPath, koreanPath) => {
     const english = read(englishPath);
     const korean = read(koreanPath);
 
     expect(codeFences(korean)).toEqual(codeFences(english));
-    expect(headings(korean).map((heading) => heading.indexOf(' ')))
-      .toEqual(headings(english).map((heading) => heading.indexOf(' ')));
+    expect(headings(korean).map((heading) => heading.level))
+      .toEqual(headings(english).map((heading) => heading.level));
   });
 
   it('keeps client construction and raw Pub/Sub cleanup ownership aligned across companion docs', () => {
