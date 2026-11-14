@@ -24,6 +24,8 @@ Terminus는 프로세스 생존만 확인하는 `/live`를 기본으로 생성�
 
 이 opt-out은 해당 indicator의 probe만 readiness에서 제외한다. 같은 의존성이 별도 platform component로 등록되어 준비 상태를 낮추면 여전히 차단된다. HTTP readiness는 platform status가 정확히 `ready`여야 하므로 `critical: false`인 `degraded`도 통과하지 못한다. 앱의 `readinessChecks`도 indicator·platform 검사를 대체하지 않고 조건을 추가한다.
 
+Runtime은 callback을 선언 순서대로 평가하며 첫 `false` 또는 timeout에서 중단한다. Callback마다 기본 5000 ms budget이 있고 직접 `HealthModule`을 사용하면 `readinessCheckTimeoutMs`를 설정할 수 있다. Timeout은 `503 unavailable`을 반환하지만 일반 throw/reject는 계속 HTTP error 처리로 전파된다. Platform `ready()`와 `health()`는 registration의 `readiness.timeoutMs`를 통해 component별 독립 기본 5000 ms budget을 사용한다. 양의 유한 값은 내림 후 최소 1 ms이며 잘못된 값은 5000 ms를 사용한다. Readiness timeout은 기본 critical이며 registration `critical: false`는 aggregate `degraded`를 만든다. Terminus indicator timeout과는 별개다. Terminus의 runtime readiness callback 전체에는 기본 5000 ms가 적용되며 현재 `TerminusModuleOptions`로 늘릴 수 없다. 이 runtime budget은 driver 작업을 취소하거나 동기적으로 막힌 JavaScript를 중단하지 않는다.
+
 ## 모듈을 import한 위치가 준비 상태를 바꾼다
 
 Terminus가 DB 연결을 찾지 못하면 올바른 SQL probe도 실행할 수 없다. 일반적인 비전역 형제 모듈은 서로의 provider를 볼 수 없어 Terminus의 `imports`에 의존성을 명시해야 한다. 하지만 이 책의 10장 등록은 의도적으로 전역이다. 루트가 `src/database/blog-database.module.ts`의 `BlogDatabaseModule`을 한 번 import하고, 그 모듈의 `PrismaModule.forRootAsync`가 `global: true`, `inject: [AppSettings]`로 컨테이너별 클라이언트를 소유한다. Terminus도 이 전역 `PrismaService`를 주입받는다.

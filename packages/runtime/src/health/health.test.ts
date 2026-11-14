@@ -8,7 +8,7 @@ import {
   type Next,
   type RequestContext,
 } from '@fluojs/http';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { FluoFactory, defineModule } from '../bootstrap.js';
 import * as healthModuleExports from './health.js';
@@ -70,6 +70,100 @@ function createResponse(): TestResponse {
 }
 
 describe('HealthModule', () => {
+  it('ready: configured budget -> applies independently in callback order with the exact context', async () => {
+    const healthModule = HealthModule.forRoot({ readinessCheckTimeoutMs: 10.9 });
+    const entered = createDeferred<void>();
+    const contexts: RequestContext[] = [];
+    healthModule.addReadinessCheck(async (ctx) => {
+      contexts.push(ctx);
+      entered.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 8));
+      return true;
+    });
+    healthModule.addReadinessCheck(async (ctx) => {
+      contexts.push(ctx);
+      await new Promise((resolve) => setTimeout(resolve, 8));
+      return true;
+    });
+    class AppModule {}
+    defineModule(AppModule, { imports: [healthModule] });
+    const app = await FluoFactory.create(AppModule);
+    vi.useFakeTimers();
+    const response = createResponse();
+    const request = createRequest('/ready');
+    const pending = app.dispatch(request, response);
+    try {
+      await entered.promise;
+
+      await vi.advanceTimersByTimeAsync(16);
+      await pending;
+
+      expect(response.body).toEqual({ status: 'ready' });
+      expect(contexts).toHaveLength(2);
+      expect(contexts[0]).toBe(contexts[1]);
+      expect(contexts[0]?.request.path).toBe('/ready');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      await app.close();
+    }
+  });
+
+  it.each(['throw', 'reject'])('ready: callback %s -> preserves HTTP error handling', async (mode) => {
+    const healthModule = HealthModule.forRoot();
+    const later = vi.fn(() => true);
+    healthModule.addReadinessCheck(() => {
+      if (mode === 'throw') {
+        throw new Error('ordinary readiness failure');
+      }
+      return Promise.reject(new Error('ordinary readiness failure'));
+    });
+    healthModule.addReadinessCheck(later);
+    class AppModule {}
+    defineModule(AppModule, { imports: [healthModule] });
+    const app = await FluoFactory.create(AppModule);
+    const response = createResponse();
+    try {
+      await app.dispatch(createRequest('/ready'), response);
+
+      expect(response.statusCode).toBe(500);
+      expect(response.body).not.toEqual({ status: 'unavailable' });
+      expect(later).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('ready: never-settling callback -> returns unavailable and stops later callbacks', async () => {
+    const healthModule = HealthModule.forRoot();
+    const entered = createDeferred<void>();
+    const later = vi.fn(() => true);
+    healthModule.addReadinessCheck(() => {
+      entered.resolve();
+      return new Promise(() => {});
+    });
+    healthModule.addReadinessCheck(later);
+    class AppModule {}
+    defineModule(AppModule, { imports: [healthModule] });
+    const app = await FluoFactory.create(AppModule);
+    vi.useFakeTimers();
+    const response = createResponse();
+    const request = app.dispatch(createRequest('/ready'), response);
+    try {
+      await entered.promise;
+
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(response.body).toEqual({ status: 'unavailable' });
+      expect(response.statusCode).toBe(503);
+      expect(later).not.toHaveBeenCalled();
+      await request;
+    } finally {
+      vi.useRealTimers();
+      await app.close();
+    }
+  });
+
   it('owns the sole public runtime health module registration path', () => {
     expect(healthModuleExports).not.toHaveProperty('createHealthModule');
     expect(HealthModule.forRoot().name).toBe('HealthModule');

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { PayloadTooLargeException } from '@fluojs/http';
+import { BadRequestException, PayloadTooLargeException } from '@fluojs/http';
 
 import {
   MultipartBodyConsumedError,
@@ -213,7 +213,81 @@ describe('parseMultipart', () => {
     const result = parseMultipart(request);
 
     // Then
-    await expect(result).rejects.toBeInstanceOf(Error);
+    await expect(result).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it.each([
+    {
+      body: (boundary: string) => createMultipartBody(boundary, [{
+        headers: ['content-disposition: form-data; name="title"'],
+        value: 'ignored',
+      }]),
+      contentType: () => 'multipart/form-data',
+      label: 'missing boundary parameter',
+    },
+    {
+      body: (boundary: string) => createMultipartBody(boundary, [{
+        headers: ['content-disposition form-data; name="title"'],
+        value: 'ignored',
+      }]),
+      contentType: (boundary: string) => `multipart/form-data; boundary=${boundary}`,
+      label: 'malformed part header',
+    },
+    {
+      body: (boundary: string) => createMultipartBody(boundary, [{
+        headers: ['content-type: text/plain'],
+        value: 'ignored',
+      }]),
+      contentType: (boundary: string) => `multipart/form-data; boundary=${boundary}`,
+      label: 'missing Content-Disposition header',
+    },
+    {
+      body: (boundary: string) => createMultipartBody(boundary, [{
+        headers: ['content-disposition: form-data; filename="a.txt"'],
+        value: 'ignored',
+      }]),
+      contentType: (boundary: string) => `multipart/form-data; boundary=${boundary}`,
+      label: 'missing name parameter',
+    },
+    {
+      body: (boundary: string) => `--${boundary}\r\ncontent-disposition: form-data; name="title"\r\n\r\nunterminated`,
+      contentType: (boundary: string) => `multipart/form-data; boundary=${boundary}`,
+      label: 'missing closing boundary',
+    },
+    {
+      body: () => 'not-the-declared-boundary',
+      contentType: (boundary: string) => `multipart/form-data; boundary=${boundary}`,
+      label: 'missing initial boundary',
+    },
+  ])('classifies $label as a client syntax error', async ({ body, contentType }) => {
+    // Given
+    const boundary = 'fluo-syntax-error';
+    const request = new Request('http://localhost/uploads', {
+      body: body(boundary),
+      headers: { 'content-type': contentType(boundary) },
+      method: 'POST',
+    });
+
+    // When
+    const result = parseMultipart(request);
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(BadRequestException);
+    await expect(result).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('classifies a body-less multipart request as a client syntax error', async () => {
+    // Given
+    const request = new Request('http://localhost/uploads', {
+      headers: { 'content-type': 'multipart/form-data; boundary=fluo-no-body' },
+      method: 'POST',
+    });
+
+    // When
+    const result = parseMultipart(request);
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('parses Web multipart fields and files without Node Buffer conversion APIs', async () => {
@@ -623,7 +697,21 @@ describe('parseMultipartStream', () => {
     const result = parts.next();
 
     // Then
-    await expect(result).rejects.toBeInstanceOf(Error);
+    await expect(result).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('classifies a missing closing boundary as a client syntax error while streaming', async () => {
+    // Given
+    const boundary = 'fluo-stream-unterminated';
+    const parts = parseMultipartStream(createChunkedMultipartRequest(boundary, [
+      `--${boundary}\r\ncontent-disposition: form-data; name="title"\r\n\r\nunterminated`,
+    ]).request);
+
+    // When
+    const result = parts.next();
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('yields typed fields and streams each file without reading the complete payload', async () => {

@@ -223,6 +223,65 @@ describe('lifecycle Docs contract ownership', () => {
     expect(readLifecycleContract(read(relativePath))).toMatchObject({ states });
   });
 
+  it('continues microservice cleanup after notification failure and caches the ordered terminal result', async () => {
+    // Given: notification and both cleanup stages fail during an active listen.
+    const releaseListen = createDeferred();
+    const events: string[] = [];
+    const notificationFailure = new Error('notification failed');
+    const transportFailure = new Error('transport close failed');
+    const contextFailure = new Error('context close failed');
+    class Runtime {
+      markShutdownStarted() {
+        events.push('notification');
+        throw notificationFailure;
+      }
+      async listen() {
+        await releaseListen.promise;
+        events.push('listen:settled');
+      }
+      close(signal?: string) {
+        events.push(`transport:${signal}`);
+        throw transportFailure;
+      }
+    }
+    class Resource {
+      onApplicationShutdown(signal?: string) {
+        events.push(`context:${signal}`);
+        throw contextFailure;
+      }
+    }
+    class RootModule {}
+    defineModule(RootModule, {
+      providers: [Resource, { provide: Symbol.for('fluo.microservices.service'), useClass: Runtime }],
+    });
+    const app = await FluoFactory.createMicroservice(RootModule);
+    const startup = app.listen().catch((error: unknown) => error);
+
+    // When: close starts while listen is still pending.
+    const closing = app.close('SIGTERM').catch((error: unknown) => error);
+    const concurrent = app.close('SIGINT').catch((error: unknown) => error);
+    try {
+      await expect(app.send('test', {})).rejects.toBeInstanceOf(InvariantError);
+      expect(events).toEqual(['notification']);
+    } finally {
+      releaseListen.resolve();
+    }
+
+    // Then: all stages run once in order and every close retains the same failure.
+    expect(await startup).toBeInstanceOf(InvariantError);
+    const result = await closing;
+    expect(result).toBeInstanceOf(AggregateError);
+    if (result instanceof AggregateError) {
+      expect(result.errors).toEqual([notificationFailure, transportFailure, contextFailure]);
+    }
+    expect(await concurrent).toBe(result);
+    await expect(app.close()).rejects.toBe(result);
+    await expect(app.emit('test', {})).rejects.toBeInstanceOf(InvariantError);
+    await expect(app.listen()).rejects.toBeInstanceOf(InvariantError);
+    expect(app.state).toBe('bootstrapped');
+    expect(events).toEqual(['notification', 'listen:settled', 'transport:SIGTERM', 'context:SIGTERM']);
+  });
+
   it('replays an incomplete context hook phase without replaying successful DI disposal', async () => {
     // Given: a context hook that fails only its first shutdown attempt.
     const events: string[] = [];

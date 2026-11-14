@@ -183,7 +183,7 @@ When a saga, command handler, query handler, or event handler performs another C
 
 Each CQRS event handler and saga receives an isolated event copy with the matched event prototype restored. Mutating that copy is local to the current handler or saga route; those mutations are not visible to other CQRS handlers, sagas, the original event object, or delegated `@fluojs/event-bus` subscribers. The delegated event-bus publication receives the original event after CQRS side effects complete, so `@OnEvent(...)` projections and transports observe the caller-owned payload rather than a CQRS handler's mutated copy.
 
-Event classes should keep their payload state cloneable and enumerable. String-keyed and symbol-keyed enumerable payload fields are preserved by the shared core clone fallback, while intentionally non-cloneable resources such as open sockets, functions, or process-local handles should be represented by IDs or other serializable boundaries before publishing.
+Event classes should keep their payload state cloneable and enumerable. The shared core clone contract preserves string-keyed and symbol-keyed enumerable payload fields and nested class prototypes independently of runtime `structuredClone` availability or success. Top-level non-enumerable symbol properties are also preserved. Nested value objects remain detached instances with their prototype methods and getters available. Functions are returned by reference, so they do not provide isolation; represent open sockets, functions, and process-local handles by IDs or other serializable boundaries before publishing. Buffer and private-field instances are not yet specified (issue #4015).
 
 CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Discovery supports direct class and `useClass` providers, `useFactory` providers whose class token carries CQRS metadata, and `useValue` providers whose instance constructor carries CQRS metadata. Non-singleton registrations are skipped with warnings. Event-handler and saga fan-out is keyed by singleton provider token, so distinct tokens remain distinct routes even when they use the same decorated class.
 
@@ -245,7 +245,7 @@ Compatible same-realm `@fluojs/cqrs` copies retain opaque dispatch provenance fo
 - `packages/cqrs/src/module.test.ts`: Module registration and basic bus usage.
 - `packages/cqrs/src/public-api.test.ts`: Root-barrel public API contract coverage.
 - `packages/cqrs/src/status.test.ts`: CQRS status snapshot behavior.
-- `packages/cqrs/src/event-clone.test.ts`: Event clone fallback behavior.
+- `packages/cqrs/src/event-clone.test.ts`: Deterministic event clone and nested value-object isolation.
 ## Compatible service copies
 
 Public CQRS bus lifecycle classes support compatible-copy class injection; event handlers and option tokens retain existing ownership and ordering.

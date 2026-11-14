@@ -72,7 +72,7 @@ export function enforceReactRscGraduationGovernance(
 ): void;
 export function enforceReactRscGraduationPolicy(readText?: (relativePath: string) => string): void;
 export function enforceReactServerFunctionContract(): void;
-export function enforceHttpRuntimeCancellationAndContextIsolation(): void;
+export function enforceHttpRuntimeCancellationAndContextIsolation(readText?: (relativePath: string) => string): void;
 export function enforceHttpCatchAllRouteGrammarDecision(): void;
 export function enforceHttpCustomMethodContract(): void;
 export function enforceHttpAdapterPortabilityDocumentationContract(

@@ -208,6 +208,8 @@ TerminusModule.forRoot({
 
 커스텀 인디케이터가 멈추거나 느린 하위 서비스에 의존할 수 있다면 `execution.indicatorTimeoutMs`를 사용하세요. probe가 설정된 시간을 넘기면 Terminus는 무기한 대기하지 않고 해당 인디케이터를 `down`으로 표시합니다.
 
+Terminus가 등록한 runtime callback에는 별도 기본 5000 ms budget이 있습니다. 이를 넘기는 indicator/platform 작업은 `/ready`에서 `503 unavailable`을 반환합니다. 현재 `TerminusModuleOptions`에는 이 callback budget을 늘리는 option이 없으며 `HealthModule.forRoot({ readinessCheckTimeoutMs })`는 직접 runtime HealthModule을 사용할 때만 설정할 수 있습니다. `execution.indicatorTimeoutMs`나 platform registration budget만 늘려서는 이 대기가 연장되지 않습니다.
+
 Terminus는 각 `TerminusHealthService` / application container 안에서 같은 indicator instance에 대한 check도 직렬화합니다. Timeout된 probe나 느린 probe가 아직 실행 중일 때 같은 container의 다른 `/health` 또는 `/ready` 요청이 들어오면, Terminus는 같은 downstream에 겹치는 probe를 새로 시작하지 않고 해당 indicator를 새 요청에서 `down`으로 보고합니다. 테스트나 multi-app process가 같은 indicator object를 재사용하더라도 별도 application container는 독립적인 in-flight state를 유지합니다. Built-in HTTP indicator는 자체 timeout이 만료되면 `fetch` 요청을 abort하지만, 다른 driver와 custom callback은 cancellation을 노출하지 않을 수 있으므로 원래 promise가 settle될 때까지 overlap을 막는 방식으로 보호합니다.
 
 ```typescript

@@ -278,7 +278,7 @@ function registerWebRuntimePortabilitySuite(
       await harness.assertSupportsConditionalRequests();
     });
 
-    it('preserves single byte range metadata and body slicing', async () => {
+    it('preserves GET-only effective-200 ranges, oversized clamping, and full HEAD framing', async () => {
       await harness.assertSupportsSingleByteRanges();
     });
 

@@ -240,7 +240,7 @@ await prisma.transaction(async () => {
 
 ## 동시 miss를 소스 계약으로 실험하기
 
-앞의 fail-soft reader는 의도적으로 `get → DB → set`을 드러냈다. 단점은 cold key로 요청이 동시에 오면 같은 본문 조회를 중복 수행할 수 있다는 것이다. `CacheService.remember()`는 같은 서비스 인스턴스 안에서 동일 key의 동시 miss를 하나의 loader로 합친다. 이를 선택하면 코드가 짧아지지만 store 실패도 직접 API의 rejection으로 관찰하므로 원본 실패와 캐시 실패를 구분하는 정책까지 같이 설계해야 한다.
+앞의 fail-soft reader는 의도적으로 `get → DB → set`을 드러냈다. 단점은 cold key로 요청이 동시에 오면 같은 본문 조회를 중복 수행할 수 있다는 것이다. `CacheService.remember()`는 같은 서비스 인스턴스 안에서 동일 key의 동시 miss를 하나의 loader로 합친다. 기본 `'throw'` 정책은 store 실패도 reject한다. [API 소유자의 `rememberCacheErrors: 'bypass'`](../../packages/cache-manager/README.ko.md#remember-저장소-오류-정책)를 선택하면 store 실패만 우회하면서 병합과 같은 인스턴스의 무효화를 유지하고, 원본 실패는 그대로 전파한다. 위 수동 예제의 `null` 비저장과 애플리케이션 소유 삭제 정책은 별도 선택이므로 이를 기계적으로 대체하지 않는다.
 
 다음 `src/posts/cache-contract.test.ts`는 실제 공개 `CacheService`와 `MemoryStore`를 사용하는 완전한 Vitest 테스트다. 애플리케이션 HTTP 테스트나 실제 Redis 검증이라고 부르지 않는다. `Promise.withResolvers()`는 Node24에서 사용할 수 있고, loader 시작 신호를 기다리므로 우연한 microtask 순서나 sleep에 기대지 않는다. 테스트 timeout은 누락된 신호를 실패로 끝내는 상한이다.
 
@@ -407,7 +407,7 @@ query-aware 전략은 반복 값까지 정렬한다. 12장의 `PostFeed`는 배�
 
 Redis 장애 실험은 전용 개발 환경에서만 한다. 요청 중 cache get이 실패하면 `CacheFallbacks.readFailures`가 증가하고 PostgreSQL이 정상인 한 읽기 결과는 정상이어야 한다. cache set 실패도 응답을 실패시키지 않는다. 반대로 원본 DB 실패를 일으키면 빈 글이나 캐시 miss로 성공 응답을 만들면 안 된다. Redis가 사라진 순간 모든 트래픽이 DB로 넘어오는 부하는 별도로 측정한다. fail-soft는 무한 처리 능력을 뜻하지 않는다.
 
-`CacheModule`의 `observer.onCacheOperation`은 `operation`, `outcome`, `durationMs`를 제공한다. 키, 값, error 객체를 제공하지 않아 수집 과정의 개인정보 노출을 줄인다. 같은 in-flight loader에 합류한 `remember()`도 이미 저장된 값을 읽은 것은 아니라 `miss`로 기록한다. 따라서 miss 수를 DB 호출 수와 동일하게 계산하지 않는다. 22장에서 metrics를 붙일 때 이 구분이 중요해진다.
+`CacheModule`의 `observer.onCacheOperation`은 `operation`, `outcome`, `durationMs`를 제공한다. 키, 값, error 객체를 제공하지 않아 수집 과정의 개인정보 노출을 줄인다. 오류 없이 같은 in-flight loader에 합류한 `remember()`는 `miss`로 기록한다. 자신의 읽기나 공유 쓰기를 우회했다면 값이 반환되어도 호출당 한 번 `error`로 기록한다. 따라서 miss 수를 DB 호출 수와 동일하게 계산하지 않는다. 22장에서 metrics를 붙일 때 이 구분이 중요해진다.
 
 마지막으로 `reset()`을 운영 복구의 만능 버튼으로 만들지 않는다. RedisStore의 reset은 설정된 `keyPrefix` 아래에 있는 캐시 키를 대상으로 하며, 19장의 큐나 구독 원장과 prefix를 공유해서는 안 된다. 빈 prefix를 지정했을 때는 현재 store 인스턴스가 쓴 키만 추적한다는 제한도 있다. 명확한 환경별 namespace를 쓰고 한 글의 문제에는 정확한 key 삭제를 우선한다. 대량 reset은 correctness 수리를 대신하지 못하면서 cold load를 한꺼번에 만들 수 있다.
 

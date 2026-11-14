@@ -17,6 +17,7 @@ import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 interface InflightLoad<T = unknown> {
   generation: number;
   invalidated: boolean;
+  writeBypassed: boolean;
   promise: Promise<T>;
 }
 
@@ -104,17 +105,23 @@ export class CacheService {
     );
   }
 
-  private readFromStore<T>(key: string): Promise<T | undefined> {
+  private readFromStore<T>(key: string, onStoreError?: () => void): Promise<T | undefined> {
     if (this.closed) {
       return Promise.resolve(undefined);
     }
 
-    return this.storeOperations.run(() => {
+    return this.storeOperations.run(async () => {
       if (this.closed) {
         return undefined;
       }
 
-      return this.store.get<T>(key);
+      try {
+        return await this.store.get<T>(key);
+      } catch (error) {
+        if (!onStoreError) throw error;
+        onStoreError();
+        return undefined;
+      }
     });
   }
 
@@ -135,7 +142,12 @@ export class CacheService {
     await this.operationObserver.observeWrite('set', () => this.writeToStore(key, value, ttlSeconds));
   }
 
-  private async writeToStore<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+  private async writeToStore<T>(
+    key: string,
+    value: T,
+    ttlSeconds?: number,
+    onStoreError?: () => void,
+  ): Promise<void> {
     const resolvedTtl = ttlSeconds ?? this.options.ttl;
 
     if (this.closed || !Number.isFinite(resolvedTtl) || resolvedTtl < 0) {
@@ -149,7 +161,12 @@ export class CacheService {
         return;
       }
 
-      await this.store.set<T>(key, value, effectiveTtl);
+      try {
+        await this.store.set<T>(key, value, effectiveTtl);
+      } catch (error) {
+        if (!onStoreError) throw error;
+        onStoreError();
+      }
     });
   }
 
@@ -207,6 +224,10 @@ export class CacheService {
    * @param loader Async loader invoked on cache miss.
    * @param ttlSeconds Optional per-call TTL override in seconds.
    * @returns The cached or freshly loaded value.
+   * @remarks
+   * `rememberCacheErrors: 'bypass'` contains only store get/set failures while retaining
+   * same-instance coalescing and invalidation. Each affected caller observes `error` even
+   * when its value resolves. Loader and TTL preparation failures are never retried or bypassed.
    */
   async remember<T = unknown>(
     key: string,
@@ -226,29 +247,32 @@ export class CacheService {
     key: string,
     loader: () => Promise<T>,
     ttlSeconds: number | undefined,
-  ): Promise<readonly [T, 'hit' | 'miss']> {
+  ): Promise<readonly [T, 'hit' | 'miss' | 'error']> {
     if (this.closed) {
       return [await loader(), 'miss'];
     }
 
     const resetVersion = this.resetVersion;
+    const bypass = this.options.rememberCacheErrors === 'bypass';
+    let readBypassed = false;
     this.beginPendingLoad(key, resetVersion);
 
     try {
-      const cached = await this.readFromStore<T>(key);
+      const cached = await this.readFromStore<T>(key, bypass ? () => { readBypassed = true; } : undefined);
 
       if (cached !== undefined) {
         return [cached, 'hit'];
       }
 
       if (this.closed || this.resetVersion !== resetVersion) {
-        return [await loader(), 'miss'];
+        return [await loader(), readBypassed ? 'error' : 'miss'];
       }
 
       const existing = this.inflight.get(key) as InflightLoad<T> | undefined;
 
       if (existing && existing.generation === resetVersion) {
-        return [await existing.promise, 'miss'];
+        const value = await existing.promise;
+        return [value, readBypassed || existing.writeBypassed ? 'error' : 'miss'];
       }
 
       if (existing) {
@@ -258,15 +282,17 @@ export class CacheService {
       const entry: InflightLoad<T> = {
         generation: resetVersion,
         invalidated: this.pendingInvalidations.get(key) === resetVersion,
+        writeBypassed: false,
         promise: Promise.resolve(undefined as T),
       };
 
-      const promise = loader().then(async (value) => {
+      // Register the shared promise before invoking even a synchronously throwing loader.
+      const promise = Promise.resolve().then(loader).then(async (value) => {
         if (this.closed || entry.invalidated || this.resetVersion !== resetVersion) {
           return value;
         }
 
-        await this.writeToStore(key, value, ttlSeconds);
+        await this.writeToStore(key, value, ttlSeconds, bypass ? () => { entry.writeBypassed = true; } : undefined);
 
         // Reset drains this write and clears it itself; a later delete could erase a fresh value.
         if (!this.closed && entry.invalidated && this.resetVersion === resetVersion) {
@@ -282,7 +308,8 @@ export class CacheService {
 
       entry.promise = promise;
       this.inflight.set(key, entry);
-      return [await promise, 'miss'];
+      const value = await promise;
+      return [value, readBypassed || entry.writeBypassed ? 'error' : 'miss'];
     } finally {
       this.endPendingLoad(key, resetVersion);
     }
