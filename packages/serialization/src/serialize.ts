@@ -57,6 +57,30 @@ const probeWeakMap = function (this: object) { return WeakMap.prototype.has.call
 const probeWeakSet = function (this: object) { return WeakSet.prototype.has.call(this, {}); };
 
 /**
+ * `Object.prototype.toString` reports `[object Error]` from the `[[ErrorData]]` slot only when no string
+ * `Symbol.toStringTag` overrides it, so a missing string tag confirms a genuine (possibly cross-realm) error.
+ */
+function hasErrorBrand(value: object): boolean {
+  return typeof Reflect.get(value, Symbol.toStringTag) !== 'string';
+}
+
+type PromiseBrandHost = typeof globalThis & {
+  process?: {
+    getBuiltinModule?(id: 'node:util'): { types?: { isPromise?(value: unknown): boolean } } | undefined;
+  };
+};
+
+function resolveIsPromise(): ((value: unknown) => boolean) | undefined {
+  try {
+    return (globalThis as PromiseBrandHost).process?.getBuiltinModule?.('node:util')?.types?.isPromise;
+  } catch {
+    return undefined;
+  }
+}
+
+const isPromiseBrand = resolveIsPromise();
+
+/**
  * Realm-safe brand checks keyed by `Object.prototype.toString` tags. Tags only
  * select a candidate; built-ins with internal slots are confirmed by invoking a
  * side-effect-free intrinsic so a DTO that merely spoofs `Symbol.toStringTag`
@@ -70,11 +94,8 @@ const opaqueBrandChecks = new Map<string, (value: object) => boolean>([
   ['[object WeakSet]', (value) => hasInternalSlot(probeWeakSet, value)],
   ['[object RegExp]', (value) => hasInternalSlot(getRegExpSource, value)],
   ['[object ArrayBuffer]', (value) => hasInternalSlot(getArrayBufferByteLength, value)],
-  ['[object Error]', () => true],
-  ['[object Promise]', () => true],
-  ['[object Blob]', () => true],
-  ['[object File]', () => true],
-  ['[object ReadableStream]', () => true],
+  ['[object Error]', hasErrorBrand],
+  ['[object Promise]', (value) => isPromiseBrand?.(value) === true],
 ]);
 
 function hasOpaqueBrand(value: object): boolean {
@@ -240,7 +261,7 @@ function serializeClassInstance(
   }
 
   const { classOptions, fieldMetadata } = getCachedMetadata(constructor, context);
-  const hasMetadata = fieldMetadata.size > 0 || classOptions.excludeExtraneous === true;
+  const hasMetadata = fieldMetadata.size > 0 || Object.hasOwn(classOptions, 'excludeExtraneous');
 
   if (!hasMetadata) {
     return hasCallableToJSON(value) ? value : serializeRecord(value, context);

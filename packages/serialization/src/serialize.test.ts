@@ -892,6 +892,65 @@ describe('serialize', () => {
     expect(serializedLookalike).toEqual({ size: 3 });
   });
 
+  it.each(['Error', 'Promise', 'Blob', 'File', 'ReadableStream'])(
+    'still walks DTOs that spoof the %s tag and strips excluded fields on them and their descendants',
+    (tag: string) => {
+      class Nested {
+        visible = 'yes';
+
+        @Exclude()
+        hidden = 'no';
+      }
+
+      class UndecoratedSpoof {
+        id = 'u-1';
+        nested = new Nested();
+
+        get [Symbol.toStringTag](): string {
+          return tag;
+        }
+      }
+
+      class DecoratedSpoof {
+        id = 'd-1';
+
+        @Exclude()
+        secret = 'hidden';
+
+        nested = new Nested();
+
+        get [Symbol.toStringTag](): string {
+          return tag;
+        }
+      }
+
+      const undecorated = new UndecoratedSpoof();
+      const decorated = new DecoratedSpoof();
+
+      expect(Object.prototype.toString.call(undecorated)).toBe(`[object ${tag}]`);
+      expect(serialize(undecorated)).not.toBe(undecorated);
+      expect(serialize(undecorated)).toEqual({ id: 'u-1', nested: { visible: 'yes' } });
+      expect(serialize({ items: [decorated] })).toEqual({ items: [{ id: 'd-1', nested: { visible: 'yes' } }] });
+    },
+  );
+
+  it('keeps metadata-driven shaping over toJSON for classes with explicit excludeExtraneous: false', () => {
+    @Expose({ excludeExtraneous: false })
+    class ExplicitView {
+      id = 'a';
+
+      toJSON(): string {
+        return 'custom';
+      }
+    }
+
+    const view = new ExplicitView();
+
+    expect(serialize(view)).not.toBe(view);
+    expect(serialize(view)).toEqual({ id: 'a' });
+    expect(JSON.stringify(serialize({ view }))).toBe('{"view":{"id":"a"}}');
+  });
+
   it('serializes exposed own constructor keys on decorated instances without prototype mutation', () => {
     @Expose({ excludeExtraneous: false })
     class DangerousView {

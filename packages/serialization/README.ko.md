@@ -153,7 +153,7 @@ Field decorator는 instance field만 대상으로 합니다. Static field에 적
 
 Class-level `excludeExtraneous`도 일반 상속 규칙을 따릅니다. 파생 클래스에 option 없는 `@Expose()`를 붙여도 가장 가까운 상속 설정이 유지되므로, expose-only 기반 DTO는 subclass에서도 expose-only 상태를 유지합니다. 일반 enumerable field를 다시 포함하려는 의도가 있을 때만 파생 클래스에 `@Expose({ excludeExtraneous: false })`를 명시하세요. 이 경우에도 상속된 field-level `@Exclude()` metadata는 계속 적용됩니다.
 
-Decorated metadata가 없는 class instance도 재귀적으로 순회하므로, parent object에 serialization metadata가 없어도 decorated nested descendant는 반영됩니다.
+호출 가능한 `toJSON()`이 없는 undecorated class instance는 계속 재귀적으로 순회하므로, parent object에 serialization metadata가 없어도 decorated nested descendant는 반영됩니다. 호출 가능한 `toJSON()`을 정의한 undecorated class instance는 순회하지 않고 그대로 통과하며 최종 JSON writer가 `toJSON()` 표현을 출력하므로, 해당 instance의 필드를 통해서만 도달하는 decorated descendant에는 metadata shaping이 적용되지 않습니다. 필드 단위 shaping이 필요하면 해당 클래스에 serialization metadata(예: `@Expose({ excludeExtraneous: false })`)를 추가하세요.
 
 ### 일반 객체 안전성
 
@@ -161,7 +161,7 @@ Decorated metadata가 없는 class instance도 재귀적으로 순회하므로, 
 
 ### 비JSON leaf 값
 
-`serialize()`는 데코레이터 메타데이터를 적용하고 배열/일반 객체를 재귀적으로 순회하지만, 모든 leaf 값을 엄격한 JSON 타입으로 강제 변환하지는 않습니다. `Date`, `Map`, `Set`, `URL`, `URLSearchParams`, `RegExp`, `Error`, `ArrayBuffer`, typed array, `WeakMap`, `WeakSet`, `Promise`, `ReadableStream`, `Blob` 같은 opaque built-in은 DTO 같은 클래스 인스턴스로 펼치지 않고 그대로 통과합니다. Built-in은 내부 brand check로 realm에 관계없이 판별하므로 다른 realm(예: `node:vm`, iframe, 격리된 test runner)에서 만든 값도 참조 동일성을 유지한 채 통과하며, built-in과 비슷해 보이기만 하는 일반 DTO는 계속 레코드로 순회합니다. 호출 가능한 `toJSON()`을 정의한 undecorated class instance도 그대로 통과하므로 최종 JSON writer가 해당 값 자체의 표현을 적용합니다(예: private state를 가진 money, decimal, id value object). Serialization metadata(`@Expose()`, `@Exclude()`, `@Transform()`, `excludeExtraneous`)를 가진 클래스는 `toJSON()`을 정의해도 metadata 기반 shaping을 유지합니다. `bigint`, 함수, `symbol` 같은 값도 `@Transform(...)`이나 최종 HTTP 응답 작성 전에 직접 정규화하지 않으면 그대로 통과할 수 있습니다.
+`serialize()`는 데코레이터 메타데이터를 적용하고 배열/일반 객체를 재귀적으로 순회하지만, 모든 leaf 값을 엄격한 JSON 타입으로 강제 변환하지는 않습니다. `Date`, `Map`, `Set`, `URL`, `URLSearchParams`, `RegExp`, `Error`, `ArrayBuffer`, typed array, `WeakMap`, `WeakSet`, `Promise`, `ReadableStream`, `Blob` 같은 opaque built-in은 DTO 같은 클래스 인스턴스로 펼치지 않고 그대로 통과하며, `ReadableStream`, `Blob`, `File`은 사용 가능한 경우 현재 realm의 constructor로 판별합니다. Built-in은 내부 brand check로 realm에 관계없이 판별하므로 다른 realm(예: `node:vm`, iframe, 격리된 test runner)에서 만든 값도 참조 동일성을 유지한 채 통과하며, built-in과 비슷해 보이기만 하는 일반 DTO는 계속 레코드로 순회합니다. 호출 가능한 `toJSON()`을 정의한 undecorated class instance도 그대로 통과하므로 최종 JSON writer가 해당 값 자체의 표현을 적용합니다(예: private state를 가진 money, decimal, id value object). Serialization metadata(`@Expose()`, `@Exclude()`, `@Transform()`, `excludeExtraneous`)를 가진 클래스는 `toJSON()`을 정의해도 metadata 기반 shaping을 유지합니다. `bigint`, 함수, `symbol` 같은 값도 `@Transform(...)`이나 최종 HTTP 응답 작성 전에 직접 정규화하지 않으면 그대로 통과할 수 있습니다.
 
 ## 공개 API 개요
 
