@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
+import { enforceCacheManagerNestjsMigrationDocs } from './verify-platform-consistency-governance.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const HTTP_KEY_STRATEGY_CONTRACT =
@@ -24,6 +24,54 @@ describe('NestJS cache-manager migration documentation', () => {
 
     // When / Then
     expect(runGovernanceGuard).not.toThrow();
+  });
+
+  describe.each([
+    'packages/cache-manager/README.md',
+    'packages/cache-manager/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ])('unsupported migration boundaries in %s', (driftedPath) => {
+    it.each([
+      ['decorator-placement', ['`@CacheTTL(...)`', '`@CacheKey(...)`']],
+      ['store-configuration', ['`stores`', 'Keyv']],
+      ['codemod', ['`fluo migrate`', '`@nestjs/cache-manager`']],
+      ['transport', ['WebSocket', 'microservice', '`CacheService`']],
+    ] as const)('rejects a %s boundary moved outside its owning section', (boundary, identifiers) => {
+      const readWithMisplacedBoundary = (relativePath: string): string => {
+        const content = read(relativePath);
+        if (relativePath !== driftedPath) {
+          return content;
+        }
+        const lines = content.split('\n');
+        const isBoundary = (line: string) => identifiers.every((identifier) => line.includes(identifier));
+        return [
+          ...lines.filter((line) => !isBoundary(line)),
+          '### Unrelated section',
+          ...lines.filter(isBoundary),
+        ].join('\n');
+      };
+
+      const runGovernanceGuard = () => enforceCacheManagerNestjsMigrationDocs(readWithMisplacedBoundary);
+
+      expect(runGovernanceGuard).toThrow(driftedPath);
+      expect(runGovernanceGuard).toThrow(boundary);
+    });
+
+    it.each([
+      ['decorator-placement', /method-only|apply only to methods|method 전용|method에만/giu],
+      ['store-configuration', /fallback/giu],
+      ['codemod', /No manual follow-ups detected/gu],
+      ['transport', /non-GET/gu],
+    ] as const)('rejects a %s boundary with a missing contract term', (boundary, missingTerm) => {
+      const readWithoutContractTerm = (relativePath: string): string =>
+        relativePath === driftedPath ? read(relativePath).replace(missingTerm, '') : read(relativePath);
+
+      const runGovernanceGuard = () => enforceCacheManagerNestjsMigrationDocs(readWithoutContractTerm);
+
+      expect(runGovernanceGuard).toThrow(driftedPath);
+      expect(runGovernanceGuard).toThrow(boundary);
+    });
   });
 
   it.each([

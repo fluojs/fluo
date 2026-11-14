@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
-import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
+import { enforceCacheManagerNestjsMigrationDocs as enforceCacheManagerNestjsMigrationSourceDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { behavioralChangedFiles, isNavigationDocument } from './docs-navigation-changes.mjs';
@@ -115,7 +115,6 @@ const staticAssetRegressionEvidence = [
 ];
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
-export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 export { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
@@ -1024,6 +1023,58 @@ function assert(condition, message) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+export function enforceCacheManagerNestjsMigrationDocs(readText = read) {
+  enforceCacheManagerNestjsMigrationSourceDocs(readText);
+
+  const documents = [
+    ['packages/cache-manager/README.md', '### NestJS Cache Migration'],
+    ['packages/cache-manager/README.ko.md', '### NestJS 캐시 마이그레이션'],
+    ['docs/getting-started/migrate-from-nestjs.md', '### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration'],
+    ['docs/getting-started/migrate-from-nestjs.ko.md', '### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션'],
+  ];
+  // Check boundary terms together in their owning statement, not elsewhere in
+  // the document. EN/KO semantic review remains necessary beyond this guard.
+  const boundaries = [
+    ['decorator-placement', [
+      /`@CacheTTL\(\.\.\.\)`/u, /`@CacheKey\(\.\.\.\)`/u,
+      /method-only|apply only to methods|method 전용|method에만/iu,
+      /repeat|반복/iu, /module\s+`ttl`/iu,
+      /does not add controller-level|controller 수준 (?:metadata|decorator) 지원을 추가하지 않습니다/iu,
+    ]],
+    ['store-configuration', [
+      /`stores`/u, /Keyv/u, /`CacheModule`/u, /registration|등록마다/iu,
+      /one\s+`store`|하나의\s+`store`/iu,
+      /no direct configuration equivalent|직접 대응하는 설정(?:은)? 없/iu,
+      /multi-tier|다계층/iu, /fallback/iu,
+      /application-owned|애플리케이션 소유/iu, /`CacheStore`/u, /unadapted|변환하지 않은/iu,
+    ]],
+    ['codemod', [
+      /`fluo migrate`/u, /`@nestjs\/cache-manager`/u,
+      /does not rewrite|재작성하지 않습니다/iu,
+      /No manual follow-ups detected/u,
+      /imports?|import/iu, /configuration|설정/iu, /decorators?/iu, /manually|수동으로/iu,
+    ]],
+    ['transport', [
+      /`CacheInterceptor`/u, /cache decorator/iu,
+      /belongs to the HTTP pipeline|HTTP pipeline 전용/iu,
+      /\bGET\b/u, /non-GET/u, /`@CacheEvict\(\.\.\.\)`/u,
+      /WebSocket/u, /microservice/iu, /`CacheService`/u,
+      /call.*directly|직접 호출/iu, /no automatic cache interception|자동 interception 없이/iu,
+    ]],
+  ];
+
+  for (const [relativePath, heading] of documents) {
+    const section = readText(relativePath).split(`${heading}\n`)[1]?.split(/\n#{1,3} /u)[0] ?? '';
+    const statements = section.split('\n').filter((line) => line.startsWith('|') || line.startsWith('- '));
+    for (const [boundary, terms] of boundaries) {
+      assert(
+        statements.some((statement) => terms.every((term) => term.test(statement))),
+        `${relativePath} must document the cache-manager ${boundary} boundary in its migration section.`,
+      );
+    }
+  }
 }
 
 export function enforceCliMigrationTransformDocs(readText = read) {
@@ -1974,7 +2025,9 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // emitted for failed or hanging bootstrap attempts, plus canonical i18n
   // standalone service and loader static create methods, canonical
   // createAcceptLanguageLocalePolicyResolver and createHeaderLocalePolicyResolver
-  // policy resolvers, and Accept-Language policy resolver NestJS migration boundaries.
+  // policy resolvers, and Accept-Language policy resolver NestJS migration boundaries,
+  // plus cache-manager method-only decorators, single-store/Keyv configuration,
+  // manual codemod follow-up, and HTTP-only interception migration boundaries.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
