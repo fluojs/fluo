@@ -56,6 +56,10 @@ function buildSortedQueryString(query: Record<string, unknown>): string {
   return entries.join('&');
 }
 
+function escapeCacheKeyComponent(value: string): string {
+  return value.replaceAll('%', '%25').replaceAll('|', '%7C');
+}
+
 function appendPrincipalScope(
   key: string,
   context: InterceptorContext,
@@ -63,7 +67,7 @@ function appendPrincipalScope(
 ): string {
   if (resolver) {
     const scope = resolver(context);
-    return scope !== undefined ? `${key}|principal:${scope}` : key;
+    return scope !== undefined ? `${key}|principal:${escapeCacheKeyComponent(scope)}` : key;
   }
 
   const principal = context.requestContext.principal;
@@ -72,10 +76,11 @@ function appendPrincipalScope(
     return key;
   }
 
-  const issuer = encodeURIComponent(principal.issuer ?? 'unknown');
   const subject = encodeURIComponent(principal.subject);
 
-  return `${key}|principal:${issuer}:${subject}`;
+  return principal.issuer === undefined
+    ? `${key}|principal:${subject}`
+    : `${key}|principal:${encodeURIComponent(principal.issuer)}:${subject}`;
 }
 
 function defaultCacheKey(
@@ -87,7 +92,8 @@ function defaultCacheKey(
     return strategy(context);
   }
 
-  const path = context.requestContext.request.path;
+  // Query components and principal fields are already URI-encoded separately.
+  const path = escapeCacheKeyComponent(context.requestContext.request.path).replaceAll('?', '%3F');
   const query = context.requestContext.request.query;
 
   if (strategy === 'route') {
