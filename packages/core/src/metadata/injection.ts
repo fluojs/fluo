@@ -18,6 +18,8 @@ function getStandardInjectionMap(target: object): Map<MetadataPropertyKey, Stand
 /**
  * Define injection metadata.
  *
+ * @deprecated Will be removed in the next @fluojs/core major release.
+ *
  * @param target The target.
  * @param propertyKey The property key.
  * @param metadata The metadata.
@@ -32,6 +34,8 @@ export function defineInjectionMetadata(
 
 /**
  * Get injection schema.
+ *
+ * @deprecated Will be removed in the next @fluojs/core major release.
  *
  * @param target The target.
  * @returns The get injection schema result.
