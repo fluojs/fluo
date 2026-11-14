@@ -47,7 +47,7 @@ Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하�
     };
     const runtimeCleanup: RuntimeCleanupCallback[] = [];
     if (studioDevtools) {
-      runtimeCleanup.push(() => studioDevtools.close());
+      createRuntimeCleanupRegistration(runtimeCleanup)(() => studioDevtools.close());
     }
     const bootstrapReadySignal = createBootstrapReadySignal();
     const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
