@@ -325,7 +325,7 @@ Custom Providers also enable contextual injection, where the DI container uses i
 
 Injection metadata reads both the WeakMap store and the standard metadata bag, then combines them into one schema.
 
-`path:packages/core/src/metadata/injection.ts:39-62`
+`path:packages/core/src/metadata/injection.ts:43-66`
 ```typescript
 export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
   const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
@@ -456,7 +456,7 @@ The cloned store in `path:packages/core/src/metadata/store.ts:16-32` is one of t
 
 There is another hidden advanced point in `shared.ts`. `path:packages/core/src/metadata/shared.ts:284-367` provides `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, and record/map readers for constructor metadata. This means Fluo carefully decides where to read metadata from. Some information lives on the object itself, some information lives on the constructor, and the helpers keep this choice visible rather than hiding it behind one giant "get everything" API.
 
-The key merge routine continues the same theme. `path:packages/core/src/metadata/shared.ts:369-397` merges stored keys and standard keys while preserving first-seen order. This behavior follows the same merge rule already shown in the earlier `mergeMetadataPropertyKeys(stored, standard)` call from `path:packages/core/src/metadata/injection.ts:39-62`. Instead of pretending the two worlds are identical, Fluo defines reconciliation rules explicitly, and that predictability lets the framework combine Standard Decorators with internal runtime stores without devolving into nondeterministic behavior.
+The key merge routine continues the same theme. `path:packages/core/src/metadata/shared.ts:369-397` merges stored keys and standard keys while preserving first-seen order. This behavior follows the same merge rule already shown in the earlier `mergeMetadataPropertyKeys(stored, standard)` call from `path:packages/core/src/metadata/injection.ts:43-66`. Instead of pretending the two worlds are identical, Fluo defines reconciliation rules explicitly, and that predictability lets the framework combine Standard Decorators with internal runtime stores without devolving into nondeterministic behavior.
 
 If we step back, a consistent set of design heuristics appears.
 
