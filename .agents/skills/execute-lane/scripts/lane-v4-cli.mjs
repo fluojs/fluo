@@ -10,6 +10,7 @@
 //   set-fact        --root . --lane <path> --issue <n> --kind local-checks|local-ci-waiver|review --head <sha> --value <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind preflight --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
+//   clear-blocker   --root . --lane <path> --issue <n> --phase <p>
 //   retro-record    --root . --lane <path> --issue <n> --kind review|implementer|incident --value <json>
 //   retro-ci        --root . --lane <path> --issue <n>
 //   retro-plan      --root . --lane <path>
@@ -24,8 +25,8 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { relative, resolve, sep } from "node:path";
+import { closeSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, watch, writeFileSync } from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	buildVerificationPlan,
@@ -37,6 +38,7 @@ import {
 } from "../../../../tooling/ci/local-verification.mjs";
 import { collectIdentity } from "../../../../tooling/ci/verify-local.mjs";
 import { assertPredictedConflicts } from "../../../workflow-contracts/contracts.mjs";
+import { schemaFailure } from "../../../workflow-contracts/schema-validator.mjs";
 import {
 	evaluatePreflight,
 	issueDigest,
@@ -198,8 +200,51 @@ export const captureRetroCi = (root, lane, issue, query = run) => {
 };
 
 const loadLane = (path) => JSON.parse(readFileSync(path, "utf8"));
-const saveLane = (path, lane) =>
-	writeFileSync(path, `${JSON.stringify(lane, null, 2)}\n`);
+const saveLane = (path, lane, create = false) => {
+	const temporary = `${path}.${randomUUID()}.tmp`;
+	writeFileSync(temporary, `${JSON.stringify(lane, null, 2)}\n`, { flag: "wx" });
+	try {
+		if (create) linkSync(temporary, path);
+		else renameSync(temporary, path);
+	} finally {
+		if (existsSync(temporary)) unlinkSync(temporary);
+	}
+};
+
+// Subscribe before attempting acquisition so a release between EEXIST and
+// waiting cannot be missed. The whole read/validate/modify/publish is exclusive.
+const lockLane = (path) => new Promise((resolveLock, reject) => {
+	const lock = `${path}.lock`;
+	const watcher = watch(dirname(path), () => acquire());
+	const timeout = setTimeout(() => {
+		watcher.close();
+		reject(new Error(`lane lock timeout: ${lock}`));
+	}, 60_000);
+	const acquire = () => {
+		let descriptor;
+		try {
+			descriptor = openSync(lock, "wx");
+		} catch (error) {
+			if (error.code === "EEXIST") return;
+			clearTimeout(timeout);
+			watcher.close();
+			reject(error);
+			return;
+		}
+		clearTimeout(timeout);
+		watcher.close();
+		resolveLock(() => {
+			closeSync(descriptor);
+			unlinkSync(lock);
+		});
+	};
+	watcher.on("error", (error) => {
+		clearTimeout(timeout);
+		watcher.close();
+		reject(error);
+	});
+	acquire();
+});
 
 const issueEntry = (lane, issue) => {
 	const entry = lane.issues[String(issue)];
@@ -350,8 +395,8 @@ export const isChangesetFile = (file) =>
 	/^\.changeset\/.+\.md$/.test(file) && !file.endsWith("README.md");
 
 // `$create-lane` emits a canonical lane v2 ledger at `.omo/lanes/<lane-id>.json`.
-// v4 consumes only the issue set and the dependency edges from it; every other v2
-// field describes v1's DAG/authority machinery, which v4 does not have. Exported
+// v4 consumes issues, dependencies, merge approval, hints and retry policy;
+// other v2 execution fields belong to the former runtime. Exported
 // so the translation is testable rather than buried in argument parsing.
 // Provenance back-reference written into the v4 lane at init time. Two files
 // describe "the lane" during a run — the v2 planning ledger (immutable
@@ -386,6 +431,11 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		);
 	}
 	const members = new Set(issues);
+	if (Object.hasOwn(laneV2, "retry_policy")) {
+		const schema = JSON.parse(readFileSync(new URL("../../../workflow-contracts/lane-ledger-v2.schema.json", import.meta.url)));
+		const failure = schemaFailure(schema.properties.retry_policy, laneV2.retry_policy, "retry_policy");
+		if (failure) throw new TypeError(failure);
+	}
 	assertPredictedConflicts(laneV2.predicted_conflicts, issues);
 	const graph = laneV2.dependency_graph ?? {};
 	const specs = issues.map((n) => {
@@ -406,6 +456,7 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		// The maintainer's lane-plan approval already covers merging every
 		// issue in this lane; import it so the merge gate does not re-ask.
 		mergeApproved: laneV2.authority_scope?.pr_merge === true,
+		...(Object.hasOwn(laneV2, "retry_policy") ? { retryPolicy: structuredClone(laneV2.retry_policy) } : {}),
 		...(Object.hasOwn(laneV2, "predicted_conflicts") ? { predictedConflicts: laneV2.predicted_conflicts } : {}),
 	};
 };
@@ -413,6 +464,31 @@ export const laneV2ToInitSpecs = (laneV2) => {
 export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	const entry = issueEntry(lane, issue);
 	const branch = branchFor(entry);
+	const observationFailures = [];
+	const github = (source, subject, args, valid) => {
+		let output;
+		try {
+			output = execFileSync("gh", args, {
+				cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+				env: { ...process.env, GH_PAGER: "cat" },
+			});
+		} catch (error) {
+			// gh pr view has one explicit not-found outcome; auth, network,
+			// repository and all other command failures remain failed observations.
+			if (source === "pr" && error.status === 1 &&
+				String(error.stderr).trim() === `no pull requests found for branch "${subject}"`) return null;
+			observationFailures.push({ source, subject, code: "command-failed" });
+			return null;
+		}
+		try {
+			const value = JSON.parse(output);
+			if (valid(value)) return value;
+		} catch (error) {
+			if (!(error instanceof SyntaxError)) throw error;
+		}
+		observationFailures.push({ source, subject, code: "invalid-response" });
+		return null;
+	};
 	const branchExists = run(root, "git", [
 		"show-ref",
 		"--verify",
@@ -500,15 +576,17 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	const changesetPresent = (changedFiles ?? []).some(isChangesetFile);
 
 	let pr = null;
-	const prJson = run(root, "gh", [
+	const parsed = github("pr", branch, [
 		"pr",
 		"view",
 		branch,
 		"--json",
 		"number,state,headRefOid,mergeable,statusCheckRollup,mergeCommit,mergedAt",
-	]);
-	if (prJson !== null) {
-		const parsed = JSON.parse(prJson);
+	], (value) => value !== null && Number.isSafeInteger(value.number) && value.number > 0
+		&& ["OPEN", "CLOSED", "MERGED"].includes(value.state)
+		&& typeof value.headRefOid === "string" && /^[a-f0-9]{40}$/u.test(value.headRefOid)
+		&& (value.statusCheckRollup === null || Array.isArray(value.statusCheckRollup)));
+	if (parsed !== null) {
 		const rollup = parsed.statusCheckRollup ?? [];
 		const states = rollup.map((c) => c.conclusion ?? c.state ?? "PENDING");
 		let ciStatus = null;
@@ -569,15 +647,15 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		}
 	}
 
-	const issueJson = run(root, "gh", [
+	const issueData = github("issue", issue, [
 		"issue",
 		"view",
 		String(issue),
 		"--json",
 		"state,title,body",
-	]);
-	const issueData = issueJson === null ? null : JSON.parse(issueJson);
-	const issueState = issueData?.state ?? "OPEN";
+	], (value) => value !== null && ["OPEN", "CLOSED"].includes(value.state)
+		&& typeof value.title === "string" && typeof value.body === "string");
+	const issueState = issueData?.state ?? null;
 	const issueSha256 = typeof issueData?.title === "string" &&
 			typeof issueData?.body === "string"
 		? issueDigest(issueData)
@@ -637,20 +715,19 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		: null;
 
 	const unmetDependencies = (entry.depends_on ?? []).filter((dep) => {
-		const s = run(root, "gh", [
+		const s = github("dependency", dep, [
 			"issue",
 			"view",
 			String(dep),
 			"--json",
 			"state",
-			"--jq",
-			".state",
-		]);
-		return s !== "CLOSED";
+		], (value) => value !== null && ["OPEN", "CLOSED"].includes(value.state));
+		return s?.state !== "CLOSED";
 	});
 
 	return {
 		laneId: lane.lane_id,
+		observationFailures,
 		issue,
 		issueState,
 		issueSha256,
@@ -680,7 +757,7 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	};
 };
 
-const main = () => {
+const main = async () => {
 	const [command, ...args] = process.argv.slice(2);
 	const root = resolve(arg(args, "--root", "."));
 	const observationProcess = randomUUID();
@@ -701,6 +778,7 @@ const main = () => {
 		let ledgerRef = null;
 		let mergeApproved = false;
 		let predictedConflicts;
+		let retryPolicy;
 		if (fromLaneV2 !== null) {
 			const raw = readFileSync(resolve(root, fromLaneV2), "utf8");
 			const translated = laneV2ToInitSpecs(JSON.parse(raw));
@@ -712,6 +790,7 @@ const main = () => {
 			ledgerRef = sourceLedgerRef(fromLaneV2, raw);
 			mergeApproved = translated.mergeApproved;
 			predictedConflicts = translated.predictedConflicts;
+			retryPolicy = translated.retryPolicy;
 		} else {
 			laneId = arg(args, "--lane-id");
 			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
@@ -744,6 +823,7 @@ const main = () => {
 			// planning ledger to point at.
 			...(ledgerRef ? { source_ledger: ledgerRef } : {}),
 			...(predictedConflicts === undefined ? {} : { predicted_conflicts: predictedConflicts }),
+			...(retryPolicy === undefined ? {} : { retry_policy: retryPolicy }),
 			issues: Object.fromEntries(
 				specs.map(({ n, deps }) => [String(n), {
 					issue: n,
@@ -757,12 +837,15 @@ const main = () => {
 			),
 		};
 		const path = resolve(dir, `${laneId}.json`);
-		saveLane(path, lane);
+		saveLane(path, lane, true);
 		process.stdout.write(`${path}\n`);
 		return;
 	}
 
 	const lanePath = resolve(root, arg(args, "--lane"));
+	const release = ["record", "set-fact", "approve-merge", "clear-blocker"].includes(command)
+		? await lockLane(lanePath) : null;
+	try {
 	const lane = loadLane(lanePath);
 
 	// Watch runs for a long time: re-load the lane file every tick so
@@ -949,7 +1032,7 @@ const main = () => {
 		const result = JSON.parse(arg(args, "--result-json"));
 		const observed = observeIssue(root, lane, issue);
 		validateStageMeasurements(result?.measurements, observed.headSha);
-		const next = applyChildResult(entry, phase, result);
+		const next = applyChildResult(entry, phase, result, { retryPolicy: lane.retry_policy, now: Date.now() });
 		if (phase === "resolve-conflict" && result?.ok === true) {
 			const obs = observeIssue(root, lane, issue);
 			if (result.head_sha !== obs.headSha) throw new TypeError("Conflict result requires current head_sha");
@@ -1147,7 +1230,26 @@ const main = () => {
 		process.stdout.write("ok\n");
 		return;
 	}
+	if (command === "clear-blocker") {
+		const phase = arg(args, "--phase");
+		if (!entry.blocker || entry.blocker.phase !== phase) {
+			throw new TypeError("clear-blocker requires the current blocker's phase");
+		}
+		const blocker = entry.blocker;
+		entry.blocker = null;
+		entry.attempts[phase] = 0;
+		if (entry.retry_telemetry) delete entry.retry_telemetry[phase];
+		saveLane(lanePath, lane);
+		recordRetroEvent(root, lane.lane_id, issue, "incident", {
+			action: "clear-blocker", phase, blocker,
+		});
+		process.stdout.write("ok\n");
+		return;
+	}
 	throw new TypeError(`unknown command: ${command}`);
+	} finally {
+		release?.();
+	}
 };
 
 // Only run the CLI when this file is the process entrypoint, so the pure
@@ -1156,5 +1258,5 @@ if (
 	process.argv[1] &&
 	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-	main();
+	await main();
 }

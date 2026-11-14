@@ -119,10 +119,12 @@ const fixture = (t, isolatedOrchestrator = false, parent = process.env.FLUO_PROD
 const args = process.argv.slice(2);
 appendFileSync(process.env.GH_LOG, JSON.stringify(args) + '\\n');
 const state = JSON.parse(readFileSync(process.env.GH_STATE));
-if (state.unavailable) process.exit(1);
+const subject = args[0] === 'issue' && args[2] !== '42' ? args[2] : args[0];
+if (state.unavailable || state.fail === subject) process.exit(1);
+if (state.malformed === subject) { process.stdout.write('{}'); process.exit(0); }
 if (args[0] === 'pr' && args[1] === 'view') {
   const pr = Object.hasOwn(state.prs ?? {}, args[2]) ? state.prs[args[2]] : state.pr;
-  if (!pr) process.exit(1);
+  if (!pr) { process.stderr.write('no pull requests found for branch "' + args[2] + '"'); process.exit(1); }
   process.stdout.write(JSON.stringify(pr));
 } else if (args[0] === 'issue' && args[1] === 'view') {
   process.stdout.write(args.includes('--jq') ? state.issue.state : JSON.stringify(state.issue));
@@ -280,8 +282,156 @@ if (args[0] === 'pr' && args[1] === 'view') {
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog, env };
 };
 
+test('init: existing manual or imported lane -> reject and preserve all bytes', (t) => {
+  const f = fixture(t);
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  Object.assign(lane.issues['42'], { facts: { sentinel: { value: 1 } },
+    attempts: { review: 2 }, approvals: { merge: true }, blocker: { type: 'policy', phase: 'review' } });
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const original = readFileSync(f.lanePath);
+  const ledger = join(f.root, 'ledger.json');
+  writeFileSync(ledger, JSON.stringify({ version: 2, lane_id: 'fixture', confirmed_issues: [42] }));
+
+  for (const args of [['--lane-id', 'fixture', '--issue', '42'], ['--from-lane-v2', ledger]]) {
+    const result = f.cli('init', args, false);
+    assert.equal(result.status, 1);
+    assert.deepEqual(readFileSync(f.lanePath), original);
+  }
+});
+
+for (const source of ['pr', 'issue', '43']) {
+  for (const defect of ['fail', 'malformed']) {
+    test(`observation: ${defect} ${source} -> plan, plan-all and watch fail closed`, (t) => {
+      const f = fixture(t);
+      f.set('preflight', f.preflight());
+      f.implement();
+      const review = f.review();
+      f.set('review', review, review.head_sha);
+      const lane = JSON.parse(readFileSync(f.lanePath));
+      lane.issues['42'].depends_on = [43];
+      writeFileSync(f.lanePath, JSON.stringify(lane));
+      const original = readFileSync(f.lanePath);
+      f.state[defect] = source;
+      f.update();
+
+      const single = f.plan().decision;
+      const all = JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision;
+      const watch = f.cli('watch', ['--lane', f.lanePath, '--once']).stdout;
+
+      assert.equal(single.action, 'observation-failed');
+      assert.deepEqual(single, all);
+      assert.deepEqual(single.failures, [{ source: source === '43' ? 'dependency' : source,
+        subject: source === 'pr' ? 'issue-42' : Number(source === 'issue' ? 42 : source),
+        code: defect === 'fail' ? 'command-failed' : 'invalid-response' }]);
+      assert.match(watch, /-> observation-failed/u);
+      assert.deepEqual(readFileSync(f.lanePath), original);
+    });
+  }
+}
+
+test('clear-blocker: matching phase -> reset only target and retain observable retro incident', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.issues['43'] = { ...structuredClone(lane.issues['42']), issue: 43, branch: 'issue-43' };
+  Object.assign(lane.issues['42'], {
+    blocker: { type: 'attempts-exhausted', phase: 'implement' },
+    attempts: { implement: 3, review: 2 },
+    retry_telemetry: { implement: { elapsed_ms: 123 }, review: { elapsed_ms: 456 } },
+  });
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const original = readFileSync(f.lanePath);
+  f.cli('clear-blocker', [...f.common, '--phase', 'review'], false);
+  assert.deepEqual(readFileSync(f.lanePath), original);
+
+  f.cli('clear-blocker', [...f.common, '--phase', 'implement']);
+
+  const after = JSON.parse(readFileSync(f.lanePath));
+  const expected = structuredClone(lane);
+  expected.issues['42'].blocker = null;
+  expected.issues['42'].attempts.implement = 0;
+  delete expected.issues['42'].retry_telemetry.implement;
+  assert.deepEqual(after, expected);
+  assert.equal(f.plan().decision.action, 'implement');
+  const events = readRetroEvents(f.root, 'fixture').filter(event => event.data?.action === 'clear-blocker');
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'incident');
+  assert.deepEqual(events[0].data.blocker, lane.issues['42'].blocker);
+  assert.equal(events[0].data.phase, 'implement');
+});
+
+test('concurrent CLI: separate record and set-fact writers -> complete JSON and no lost updates', async (t) => {
+  const f = fixture(t);
+  const preflight = f.preflight();
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.retry_policy = { retry_count_is_terminal: false, max_same_failure_repeats: null,
+    max_wall_clock_minutes: null, stop_on_child_contract_error: true };
+  lane.issues['43'] = { ...structuredClone(lane.issues['42']), issue: 43, branch: 'issue-43' };
+  lane.issues['42'].facts.padding = { value: 'x'.repeat(1_000_000) };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const preflight43 = createPreflight({ ...preflight, issue: 43 });
+  const commands = [
+    ['set-fact', '--issue', '42', '--kind', 'preflight', '--value', JSON.stringify(preflight)],
+    ['set-fact', '--issue', '43', '--kind', 'preflight', '--value', JSON.stringify(preflight43)],
+    ...Array.from({ length: 6 }, (_, i) => ['record', '--issue', i % 2 ? '43' : '42',
+      '--phase', 'implement', '--result-json', '{"ok":false,"error":"fixture"}']),
+  ];
+  const signal = AbortSignal.timeout(20_000);
+  const reader = spawn(process.execPath, ['--input-type=module', '-e', `
+    import { watch, readFileSync } from 'node:fs';
+    import { dirname } from 'node:path';
+    const path = ${JSON.stringify(f.lanePath)};
+    let reads = 0;
+    const watcher = watch(dirname(path), () => {
+      try { JSON.parse(readFileSync(path)); reads++; }
+      catch (error) { process.send({ error: error.message }); }
+    });
+    process.on('message', () => { watcher.close(); process.send({ reads }); process.disconnect(); });
+    process.send({ ready: true });
+  `], { env: f.env, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+  t.after(() => reader.kill('SIGKILL'));
+  const readerClosed = once(reader, 'close', { signal });
+  assert.deepEqual((await once(reader, 'message', { signal }))[0], { ready: true });
+  const readerMessages = [];
+  reader.on('message', message => readerMessages.push(message));
+  const workers = commands.map(args => {
+    const worker = spawn(process.execPath, ['-e', `
+      const { execFileSync } = require('node:child_process');
+      process.on('message', () => {
+        try { execFileSync(process.execPath, ${JSON.stringify([script, ...args, '--root', f.root, '--lane', f.lanePath])},
+          { stdio: ['ignore', 'pipe', 'pipe'] }); process.disconnect(); }
+        catch(error) { process.stderr.write(String(error.stderr)); process.exit(1); }
+      });
+      process.send('ready');
+    `], { env: f.env, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+    t.after(() => worker.kill('SIGKILL'));
+    let stderr = '';
+    worker.stderr.on('data', chunk => { stderr += chunk; });
+    const ready = once(worker, 'message', { signal });
+    const closed = once(worker, 'close', { signal }).then(([code]) => ({ code, stderr }));
+    return { worker, ready, closed };
+  });
+  await Promise.all(workers.map(worker => worker.ready));
+
+  for (const { worker } of workers) worker.send('go');
+  const outcomes = await Promise.all(workers.map(worker => worker.closed));
+  reader.send('stop');
+  await readerClosed;
+
+  for (const outcome of outcomes) assert.equal(outcome.code, 0, outcome.stderr);
+  assert.deepEqual(readerMessages.filter(message => message.error), []);
+  assert.ok(readerMessages.some(message => message.reads > 0));
+  const after = JSON.parse(readFileSync(f.lanePath));
+  for (const issue of ['42', '43']) {
+    assert.equal(after.issues[issue].attempts.implement, 3);
+    assert.equal(after.issues[issue].blocker, null);
+    assert.equal(after.issues[issue].facts.preflight.value.issue, Number(issue));
+  }
+  assert.deepEqual(after.issues['42'].facts.padding, lane.issues['42'].facts.padding);
+});
+
 const baselineFixture = (t) => {
-  const f = fixture(t, false, new URL('../../../../.omo/verification/retro-followups-3977-3978-20261013/issue-3978/fixtures/', import.meta.url).pathname);
+  const f = fixture(t);
   f.set('preflight', f.preflight());
   f.implement();
   f.commit('tests/baseline.mjs', `import { readFileSync } from 'node:fs';
@@ -977,7 +1127,7 @@ test('CLI: title/body, base and accepted contract edits invalidate old evidence'
   assert.equal(f.plan().decision.action, 'implement');
   f.state.unavailable = true;
   f.update();
-  assert.equal(f.plan().decision.action, 'preflight');
+  assert.equal(f.plan().decision.action, 'observation-failed');
 });
 
 test('CLI: unrelated main advancement preserves preflight, review and canonical receipt', (t) => {
