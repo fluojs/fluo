@@ -245,6 +245,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 
     return freezeNormalizedProvider({
       inject: [],
+      multi: objectProvider.multi,
       provide,
       scope: 'singleton',
       type: 'existing',
