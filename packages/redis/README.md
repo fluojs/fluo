@@ -12,7 +12,7 @@ Shared Redis connection layer for fluo. It provides a default app-scoped `ioredi
 - [When to use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
-- [Public API](#public-api)
+- [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
@@ -83,11 +83,13 @@ export class CacheRepository {
 
 Every `RedisModule.forRoot(...)` registration creates a new client that `@fluojs/redis` owns, including named clients registered through `RedisModule.forRoot({ name, ... })`. The module never adopts an existing client instance. Registration identity is application-wide: only one unnamed default registration and one registration for each trimmed name are allowed. Compatible duplicate package copies share the exported default/named token identities and the registration marker, so mixed-copy duplicates are rejected during bootstrap before creating a Redis client. Ownership remains isolated per application; private lifecycle/guard tokens and the default `RedisService` constructor token keep their existing policy.
 
+An unnamed registration and a registration with `name: 'default'` own distinct raw clients and facades, so they can coexist in the same application. Duplicate detection uses each registration's raw-client token rather than its diagnostic label. Two unnamed registrations or two registrations with the same trimmed name still fail before client construction.
+
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.
-- Lifecycle-owned `connect()` and `quit()` calls are bounded by package timeouts (`10_000` ms by default) so bootstrap and shutdown do not wait forever on a stalled Redis command. Override them with `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs`; pass `0` only when the host process intentionally owns an unbounded wait.
+- Lifecycle-owned `connect()` and `quit()` calls are bounded by package timeouts (`10_000` ms by default) so bootstrap and shutdown do not wait forever on a stalled Redis command. Override them with `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs`; pass `0` only when the host process intentionally owns an unbounded wait. All finite non-negative values are supported, including intervals above the host timer limit of `2_147_483_647` ms.
 - During shutdown, ready/connecting clients attempt `quit()` first for graceful teardown, while monitoring, wait, and closed-transition states use `disconnect()` directly.
-- If `quit()` fails, Fluo falls back to `disconnect()` and only rethrows when the client still remains open afterward.
+- If `quit()` fails or times out, Fluo observes closure before calling `disconnect()` and allows up to another `10_000` ms for the asynchronous transition to `end`. Successful cleanup resolves shutdown; otherwise, the original QUIT error or timeout is rethrown. This cleanup deadline still applies when `quitTimeoutMs: 0` disables the QUIT timeout and QUIT rejects.
 
 ### Option Normalization
 
@@ -114,6 +116,7 @@ Use `RedisModule.forRoot({ name, ...options })` when one application needs more 
 
 - Omit `name` when you want the default aliases: `REDIS_CLIENT` / `RedisService`.
 - Pass `name` when you want the named helpers: `getRedisClientToken(name)` / `getRedisServiceToken(name)`.
+- `default` is a valid name. `name: 'default'` and `name: ' default '` use the same named tokens, distinct from the unnamed `REDIS_CLIENT` / `RedisService` aliases.
 - `name` identifies the Fluo registration only. For an ioredis Sentinel master name, pass `sentinelName`; Fluo forwards it to ioredis as its constructor `name` option without changing the registration tokens.
 - Named clients follow the same bootstrap/shutdown contract as the default client; only the default registration exports the `REDIS_CLIENT` / `RedisService` aliases.
 - Names are trimmed, and blank or whitespace-only names are rejected by token/component helpers.
@@ -131,15 +134,6 @@ import {
 const ANALYTICS_REDIS = getRedisServiceToken('analytics');
 const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
-    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
-  ],
-})
-export class AppModule {}
-
 @Inject(RedisService, ANALYTICS_REDIS, ANALYTICS_REDIS_CLIENT)
 export class AnalyticsStore {
   constructor(
@@ -148,6 +142,16 @@ export class AnalyticsStore {
     private readonly analyticsClient: Redis,
   ) {}
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
+  ],
+  providers: [AnalyticsStore],
+})
+export class AppModule {}
 ```
 
 ### Raw Client Access
@@ -180,7 +184,7 @@ export class AdvancedService {
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { getRedisClientToken, RedisModule } from '@fluojs/redis';
-import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices/redis';
 import type Redis from 'ioredis';
 
 const COMMAND_REDIS = getRedisClientToken();
@@ -224,7 +228,7 @@ export class RedisConnectionsModule {}
 - `DEFAULT_REDIS_CLIENT_NAME`: Stable default Redis client name.
 - `getRedisClientToken(name)`: DI token helper for a named raw client. Omitting `name` returns the default `REDIS_CLIENT` token.
 - `getRedisServiceToken(name)`: DI token helper for a named `RedisService` facade. Omitting `name` returns the default `RedisService` token.
-- `getRedisComponentId(name)`: Status/dependency id helper used by Redis-consuming packages (`redis.default`, `redis.cache`, etc.).
+- `getRedisComponentId(name)`: Status/dependency id helper used by Redis-consuming packages (`redis.default`, `redis.cache`, etc.). For compatibility, both `getRedisComponentId()` and `getRedisComponentId('default')` retain the existing `redis.default` diagnostic label. Those two distinct registrations can share this label; it is not an application-wide unique registration key.
 - `createRedisPlatformStatusSnapshot(input)`: Adapts Redis connection state into Fluo's platform health/readiness snapshot contract.
 
 ### Types

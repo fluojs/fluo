@@ -974,6 +974,8 @@ Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할
 - **Codemod 경계.** `fluo migrate`는 `@nestjs/cache-manager` 코드를 재작성하지 않습니다. CLI가 `No manual follow-ups detected`를 출력해도 cache import, 설정, decorator는 이 마이그레이션 map에 따라 수동으로 옮겨야 합니다.
 - **Transport 경계.** `CacheInterceptor`와 cache decorator의 자동 동작은 HTTP pipeline 전용입니다. HTTP GET은 read-through caching, non-GET은 `@CacheEvict(...)`를 통한 eviction 대상입니다. WebSocket subscriber와 microservice handler에서는 자동 interception 없이 standalone `CacheService`를 직접 호출해야 합니다.
 
+ioredis `Redis` 인스턴스는 adapter나 type assertion 없이 공개 `RedisCompatibleClient` 계약을 직접 만족합니다. 직접 등록에는 `@fluojs/redis`가 필요하지 않으며, memory-only 소비자에게는 두 Redis peer 모두 필요하지 않습니다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { CacheModule } from '@fluojs/cache-manager';

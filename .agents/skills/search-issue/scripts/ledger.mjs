@@ -1,131 +1,85 @@
-const isRecord = (value) =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+import { prepareRun } from './contracts.mjs';
+import { draftState } from './drafts.mjs';
+import { assertLedger, assertReviewerResult, identityDigest } from './ledger-contract.mjs';
 
-const requireArray = (record, key) => {
-  const value = record[key];
-  if (!Array.isArray(value)) {
-    throw new TypeError(`${key} must be an array.`);
-  }
-  return value;
+export const createLedger = (prepared) => {
+  const ledger = {
+    version: 1, run_id: prepared.scenario.run_id,
+    repository: prepared.scenario.repository,
+    identity_sha256: '', status: 'running',
+    intake: prepared.scope, authority: prepared.scenario.authority,
+    invocations: prepared.invocations.map((invocation) => ({
+      ...invocation, task_id: null, result: null,
+    })),
+    findings: [], rd_briefs: [], drafts: [], registration_triage: [],
+    registration_results: [], handoff: null, blocked_reason: null,
+  };
+  ledger.identity_sha256 = identityDigest(ledger);
+  return assertLedger(ledger);
 };
 
-const recordsFor = (result) => {
-  const records = result.records;
-  if (!Array.isArray(records)) {
-    throw new TypeError(`records must be an array for ${result.invocation_id}.`);
+export const startInvocation = (ledger, invocationId, taskId) => {
+  assertLedger(ledger);
+  if (ledger.status !== 'running' || typeof taskId !== 'string' || !taskId.trim()) {
+    throw new TypeError('Starting requires a running ledger and native task ID.');
   }
-  return records;
-};
-
-const reconcileInvocations = (expectedInvocations, reviewerResults) => {
-  const resultsById = new Map(
-    reviewerResults.map((result) => {
-      if (!isRecord(result) || typeof result.invocation_id !== 'string') {
-        throw new TypeError('reviewer_results require invocation_id.');
-      }
-      return [result.invocation_id, result];
-    }),
-  );
-
-  return expectedInvocations.map((expected) => {
-    const result = resultsById.get(expected.invocation_id);
-    if (
-      !isRecord(result) ||
-      result.package !== expected.package ||
-      result.reviewer !== expected.reviewer ||
-      result.result_type !== expected.expected_result_type ||
-      result.status !== 'completed'
-    ) {
-      return { ...expected, status: 'failed', result_count: null };
-    }
-
-    return {
-      ...expected,
-      status: 'completed',
-      result_count: recordsFor(result).length,
-    };
+  const invocation = ledger.invocations.find((item) => item.invocation_id === invocationId);
+  if (!invocation || invocation.status !== 'expected') throw new TypeError('Invocation is not expected.');
+  return assertLedger({
+    ...ledger, invocations: ledger.invocations.map((item) =>
+      item === invocation ? { ...item, status: 'started', task_id: taskId } : item),
   });
 };
 
-const collectRecords = (reviewerResults, resultType) =>
-  reviewerResults
-    .filter((result) => result.result_type === resultType)
-    .flatMap((result) =>
-      recordsFor(result).map((record) => ({
-        ...record,
-        package: result.package,
-        invocation_id: result.invocation_id,
-      })),
-    );
-
-const labelsFor = (finding, domain) => {
-  const severityLabel = `priority:${finding.severity.toLowerCase()}`;
-  const areaLabel = domain.package_area[finding.package];
-  return [
-    'source:package-audit',
-    severityLabel,
-    ...(typeof areaLabel === 'string' ? [areaLabel] : []),
-    `pkg:${finding.package}`,
-    finding.contract_impact === 'none' ? 'tech-debt' : 'bug',
-  ];
+export const collectResult = (ledger, result) => {
+  assertLedger(ledger);
+  const invocation = ledger.invocations.find((item) => item.invocation_id === result?.invocation_id);
+  if (ledger.status !== 'running' || !invocation || invocation.status !== 'started') {
+    throw new TypeError('Result requires one started native invocation.');
+  }
+  assertReviewerResult(result, invocation);
+  return assertLedger({
+    ...ledger,
+    status: result.status === 'completed' ? 'running' : 'blocked',
+    blocked_reason: result.status === 'completed' ? null : result.stop_reason,
+    invocations: ledger.invocations.map((item) => item === invocation
+      ? { ...item, result, status: result.status } : item),
+  });
 };
 
-const buildDrafts = (packages, findings, domain) =>
-  packages.flatMap((packageName) => {
-    const packageFindings = findings.filter(
-      (finding) => finding.package === packageName,
-    );
-    if (packageFindings.length === 0) {
-      return [];
-    }
-
-    const firstFinding = packageFindings[0];
-    return [
-      {
-        draft_id: '',
-        package: packageName,
-        title: `[${packageName}] ${firstFinding.problem}`,
-        findings: packageFindings,
-        labels: labelsFor(firstFinding, domain),
-      },
-    ];
-  }).map((draft, index) => ({ ...draft, draft_id: `D${index + 1}` }));
-
-export const buildLedger = (prepared) => {
-  const reviewerResults = requireArray(prepared.scenario, 'reviewer_results');
-  const invocations = reconcileInvocations(prepared.invocations, reviewerResults);
-  if (invocations.some((invocation) => invocation.status !== 'completed')) {
-    throw new TypeError('Reviewer invocation reconciliation failed.');
+export const createDrafts = (ledger, domain) => {
+  assertLedger(ledger);
+  if (ledger.status !== 'running' || ledger.invocations.some((item) => item.status !== 'completed')) {
+    throw new TypeError('Every native invocation must complete before drafting.');
   }
+  return assertLedger({ ...ledger, status: 'triage', ...draftState(ledger, domain) });
+};
 
-  const findings = collectRecords(reviewerResults, 'audit_finding');
-  const rdBriefs = collectRecords(reviewerResults, 'rd_brief');
-  const drafts = buildDrafts(prepared.scope.packages, findings, prepared.domain);
-  return {
-    version: 1,
-    run_id: prepared.scenario.run_id,
-    status: 'triage',
-    intake: prepared.scope,
-    invocations,
-    findings,
-    rd_briefs: rdBriefs,
-    drafts,
-    registration_triage: requireArray(
-      prepared.scenario,
-      'registration_triage',
-    ),
-    registration_results: [],
-    handoff: null,
+// Fixture adaptation stops here. Construction, collection, drafts, validation and
+// registration below use exactly the production state transitions.
+export const buildLedger = (prepared) => {
+  const scenario = {
+    ...prepared.scenario,
+    repository: prepared.scenario.repository ?? 'fluojs/fluo',
   };
+  const normalized = prepareRun(scenario);
+  if (normalized.kind !== 'ready') throw new TypeError('Invalid fixture intake.');
+  let ledger = createLedger(normalized);
+  for (const [index, result] of scenario.reviewer_results.entries()) {
+    ledger = startInvocation(ledger, result.invocation_id, `fixture-${index}`);
+    ledger = collectResult(ledger, {
+      contract_version: 1, stop_reason: 'fixture',
+      verification: { checked_paths: [], evidence_complete: true }, ...result,
+    });
+  }
+  ledger = createDrafts(ledger, prepared.domain);
+  return assertLedger({ ...ledger, registration_triage: scenario.registration_triage });
 };
 
 export const runReadyScenario = async (prepared, outputDirectory) => {
   const ledger = buildLedger(prepared);
   const { registerAndPublish } = await import('./registration.mjs');
   return registerAndPublish({
-    domain: prepared.domain,
-    ledger,
-    outputDirectory,
-    scenario: prepared.scenario,
+    domain: prepared.domain, ledger, outputDirectory, scenario: prepared.scenario,
   });
 };
