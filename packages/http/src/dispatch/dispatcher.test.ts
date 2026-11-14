@@ -836,6 +836,60 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(1);
   });
 
+  it('dispatches root wildcard middleware with an isolated dependency lifecycle for each non-root request', async () => {
+    const events: string[] = [];
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+
+      onDestroy() {
+        events.push(`dispose:${this.id}`);
+      }
+    }
+
+    @Inject(RequestStore)
+    @ScopeDecorator('request')
+    class AuthMiddleware implements Middleware {
+      constructor(private readonly store: RequestStore) {}
+
+      async handle(context: MiddlewareContext, next: Next) {
+        events.push(`middleware:${context.request.path}:${this.store.id}`);
+        await next();
+        events.push(`after:${this.store.id}`);
+      }
+    }
+
+    @Controller('/users')
+    class UsersController {
+      @Get('/:id')
+      getUser(_input: undefined, context: RequestContext) {
+        events.push(`handler:${context.request.path}`);
+        return { id: context.request.params.id };
+      }
+    }
+
+    const root = new CountingContainer().register(RequestStore, AuthMiddleware, UsersController);
+    const dispatcher = createDispatcher({
+      appMiddleware: [forRoutes(AuthMiddleware, '/*')],
+      handlerMapping: createHandlerMapping([{ controllerToken: UsersController }]),
+      rootContainer: root,
+    });
+    const responses = [createResponse(), createResponse()];
+
+    await dispatcher.dispatch(createRequest('/users/1'), responses[0]);
+    await dispatcher.dispatch(createRequest('/users/2'), responses[1]);
+
+    expect(responses.map((response) => response.body)).toEqual([{ id: '1' }, { id: '2' }]);
+    expect(events).toEqual([
+      'middleware:/users/1:1', 'handler:/users/1', 'after:1', 'dispose:1',
+      'middleware:/users/2:2', 'handler:/users/2', 'after:2', 'dispose:2',
+    ]);
+    expect(root.requestScopeCreateCount).toBe(2);
+    expect(root.requestScopeDisposeCount).toBe(2);
+  });
+
   it('uses isolated request scopes for observer callbacks on singleton routes', async () => {
     const events: string[] = [];
     let created = 0;
