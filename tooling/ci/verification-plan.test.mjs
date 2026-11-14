@@ -347,12 +347,10 @@ test('full PR compatibility expands each secondary runtime into four shards and 
       assert.deepEqual(task.dependencies, []);
       assert.deepEqual(task.inputs, []);
       assert.deepEqual(task.outputs, []);
-      assert.equal(task.commands.length, 4);
+      assert.equal(task.commands.length, 3);
       assert.deepEqual(task.commands.slice(0, 2), original.commands.slice(0, 2));
-      assert.deepEqual(task.commands[2], {
-        executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.',
-      });
-      assert.deepEqual(task.commands[3].argv, ['vitest', 'run', '--project', 'packages', '--maxWorkers=1',
+      assert.ok(task.commands.every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')));
+      assert.deepEqual(task.commands[2].argv, ['vitest', 'run', '--project', 'packages', '--maxWorkers=1',
         `--shard=${shard}/4`, '--reporter=json', '--reporter=default', `--outputFile=/evidence/${id}-vitest.json`]);
     }
     const smoke = plan.tasks.find((candidate) => candidate.id === `${base}-smoke`);
@@ -361,13 +359,11 @@ test('full PR compatibility expands each secondary runtime into four shards and 
     assert.deepEqual(smoke.dependencies, []);
     assert.deepEqual(smoke.inputs, []);
     assert.deepEqual(smoke.outputs, []);
-    assert.equal(smoke.commands.length, 4);
-    assert.deepEqual(smoke.commands[2], {
-      executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.',
-    });
-    assert.deepEqual(smoke.commands[3], original.commands.at(-1));
-    assert.equal(smoke.commands[3].env.FLUO_CLI_SANDBOX_PROFILE, 'smoke');
-    assert.equal(smoke.commands[3].env.FLUO_CLI_SANDBOX_DEPENDENCIES, 'locked');
+    assert.equal(smoke.commands.length, 3);
+    assert.ok(smoke.commands.every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')));
+    assert.deepEqual(smoke.commands[2], original.commands.at(-1));
+    assert.equal(smoke.commands[2].env.FLUO_CLI_SANDBOX_PROFILE, 'smoke');
+    assert.equal(smoke.commands[2].env.FLUO_CLI_SANDBOX_DEPENDENCIES, 'locked');
     assert.ok(!plan.tasks.some((candidate) => candidate.id === base));
     assert.deepEqual(plan.capabilityTasks[base],
       [1, 2, 3, 4].map((shard) => `${base}-${shard}`).concat([`${base}-smoke`]));
@@ -419,12 +415,123 @@ test('scoped secondary smoke accompanies only starter-affecting package selectio
   }
 });
 
+for (const project of ['apps', 'tooling']) {
+  test(`typegen preparation: reduced full ${project} and benchmark fixture -> preserves non-consuming commands without extra build`, (t) => {
+    const { root, put, manifest } = catalogFixture(t);
+    put('apps/docs/index.test.ts', 'export const fixture = true;');
+    const task = manifest.tasks.find(({ id }) => id === 'tooling-1');
+    task.dependencies = [];
+    task.inputs = [];
+    task.commands = [
+      { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
+      ...manifest.tasks.find(({ id }) => id === 'tooling-2').commands
+        .filter(({ executable }) => executable === 'node'),
+      { executable: 'pnpm', argv: ['vitest', 'run', '--project', project,
+        project === 'apps' ? 'apps/docs/' : 'tooling/', '--maxWorkers=1'], cwd: '.' },
+    ];
+
+    const plan = buildVerificationPlan({ changedFiles: [], identity, root, manifest });
+
+    assert.equal(plan.mode, 'full');
+    assert.deepEqual(plan.tasks.find(({ id }) => id === task.id).commands, task.commands);
+  });
+}
+
+test('typegen preparation: reduced full compatibility runtime probes -> no preparation or extra build in any shard', (t) => {
+  const { root, manifest } = catalogFixture(t);
+  for (const id of ['compatibility-floor', 'compatibility-next']) {
+    manifest.tasks.find((task) => task.id === id).commands = [
+      { executable: 'pnpm', argv: ['vitest', 'run', '--project', 'packages', '--maxWorkers=1'], cwd: '.' },
+      { executable: 'pnpm', argv: ['run', 'probe-runtime'], cwd: '.' },
+    ];
+  }
+
+  const plan = buildVerificationPlan({ changedFiles: [], identity, root, manifest });
+
+  assert.equal(plan.mode, 'full');
+  const tasks = plan.tasks.filter(({ id }) => id.startsWith('compatibility-'));
+  assert.equal(tasks.length, 10);
+  for (const task of tasks) {
+    assert.equal(task.commands.length, 1, task.id);
+    assert.deepEqual(task.commands[0], task.id.endsWith('-smoke')
+      ? { executable: 'pnpm', argv: ['run', 'probe-runtime'], cwd: '.' }
+      : { executable: 'pnpm', argv: ['vitest', 'run', '--project', 'packages', '--maxWorkers=1',
+        `--shard=${task.id.split('-').at(-1)}/4`,
+        '--reporter=json', '--reporter=default', `--outputFile=/evidence/${task.id}-vitest.json`], cwd: '.' });
+  }
+});
+
+test('typegen preparation: synthetic commands with a stale preparation entry -> removes it without treating it as consumption', () => {
+  const manifest = readVerificationManifest();
+  const task = manifest.tasks.find(({ id }) => id === 'tooling-2');
+  task.commands.unshift({ executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.' });
+  const expected = task.commands.slice(1);
+
+  const plan = buildVerificationPlan({ changedFiles: [], identity, manifest });
+
+  assert.deepEqual(plan.tasks.find(({ id }) => id === task.id).commands, expected);
+});
+
+test('typegen preparation: example selected elsewhere -> preserves non-consuming scoped package commands', () => {
+  const plan = buildVerificationPlan({
+    changedFiles: ['examples/react-vite-ssr/src/app.ts', 'packages/email/src/index.ts'], identity,
+  });
+
+  for (const task of plan.tasks.filter(({ id }) => id.startsWith('packages-') || id.startsWith('compatibility-'))) {
+    assert.ok(task.commands.every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')), task.id);
+    assert.ok(task.commands.every(({ argv }) => !argv.includes('--filter=@fluojs/cli...')), task.id);
+  }
+});
+
+test('typegen preparation: final example project in secondary package commands -> prepares every consuming shard', () => {
+  const manifest = readVerificationManifest();
+  for (const id of ['compatibility-floor', 'compatibility-next']) {
+    manifest.tasks.find((task) => task.id === id).commands
+      .find(({ argv }) => argv.includes('vitest')).argv.push('--project', 'examples');
+  }
+
+  const plan = buildVerificationPlan({ changedFiles: [], identity, manifest });
+
+  for (const base of ['compatibility-floor', 'compatibility-next']) {
+    for (const shard of [1, 2, 3, 4]) {
+      const task = plan.tasks.find(({ id }) => id === `${base}-${shard}`);
+      assert.equal(task.commands.length, 4);
+      assert.deepEqual(task.commands.slice(0, 2),
+        manifest.tasks.find(({ id }) => id === base).commands.slice(0, 2));
+      assert.deepEqual(task.commands[2], {
+        executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.',
+      });
+      assert.ok(task.commands[3].argv.includes(`--shard=${shard}/4`));
+      assert.ok(task.commands[3].argv.includes('examples'));
+    }
+  }
+});
+
+for (const [name, command] of [
+  ['example build', { executable: 'pnpm', argv: ['--filter', '@fluojs/example-react-vite-ssr', 'run', 'build'], cwd: '.' }],
+  ['example Node test', { executable: 'node', argv: ['--test', 'examples/react-vite-ssr/tests/reliability-handoff.test.mjs'], cwd: '.' }],
+  ['example compiler', { executable: 'pnpm', argv: ['exec', 'tsc', '-p', 'examples/tsconfig.json', '--noEmit'], cwd: '.' }],
+]) {
+  test(`typegen preparation: ${name} in an unrelated task id -> prepares before the first consumer`, () => {
+    const manifest = readVerificationManifest();
+    const install = { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' };
+    manifest.tasks.find(({ id }) => id === 'native-web').commands = [install, command];
+
+    const plan = buildVerificationPlan({ changedFiles: [], identity, manifest });
+
+    assert.deepEqual(plan.tasks.find(({ id }) => id === 'native-web').commands, [
+      install, { executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.' }, command,
+    ]);
+  });
+}
+
 for (const [name, changedFiles, options, consumerIds] of [
-  ['direct example', ['examples/react-vite-ssr/src/app.ts'], {}],
-  ['transitive HTTP', ['packages/http/src/index.ts'], {}],
-  ['CLI', ['packages/cli/src/commands/typegen.ts'], {}],
-  ['full PR', ['package.json'], {}],
-  ['extended', ['packages/email/src/index.ts'], { profile: 'extended' }],
+  ['direct example', ['examples/react-vite-ssr/src/app.ts'], {}, ['static', 'tooling-1', 'react-product', 'starters']],
+  ['transitive HTTP', ['packages/http/src/index.ts'], {}, ['static', 'tooling-1', 'react-product', 'starters']],
+  ['CLI', ['packages/cli/src/commands/typegen.ts'], {}, ['static', 'tooling-1', 'react-product', 'starters']],
+  ['full PR', ['package.json'], {}, ['static', 'tooling-1', 'react-product', 'starters']],
+  ['extended', ['packages/email/src/index.ts'], { profile: 'extended' },
+    ['static', 'tooling-1', 'react-product', 'starters', 'compatibility-floor', 'compatibility-next']],
   ['other example compiler', ['examples/minimal/src/app.ts'], {}, ['static']],
   ['SSR example compiler', ['examples/react-stable-ssr/src/app.ts'], {}, ['static']],
 ]) {
@@ -436,9 +543,9 @@ for (const [name, changedFiles, options, consumerIds] of [
     }
     const input = { changedFiles, identity, manifest, ...options };
     const plan = buildVerificationPlan(input);
-    const consumers = plan.tasks.filter(({ id }) =>
-      consumerIds ? consumerIds.includes(id)
-        : /^(?:static|packages-\d+|tooling-\d+|react-product|starters|compatibility-.+)$/u.test(id));
+    const consumers = plan.tasks.filter(({ id }) => consumerIds.includes(id));
+    assert.deepEqual(plan.tasks.filter(({ commands }) => commands.some(({ argv }) =>
+      argv.includes('tooling/ci/prepare-react-typegen.mjs'))).map(({ id }) => id), consumerIds);
 
     for (const task of consumers) {
       const prepare = task.commands.flatMap((command, index) =>
@@ -449,7 +556,7 @@ for (const [name, changedFiles, options, consumerIds] of [
           || argv[0] === 'build' || argv.includes('run') && argv.includes('build')));
       assert.equal(prepare[0], bootstrap + 1, task.id);
       assert.ok(prepare[0] < task.commands.length - 1, task.id);
-      if (consumerIds) {
+      if (name === 'other example compiler' || name === 'SSR example compiler') {
         assert.ok(task.commands.slice(0, prepare[0]).some(({ argv }) =>
           argv.includes('--filter=@fluojs/cli...') && argv.includes('--filter=@fluojs/example-react-vite-ssr^...')));
       }
