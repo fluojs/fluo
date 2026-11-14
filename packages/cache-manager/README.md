@@ -16,6 +16,7 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Redis Storage](#redis-storage)
   - [Atomic Updates](#atomic-updates)
   - [TTL Jitter](#ttl-jitter)
+  - [remember Store Error Policy](#remember-store-error-policy)
   - [Query-Sensitive Caching](#query-sensitive-caching)
   - [Cache Ownership and Reset Scope](#cache-ownership-and-reset-scope)
   - [Observing Cache Operations](#observing-cache-operations)
@@ -294,6 +295,27 @@ Jitter is disabled only when `ttlJitter` is omitted or `undefined`; `null`, prim
 
 Every jittered positive TTL remains positive and finite within its selected direction. A fully shortened TTL uses JavaScript's smallest positive finite value rather than becoming the no-expiry sentinel, while an upward result beyond the representable range saturates at `Number.MAX_VALUE`. TTL jitter spreads expiry times only. It is not distributed locking, refresh-ahead caching, or cross-instance stampede coordination.
 
+### remember Store Error Policy
+
+The default `rememberCacheErrors: 'throw'` propagates store read/write and loader failures from `remember` with their original identity. Omission or `undefined` also selects `'throw'`. A failed read never invokes the loader; a failed write rejects after one successful loader invocation.
+
+Explicitly opt in at registration to bypass only cache-store failures:
+
+```typescript
+CacheModule.forRoot({
+  store: 'memory',
+  rememberCacheErrors: 'bypass',
+});
+```
+
+With `'bypass'`, a thrown or rejected store `get` becomes a miss: the loader runs once and an ordinary cache write is still attempted when TTL and lifecycle rules permit. A thrown or rejected store `set` returns the already obtained loader value without rerunning the loader. A hit returns the cached value without invoking the loader. Results do not depend on whether an observer is configured.
+
+The boundary covers only the configured store's `get`/`set` invocation. Synchronous loader throws and Promise rejections propagate unchanged. TTL preparation, jitter random callback failures or invalid samples, invalidation cleanup failures, and lifecycle failures are not bypassed. Direct `get`, `set`, `del`, `reset`, `close`, and `update` failure contracts and HTTP `CacheInterceptor` behavior stay unchanged.
+
+Within one `CacheService` and its current reset generation, overlapping same-key normal misses and bypassed reads share one in-flight loader result or original failure. Different keys remain independent; a settled failed load releases its bookkeeping for later calls. Invalidation by `del` while reads, loaders, or writes overlap and suppression of late pre-reset/pre-close writes remain intact. A write that mutates then rejects still performs necessary same-generation stale-write cleanup; old-generation cleanup cannot delete a fresh post-reset value. Reset/close drain already-started store work but do not promise to await an origin loader that has not entered a store operation. This adds no distributed coalescing, retries, or stale-value fallback.
+
+`CacheModuleOptions.rememberCacheErrors` accepts only `'throw' | 'bypass'`. Unsupported untyped values produce a configuration error naming the choices. `forRoot` validates synchronously during registration; synchronous and asynchronous `forRootAsync` factories apply the same normalization when their result resolves.
+
 ### Query-Sensitive Caching
 
 Built-in HTTP cache key strategies derive their path segment from the concrete request path (`requestContext.request.path`), not the route template metadata. That means requests such as `/users/1` and `/users/2` always resolve to different cache keys even when they hit the same `@Get('/:id')` handler.
@@ -386,7 +408,7 @@ The contract is intentionally narrow:
 
 - **Privacy**: an observation carries only `operation`, `outcome`, and `durationMs`. Cache keys, cached values, loader results, and error objects are never passed to the observer, so instrumentation cannot leak application data.
 - **Operation taxonomy**: `operation` is one of `get`, `set`, `del`, `remember`, `reset`, or `close`. `remember` is reported once per call; its internal read is not reported as a separate `get`. `update` does not emit these observations.
-- **Outcomes**: `CacheObservation` is a discriminated union: read operations (`get`, `remember`) can report only `hit`, `miss`, or `error`, while write, invalidation, and lifecycle operations can report only `success` or `error`. A `remember` call that joins an in-flight load for the same key reports `miss`, because that call did not read a cached value.
+- **Outcomes**: `CacheObservation` is a discriminated union: read operations (`get`, `remember`) can report only `hit`, `miss`, or `error`, while write, invalidation, and lifecycle operations can report only `success` or `error`. Error-free misses and in-flight joiners report `miss`; cache hits report `hit`. A `remember` caller whose own read was bypassed, or whose shared load bypassed a write, reports exactly one `error` even when its value resolves. Read and write failure together still produce one event, with no internal `get`/`set` events. One caller's read error does not contaminate another successful caller's outcome.
 - **Timing**: `durationMs` measures the full `CacheService` operation, including store-queue serialization, with the runtime's monotonic `performance.now()` clock.
 - **Failure containment**: observer errors are swallowed. A thrown error or a rejected promise never changes the value the caller receives and never surfaces as an unhandled rejection. Observer work is not awaited by the cache operation.
 - **HTTP fail-soft interaction**: `CacheInterceptor` still swallows store failures so cache problems cannot fail an otherwise successful handler. The observer sees those failures as `error` observations, which is the supported way to alert on a degraded cache while keeping requests served.
@@ -403,6 +425,8 @@ An explicit `storeOwnershipMode` still wins over the store default. Set it to `e
 ### Async Configuration
 
 Use `CacheModule.forRootAsync(...)` when the final store, TTL, `keyPrefix`, or key strategy must come from DI or asynchronous bootstrap work. List the dependency tokens in `inject`, return ordinary `CacheModuleOptions` from `useFactory`, and the module normalizes that result with the same defaults as `CacheModule.forRoot(...)`.
+
+The factory result's `rememberCacheErrors` follows the same rules: omission/`undefined` selects `'throw'`, `'bypass'` selects the [remember store error policy](#remember-store-error-policy), and invalid values fail bootstrap when the result resolves.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -526,7 +550,7 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `CacheModule.forRootAsync({ inject, useFactory, global? })`: Resolves the same options through an injected factory for applications that build cache configuration from DI or asynchronous bootstrap work. `global` belongs to this registration call, and a rejected factory fails bootstrap.
 
 ### Public types
-- `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`, including optional `ttlJitter` and `observer`.
+- `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`, including optional `ttlJitter`, `observer`, and `rememberCacheErrors: 'throw' | 'bypass'` (default `'throw'`).
 - `CacheTtlJitterOptions` and `CacheTtlJitterMode`: Opt-in positive-TTL jitter bounds, direction, and deterministic randomness seam.
 - `CacheObserver`: Opt-in observation hook with a single `onCacheOperation(observation)` method.
 - `CacheObservation`: Privacy-safe discriminated union coupling each operation category to its valid outcomes and carrying `durationMs`.

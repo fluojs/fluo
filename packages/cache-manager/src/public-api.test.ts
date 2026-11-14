@@ -74,6 +74,10 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheModuleOptions>().toHaveProperty('store');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('httpKeyStrategy');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('ttlJitter');
+    expectTypeOf<CacheModuleOptions['rememberCacheErrors']>().toEqualTypeOf<'throw' | 'bypass' | undefined>();
+    expectTypeOf<CacheAsyncModuleOptions['useFactory']>().toEqualTypeOf<
+      (...dependencies: never[]) => CacheModuleOptions | Promise<CacheModuleOptions>
+    >();
     expectTypeOf<CacheTtlJitterOptions>().toHaveProperty('ratio');
     expectTypeOf<CacheTtlJitterMode>().toEqualTypeOf<'symmetric' | 'shorten' | 'lengthen'>();
     expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('useFactory');
@@ -119,6 +123,7 @@ describe('@fluojs/cache-manager public API surface', () => {
     const preparedOptions: CacheModuleOptions = {
       store: 'memory',
       ttl: 60,
+      rememberCacheErrors: 'bypass',
     };
     const module = CacheModule.forRootAsync({
       useFactory: () => preparedOptions,

@@ -84,6 +84,59 @@ class CacheConsumer {
 }
 
 describe('CacheModule.forRootAsync', () => {
+  describe.each(['root', 'sync factory', 'async factory'] as const)('%s remember policy', (registration) => {
+    it.each([undefined, 'throw', 'bypass'] as const)('applies rememberCacheErrors %s to the resolved service', async (rememberCacheErrors) => {
+      const failure = new Error('store read failed');
+      const store = new RecordingStore();
+      vi.spyOn(store, 'get').mockRejectedValue(failure);
+      const options: CacheModuleOptions = { store, rememberCacheErrors };
+      const useFactory = vi.fn(() => registration === 'async factory' ? Promise.resolve(options) : options);
+      const module = registration === 'root'
+        ? CacheModule.forRoot(options)
+        : CacheModule.forRootAsync({ useFactory });
+      expect(useFactory).not.toHaveBeenCalled();
+      class AppModule {}
+      defineModule(AppModule, { imports: [module], providers: [CacheConsumer] });
+      const app = await FluoFactory.create(AppModule);
+
+      try {
+        const consumer = await app.container.resolve(CacheConsumer);
+        const loader = vi.fn(async () => 'loaded');
+        expect(await app.container.resolve(CACHE_OPTIONS)).toMatchObject({
+          rememberCacheErrors: rememberCacheErrors ?? 'throw',
+        });
+
+        const result = consumer.cache.remember('key', loader);
+
+        if (rememberCacheErrors === 'bypass') {
+          await expect(result).resolves.toBe('loaded');
+          expect(loader).toHaveBeenCalledTimes(1);
+          expect(store.entries.get('key')).toBe('loaded');
+        } else {
+          await expect(result).rejects.toBe(failure);
+          expect(loader).not.toHaveBeenCalled();
+        }
+      } finally {
+        await app.close();
+      }
+    });
+  });
+
+  it.each(['sync', 'async'])('rejects invalid rememberCacheErrors from a %s factory only at resolution', async (kind) => {
+    const options: CacheModuleOptions = {};
+    Object.defineProperty(options, 'rememberCacheErrors', { enumerable: true, value: null });
+    const useFactory = vi.fn(() => kind === 'async' ? Promise.resolve(options) : options);
+    const module = CacheModule.forRootAsync({ useFactory });
+    expect(useFactory).not.toHaveBeenCalled();
+    class AppModule {}
+    defineModule(AppModule, { imports: [module], providers: [CacheConsumer] });
+
+    await expect(FluoFactory.create(AppModule).then(async (app) => {
+      await app.close();
+    })).rejects.toThrow(/rememberCacheErrors.*"throw".*"bypass"/);
+    expect(useFactory).toHaveBeenCalledTimes(1);
+  });
+
   describe.each(['sync', 'async'])('%s factory store validation', (kind) => {
     it.each([
       { label: 'unknown string', store: 'mongo', error: /store.*"memory".*"redis"/ },
