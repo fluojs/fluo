@@ -71,7 +71,7 @@ describe('HTTP byte-range contract governance', () => {
     [
       'full HEAD byte length',
       'packages/http/src/dispatch/dispatch-response-policy.ts',
-      "response.setHeader('Content-Length', String(responseValue.byteLength));",
+      "response.setHeader('Content-Length', String(headRepresentation.byteLength));",
       "response.setHeader('Content-Length', '0');",
       /HEAD full-length/u,
     ],

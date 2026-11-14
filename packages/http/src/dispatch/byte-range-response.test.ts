@@ -10,6 +10,7 @@ import {
   Head,
   HttpCode,
   Post,
+  Produces,
   Route,
   type RequestContext,
   type FrameworkRequest,
@@ -725,6 +726,48 @@ describe('single byte range response', () => {
     expect(headResponse.headers['Content-Length']).toBe(getResponse.headers['Content-Length']);
     expect(headResponse.headers['Content-Length']).not.toBe('2');
     expect(headResponse.sentBodies).toEqual([undefined]);
+  });
+
+  it('keeps the full byte Content-Length on HEAD when the selected formatter passes bytes through', async () => {
+    @Controller('/assets')
+    class AssetController {
+      @Produces('application/octet-stream')
+      @Head('/logo')
+      headLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }, {
+          format(body) {
+            if (!(body instanceof Uint8Array)) {
+              throw new Error('Expected the passthrough formatter to receive a Uint8Array.');
+            }
+
+            return body;
+          },
+          mediaType: 'application/octet-stream',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest({ range: 'bytes=2-4' }, 'HEAD'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/octet-stream');
+    expect(response.headers['Content-Length']).toBe('6');
+    expect(response.headers['Content-Range']).toBeUndefined();
+    expect(response.sentBodies).toEqual([undefined]);
   });
 
   it('does not write a canonical error after incremental range streaming starts', async () => {

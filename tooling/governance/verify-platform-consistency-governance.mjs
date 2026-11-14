@@ -3571,7 +3571,7 @@ export function enforceHttpRuntimeCancellationAndContextIsolation(readText = rea
   );
   assert(
     responsePolicySource.includes("if (request.method.toUpperCase() === 'HEAD')") &&
-      responsePolicySource.includes("response.setHeader('Content-Length', String(responseValue.byteLength));"),
+      responsePolicySource.includes("response.setHeader('Content-Length', String(headRepresentation.byteLength));"),
     'HTTP byte responses must preserve HEAD full-length metadata when Range is ignored.',
   );
   assert(
