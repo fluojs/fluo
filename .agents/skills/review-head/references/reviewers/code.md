@@ -105,6 +105,7 @@ Return JSON only with exactly these keys:
 ```json
 {
   "reviewer": "code",
+  "agent": "fluo-code-reviewer",
   "reviewed_head_sha": "<the supplied 40-character head SHA>",
   "preflight_sha256": "<the supplied effective review policy SHA-256>",
   "verdict_signal": "<PASS | BLOCK | NEEDS-HUMAN-CHECK>",

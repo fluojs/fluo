@@ -146,10 +146,30 @@ array item, Map key/value, Set entry를 포함한 모든 지원 중첩 위치에
 plain object는 `null`을 포함한 원래 prototype을 유지합니다.
 
 Date, RegExp (`lastIndex` 포함), Map, Set, ArrayBuffer, typed array, DataView는
-내용을 복사하고 원본과 분리합니다. Primitive는 그대로 반환하며 function은 reference로
-반환합니다. 이 계약은 process 내부 복제에 해당하며 wire serialization 형식이 아닙니다.
-Buffer와 private-field instance 동작은 아직 명세하지 않으며
-[issue #4015](https://github.com/fluojs/fluo/issues/4015)에서 다룹니다.
+내용을 복사하고 원본과 분리합니다. Node `Buffer`를 포함한 ArrayBuffer, typed array, DataView
+subclass는 prototype과 own string/symbol property(circular reference 포함)를 유지하며
+subclass constructor를 호출하지 않고 복사하므로 `Buffer` 복제 시
+`DEP0005` deprecation warning이 발생하지 않습니다. Class 또는 상위 class가 ECMAScript
+private member(`#field`, `#method()`, decorator가 붙은 `accessor`)를 선언한 instance는
+분리된 복사본 대신 reference로 반환합니다. Private state는 복사할 수 없으며, 복사본은
+나중에 그 state를 읽을 때 `TypeError`를 던지기 때문입니다. 이 규칙은 위의 형태별 복사보다
+우선하므로 private member를 선언한 typed array subclass도 reference로 반환합니다. 실제
+private member를 놓치지 않도록 판정은 보수적으로 수행합니다. Class source text 또는 prototype
+chain에 있는 method나 accessor의 source 어느 위치든(문자열, 정규식, 주석 내부 포함) `#` 뒤에
+identifier 시작 문자가 오면 private member를 선언한 class로 간주합니다. Own getter나 setter가
+하나라도 있거나, source에 `this` 또는 private name이 있는 own function property가 있는 객체도
+reference로 반환하므로, constructor return override로 private field가 stamp된 객체(prototype이
+`Object.prototype`인 경우 포함)는 accessor가 helper를 거쳐 그 field를 읽어도 계속 동작합니다.
+둘 다 없는 own function(예: callback 형제 필드)은 복사를 막지 않습니다. Prototype chain의
+`constructor`가 없거나, 가려졌거나(예: `['constructor']() {}` method), 해당 prototype과 맞지 않는
+instance도 class를 식별할 수 없으므로 reference로 반환합니다. 다른 realm(예: `node:vm`)에서
+생성한 typed array와 DataView도 복사하며 원래 prototype을 유지합니다. 알려진 한계로, source에 그런 text만 포함된 class(예: `pattern = /#tag/`
+field나 `'#id'` 문자열)도 복사하지 않고 reference로 반환합니다. 반대로 `this` 없이 instance를
+capture한 closure, 또는 source에 private name이 없는 prototype method에서 호출하는 외부 helper나
+WeakMap을 통해서만 간접적으로 닿는 private state나 identity 기반 state는 감지하지 못하며 그런
+instance는 복사됩니다. 이는 알려진 한계입니다. Primitive는 그대로 반환하며
+function은 reference로 반환합니다. 이 계약은 process 내부 복제에 해당하며 wire
+serialization 형식이 아닙니다.
 
 ### 동적 설정을 위한 AsyncModuleOptions
 
@@ -294,6 +314,8 @@ driver가 소유하며 공통 observation 선언은 persistence에 있습니다.
 ## 중복 사본 오류 식별
 
 공개 fluo 오류는 버전과 패키지 소유자를 포함한 규약을 가집니다. 오류가 패키지 경계를 넘을 수 있으면 constructor identity 대신 `isFluoError(...)` 또는 소유 패키지의 더 좁은 판별 함수를 사용하세요. 브랜드가 없는 유사 객체와 호환되지 않는 규약 버전은 거부됩니다.
+
+내부 `Symbol.for('fluo.metadata.registry.v1')` key의 non-configurable 값이 호환되는 metadata registry가 아니면, core metadata 접근은 metadata store를 조용히 분리하는 대신 `InvariantError` (`INVARIANT_ERROR`)를 던집니다. Configurable인 잘못된 값은 공유 registry로 교체하며, legacy `fluo.metadata.registry` key는 무시합니다.
 
 ## 예제 소스
 

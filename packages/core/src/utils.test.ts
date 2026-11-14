@@ -1,3 +1,5 @@
+import { runInNewContext } from 'node:vm'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import { cloneMutableValue } from './metadata/shared.js'
@@ -35,6 +37,495 @@ describe('fallbackClone', () => {
     expect(cloned.child).not.toBe(source.child)
     expect(cloned[marker]).toEqual({ enabled: true })
     expect(cloned[marker]).not.toBe(source[marker])
+  })
+
+  it('copies Buffer values without the deprecated Buffer constructor', () => {
+    const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined)
+
+    try {
+      const source = Buffer.from('ab')
+      const cloned = fallbackClone(source)
+
+      expect(emitWarning).not.toHaveBeenCalled()
+      expect(Buffer.isBuffer(cloned)).toBe(true)
+      expect(cloned).not.toBe(source)
+      expect(cloned.toString()).toBe('ab')
+      cloned[0] = 0x7a
+      expect(source.toString()).toBe('ab')
+    } finally {
+      emitWarning.mockRestore()
+    }
+  })
+
+  it('keeps typed array subclasses and views detached with equal contents', () => {
+    class TaggedBytes extends Uint8Array {
+      tag() {
+        return `bytes:${this.length}`
+      }
+    }
+
+    const backing = new ArrayBuffer(8)
+    const source = {
+      bytes: new Uint8Array([1, 2, 3]),
+      floats: new Float64Array([1.5, -2]),
+      view: new DataView(backing, 2, 4),
+      tagged: new TaggedBytes([4, 5]),
+      window: new Uint16Array(backing, 2, 2),
+    }
+    source.view.setUint8(0, 9)
+
+    const cloned = fallbackClone(source)
+
+    expect(cloned.bytes).toEqual(source.bytes)
+    expect(cloned.bytes.buffer).not.toBe(source.bytes.buffer)
+    expect(cloned.floats).toBeInstanceOf(Float64Array)
+    expect(Array.from(cloned.floats)).toEqual([1.5, -2])
+    expect(cloned.view.byteLength).toBe(4)
+    expect(cloned.view.getUint8(0)).toBe(9)
+    expect(cloned.view.buffer).not.toBe(backing)
+    expect(cloned.tagged).toBeInstanceOf(TaggedBytes)
+    expect(cloned.tagged.tag()).toBe('bytes:2')
+    expect(Array.from(cloned.tagged)).toEqual([4, 5])
+    expect(cloned.window.length).toBe(2)
+    expect(cloned.window.byteOffset).toBe(0)
+    expect(cloned.window.buffer.byteLength).toBe(4)
+    cloned.bytes[0] = 0
+    expect(source.bytes[0]).toBe(1)
+  })
+
+  it('returns instances whose classes declare private members by reference', () => {
+    class PrivateValue {
+      #secret = 1
+      label = 'public'
+
+      get secret() {
+        return this.#secret
+      }
+    }
+
+    class DerivedPrivateValue extends PrivateValue {}
+
+    class PrivateMethodValue {
+      #read() {
+        return 'method'
+      }
+
+      read() {
+        return this.#read()
+      }
+    }
+
+    const source = {
+      direct: new PrivateValue(),
+      derived: new DerivedPrivateValue(),
+      method: new PrivateMethodValue(),
+      nested: [{ value: 1 }],
+    }
+
+    const cloned = fallbackClone(source)
+    const direct = cloneWithFallback(source.direct)
+
+    expect(cloned).not.toBe(source)
+    expect(cloned.nested[0]).not.toBe(source.nested[0])
+    expect(cloned.direct).toBe(source.direct)
+    expect(cloned.derived).toBe(source.derived)
+    expect(cloned.method).toBe(source.method)
+    expect(direct).toBe(source.direct)
+    expect(cloned.direct.secret).toBe(1)
+    expect(cloned.derived.secret).toBe(1)
+    expect(cloned.method.read()).toBe('method')
+  })
+
+  it('returns classes whose source merely contains private-name-like text by reference', () => {
+    class PublicValue {
+      pattern = /#tag/
+      options = { retries: 1 }
+    }
+
+    const source = new PublicValue()
+    const cloned = fallbackClone(source)
+
+    expect(cloned).toBe(source)
+  })
+
+  it('deep-copies plain classes whose source contains no private-name text', () => {
+    class PublicValue {
+      pattern = /tag/
+      options = { retries: 1 }
+    }
+
+    const source = new PublicValue()
+    const cloned = fallbackClone(source)
+
+    expect(cloned).not.toBe(source)
+    expect(cloned).toBeInstanceOf(PublicValue)
+    cloned.options.retries = 2
+    expect(source.options.retries).toBe(1)
+  })
+
+  it('detects private members declared after a control-statement regular expression containing a quote', () => {
+    class Secret {
+      enabled = true
+
+      check() {
+        if (this.enabled) /'/.test('x')
+      }
+
+      #secret = 1
+
+      get secret() {
+        return this.#secret
+      }
+    }
+
+    const source = new Secret()
+    const cloned = fallbackClone(source)
+
+    expect(cloned).toBe(source)
+    expect(cloned.secret).toBe(1)
+  })
+
+  it('detects private members declared after a regular expression literal containing a quote', () => {
+    class Secret {
+      pattern = /'/
+      #secret = 1
+
+      get secret() {
+        return this.#secret
+      }
+    }
+
+    const source = new Secret()
+    const cloned = fallbackClone(source)
+
+    expect(cloned).toBe(source)
+    expect(cloned.secret).toBe(1)
+  })
+
+  it('returns typed array subclasses that declare private members by reference', () => {
+    class SecretBytes extends Uint8Array {
+      #secret = 1
+
+      get secret() {
+        return this.#secret
+      }
+    }
+
+    const source = new SecretBytes([1, 2])
+    const cloned = fallbackClone({ bytes: source })
+
+    expect(cloned.bytes).toBe(source)
+    expect(cloned.bytes.secret).toBe(1)
+  })
+
+  it('returns instances whose class constructor is shadowed on the prototype by reference', () => {
+    class Secret {
+      #value = 1
+
+      get value() {
+        return this.#value
+      }
+
+      ['constructor']() {}
+    }
+
+    class OpaqueSecret {
+      #value = 1;
+
+      ['constructor']() {}
+    }
+
+    const source = new Secret()
+    const opaque = new OpaqueSecret()
+    const cloned = fallbackClone({ source, opaque })
+
+    expect(cloned.source).toBe(source)
+    expect(cloned.source.value).toBe(1)
+    expect(cloned.opaque).toBe(opaque)
+  })
+
+  it('returns private-stamped objects whose own accessors or function properties read private fields by reference', () => {
+    class Base {
+      constructor(value: object) {
+        // biome-ignore lint/correctness/noConstructorReturn: the fixture stamps private fields onto an arbitrary object.
+        return value
+      }
+    }
+
+    class GetterSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        Object.defineProperty(this, 'value', {
+          get: () => this.#value,
+        })
+      }
+    }
+
+    class ReviewerSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        Object.defineProperty(this, 'value', {
+          get(this: ReviewerSecret) {
+            return this.#value
+          },
+        })
+      }
+    }
+
+    class SetterSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        Object.defineProperty(this, 'value', {
+          set(this: SetterSecret, next: number) {
+            this.#value = next
+          },
+        })
+      }
+    }
+
+    class FunctionSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        ;(this as unknown as { read: () => number }).read = function (this: FunctionSecret) {
+          return this.#value
+        }
+      }
+    }
+
+    class ArrowSecret extends Base {
+      #value = 1
+
+      constructor(value: object) {
+        super(value)
+        ;(this as unknown as { read: () => number }).read = () => this.#value
+      }
+    }
+
+    const getter = new GetterSecret({}) as unknown as { value: number }
+    const reviewer = new ReviewerSecret({}) as unknown as { value: number }
+    const setter = new SetterSecret({}) as unknown as { value: number }
+    const fn = new FunctionSecret({}) as unknown as { read: () => number }
+    const arrow = new ArrowSecret({}) as unknown as { read: () => number }
+
+    expect(Object.getPrototypeOf(reviewer)).toBe(Object.prototype)
+
+    const plain = { value: 1 }
+    const cloned = fallbackClone({ getter, reviewer, setter, fn, arrow, plain })
+
+    expect(cloned.getter).toBe(getter)
+    expect(cloned.reviewer).toBe(reviewer)
+    expect(cloned.reviewer.value).toBe(1)
+    expect(fallbackClone(reviewer)).toBe(reviewer)
+    expect(cloned.setter).toBe(setter)
+    expect(cloned.fn).toBe(fn)
+    expect(cloned.fn.read()).toBe(1)
+    expect(cloned.arrow).toBe(arrow)
+    expect(cloned.plain).not.toBe(plain)
+    expect(cloned.plain).toEqual(plain)
+  })
+
+  it('returns private-stamped objects whose own getter reads private state through a helper by reference', () => {
+    class Base {
+      constructor(value: object) {
+        // biome-ignore lint/correctness/noConstructorReturn: the fixture stamps private fields onto an arbitrary object.
+        return value
+      }
+    }
+
+    class Secret extends Base {
+      #v = 1
+
+      static read(value: Secret) {
+        return value.#v
+      }
+
+      constructor(value: object) {
+        super(value)
+        Object.defineProperty(this, 'value', {
+          get(this: Secret) {
+            return Secret.read(this)
+          },
+        })
+      }
+    }
+
+    const source = new Secret({}) as unknown as { value: number }
+
+    expect(Object.getPrototypeOf(source)).toBe(Object.prototype)
+
+    const cloned = fallbackClone({ source })
+
+    expect(fallbackClone(source)).toBe(source)
+    expect(cloned.source).toBe(source)
+    expect(cloned.source.value).toBe(1)
+  })
+
+  it('returns objects with own accessors or own functions referencing this or a private name by reference', () => {
+    const method = {
+      options: { retries: 1 },
+      read() {
+        return this.options.retries
+      },
+    }
+    const accessor = {
+      options: { retries: 1 },
+      get retries() {
+        return 1
+      },
+    }
+    const privateName = { options: { retries: 1 }, read: () => '#v' }
+
+    const cloned = fallbackClone({ method, accessor, privateName })
+
+    expect(cloned.method).toBe(method)
+    expect(cloned.method.read()).toBe(1)
+    expect(cloned.accessor).toBe(accessor)
+    expect(cloned.privateName).toBe(privateName)
+  })
+
+  it('deep-copies data-only objects and instances whose own functions avoid this and private names', () => {
+    class Plain {
+      nested = { count: 1 }
+      format = (value: number) => `n${value}`
+    }
+    const instance = new Plain()
+    const source = { options: { retries: 1 }, instance, notify: () => undefined }
+
+    const cloned = fallbackClone(source)
+
+    expect(cloned).not.toBe(source)
+    expect(cloned.notify).toBe(source.notify)
+    expect(cloned.instance).not.toBe(instance)
+    expect(cloned.instance).toBeInstanceOf(Plain)
+    expect(cloned.instance.format(2)).toBe('n2')
+    cloned.options.retries = 2
+    cloned.instance.nested.count = 2
+    expect(source.options.retries).toBe(1)
+    expect(instance.nested.count).toBe(1)
+  })
+
+  it('copies typed arrays created in another realm', () => {
+    const source = runInNewContext('new Uint8Array([1, 2])') as Uint8Array
+    const cloned = fallbackClone({ bytes: source })
+
+    expect(cloned.bytes).not.toBe(source)
+    expect(Object.getPrototypeOf(cloned.bytes)).toBe(Object.getPrototypeOf(source))
+    expect(Array.from(cloned.bytes)).toEqual([1, 2])
+    expect(cloned.bytes.buffer).not.toBe(source.buffer)
+    cloned.bytes[0] = 9
+    expect(source[0]).toBe(1)
+  })
+
+  it('copies typed array subclass own fields, symbol keys, and circular references', () => {
+    const marker = Symbol('marker')
+
+    class Bytes extends Uint8Array {
+      meta = { id: 1 }
+      self?: Bytes
+      [marker]?: { enabled: boolean }
+
+      get id() {
+        return this.meta.id
+      }
+    }
+
+    const source = new Bytes([1, 2])
+    source.meta.id = 7
+    source.self = source
+    source[marker] = { enabled: true }
+    const cloned = fallbackClone({ bytes: source, again: source })
+
+    expect(cloned.bytes).not.toBe(source)
+    expect(cloned.bytes).toBeInstanceOf(Bytes)
+    expect(cloned.bytes.id).toBe(7)
+    expect(cloned.bytes.meta).not.toBe(source.meta)
+    expect(cloned.bytes.self).toBe(cloned.bytes)
+    expect(cloned.again).toBe(cloned.bytes)
+    expect(cloned.bytes[marker]).toEqual({ enabled: true })
+    expect(cloned.bytes[marker]).not.toBe(source[marker])
+    expect(Array.from(cloned.bytes)).toEqual([1, 2])
+    expect(Object.keys(cloned.bytes)).toEqual(Object.keys(source))
+  })
+
+  it('copies Buffer own properties', () => {
+    const marker = Symbol('marker')
+    const source = Object.assign(Buffer.from('ab'), { label: { name: 'payload' }, [marker]: 1 })
+    const cloned = fallbackClone(source)
+
+    expect(Buffer.isBuffer(cloned)).toBe(true)
+    expect(cloned.toString()).toBe('ab')
+    expect(cloned.label).toEqual({ name: 'payload' })
+    expect(cloned.label).not.toBe(source.label)
+    expect(cloned[marker]).toBe(1)
+  })
+
+  it('keeps DataView and ArrayBuffer subclasses and own properties without calling their constructors', () => {
+    let constructed = 0
+
+    class TrackedBuffer extends ArrayBuffer {
+      label = 'buffer'
+
+      constructor(length: number) {
+        super(length)
+        constructed += 1
+      }
+    }
+
+    // TypeScript's generic DataView constructor signature cannot be extended directly (TS2508).
+    const DataViewBase: new (buffer: ArrayBuffer) => DataView = DataView
+
+    class TrackedView extends DataViewBase {
+      label = 'view'
+
+      constructor(buffer: ArrayBuffer) {
+        super(buffer)
+        constructed += 1
+      }
+
+      first() {
+        return this.getUint8(0)
+      }
+    }
+
+    const buffer = new TrackedBuffer(4)
+    const view = new TrackedView(buffer)
+    view.setUint8(0, 5)
+    const bytes = new Uint8Array(buffer, 1, 2)
+    bytes[0] = 6
+    constructed = 0
+    const cloned = fallbackClone({ buffer, view, bytes })
+
+    expect(constructed).toBe(0)
+    expect(cloned.buffer).toBeInstanceOf(TrackedBuffer)
+    expect(cloned.buffer).not.toBe(buffer)
+    expect(cloned.buffer.label).toBe('buffer')
+    expect(Array.from(new Uint8Array(cloned.buffer))).toEqual([5, 6, 0, 0])
+    expect(cloned.view).toBeInstanceOf(TrackedView)
+    expect(cloned.view.label).toBe('view')
+    expect(cloned.view.first()).toBe(5)
+    expect(cloned.view.buffer).not.toBe(buffer)
+    expect(Array.from(cloned.bytes)).toEqual([6, 0])
+    cloned.view.setUint8(0, 9)
+    expect(view.getUint8(0)).toBe(5)
+  })
+
+  it('copies DataView values created in another realm', () => {
+    const source = runInNewContext('const view = new DataView(new ArrayBuffer(2)); view.setUint8(1, 3); view') as DataView
+    const cloned = fallbackClone({ view: source })
+
+    expect(cloned.view).not.toBe(source)
+    expect(Object.getPrototypeOf(cloned.view)).toBe(Object.getPrototypeOf(source))
+    expect(cloned.view.getUint8(1)).toBe(3)
+    cloned.view.setUint8(1, 9)
+    expect(source.getUint8(1)).toBe(3)
   })
 })
 

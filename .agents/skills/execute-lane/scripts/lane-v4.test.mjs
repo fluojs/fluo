@@ -32,7 +32,7 @@ const policy = evaluatePreflight(preflight, binding).policy;
 const makeReview = (signal = 'PASS', head = 'a'.repeat(40)) => buildReviewFact({
 	head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
 	reviews: policy.active_axes.map((reviewer) => ({
-		reviewer, reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: signal,
+		reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: signal,
 		blockers: signal === 'BLOCK' ? [{ reviewer, signature: 'route:order', evidence: 'router.ts:1', fix_back_eligible: true, status: 'unresolved' }] : [],
 	})),
 }, head, policy);
@@ -71,6 +71,31 @@ const makeObs = (overrides = {}) => ({
 	...overrides,
 });
 
+test('#4091 decisions: child stages -> registered dispatch targets without policy changes', () => {
+	const cases = [
+		[{ preflight: null }, 'preflight', { subagent_type: 'fluo-issue-preflight' }],
+		[{ hasNewCommits: false }, 'implement', { subagent_type: 'fluo-issue-implementer' }],
+		[{ changesetPresent: false }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ generatedIntegrationRequired: [{}] }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ review: makeReview('BLOCK') }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ localChecks: { ...makeObs().localChecks, status: 'failed' } }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ knownBaselines: [{ head: 'a'.repeat(40), status: 'still-failing' }] }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ pr: { number: 1, state: 'OPEN', headSha: 'a'.repeat(40), ciStatus: 'failing' } }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ review: null }, 'review', {
+			contract: { subagent_type: 'fluo-contract-reviewer' },
+			code: { subagent_type: 'fluo-code-reviewer' },
+			verification: { subagent_type: 'fluo-verification-reviewer' },
+		}],
+	];
+	for (const [patch, action, dispatch] of cases) {
+		const next = decideNext(makeLane(), makeObs(patch));
+
+		assert.equal(next.action, action);
+		assert.deepEqual(next.dispatch, dispatch);
+		if (action === 'review') assert.deepEqual(next.policy, policy);
+	}
+});
+
 // Regression evidence: legacy facts must not bypass the mandatory gates.
 test('mandatory preflight precedes implementation', () => {
 	assert.equal(decideNext(makeLane(), makeObs({ branch: null, worktree: null, preflight: null })).action, 'preflight');
@@ -101,7 +126,7 @@ test('C1: an arbitrary local-check fact does not block a reviewed ordinary chang
 
 test('C1: a revalidated local receipt that becomes invalid routes to fix-back', () => {
 	const next = decideNext(makeLane(), makeObs({ localChecks: { ...makeObs().localChecks, status: 'failed', valid: false } }));
-	assert.deepEqual(next, { action: 'fix-back', reason: 'local-checks-failed', head: 'a'.repeat(40) });
+	assert.deepEqual(next, { action: 'fix-back', dispatch: { subagent_type: 'fluo-issue-implementer' }, reason: 'local-checks-failed', head: 'a'.repeat(40) });
 });
 
 test('C1: receipt references fail closed before filesystem access', () => {
@@ -154,7 +179,7 @@ test('focused-first: reviewed CI and harness changes -> publication without full
 		obs.review = buildReviewFact({
 			head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256, active_axes: pathPolicy.active_axes,
 			reviews: pathPolicy.active_axes.map((reviewer) => ({
-				reviewer, reviewed_head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256,
+				reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256,
 				verdict_signal: 'PASS', blockers: [],
 			})),
 		}, obs.headSha, pathPolicy);
@@ -179,7 +204,7 @@ test('focused-first: reviewed CI heads -> publication unless applicable local fa
 	ciObs.review = buildReviewFact({
 		head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256, active_axes: ciPolicy.active_axes,
 		reviews: ciPolicy.active_axes.map((reviewer) => ({
-			reviewer, reviewed_head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256,
+			reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256,
 			verdict_signal: 'PASS', blockers: [],
 		})),
 	}, ciObs.headSha, ciPolicy);
