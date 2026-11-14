@@ -1,4 +1,7 @@
-// Shared routing values only. Dispatch and runtime availability belong to the lead.
+// Shared routing values and registration reading. Runtime availability belongs to the lead.
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 const target = (subagent_type) => Object.freeze({ subagent_type });
 export const stageTargets = Object.freeze({
   preflight: target('fluo-issue-preflight'),
@@ -18,7 +21,9 @@ export const reviewerCategories = Object.freeze([
 
 export class DispatchPreparationError extends TypeError {
   constructor(subagent_type, code = 'dispatch-target-unavailable') {
-    super(`${code}: ${subagent_type}`);
+    super(code === 'dispatch-registration-unreadable'
+      ? `${code}: .omo/omo.jsonc registration could not be read`
+      : `${code}: ${subagent_type}`);
     this.name = 'DispatchPreparationError';
     this.kind = 'input-preparation';
     this.code = code;
@@ -26,6 +31,65 @@ export class DispatchPreparationError extends TypeError {
     this.fix_back_eligible = false;
   }
 }
+
+// Blank comments and trailing commas only outside JSON strings. JSON.parse
+// still owns the grammar, so malformed input cannot become a registration.
+const parseRegistration = (source) => {
+  const characters = source.split('');
+  let quoted = false;
+  let previous = '';
+  let comma = -1;
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index];
+    if (quoted) {
+      if (character === '\\') index++;
+      else if (character === '"') {
+        quoted = false;
+        previous = '"';
+      }
+      continue;
+    }
+    if (character === '"') {
+      quoted = true;
+      comma = -1;
+      continue;
+    }
+    if (character === '/' && source[index + 1] === '/') {
+      while (index < source.length && !['\r', '\n'].includes(source[index])) {
+        characters[index++] = ' ';
+      }
+      index--;
+      continue;
+    }
+    if (character === '/' && source[index + 1] === '*') {
+      const end = source.indexOf('*/', index + 2);
+      if (end === -1) throw new SyntaxError('Unterminated registration comment');
+      while (index <= end + 1) {
+        if (!['\r', '\n'].includes(source[index])) characters[index] = ' ';
+        index++;
+      }
+      index--;
+      continue;
+    }
+    if (/\s/u.test(character)) continue;
+    if ((character === '}' || character === ']') && comma !== -1) characters[comma] = ' ';
+    // A comma after an opener, colon or another comma is invalid JSON, not a
+    // trailing comma. Leave it for JSON.parse to reject.
+    comma = character === ',' && previous && !'{[:,'.includes(previous) ? index : -1;
+    previous = character;
+  }
+  return JSON.parse(characters.join(''));
+};
+
+export const readRegisteredAgents = (root) => {
+  try {
+    return parseRegistration(readFileSync(resolve(root, '.omo/omo.jsonc'), 'utf8'))?.agents;
+  } catch (cause) {
+    const failure = new DispatchPreparationError(undefined, 'dispatch-registration-unreadable');
+    failure.cause = cause;
+    throw failure;
+  }
+};
 
 export const dispatchFor = (phase, axes = []) => phase === 'review'
   ? Object.fromEntries(axes.map((axis) => [axis, reviewerTargets[axis]]))

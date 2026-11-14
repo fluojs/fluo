@@ -58,7 +58,7 @@ import {
 } from "../../review-head/scripts/contracts.mjs";
 import { coordinateGeneratedIntegration, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
 import { observeKnownBaseline, validateKnownBaseline } from "./known-baseline.mjs";
-import { assertAgentIdentity, dispatchFor, DispatchPreparationError, validateDispatchTarget, validateUnavailableTarget } from "./dispatch-targets.mjs";
+import { assertAgentIdentity, dispatchFor, DispatchPreparationError, readRegisteredAgents, validateDispatchTarget, validateUnavailableTarget } from "./dispatch-targets.mjs";
 import {
 	applyChildResult,
 	decideNext,
@@ -107,10 +107,7 @@ const run = (cwd, cmd, cmdArgs, trim = true) => {
 };
 
 const registeredDispatch = (root, dispatch) => {
-	let agents;
-	try { agents = JSON.parse(readFileSync(resolve(root, ".omo/omo.jsonc"), "utf8")).agents; }
-	catch { throw new DispatchPreparationError(dispatch.subagent_type); }
-	validateDispatchTarget(dispatch, agents);
+	validateDispatchTarget(dispatch, readRegisteredAgents(root));
 };
 
 /** Supplementary incident capture never supplies execution or merge approval. */
@@ -1285,7 +1282,7 @@ if (
 	catch (error) {
 		if (!(error instanceof DispatchPreparationError)) throw error;
 		process.stderr.write(`${JSON.stringify({ status: "blocked", kind: error.kind,
-			code: error.code, subagent_type: error.subagent_type, fix_back_eligible: false })}\n`);
+			code: error.code, error: error.message, subagent_type: error.subagent_type, fix_back_eligible: false })}\n`);
 		process.exitCode = 1;
 	}
 }

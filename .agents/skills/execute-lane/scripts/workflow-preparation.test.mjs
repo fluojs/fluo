@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,6 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { prepareReviewInput, prepareSourceFootprint, sourceFootprintCategories } from './workflow-preparation.mjs';
+import { readRegisteredAgents } from './dispatch-targets.mjs';
 import { createCommandRunner } from '../../../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -128,8 +129,73 @@ test('#4091 preparation: absent registration -> typed non-fixable input block', 
 
   assert.throws(() => prepareReviewInput(value.input),
     (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
-      && error.subagent_type === 'fluo-code-reviewer');
+      && error.code === 'dispatch-target-unavailable' && error.subagent_type === 'fluo-code-reviewer');
 });
+
+test('#4091 registration JSONC: comments and trailing commas -> both preparation dispatch payloads', (t) => {
+  const value = fixture(t);
+  const path = join(value.root, '.omo/omo.jsonc');
+  const { agents } = JSON.parse(readFileSync(path));
+  writeFileSync(path, `// registered stage agents
+{ /* operator note */
+  "routes": ["https://example.test//model/*prompt*/",],
+  "agents": ${JSON.stringify(agents)},
+}`);
+  const inputPath = join(value.input.artifact_root, 'preflight-input.json');
+  writeFileSync(inputPath, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: value.footprintInput }));
+
+  const preflight = JSON.parse(execFileSync(process.execPath, [modulePath, 'preflight', inputPath], { encoding: 'utf8' }));
+  const review = prepareReviewInput(value.input);
+
+  assert.equal(preflight.dispatch.subagent_type, 'fluo-issue-preflight');
+  assert.deepEqual(review.reviewers.map((entry) => entry.dispatch.subagent_type),
+    ['fluo-contract-reviewer', 'fluo-code-reviewer', 'fluo-verification-reviewer']);
+});
+
+test('#4091 registration JSONC: escaped strings and comment markers -> unchanged agent values', (t) => {
+  const value = fixture(t);
+  const prompt = 'A "quoted" \\path // literal /*comment*/ ,} ,]';
+  const model = 'https://example.test//provider/*model*/';
+  const agents = { 'fluo-issue-preflight': { prompt, models: [model] } };
+  writeFileSync(join(value.root, '.omo/omo.jsonc'), `// registration
+{ "agents": {
+    "fluo-issue-preflight": {
+      "prompt": ${JSON.stringify(prompt)},
+      "models": [${JSON.stringify(model)}, /* array trailing comma */],
+    },
+  }, // object trailing comma
+}`);
+
+  const registered = readRegisteredAgents(value.root);
+
+  assert.deepEqual(registered, agents);
+});
+
+for (const [defect, content] of [
+  ['missing', null], ['truncated', '{"agents":'], ['unterminated-comment', '{"agents":{}} /*'],
+  ['leading-comma', '{,}'], ['missing-value', '{"agents":,}'],
+  ['split-token', '{"agents": 1/* comment */2}'], ['double-comma', '{"agents":{},,}'],
+]) {
+  test(`#4091 registration unreadable: ${defect} -> typed preparation block`, (t) => {
+    const value = fixture(t);
+    const path = join(value.root, '.omo/omo.jsonc');
+    if (content === null) rmSync(path);
+    else writeFileSync(path, content);
+    const inputPath = join(value.input.artifact_root, 'preflight-input.json');
+    writeFileSync(inputPath, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: value.footprintInput }));
+
+    const result = spawnSync(process.execPath, [modulePath, 'preflight', inputPath], { encoding: 'utf8' });
+
+    assert.equal(result.status, 1);
+    const block = JSON.parse(result.stderr);
+    assert.equal(block.kind, 'input-preparation');
+    assert.equal(block.code, 'dispatch-registration-unreadable');
+    assert.equal(block.fix_back_eligible, false);
+    assert.throws(() => prepareReviewInput(value.input),
+      (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+        && error.code === 'dispatch-registration-unreadable');
+  });
+}
 
 test('review readable index: retained focused receipts -> authenticated decoder free exact results and unknown counts', (t) => {
   const value = fixture(t);

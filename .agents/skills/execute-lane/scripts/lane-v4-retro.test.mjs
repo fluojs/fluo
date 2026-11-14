@@ -116,8 +116,37 @@ test('#4091 retrospective: missing analyst registration -> typed input preparati
 
 	assert.throws(() => retrospectiveRequest(root, laneId, snapshots),
 		(error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
-			&& error.subagent_type === 'fluo-retrospective');
+			&& error.code === 'dispatch-target-unavailable' && error.subagent_type === 'fluo-retrospective');
 });
+
+test('#4091 registration JSONC: comments and trailing commas -> retrospective analyst dispatch', (t) => {
+	const root = fixture(t, true);
+	const path = resolve(root, '.omo/omo.jsonc');
+	const { agents } = JSON.parse(readFileSync(path));
+	writeFileSync(path, `// registered stage agents
+{ /* operator note */
+  "routes": ["https://example.test//model/*prompt*/",],
+  "agents": ${JSON.stringify(agents)},
+}`);
+
+	const request = retrospectiveRequest(root, laneId, snapshots);
+
+	assert.equal(request.action, 'retro');
+	assert.equal(request.dispatch.subagent_type, 'fluo-retrospective');
+});
+
+for (const defect of ['missing', 'broken']) {
+	test(`#4091 registration unreadable: ${defect} config -> typed retrospective block`, (t) => {
+		const root = fixture(t, true);
+		const path = resolve(root, '.omo/omo.jsonc');
+		if (defect === 'missing') rmSync(path);
+		else writeFileSync(path, '{"agents":');
+
+		assert.throws(() => retrospectiveRequest(root, laneId, snapshots),
+			(error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+				&& error.code === 'dispatch-registration-unreadable');
+	});
+}
 
 for (const defect of ["missing-observation", "old-head", "old-attempt", "incomplete-jobs", "tampered-event"]) {
 	test(`final CI preparation: ${defect} -> collection required or integrity rejection`, (t) => {

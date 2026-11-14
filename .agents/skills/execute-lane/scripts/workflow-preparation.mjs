@@ -6,7 +6,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { contractDigest, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
-import { dispatchFor, DispatchPreparationError, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
+import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
 
 export class WorkflowPreparationError extends TypeError {
   constructor(reason) {
@@ -35,10 +35,7 @@ const list = (value) => Array.isArray(value) && value.every((item) => typeof ite
 const digest = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
 const commit = (value) => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value);
 const registeredDispatch = (root, dispatch) => {
-  let agents;
-  try { agents = JSON.parse(readFileSync(resolve(root, '.omo/omo.jsonc'), 'utf8')).agents; }
-  catch { throw new DispatchPreparationError(dispatch.subagent_type); }
-  validateDispatchTarget(dispatch, agents);
+  validateDispatchTarget(dispatch, readRegisteredAgents(root));
   return dispatch;
 };
 

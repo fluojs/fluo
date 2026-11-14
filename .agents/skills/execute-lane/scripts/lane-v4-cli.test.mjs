@@ -97,9 +97,60 @@ test('#4091 record: removed registration -> typed preparation rejection and unch
 
   const error = JSON.parse(result.stderr);
   assert.equal(error.kind, 'input-preparation');
+  assert.equal(error.code, 'dispatch-target-unavailable');
   assert.equal(error.fix_back_eligible, false);
   assert.deepEqual(readFileSync(f.lanePath), before);
 });
+
+test('#4091 registration JSONC: comments, trailing commas and URL strings -> record and review admission', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const input = f.review();
+  const path = join(f.root, '.omo/omo.jsonc');
+  const { agents } = JSON.parse(readFileSync(path));
+  writeFileSync(path, `// registered stage agents
+{ /* operator note */
+  "routes": ["https://example.test//model/*prompt*/",],
+  "agents": ${JSON.stringify(agents)},
+}`);
+
+  f.cli('record', [...f.common, '--phase', 'preflight', '--result-json',
+    JSON.stringify({ ok: true, agent: 'fluo-issue-preflight' })]);
+  f.set('review', input, input.head_sha);
+
+  const stored = JSON.parse(readFileSync(f.lanePath)).issues['42'];
+  assert.equal(stored.attempts.preflight, 0);
+  assert.equal(stored.facts.review.value.verdict, 'pass');
+});
+
+for (const defect of ['missing', 'broken']) {
+  test(`#4091 registration unreadable: ${defect} config -> typed block and unchanged lane bytes`, (t) => {
+    const f = fixture(t);
+    f.set('preflight', f.preflight());
+    f.implement();
+    const input = f.review();
+    const path = join(f.root, '.omo/omo.jsonc');
+    if (defect === 'missing') rmSync(path);
+    else writeFileSync(path, '{"agents":');
+    const before = readFileSync(f.lanePath);
+    const commands = [
+      ['record', [...f.common, '--phase', 'preflight', '--result-json',
+        JSON.stringify({ ok: true, agent: 'fluo-issue-preflight' })]],
+      ['set-fact', [...f.common, '--kind', 'review', '--head', input.head_sha, '--value', JSON.stringify(input)]],
+    ];
+
+    for (const [command, args] of commands) {
+      const result = f.cli(command, args, false);
+
+      const block = JSON.parse(result.stderr);
+      assert.equal(block.kind, 'input-preparation');
+      assert.equal(block.code, 'dispatch-registration-unreadable');
+      assert.equal(block.fix_back_eligible, false);
+      assert.deepEqual(readFileSync(f.lanePath), before);
+    }
+  });
+}
 
 test('gh pager: readiness and actual observation close -> final run attempt collection without key input', async (t) => {
   const value = fixture(t);
