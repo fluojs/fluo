@@ -1,4 +1,5 @@
 import { InvariantError } from '@fluojs/core';
+import { normalizeProbeTimeout } from './probe-timeout.js';
 
 import type {
   PlatformComponent,
@@ -6,9 +7,11 @@ import type {
   PlatformComponentRegistration,
 } from './platform-contract.js';
 
+/** Component and dependency metadata retained by the runtime shell. */
 export interface RegisteredPlatformComponent {
   readonly component: PlatformComponent;
   readonly dependencies: readonly string[];
+  readonly readiness?: { readonly timeoutMs: number; readonly critical: boolean };
 }
 
 function isRegistration(value: PlatformComponentInput): value is PlatformComponentRegistration {
@@ -20,6 +23,10 @@ function normalizeRegistration(input: PlatformComponentInput): RegisteredPlatfor
     return {
       component: input.component,
       dependencies: [...(input.dependencies ?? [])],
+      readiness: {
+        timeoutMs: normalizeProbeTimeout(input.readiness?.timeoutMs),
+        critical: input.readiness?.critical !== false,
+      },
     };
   }
 
@@ -29,12 +36,21 @@ function normalizeRegistration(input: PlatformComponentInput): RegisteredPlatfor
   };
 }
 
+/**
+ * Copy registration inputs and normalize explicit runtime probe policy.
+ * @param components Optional component registrations.
+ * @returns Registrations in input order.
+ */
 export function registerPlatformComponents(
   components: readonly PlatformComponentInput[] | undefined,
 ): RegisteredPlatformComponent[] {
   return (components ?? []).map((component) => normalizeRegistration(component));
 }
 
+/**
+ * Reject duplicate identities and invalid dependency edges.
+ * @param components Registrations to validate.
+ */
 export function assertValidPlatformComponentGraph(components: readonly RegisteredPlatformComponent[]): void {
   const ids = new Set<string>();
 
@@ -65,6 +81,11 @@ export function assertValidPlatformComponentGraph(components: readonly Registere
   }
 }
 
+/**
+ * Order lifecycle components so dependencies precede their dependents.
+ * @param components Validated component registrations.
+ * @returns Components in dependency order.
+ */
 export function orderPlatformComponents(
   components: readonly RegisteredPlatformComponent[],
 ): RegisteredPlatformComponent[] {

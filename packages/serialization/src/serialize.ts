@@ -34,7 +34,91 @@ function isOpaqueObject(value: object): boolean {
     || value instanceof ArrayBuffer
     || ArrayBuffer.isView(value)
     || value instanceof Promise
+    || (typeof Blob === 'function' && value instanceof Blob)
+    || (typeof ReadableStream === 'function' && value instanceof ReadableStream)
+    || hasOpaqueBrand(value)
   );
+}
+
+function hasInternalSlot(probe: (this: object) => unknown, value: object): boolean {
+  try {
+    probe.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const getRegExpSource = Object.getOwnPropertyDescriptor(RegExp.prototype, 'source')!.get!;
+const getArrayBufferByteLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength')!.get!;
+const probeMap = function (this: object) { return Map.prototype.has.call(this, undefined); };
+const probeSet = function (this: object) { return Set.prototype.has.call(this, undefined); };
+const probeWeakMap = function (this: object) { return WeakMap.prototype.has.call(this, {}); };
+const probeWeakSet = function (this: object) { return WeakSet.prototype.has.call(this, {}); };
+const getURLHref = Object.getOwnPropertyDescriptor(URL.prototype, 'href')!.get!;
+const probeURLSearchParams = function (this: object) { return URLSearchParams.prototype.has.call(this, ''); };
+
+/**
+ * `Object.prototype.toString` reports `[object Error]` from the `[[ErrorData]]` slot only when no string
+ * `Symbol.toStringTag` overrides it, so a missing string tag confirms a genuine (possibly cross-realm) error.
+ */
+function hasErrorBrand(value: object): boolean {
+  return typeof Reflect.get(value, Symbol.toStringTag) !== 'string';
+}
+
+type PromiseBrandHost = typeof globalThis & {
+  process?: {
+    getBuiltinModule?(id: 'node:util'): { types?: { isPromise?(value: unknown): boolean } } | undefined;
+  };
+};
+
+function resolveIsPromise(): ((value: unknown) => boolean) | undefined {
+  try {
+    return (globalThis as PromiseBrandHost).process?.getBuiltinModule?.('node:util')?.types?.isPromise;
+  } catch {
+    return undefined;
+  }
+}
+
+const isPromiseBrand = resolveIsPromise();
+
+/**
+ * Realm-safe brand checks keyed by `Object.prototype.toString` tags. Tags only
+ * select a candidate; built-ins with internal slots are confirmed by invoking a
+ * side-effect-free intrinsic so a DTO that merely spoofs `Symbol.toStringTag`
+ * is still walked as a record.
+ */
+const opaqueBrandChecks = new Map<string, (value: object) => boolean>([
+  ['[object Date]', (value) => hasInternalSlot(Date.prototype.getTime, value)],
+  ['[object Map]', (value) => hasInternalSlot(probeMap, value)],
+  ['[object Set]', (value) => hasInternalSlot(probeSet, value)],
+  ['[object WeakMap]', (value) => hasInternalSlot(probeWeakMap, value)],
+  ['[object WeakSet]', (value) => hasInternalSlot(probeWeakSet, value)],
+  ['[object URL]', (value) => hasInternalSlot(getURLHref, value)],
+  ['[object URLSearchParams]', (value) => hasInternalSlot(probeURLSearchParams, value)],
+  ['[object RegExp]', (value) => hasInternalSlot(getRegExpSource, value)],
+  ['[object ArrayBuffer]', (value) => hasInternalSlot(getArrayBufferByteLength, value)],
+  ['[object Error]', hasErrorBrand],
+  ['[object Promise]', (value) => isPromiseBrand?.(value) === true],
+]);
+
+function hasOpaqueBrand(value: object): boolean {
+  const check = opaqueBrandChecks.get(Object.prototype.toString.call(value));
+  return check !== undefined && check(value);
+}
+
+/**
+ * Detects a callable `toJSON` defined on the value itself or on a prototype other than
+ * `Object.prototype`, so plain and null-prototype records only qualify through their own property.
+ */
+function hasCallableToJSON(value: Record<string | symbol, unknown>): boolean {
+  for (let holder: object | null = value; holder !== null && holder !== Object.prototype; holder = Object.getPrototypeOf(holder)) {
+    if (Object.hasOwn(holder, 'toJSON')) {
+      return typeof Reflect.get(holder, 'toJSON', value) === 'function';
+    }
+  }
+
+  return false;
 }
 
 function getSerializableConstructor(value: Record<string | symbol, unknown>): Function | undefined {
@@ -191,10 +275,10 @@ function serializeClassInstance(
   }
 
   const { classOptions, fieldMetadata } = getCachedMetadata(constructor, context);
-  const hasMetadata = fieldMetadata.size > 0 || classOptions.excludeExtraneous === true;
+  const hasMetadata = fieldMetadata.size > 0 || Object.hasOwn(classOptions, 'excludeExtraneous');
 
   if (!hasMetadata) {
-    return serializeRecord(value, context);
+    return hasCallableToJSON(value) ? value : serializeRecord(value, context);
   }
 
   return serializeWithTrackedReference<Record<string | symbol, unknown>>(value, context, () => ({}), (serialized) => {
@@ -253,7 +337,7 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
     }
 
     if (isPlainObject(value)) {
-      return serializeRecord(value, context);
+      return hasCallableToJSON(value) ? value : serializeRecord(value, context);
     }
 
     return serializeClassInstance(value, context);
@@ -271,6 +355,9 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
  * both object and array boundaries. Active cycles are cut to `undefined`, while
  * completed shared references reuse the previously serialized value.
  * Opaque built-ins and non-JSON leaf values such as `Date`, `Map`, `Set`, `URL`, `Error`, `bigint`, functions, and symbols pass through unchanged unless you normalize them before or during serialization.
+ * Built-ins are recognized realm-safely, so values created in another realm (for example through `node:vm`) also pass through,
+ * as do `ReadableStream` and `Blob` values. Plain records, null-prototype records, and undecorated class instances that define a callable `toJSON()` pass through so the
+ * final JSON writer applies their own representation; classes with serialization metadata keep metadata-driven shaping.
  *
  * @typeParam T Input value type.
  * @param value Value or object graph to serialize.

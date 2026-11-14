@@ -68,6 +68,58 @@ function createResponse(): RecordedResponse {
 }
 
 describe('conditional request policy', () => {
+  it.each([
+    ['GET', '"asset-v1"', undefined, 206],
+    ['GET', '"different"', undefined, 200],
+    ['HEAD', '"asset-v1"', undefined, 200],
+    ['HEAD', '"asset-v1"', '"asset-v1"', 304],
+    ['GET', '"asset-v1"', '"asset-v1"', 304],
+  ] as const)('resolves validators once for %s If-Range %s and If-None-Match %s', async (
+    method, ifRange, ifNoneMatch, status,
+  ) => {
+    let resolverCalls = 0;
+    let handlerCalls = 0;
+    @Controller('/validators')
+    class ValidatorsController {
+      @Get('/resource')
+      getResource() {
+        handlerCalls += 1;
+        return createByteRangeResponse(new Uint8Array([0, 1, 2, 3, 4, 5]));
+      }
+
+      @Head('/resource')
+      headResource() {
+        return this.getResource();
+      }
+    }
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          resolverCalls += 1;
+          return { exists: true, validators: { etag: { opaqueValue: 'asset-v1', strength: 'strong' } } };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+      rootContainer: new Container().register(ValidatorsController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest(method, {
+      'if-range': ifRange,
+      'if-none-match': ifNoneMatch,
+      range: 'bytes=0-999999999999999999999',
+    }), response);
+
+    expect(resolverCalls).toBe(1);
+    expect(response.statusCode).toBe(status);
+    expect(response.headers['Content-Range']).toBe(status === 206 ? 'bytes 0-5/6' : undefined);
+    expect(handlerCalls).toBe(status === 304 ? 0 : 1);
+    if (method === 'HEAD' && status === 200) {
+      expect(response.headers['Content-Length']).toBe('6');
+      expect(response.sentBodies).toEqual([undefined]);
+    }
+  });
+
   it('gives If-Match precedence over If-Unmodified-Since before invoking an unsafe handler', async () => {
     let handlerCalls = 0;
 
