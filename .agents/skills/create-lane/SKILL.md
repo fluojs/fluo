@@ -120,6 +120,10 @@ bindings using `scripts/generated-conflicts.mjs`: call
 `{ issue, title, body }` for the confirmed issues. The default consumer is
 `examples/react-vite-ssr/src/generated/react-pages.ts`; its actual typegen command,
 compiler source/config graph and generator sources determine input evidence.
+Only Git-tracked consumers produce new generated-conflict hints. The ignored
+React example artifacts are prepared in each consumer job instead. Keep existing
+ledger hints, their digests and receipts unchanged; tracking policy does not
+invalidate historical evidence.
 References to files or directories in that graph identify affected issues.
 Keep `generated.inputs`, live `issue_evidence` and their recomputed digest in the
 plan and `predicted_conflicts` ledger field. They bind all three receipts and

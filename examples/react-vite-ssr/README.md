@@ -71,7 +71,7 @@ See the [consumer migration](../../docs/getting-started/migrate-react-refresh.md
 ```sh
 pnpm install
 pnpm build
-pnpm --filter @fluojs/example-react-vite-ssr typegen
+pnpm prepare:react-typegen
 pnpm --filter @fluojs/example-react-vite-ssr build
 pnpm --filter @fluojs/example-react-vite-ssr start
 ```
@@ -85,9 +85,14 @@ root cannot render pages or serve assets.
 The generated `reactPageRoutes`, `reactPageModules` and `reactFormRoutes` connect
 authored component props, HTTP query/control aliases and existing `useForm`
 bindings. Initial hydration and ordinary/prefetch loads share the same generated
-props decoders through `navigationContracts`. Typecheck/build begin with
-non-mutating `--check`; after source/type/config edits, explicitly rerun
-`typegen` or use `typegen:watch`. A stale artifact is not silently regenerated.
+props decoders through `navigationContracts`. Typecheck/build prepare missing
+artifacts and validate existing ones with non-mutating `--check`.
+Both `src/generated/react-pages.ts` and the separate compiler fixture
+`tests/typegen-fixture/generated/react-pages.ts` are Git-ignored and generated
+locally before consumption. After source/type/config edits, explicitly rerun
+`typegen` and `typegen:fixture` for both targets, then `typegen:check`.
+`typegen:watch` watches the main target. Preparation never silently regenerates
+stale, malformed or unsupported artifacts, and `typegen:check` remains read-only.
 
 Open `http://127.0.0.1:3000/products/sku-42?preview=true`, then activate `Count: 0`. The label
 changes to `Count: 1` only after the Vite-generated client entry hydrates the server HTML. Use
@@ -128,6 +133,7 @@ that prefetch rejection never substitutes an anonymous result for a private dest
 Run the repeatable SSR and hydration checks with:
 
 ```sh
+pnpm prepare:react-typegen
 pnpm vitest run examples/react-vite-ssr
 pnpm --filter @fluojs/example-react-vite-ssr test:browser
 ```

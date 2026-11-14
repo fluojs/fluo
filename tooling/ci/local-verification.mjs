@@ -95,7 +95,25 @@ function companionChecks(changedFiles, manifest) {
 }
 
 const isCompatibilityBootstrap = ({ executable, argv }) => executable === 'pnpm'
-  && (argv.join(' ') === 'install --frozen-lockfile' || argv[0] === 'build');
+  && (argv.join(' ') === 'install --frozen-lockfile' || argv[0] === 'build'
+    || argv.includes('run') && argv.includes('build'));
+
+function consumesReactTypegen({ executable, argv }) {
+  if (argv.includes('tooling/ci/prepare-react-typegen.mjs') || argv.includes('install')) return false;
+  if (executable === 'node') {
+    return argv.some((arg) => arg.startsWith('examples/react-vite-ssr/'))
+      || argv[0] === 'tooling/ci/react-product-acceptance.mjs' && argv[1] === 'capture';
+  }
+  if (executable !== 'pnpm') return false;
+  const examplePackage = argv.some((arg) => arg === '@fluojs/example-react-vite-ssr'
+    || arg === '--filter=@fluojs/example-react-vite-ssr');
+  return argv.includes('examples/tsconfig.json')
+    || argv.some((arg) => /^examples\/react-vite-ssr(?:\/|$)/u.test(arg))
+    || examplePackage && argv.some((arg) => ['build', 'typecheck', 'typegen:check', 'test', 'test:browser'].includes(arg))
+    || argv.includes('vitest') && argv.some((arg, index) => arg === '--project' && argv[index + 1] === 'examples')
+      && !argv.some((arg) => arg.startsWith('examples/'))
+    || ['typecheck', 'test', 'test:verify'].includes(argv[0]) && argv.length === 1;
+}
 
 /** Full-PR only: split one composite secondary definition into four package shards plus one smoke task. */
 function expandCompatibilityTask(task) {
@@ -290,6 +308,30 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     }
     if (mode !== 'full') tasks = tasks.filter((task) => task.id !== 'tooling-1'
       || task.commands.some(({ argv }) => argv.join(' ') !== 'install --frozen-lockfile'));
+  }
+  // Resolve preparation after all scoped reconstruction, compatibility expansion
+  // and no-suite filtering. Each consumer restores only package dist, not artifacts.
+  for (const task of tasks) {
+    const commands = task.commands.filter(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs'));
+    task.commands = commands;
+    const consumer = commands.findIndex(consumesReactTypegen);
+    if (consumer === -1) continue;
+    const prefix = commands.slice(0, consumer);
+    let bootstrap = prefix.findLastIndex(isCompatibilityBootstrap);
+    if (!task.inputs.includes('build.tar') && !prefix.some((command) =>
+      isCompatibilityBootstrap(command) && command.argv.includes('build'))
+      || mode !== 'full' && ['packages/cli', 'packages/react', 'packages/platform-fastify',
+        'packages/validation', 'packages/vite'].some((directory) => !selection.buildDirectories.includes(directory))) {
+      // The all-examples compiler also reads React when only another example changed.
+      commands.splice(bootstrap + 1, 0, {
+        executable: 'pnpm', argv: ['-r', '--filter=@fluojs/cli...',
+          '--filter=@fluojs/example-react-vite-ssr^...', '--if-present', 'run', 'build'], cwd: '.',
+      });
+      bootstrap += 1;
+    }
+    commands.splice(bootstrap + 1, 0, {
+      executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.',
+    });
   }
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   for (const task of tasks) {

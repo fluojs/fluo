@@ -82,6 +82,10 @@ Before receipt binding, derive generated-consumer planning evidence through
 consumer with `generatedConsumerGraph(root)`, then call
 `withGeneratedConflicts(plan, liveIssueObservations, graph)`. This is a read-only
 compiler/config and generator-source graph scan, not artifact regeneration.
+The graph records current Git tracking, and new plans omit generated hints for
+untracked consumers. The two ignored React example artifacts are prepared before
+consumption. Existing ledgers retain their recorded hints, bindings and receipts
+unchanged, including when v4 imports them.
 The resulting optional `predicted_conflicts` field is part of the immutable plan,
 all receipt digests and the ready ledger. Shared inputs remain hints, not edges.
 `planIsCanonical`, both workflow/governance validators and v4 import validate

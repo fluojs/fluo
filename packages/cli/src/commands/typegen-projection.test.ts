@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { compileFunction, constants } from 'node:vm';
 
@@ -286,6 +286,30 @@ describe('frozen compiler object association', () => {
       await symlink(fileURLToPath(new URL('../../../../examples/react-vite-ssr/node_modules', import.meta.url)),
         join(cwd, 'node_modules'), 'dir');
       await writeFile(join(cwd, 'package.json'), '{"type":"module"}\n');
+      const application = fileURLToPath(new URL('../../../../examples/react-vite-ssr/src/app.ts', import.meta.url));
+      const config = fileURLToPath(new URL('../../../../examples/react-vite-ssr/tsconfig.json', import.meta.url));
+      const output = join(cwd, 'react-pages.ts');
+      const errors: string[] = [];
+      const exit = await runTypegenCommand([
+        application, '--export', 'AppModule', '--options', 'applicationOptions',
+        '--tsconfig', config, '--output', output,
+      ], {
+        cwd,
+        async loadReactTypegenModules() {
+          const options = { parentURL: import.meta.url, tsconfig: tsconfigPath };
+          const [react, runtime, typegen] = await Promise.all([
+            tsImport('@fluojs/react', options), tsImport('@fluojs/runtime', options),
+            tsImport('@fluojs/react/typegen', options),
+          ]);
+          return { react, runtime, typegen };
+        },
+        stderr: { write: (message) => { errors.push(message); } },
+        stdout: { write() {} },
+      });
+      expect({ exit, errors }).toEqual({ exit: 0, errors: [] });
+      const generatedSource = await readFile(output, 'utf8');
+      const generatedPath = fileURLToPath(new URL('../../../../examples/react-vite-ssr/src/generated/react-pages.ts', import.meta.url));
+      const generatedDirectory = dirname(generatedPath);
       const catalog = fileURLToPath(new URL('../../../../examples/react-vite-ssr/src/catalog.js', import.meta.url));
       await writeFile(consumer, [
         `import { createCatalogRouter } from ${JSON.stringify(catalog)};`,
@@ -297,12 +321,32 @@ describe('frozen compiler object association', () => {
         "void destination;",
       ].join('\n'));
       // When: the same strict compiler checks the inferred handler result.
-      const program = ts.createProgram([consumer], {
+      const compilerOptions: ts.CompilerOptions = {
         strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true,
         verbatimModuleSyntax: true, jsx: ts.JsxEmit.ReactJSX,
         module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
         target: ts.ScriptTarget.ES2022, noEmit: true,
-      });
+      };
+      const compilerHost = ts.createCompilerHost(compilerOptions);
+      const canonical = (path: string) => compilerHost.getCanonicalFileName(resolve(path));
+      const host: ts.CompilerHost = {
+        ...compilerHost,
+        fileExists: (path) => canonical(path) === canonical(generatedPath) || compilerHost.fileExists(path),
+        readFile: (path) => canonical(path) === canonical(generatedPath)
+          ? generatedSource : compilerHost.readFile(path),
+        directoryExists: (path) => canonical(path) === canonical(generatedDirectory) || ts.sys.directoryExists(path),
+        getDirectories(path) {
+          const directories = ts.sys.getDirectories(path);
+          return canonical(path) === canonical(dirname(generatedDirectory))
+            ? [...new Set([...directories, basename(generatedDirectory)])] : directories;
+        },
+        getSourceFile(path, languageVersion, onError, shouldCreateNewSourceFile) {
+          return canonical(path) === canonical(generatedPath)
+            ? ts.createSourceFile(path, generatedSource, languageVersion, true)
+            : compilerHost.getSourceFile(path, languageVersion, onError, shouldCreateNewSourceFile);
+        },
+      };
+      const program = ts.createProgram([consumer], compilerOptions, host);
       // Then: projection can reach the actual module literal without a copied result type.
       expect(ts.getPreEmitDiagnostics(program).map((entry) => ({
         code: entry.code, file: entry.file?.fileName,
@@ -311,7 +355,7 @@ describe('frozen compiler object association', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('generates strict aliased converter query from a non-exported DTO and factory-local router', async () => {
     // Given: real generation, two strict compiler programs and HTTP share a bounded integration budget.

@@ -248,3 +248,17 @@ test('scoped static lint tolerates changed directories that biome.json does not 
   assert.ok(lint, 'static task lints the scoped directory');
   assert.deepEqual(lint.argv, ['exec', 'biome', 'lint', '--no-errors-on-unmatched', 'apps/docs']);
 });
+
+test('receipt: required typegen preparation omitted or failed -> cannot certify the canonical plan', () => {
+  const plan = buildVerificationPlan({ changedFiles: ['examples/react-vite-ssr/src/app.ts'], identity });
+  const receipt = receiptFor(plan);
+  assert.equal(receiptMatchesPlan(receipt, identity, plan), true);
+  const task = receipt.taskResults.find(({ taskId }) => taskId === 'tooling-1');
+  const index = task.commands.findIndex(({ command }) =>
+    command.argv.includes('tooling/ci/prepare-react-typegen.mjs'));
+  assert.ok(index >= 0);
+  task.commands[index].exitCode = 3;
+  assert.equal(validateReceipt(receipt).valid, false);
+  task.commands.splice(index, 1);
+  assert.equal(receiptMatchesPlan(receipt, identity, plan), false);
+});

@@ -87,6 +87,8 @@ test('real Docker Vitest: apps and separate benchmark Node coverage -> authentic
     const head = commit();
     const identity = collectIdentity(root, head);
     const plan = buildVerificationPlan({ changedFiles: [], identity, root, manifest });
+    assert.ok(plan.tasks.find(({ id }) => id === 'tooling-1').commands
+      .every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')));
     const outcome = `${project}-${passes ? 'passed' : filter.endsWith('empty.test.ts') ? 'empty' : 'missing'}`;
     const path = join(root, '.git', `${outcome}-plan.json`);
     const output = join(root, '.git', outcome);
@@ -347,6 +349,10 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
     ['compatibility-floor-1', 'compatibility-floor-2', 'compatibility-floor-3', 'compatibility-floor-4',
       'compatibility-floor-smoke', 'compatibility-next-1', 'compatibility-next-2', 'compatibility-next-3',
       'compatibility-next-4', 'compatibility-next-smoke']);
+  for (const task of plan.tasks.filter(({ id }) =>
+    id.startsWith('compatibility-') || ['build', 'static', 'packages-1'].includes(id))) {
+    assert.ok(task.commands.every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')), task.id);
+  }
   const path = join(root, '.git', 'plan.json');
   writeFileSync(path, JSON.stringify(plan));
   const output = join(root, '.git', 'results');

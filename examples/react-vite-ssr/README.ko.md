@@ -66,7 +66,7 @@ document fallback을 유지하며 공식 starter는 network/5xx 및 복구 가�
 ```sh
 pnpm install
 pnpm build
-pnpm --filter @fluojs/example-react-vite-ssr typegen
+pnpm prepare:react-typegen
 pnpm --filter @fluojs/example-react-vite-ssr build
 pnpm --filter @fluojs/example-react-vite-ssr start
 ```
@@ -79,9 +79,13 @@ renderer를 제공합니다. Presentation이 없는 inspection root는 page나 a
 생성된 `reactPageRoutes`, `reactPageModules`, `reactFormRoutes`는 작성한 component
 props, HTTP query/control alias와 기존 `useForm` binding을 연결합니다. 초기 hydration과
 일반/prefetch load는 `navigationContracts`로 같은 generated props decoder를 사용합니다.
-Typecheck/build는 변경하지 않는 `--check`부터 실행합니다. Source/type/config 변경 뒤에는
-`typegen`을 명시적으로 다시 실행하거나 `typegen:watch`를 사용하세요.
-Stale artifact를 자동으로 재생성해 실패를 숨기지 않습니다.
+Typecheck/build는 누락된 artifact를 준비하고 기존 artifact는 변경하지 않는 `--check`로
+검증합니다. `src/generated/react-pages.ts`와 별도 compiler fixture
+`tests/typegen-fixture/generated/react-pages.ts`는 Git에서 무시하며 소비 전에 로컬에서
+생성합니다. Source/type/config 변경 뒤에는 `typegen`과 `typegen:fixture`를 명시적으로
+실행해 두 대상을 재생성하고 `typegen:check`를 실행하세요. `typegen:watch`는 main
+대상을 감시합니다. 준비 단계는 stale, malformed, unsupported artifact를 자동으로
+재생성해 실패를 숨기지 않으며 `typegen:check`는 계속 읽기 전용입니다.
 
 `http://127.0.0.1:3000/products/sku-42?preview=true`를 열고 `Count: 0`을 활성화하세요.
 Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Count: 1`로 바뀝니다.
@@ -122,6 +126,7 @@ anonymous prefetch가 private destination을 대신하지 못함을 보여줍니
 반복 가능한 SSR 및 hydration 검증은 다음 명령으로 실행합니다.
 
 ```sh
+pnpm prepare:react-typegen
 pnpm vitest run examples/react-vite-ssr
 pnpm --filter @fluojs/example-react-vite-ssr test:browser
 ```

@@ -289,8 +289,8 @@ An already reviewed mergeable head with CI running remains `wait-ci`.
 
 The accepted base stays pinned and must remain an ancestor of both current issue
 head and observed base; scope remains current merge-base-to-head. Incorporating
-changed generated inputs requires new-head integration evidence, not base-SHA
-freshness. Record `resolve-conflict` with current `head_sha` and
+changed generated inputs for tracked consumers or hints retained in existing ledgers
+requires new-head integration evidence, not base-SHA freshness. Record `resolve-conflict` with current `head_sha` and
 `generated_integration: { head, outputs, checks }`. Each output binds its surface,
 canonical read-only generation command, exit code, expected-path and artifact
 digests, and explicit `normalizeSourceFingerprint` choice. Expected files and

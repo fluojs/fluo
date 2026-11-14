@@ -349,6 +349,7 @@ test('full PR compatibility expands each secondary runtime into four shards and 
       assert.deepEqual(task.outputs, []);
       assert.equal(task.commands.length, 3);
       assert.deepEqual(task.commands.slice(0, 2), original.commands.slice(0, 2));
+      assert.ok(task.commands.every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')));
       assert.deepEqual(task.commands[2].argv, ['vitest', 'run', '--project', 'packages', '--maxWorkers=1',
         `--shard=${shard}/4`, '--reporter=json', '--reporter=default', `--outputFile=/evidence/${id}-vitest.json`]);
     }
@@ -359,6 +360,7 @@ test('full PR compatibility expands each secondary runtime into four shards and 
     assert.deepEqual(smoke.inputs, []);
     assert.deepEqual(smoke.outputs, []);
     assert.equal(smoke.commands.length, 3);
+    assert.ok(smoke.commands.every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')));
     assert.deepEqual(smoke.commands[2], original.commands.at(-1));
     assert.equal(smoke.commands[2].env.FLUO_CLI_SANDBOX_PROFILE, 'smoke');
     assert.equal(smoke.commands[2].env.FLUO_CLI_SANDBOX_DEPENDENCIES, 'locked');
@@ -413,10 +415,201 @@ test('scoped secondary smoke accompanies only starter-affecting package selectio
   }
 });
 
+for (const project of ['apps', 'tooling']) {
+  test(`typegen preparation: reduced full ${project} and benchmark fixture -> preserves non-consuming commands without extra build`, (t) => {
+    const { root, put, manifest } = catalogFixture(t);
+    put('apps/docs/index.test.ts', 'export const fixture = true;');
+    const task = manifest.tasks.find(({ id }) => id === 'tooling-1');
+    task.dependencies = [];
+    task.inputs = [];
+    task.commands = [
+      { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
+      ...manifest.tasks.find(({ id }) => id === 'tooling-2').commands
+        .filter(({ executable }) => executable === 'node'),
+      { executable: 'pnpm', argv: ['vitest', 'run', '--project', project,
+        project === 'apps' ? 'apps/docs/' : 'tooling/', '--maxWorkers=1'], cwd: '.' },
+    ];
+
+    const plan = buildVerificationPlan({ changedFiles: [], identity, root, manifest });
+
+    assert.equal(plan.mode, 'full');
+    assert.deepEqual(plan.tasks.find(({ id }) => id === task.id).commands, task.commands);
+  });
+}
+
+test('typegen preparation: reduced full compatibility runtime probes -> no preparation or extra build in any shard', (t) => {
+  const { root, manifest } = catalogFixture(t);
+  for (const id of ['compatibility-floor', 'compatibility-next']) {
+    manifest.tasks.find((task) => task.id === id).commands = [
+      { executable: 'pnpm', argv: ['vitest', 'run', '--project', 'packages', '--maxWorkers=1'], cwd: '.' },
+      { executable: 'pnpm', argv: ['run', 'probe-runtime'], cwd: '.' },
+    ];
+  }
+
+  const plan = buildVerificationPlan({ changedFiles: [], identity, root, manifest });
+
+  assert.equal(plan.mode, 'full');
+  const tasks = plan.tasks.filter(({ id }) => id.startsWith('compatibility-'));
+  assert.equal(tasks.length, 10);
+  for (const task of tasks) {
+    assert.equal(task.commands.length, 1, task.id);
+    assert.deepEqual(task.commands[0], task.id.endsWith('-smoke')
+      ? { executable: 'pnpm', argv: ['run', 'probe-runtime'], cwd: '.' }
+      : { executable: 'pnpm', argv: ['vitest', 'run', '--project', 'packages', '--maxWorkers=1',
+        `--shard=${task.id.split('-').at(-1)}/4`,
+        '--reporter=json', '--reporter=default', `--outputFile=/evidence/${task.id}-vitest.json`], cwd: '.' });
+  }
+});
+
+test('typegen preparation: synthetic commands with a stale preparation entry -> removes it without treating it as consumption', () => {
+  const manifest = readVerificationManifest();
+  const task = manifest.tasks.find(({ id }) => id === 'tooling-2');
+  task.commands.unshift({ executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.' });
+  const expected = task.commands.slice(1);
+
+  const plan = buildVerificationPlan({ changedFiles: [], identity, manifest });
+
+  assert.deepEqual(plan.tasks.find(({ id }) => id === task.id).commands, expected);
+});
+
+test('typegen preparation: example selected elsewhere -> preserves non-consuming scoped package commands', () => {
+  const plan = buildVerificationPlan({
+    changedFiles: ['examples/react-vite-ssr/src/app.ts', 'packages/email/src/index.ts'], identity,
+  });
+
+  for (const task of plan.tasks.filter(({ id }) => id.startsWith('packages-') || id.startsWith('compatibility-'))) {
+    assert.ok(task.commands.every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')), task.id);
+    assert.ok(task.commands.every(({ argv }) => !argv.includes('--filter=@fluojs/cli...')), task.id);
+  }
+});
+
+test('typegen preparation: final example project in secondary package commands -> prepares every consuming shard', () => {
+  const manifest = readVerificationManifest();
+  for (const id of ['compatibility-floor', 'compatibility-next']) {
+    manifest.tasks.find((task) => task.id === id).commands
+      .find(({ argv }) => argv.includes('vitest')).argv.push('--project', 'examples');
+  }
+
+  const plan = buildVerificationPlan({ changedFiles: [], identity, manifest });
+
+  for (const base of ['compatibility-floor', 'compatibility-next']) {
+    for (const shard of [1, 2, 3, 4]) {
+      const task = plan.tasks.find(({ id }) => id === `${base}-${shard}`);
+      assert.equal(task.commands.length, 4);
+      assert.deepEqual(task.commands.slice(0, 2),
+        manifest.tasks.find(({ id }) => id === base).commands.slice(0, 2));
+      assert.deepEqual(task.commands[2], {
+        executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.',
+      });
+      assert.ok(task.commands[3].argv.includes(`--shard=${shard}/4`));
+      assert.ok(task.commands[3].argv.includes('examples'));
+    }
+  }
+});
+
+for (const [name, command] of [
+  ['example build', { executable: 'pnpm', argv: ['--filter', '@fluojs/example-react-vite-ssr', 'run', 'build'], cwd: '.' }],
+  ['example Node test', { executable: 'node', argv: ['--test', 'examples/react-vite-ssr/tests/reliability-handoff.test.mjs'], cwd: '.' }],
+  ['example compiler', { executable: 'pnpm', argv: ['exec', 'tsc', '-p', 'examples/tsconfig.json', '--noEmit'], cwd: '.' }],
+]) {
+  test(`typegen preparation: ${name} in an unrelated task id -> prepares before the first consumer`, () => {
+    const manifest = readVerificationManifest();
+    const install = { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' };
+    manifest.tasks.find(({ id }) => id === 'native-web').commands = [install, command];
+
+    const plan = buildVerificationPlan({ changedFiles: [], identity, manifest });
+
+    assert.deepEqual(plan.tasks.find(({ id }) => id === 'native-web').commands, [
+      install, { executable: 'node', argv: ['tooling/ci/prepare-react-typegen.mjs'], cwd: '.' }, command,
+    ]);
+  });
+}
+
+for (const [name, changedFiles, options, consumerIds] of [
+  ['direct example', ['examples/react-vite-ssr/src/app.ts'], {}, ['static', 'tooling-1', 'react-product', 'starters']],
+  ['transitive HTTP', ['packages/http/src/index.ts'], {}, ['static', 'tooling-1', 'react-product', 'starters']],
+  ['CLI', ['packages/cli/src/commands/typegen.ts'], {}, ['static', 'tooling-1', 'react-product', 'starters']],
+  ['full PR', ['package.json'], {}, ['static', 'tooling-1', 'react-product', 'starters']],
+  ['extended', ['packages/email/src/index.ts'], { profile: 'extended' },
+    ['static', 'tooling-1', 'react-product', 'starters', 'compatibility-floor', 'compatibility-next']],
+  ['other example compiler', ['examples/minimal/src/app.ts'], {}, ['static']],
+  ['SSR example compiler', ['examples/react-stable-ssr/src/app.ts'], {}, ['static']],
+]) {
+  test(`typegen preparation: ${name} -> visible once after bootstrap and before every consumer`, () => {
+    const manifest = structuredClone(readVerificationManifest());
+    // Exercise filtering as well as scoped reconstruction and shard expansion.
+    for (const task of manifest.tasks) for (const command of task.commands) {
+      if (command.argv.includes('tooling/ci/prepare-react-typegen.mjs')) command.when = 'isolated-benchmark';
+    }
+    const input = { changedFiles, identity, manifest, ...options };
+    const plan = buildVerificationPlan(input);
+    const consumers = plan.tasks.filter(({ id }) => consumerIds.includes(id));
+    assert.deepEqual(plan.tasks.filter(({ commands }) => commands.some(({ argv }) =>
+      argv.includes('tooling/ci/prepare-react-typegen.mjs'))).map(({ id }) => id), consumerIds);
+
+    for (const task of consumers) {
+      const prepare = task.commands.flatMap((command, index) =>
+        command.argv.includes('tooling/ci/prepare-react-typegen.mjs') ? [index] : []);
+      assert.equal(prepare.length, 1, task.id);
+      const bootstrap = task.commands.findLastIndex(({ executable, argv }) =>
+        executable === 'pnpm' && (argv.join(' ') === 'install --frozen-lockfile'
+          || argv[0] === 'build' || argv.includes('run') && argv.includes('build')));
+      assert.equal(prepare[0], bootstrap + 1, task.id);
+      assert.ok(prepare[0] < task.commands.length - 1, task.id);
+      if (name === 'other example compiler' || name === 'SSR example compiler') {
+        assert.ok(task.commands.slice(0, prepare[0]).some(({ argv }) =>
+          argv.includes('--filter=@fluojs/cli...') && argv.includes('--filter=@fluojs/example-react-vite-ssr^...')));
+      }
+      if (task.id.startsWith('compatibility-')) {
+        assert.ok(task.commands.slice(0, prepare[0]).some(({ argv }) => argv.includes('build')), task.id);
+      } else {
+        assert.ok(task.dependencies.includes('build'), task.id);
+        assert.ok(task.inputs.includes('build.tar'), task.id);
+      }
+    }
+    assert.deepEqual(buildVerificationPlan(input), plan);
+    assert.ok(plan.tasks.find(({ id }) => id === 'build').commands
+      .every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')));
+  });
+}
+
+for (const path of ['packages/email/src/index.ts', 'docs/reference/node-support.md']) {
+  test(`typegen preparation: unrelated ${path} -> retains original execution and build selection`, () => {
+    const plan = buildVerificationPlan({ changedFiles: [path], identity });
+    assert.ok(plan.tasks.every(({ commands }) => commands.every(({ argv }) =>
+      !argv.includes('tooling/ci/prepare-react-typegen.mjs'))));
+    if (path.startsWith('docs/')) {
+      assert.deepEqual(plan.selection.buildDirectories, []);
+      assert.deepEqual(plan.tasks.map(({ id, dependencies, inputs, outputs }) =>
+        ({ id, dependencies, inputs, outputs })), [
+        { id: 'static', dependencies: [], inputs: [], outputs: ['docs-site'] },
+      ]);
+      assert.deepEqual(plan.tasks[0].commands.map(({ executable, argv }) => [executable, ...argv]), [
+        ['pnpm', 'install', '--frozen-lockfile'],
+        ['pnpm', 'verify:platform-consistency-governance'],
+        ['node', 'tooling/release/verify-changeset-release-lane.mjs', '--lane=stable', `--base-ref=${identity.baseSha}`],
+        ['pnpm', 'verify:docs'], ['pnpm', 'docs:package'], ['pnpm', 'docs:release-check', '--require-clean'],
+      ]);
+    } else {
+      assert.deepEqual(plan.selection.packageDirectories, ['packages/email']);
+      assert.ok(!plan.selection.buildDirectories.includes('packages/cli'));
+      assert.ok(!plan.selection.buildDirectories.includes('packages/react'));
+      assert.deepEqual(plan.tasks.map(({ id }) => id),
+        ['build', 'static', 'packages-1', 'compatibility-floor', 'compatibility-next']);
+      for (const task of plan.tasks) {
+        assert.deepEqual(task.dependencies, ['static', 'packages-1'].includes(task.id) ? ['build'] : []);
+        assert.deepEqual(task.inputs, ['static', 'packages-1'].includes(task.id) ? ['build.tar'] : []);
+        assert.deepEqual(task.outputs, task.id === 'build' ? ['build.tar', 'build.json'] : []);
+      }
+    }
+  });
+}
+
 test('scoped product selection owns browser capture exactly once with retained regressions', () => {
   for (const [file, selectsProduct, toolingCommands, toolingCapabilities] of [
     ['packages/react/src/index.ts', true, [
       'install --frozen-lockfile',
+      'tooling/ci/prepare-react-typegen.mjs',
       'vitest run --project examples examples/react-stable-ssr/ examples/react-vite-ssr/ --maxWorkers=1',
       'vitest run --project tooling tooling/docs/fixtures/ tooling/governance/ tooling/scripts/ --maxWorkers=1',
       '--test packages/cli/scripts/*.test.mjs tooling/ci/react-product-acceptance.test.mjs',
@@ -425,6 +618,7 @@ test('scoped product selection owns browser capture exactly once with retained r
     ], ['examples', 'tooling-1']],
     ['examples/react-vite-ssr/tests/long-session.spec.ts', true, [
       'install --frozen-lockfile',
+      'tooling/ci/prepare-react-typegen.mjs',
       'vitest run --project examples examples/react-vite-ssr/ --maxWorkers=1',
       '--test examples/react-vite-ssr/tests/reliability-handoff.test.mjs',
       '--test examples/react-vite-ssr/tests/verify-background-starter.test.mjs',
@@ -451,6 +645,7 @@ test('scoped product selection owns browser capture exactly once with retained r
     assert.deepEqual(productTasks.flatMap(({ capabilities }) => capabilities), selectsProduct ? ['react-product'] : [], file);
     assert.deepEqual(productTasks.flatMap(({ commands }) => commands).map(({ argv }) => argv.join(' ')), selectsProduct ? [
       'install --frozen-lockfile',
+      'tooling/ci/prepare-react-typegen.mjs',
       '--filter @fluojs/example-react-vite-ssr exec playwright install chromium firefox webkit',
       'tooling/ci/react-product-acceptance.mjs capture tooling /evidence/react-product/tooling',
     ] : [], file);
@@ -486,6 +681,7 @@ test('transitive React package change -> complete scoped tooling and product com
   assert.deepEqual(tooling.commands[0], { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' });
   assert.deepEqual(tooling.commands.map(({ argv }) => argv.join(' ')), [
     'install --frozen-lockfile',
+    'tooling/ci/prepare-react-typegen.mjs',
     'vitest run --project examples examples/react-stable-ssr/ examples/react-vite-ssr/ --maxWorkers=1',
     'vitest run --project tooling tooling/docs/fixtures/ tooling/governance/ tooling/scripts/ --maxWorkers=1',
     '--test packages/cli/scripts/*.test.mjs tooling/ci/react-product-acceptance.test.mjs',
@@ -495,6 +691,7 @@ test('transitive React package change -> complete scoped tooling and product com
   assert.deepEqual(tooling.capabilities, ['examples', 'tooling-1']);
   assert.deepEqual(product.commands.map(({ argv }) => argv.join(' ')), [
     'install --frozen-lockfile',
+    'tooling/ci/prepare-react-typegen.mjs',
     '--filter @fluojs/example-react-vite-ssr exec playwright install chromium firefox webkit',
     'tooling/ci/react-product-acceptance.mjs capture tooling /evidence/react-product/tooling',
   ]);

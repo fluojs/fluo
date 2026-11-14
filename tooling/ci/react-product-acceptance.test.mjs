@@ -525,6 +525,18 @@ test('CI capture plans: existing domain commands -> fresh separate builds and no
     && command.env.FLUO_RELIABILITY_SOAK_MS === '3600000'), true);
 });
 
+test('CI capture plans: each independent domain -> prepares repository typegen before its consumers', () => {
+  for (const [domain, firstConsumer] of [
+    ['tooling', 'source-http'], ['starters', 'packed-cold-dev'], ['soak', 'reliability-build'],
+  ]) {
+    const plan = productDomainPlan(domain, '/fixture');
+    assert.deepEqual(plan[0], { id: 'prepare-react-typegen', executable: process.execPath,
+      args: ['tooling/ci/prepare-react-typegen.mjs'], env: {} });
+    assert.equal(plan[1].id, firstConsumer);
+    assert.equal(plan.filter(({ id }) => id === 'prepare-react-typegen').length, 1);
+  }
+});
+
 test('CI capture preparation: fault and reliability builds -> preserve normal subprocess entry beside form entry', () => {
   const plan = productDomainPlan('tooling', '/fixture');
   const builds = plan.filter((command) => command.id.endsWith('-build'));
@@ -775,6 +787,56 @@ function domainFixture(root, domain) {
       preparation: { suite: 'ordinary' }, log: save('deployment-restore.log', 'fixture normal deployment restore\n'),
     },
     status: 'domain-evidence-complete', domain, commands, checks, artifacts };
+}
+
+function producerRuntimeFixture(t) {
+  const executable = process.execPath;
+  try {
+    Object.defineProperty(process, 'execPath', { value: '/opt/fluo-fixture/node/bin/node' });
+    return externalFixture(t);
+  } finally {
+    Object.defineProperty(process, 'execPath', { value: executable });
+  }
+}
+
+test('final CI runtime: different producer Node path -> accepts authenticated preparation on the consumer', (t) => {
+  const value = producerRuntimeFixture(t);
+  for (const domain of value.domains) {
+    assert.notEqual(domain.runtime.executable, process.execPath);
+    assert.equal(domain.commands.find(({ id }) => id === 'prepare-react-typegen').command,
+      `${domain.runtime.executable} tooling/ci/prepare-react-typegen.mjs`);
+  }
+
+  assert.doesNotThrow(() => externalEvidence(value.root, value.receipt, head));
+});
+
+for (const domain of ['tooling', 'starters']) {
+  for (const defect of ['consumer-node', 'other-node', 'args', 'env', 'log', 'other-command']) {
+    test(`final CI runtime: ${domain} ${defect} -> rejects matching but unauthenticated command and check`, (t) => {
+      const value = producerRuntimeFixture(t);
+      const receipt = value.domains.find((entry) => entry.domain === domain);
+      const id = defect === 'other-command'
+        ? domain === 'tooling' ? 'source-http' : 'packed-cold-dev' : 'prepare-react-typegen';
+      const command = receipt.commands.find((entry) => entry.id === id);
+      if (defect === 'consumer-node' || defect === 'other-node') {
+        const executable = defect === 'consumer-node' ? process.execPath : '/unrecorded/node';
+        command.command = `${executable} tooling/ci/prepare-react-typegen.mjs`;
+      }
+      if (defect === 'args') command.command += ' --check';
+      if (defect === 'env') command.env = { UNRECORDED_PREPARATION: '1' };
+      if (defect === 'log') command.log = structuredClone(receipt.commands.find((entry) => entry.id !== id).log);
+      if (defect === 'other-command') {
+        command.command = command.command.replace(/^pnpm/u, receipt.runtime.executable);
+      }
+      const check = receipt.checks.findIndex((entry) => entry.id === id);
+      receipt.checks[check] = structuredClone(command);
+      value.receipt.external.ciDomains[domain === 'tooling' ? 0 : 1] =
+        value.save(`${domain}/${domain}-receipt.json`, receipt);
+
+      assert.throws(() => externalEvidence(value.root, value.receipt, head),
+        new RegExp(`CI domain canonical command/check mismatch: ${id}`, 'u'));
+    });
+  }
 }
 
 for (const domain of ['tooling', 'starters']) {
@@ -1088,6 +1150,14 @@ for (const defect of ['wrong-head', 'wrong-tree', 'signal', 'wrong-exit', 'wrong
 }
 
 let captureCheckout;
+// These lifecycle fixtures retain their original consumer sequence and all its
+// assertions. The independent preparation failure fixture below exercises the
+// new step through the same real command runner before any consumer starts.
+const consumerLifecyclePlan = `
+export function productDomainPlan(...args) {
+  return completeProductDomainPlan(...args).filter(({ id }) => id !== 'prepare-react-typegen');
+}
+`;
 function observeMessage(child, predicate, signal) {
   const messages = on(child, 'message', { signal });
   return (async () => {
@@ -1121,7 +1191,9 @@ test('canonical capture roots: failed run reused -> zero new spawns and original
       if (specifier.endsWith('/command-evidence.mjs')) return { url: ${JSON.stringify(new URL('./command-evidence.mjs', import.meta.url).href)}, shortCircuit: true };
       return next(specifier, context);
     }, load(url, context, next) {
-      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8')
+        .replace('export function productDomainPlan', 'function completeProductDomainPlan')
+        + ${JSON.stringify(consumerLifecyclePlan)}, shortCircuit: true };
       if (url === new URL('./browser-preparation.mjs', target).href) return { format: 'module', source: fs.readFileSync(${JSON.stringify(preparation)}, 'utf8'), shortCircuit: true };
       return next(url, context);
     } });
@@ -1299,7 +1371,9 @@ async function descendantLifecycle(t, signal, mode) {
       if (specifier === './browser-preparation.mjs' && context.parentURL === target) return { url: preparationTarget, shortCircuit: true };
       return next(specifier, context);
     }, load(url, context, next) {
-      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8')
+        .replace('export function productDomainPlan', 'function completeProductDomainPlan')
+        + ${JSON.stringify(consumerLifecyclePlan)}, shortCircuit: true };
       if (url === preparationTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(
         fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url)))}, 'utf8'), shortCircuit: true };
       if (url === runnerTarget) return { format: 'module', source: fs.readFileSync(${JSON.stringify(
@@ -1386,6 +1460,67 @@ async function descendantLifecycle(t, signal, mode) {
   if (mode === 'normal') assert.doesNotMatch(result.failure, /cancelled/u);
   else assert.match(result.failure, /cancelled/u);
 }
+
+test('canonical preparation: stale artifact exit -> records failure and never starts a product consumer', async (t) => {
+  if (!captureCheckout) {
+    captureCheckout = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-capture-checkout-')));
+    execFileSync('git', ['clone', '--quiet', '--shared', '--no-hardlinks',
+      fileURLToPath(new URL('../..', import.meta.url)), captureCheckout]);
+  }
+  const evidenceRoot = join(captureCheckout, '.omo/verification/issue-3879');
+  mkdirSync(evidenceRoot, { recursive: true });
+  const output = mkdtempSync(join(evidenceRoot, 'preparation-failure-'));
+  const target = pathToFileURL(join(captureCheckout, 'tooling/ci/react-product-acceptance.mjs')).href;
+  const implementation = fileURLToPath(new URL('./react-product-acceptance.mjs', import.meta.url));
+  const driver = `
+    import cp from 'node:child_process';
+    import fs from 'node:fs';
+    import { registerHooks, syncBuiltinESMExports } from 'node:module';
+    registerHooks({ resolve(specifier, context, next) {
+      if (specifier.endsWith('/command-evidence.mjs')) return { url: ${JSON.stringify(new URL('./command-evidence.mjs', import.meta.url).href)}, shortCircuit: true };
+      return next(specifier, context);
+    }, load(url, context, next) {
+      if (url === ${JSON.stringify(target)}) return { format: 'module',
+        source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      if (url === ${JSON.stringify(new URL('./browser-preparation.mjs', target).href)}) return { format: 'module',
+        source: fs.readFileSync(${JSON.stringify(fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url)))}, 'utf8'), shortCircuit: true };
+      return next(url, context);
+    } });
+    const original = cp.spawn;
+    const starts = [];
+    cp.spawn = (executable, args, options) => {
+      starts.push([executable, ...args]);
+      return original(process.execPath, ['-e', 'console.error("STALE fixture artifact"); process.exit(3);'], options);
+    };
+    syncBuiltinESMExports();
+    const { captureDomain } = await import(${JSON.stringify(target)});
+    let failure;
+    try { await captureDomain('tooling', ${JSON.stringify(output)}); }
+    catch (error) { failure = error.message; }
+    const receipt = JSON.parse(fs.readFileSync(${JSON.stringify(join(output, 'tooling-receipt.json'))}, 'utf8'));
+    process.send({ starts, failure, receipt });
+    process.disconnect();
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', driver],
+    { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  t.after(() => child.kill('SIGKILL'));
+  const signal = AbortSignal.timeout(10_000);
+  const received = observeMessage(child, (message) => Object.hasOwn(message, 'receipt'), signal);
+  const close = once(child, 'close', { signal });
+  child.stdout.resume();
+  let stderr = '';
+  child.stderr.on('data', (bytes) => { stderr += bytes; });
+
+  const [[observed], [exit]] = await Promise.all([received, close]);
+
+  assert.equal(exit, 0, stderr);
+  assert.deepEqual(observed.starts, [[process.execPath, 'tooling/ci/prepare-react-typegen.mjs']]);
+  assert.match(observed.failure, /prepare-react-typegen \(3\)/u);
+  assert.equal(observed.receipt.status, 'failed');
+  assert.deepEqual(observed.receipt.commands.map(({ id, exitCode }) => ({ id, exitCode })),
+    [{ id: 'prepare-react-typegen', exitCode: 3 }]);
+  assert.equal(observed.receipt.restoration.status, 'not-needed');
+});
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   for (const mode of ['active-sync', 'parent-exit', 'forced-exit', 'stubborn', 'nested', 'nested-forced', 'nested-late', 'normal']) {
@@ -1608,7 +1743,9 @@ async function captureCancellation(t, signal, phase) {
       if (specifier === './browser-preparation.mjs' && context.parentURL === target) return { url: preparationTarget, shortCircuit: true };
       return next(specifier, context);
     }, load(url, context, next) {
-      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8')
+        .replace('export function productDomainPlan', 'function completeProductDomainPlan')
+        + ${JSON.stringify(consumerLifecyclePlan)}, shortCircuit: true };
       if (url === preparationTarget) {
         const source = fs.readFileSync(${JSON.stringify(fileURLToPath(new URL('./browser-preparation.mjs', import.meta.url)))}, 'utf8');
         return { format: 'module', source: phase === 'between-commands'
