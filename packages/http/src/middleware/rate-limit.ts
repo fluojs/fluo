@@ -49,6 +49,40 @@ export interface RateLimitOptions {
    * Prefer this policy over the broad legacy `trustProxyHeaders` mode.
    */
   trustProxy?: TrustProxyPolicy;
+  /**
+   * Live-key capacity of the default memory store created when `store` is omitted.
+   *
+   * @remarks
+   * Defaults to 5,000. See {@link MemoryRateLimitStoreOptions.maxKeys}. Combining it with
+   * `store` throws; configure a custom memory store with `createMemoryRateLimitStore({ maxKeys })`.
+   */
+  maxKeys?: number;
+}
+
+/** Configuration for `createMemoryRateLimitStore(...)`. */
+export interface MemoryRateLimitStoreOptions {
+  /**
+   * Maximum number of live keys tracked at once.
+   *
+   * @remarks
+   * Defaults to 5,000. Must be a positive safe integer, or `Number.POSITIVE_INFINITY` to opt out of the bound.
+   * At capacity, a new key is rejected rather than evicting an active counter; existing keys keep counting.
+   */
+  maxKeys?: number;
+}
+
+const DEFAULT_MEMORY_RATE_LIMIT_MAX_KEYS = 5_000;
+
+function resolveMaxKeys(maxKeys: number | undefined): number {
+  if (maxKeys === undefined) {
+    return DEFAULT_MEMORY_RATE_LIMIT_MAX_KEYS;
+  }
+
+  if (maxKeys === Number.POSITIVE_INFINITY || (Number.isSafeInteger(maxKeys) && maxKeys > 0)) {
+    return maxKeys;
+  }
+
+  throw new RangeError('Rate-limit maxKeys must be a positive safe integer or Number.POSITIVE_INFINITY.');
 }
 
 function defaultKeyResolver(ctx: MiddlewareContext, options: RateLimitOptions): string {
@@ -61,27 +95,72 @@ function defaultKeyResolver(ctx: MiddlewareContext, options: RateLimitOptions): 
 /**
  * Create the built-in in-memory store for request rate-limit windows.
  *
+ * @param options Optional live-key capacity; defaults to 5,000 keys.
  * @returns Store instance that tracks request counts in process memory.
+ * @remarks
+ * When `maxKeys` live keys exist after sweeping expired entries, `consume` for a new key stores nothing and
+ * returns `{ count: Number.POSITIVE_INFINITY, resetAt }` with the earliest live deadline, so middleware answers
+ * 429 with `Retry-After` until capacity frees. `set` of a new key at capacity throws a `RangeError`.
+ * @throws {RangeError} When `maxKeys` is not a positive safe integer or `Number.POSITIVE_INFINITY`.
  */
-export function createMemoryRateLimitStore(): RateLimitStore {
+export function createMemoryRateLimitStore(options: MemoryRateLimitStoreOptions = {}): RateLimitStore {
+  const maxKeys = resolveMaxKeys(options.maxKeys);
   const map = new Map<string, RateLimitStoreEntry>();
-  let nextSweepAt = 0;
+  // Lower bound of every stored deadline; sweeping is skipped until it passes.
+  let nextSweepAt = Number.POSITIVE_INFINITY;
+
+  function store(key: string, entry: RateLimitStoreEntry): void {
+    map.set(key, entry);
+    nextSweepAt = Math.min(nextSweepAt, entry.resetAt);
+  }
+
+  function sweep(now: number): void {
+    if (now < nextSweepAt) {
+      return;
+    }
+
+    let next = Number.POSITIVE_INFINITY;
+
+    for (const [key, entry] of map) {
+      if (now >= entry.resetAt) {
+        map.delete(key);
+        continue;
+      }
+
+      next = Math.min(next, entry.resetAt);
+    }
+
+    nextSweepAt = next;
+  }
 
   return {
     consume(key, { now, windowMs }) {
       const entry = map.get(key);
+
+      if (!entry && map.size >= maxKeys) {
+        sweep(now);
+
+        if (map.size >= maxKeys) {
+          return { count: Number.POSITIVE_INFINITY, resetAt: nextSweepAt };
+        }
+      }
+
       const current = !entry || now >= entry.resetAt
         ? { count: 1, resetAt: now + windowMs }
         : { count: entry.count + 1, resetAt: entry.resetAt };
 
-      map.set(key, current);
+      store(key, current);
       return { ...current };
     },
     get(key) {
       return map.get(key);
     },
     set(key, entry) {
-      map.set(key, entry);
+      if (!map.has(key) && map.size >= maxKeys) {
+        throw new RangeError(`Rate-limit memory store reached its maxKeys capacity of ${maxKeys} live keys.`);
+      }
+
+      store(key, entry);
     },
     increment(key) {
       const entry = map.get(key);
@@ -94,22 +173,7 @@ export function createMemoryRateLimitStore(): RateLimitStore {
       return entry.count;
     },
     evict(now) {
-      if (now < nextSweepAt) {
-        return;
-      }
-
-      let next = Number.POSITIVE_INFINITY;
-
-      for (const [key, entry] of map) {
-        if (now >= entry.resetAt) {
-          map.delete(key);
-          continue;
-        }
-
-        next = Math.min(next, entry.resetAt);
-      }
-
-      nextSweepAt = Number.isFinite(next) ? next : 0;
+      sweep(now);
     },
   };
 }
@@ -119,9 +183,17 @@ export function createMemoryRateLimitStore(): RateLimitStore {
  *
  * @param options Limit, window, trust, and storage settings for one middleware instance.
  * @returns Middleware that enforces the configured request budget.
+ * @throws {TypeError} When `maxKeys` is combined with a custom `store`.
+ * @throws {RangeError} When `maxKeys` is invalid.
  */
 export function createRateLimitMiddleware(options: RateLimitOptions): Middleware {
-  const store = options.store ?? createMemoryRateLimitStore();
+  if (options.store && options.maxKeys !== undefined) {
+    throw new TypeError(
+      'Rate-limit maxKeys configures only the default memory store; pass createMemoryRateLimitStore({ maxKeys }) as store instead.',
+    );
+  }
+
+  const store = options.store ?? createMemoryRateLimitStore({ maxKeys: options.maxKeys });
 
   return {
     async handle(context, next) {

@@ -490,3 +490,187 @@ describe('createRateLimitMiddleware', () => {
     expect(store.get('client-1')).toBeUndefined();
   });
 });
+
+describe('rate-limit memory store key capacity', () => {
+  const DEFAULT_MAX_KEYS = 5_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-17T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function clientKeyResolver(ctx: MiddlewareContext): string {
+    return String((ctx.request.headers as Record<string, string>)['x-client-id']);
+  }
+
+  function clientContext(id: string) {
+    return createContext({ headers: { 'x-client-id': id } });
+  }
+
+  it('bounds 10,000 client-controlled keys in the default store and rejects overflow with 429', async () => {
+    const middleware = createRateLimitMiddleware({ keyResolver: clientKeyResolver, limit: 1, windowMs: 60_000 });
+    const next = vi.fn(async () => {});
+    const contexts = Array.from({ length: 10_000 }, (_, index) => clientContext(`client-${index}`));
+
+    for (const context of contexts) {
+      await middleware.handle(context, next);
+    }
+
+    expect(next).toHaveBeenCalledTimes(DEFAULT_MAX_KEYS);
+    const rejected = contexts.slice(DEFAULT_MAX_KEYS);
+    expect(rejected.every((context) => context.response.statusCode === 429)).toBe(true);
+    expect(rejected.every((context) => context.response.headers['Retry-After'] === '60')).toBe(true);
+    expect(rejected[0]?.response.send).toHaveBeenCalledWith({
+      error: {
+        code: 'TOO_MANY_REQUESTS',
+        details: undefined,
+        message: 'Too Many Requests',
+        meta: { retryAfter: 60 },
+        requestId: undefined,
+        status: 429,
+      },
+    });
+  });
+
+  it('keeps active counters instead of evicting them for new keys', async () => {
+    const middleware = createRateLimitMiddleware({ keyResolver: clientKeyResolver, limit: 2, maxKeys: 2, windowMs: 60_000 });
+    const next = vi.fn(async () => {});
+
+    await middleware.handle(clientContext('a'), next);
+    await middleware.handle(clientContext('b'), next);
+    const overflow = clientContext('c');
+    await middleware.handle(overflow, next);
+    const admittedAgain = clientContext('a');
+    await middleware.handle(admittedAgain, next);
+    const exhausted = clientContext('a');
+    await middleware.handle(exhausted, next);
+
+    expect(overflow.response.statusCode).toBe(429);
+    expect(admittedAgain.response.statusCode).toBe(200);
+    expect(exhausted.response.statusCode).toBe(429);
+    expect(next).toHaveBeenCalledTimes(3);
+  });
+
+  it('admits new keys after expired entries free capacity and reports the earliest live deadline', async () => {
+    const middleware = createRateLimitMiddleware({ keyResolver: clientKeyResolver, limit: 1, maxKeys: 2, windowMs: 60_000 });
+    const next = vi.fn(async () => {});
+
+    await middleware.handle(clientContext('a'), next);
+    vi.advanceTimersByTime(30_000);
+    await middleware.handle(clientContext('b'), next);
+    vi.advanceTimersByTime(10_000);
+    const overflow = clientContext('c');
+    await middleware.handle(overflow, next);
+    vi.advanceTimersByTime(20_000);
+    const afterExpiry = clientContext('c');
+    await middleware.handle(afterExpiry, next);
+    const stillFull = clientContext('d');
+    await middleware.handle(stillFull, next);
+
+    expect(overflow.response.statusCode).toBe(429);
+    expect(overflow.response.headers['Retry-After']).toBe('20');
+    expect(afterExpiry.response.statusCode).toBe(200);
+    expect(stillFull.response.statusCode).toBe(429);
+    expect(stillFull.response.headers['Retry-After']).toBe('30');
+    expect(next).toHaveBeenCalledTimes(3);
+  });
+
+  it('admits exactly maxKeys distinct keys from one concurrent burst', async () => {
+    const middleware = createRateLimitMiddleware({ keyResolver: clientKeyResolver, limit: 1, maxKeys: 3, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const contexts = Array.from({ length: 20 }, (_, index) => clientContext(`burst-${index}`));
+
+    await Promise.all(contexts.map((context) => middleware.handle(context, next)));
+
+    expect(next).toHaveBeenCalledTimes(3);
+    expect(contexts.filter((context) => context.response.statusCode === 429)).toHaveLength(17);
+  });
+
+  it('returns a non-admitting snapshot for a new key at capacity without storing it', () => {
+    const store = createMemoryRateLimitStore({ maxKeys: 2 });
+    const now = Date.now();
+
+    store.consume?.('a', { now, windowMs: 1_000 });
+    store.consume?.('b', { now: now + 200, windowMs: 1_000 });
+
+    expect(store.consume?.('c', { now: now + 500, windowMs: 1_000 })).toEqual({
+      count: Number.POSITIVE_INFINITY, resetAt: now + 1_000,
+    });
+    expect(store.get('c')).toBeUndefined();
+    expect(store.consume?.('a', { now: now + 500, windowMs: 1_000 })).toEqual({ count: 2, resetAt: now + 1_000 });
+    expect(store.consume?.('a', { now: now + 1_000, windowMs: 1_000 })).toEqual({ count: 1, resetAt: now + 2_000 });
+  });
+
+  it('sweeps short-window entries inserted after longer windows when capacity is reached', () => {
+    const store = createMemoryRateLimitStore({ maxKeys: 2 });
+    const now = Date.now();
+
+    store.consume?.('long', { now, windowMs: 60_000 });
+    store.consume?.('short', { now, windowMs: 1_000 });
+
+    expect(store.consume?.('next', { now: now + 1_000, windowMs: 1_000 })).toEqual({ count: 1, resetAt: now + 2_000 });
+    expect(store.get('short')).toBeUndefined();
+    expect(store.get('long')).toEqual({ count: 1, resetAt: now + 60_000 });
+  });
+
+  it('allows an explicit unbounded opt-out with Number.POSITIVE_INFINITY', async () => {
+    const middleware = createRateLimitMiddleware({
+      keyResolver: clientKeyResolver,
+      limit: 1,
+      maxKeys: Number.POSITIVE_INFINITY,
+      windowMs: 60_000,
+    });
+    const next = vi.fn(async () => {});
+
+    for (let index = 0; index <= DEFAULT_MAX_KEYS; index++) {
+      await middleware.handle(clientContext(`client-${index}`), next);
+    }
+
+    expect(next).toHaveBeenCalledTimes(DEFAULT_MAX_KEYS + 1);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, '10' as unknown as number])(
+    'rejects invalid maxKeys %s',
+    (maxKeys) => {
+      expect(() => createMemoryRateLimitStore({ maxKeys })).toThrow(RangeError);
+      expect(() => createRateLimitMiddleware({ limit: 1, maxKeys, windowMs: 1_000 })).toThrow(RangeError);
+    },
+  );
+
+  it('rejects maxKeys combined with a custom store instead of ignoring it', () => {
+    expect(() => createRateLimitMiddleware({
+      limit: 1,
+      maxKeys: 10,
+      store: createMemoryRateLimitStore(),
+      windowMs: 1_000,
+    })).toThrow(TypeError);
+  });
+
+  it('fails closed when a legacy wrapper sets a new key at capacity', async () => {
+    const memory = createMemoryRateLimitStore({ maxKeys: 1 });
+    const store: RateLimitStore = {
+      get: (key) => memory.get(key),
+      set: (key, entry) => memory.set(key, entry),
+      increment: (key) => memory.increment(key),
+      evict: (now) => memory.evict(now),
+    };
+    const middleware = createRateLimitMiddleware({ keyResolver: clientKeyResolver, limit: 1, store, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const overflow = clientContext('b');
+
+    await middleware.handle(clientContext('a'), next);
+    await expect(middleware.handle(overflow, next)).rejects.toThrow(RangeError);
+    expect(overflow.response.send).not.toHaveBeenCalled();
+    memory.set('a', { count: 5, resetAt: Date.now() + 1_000 });
+    expect(memory.get('a')).toEqual({ count: 5, resetAt: Date.now() + 1_000 });
+
+    vi.advanceTimersByTime(1_000);
+    await middleware.handle(clientContext('b'), next);
+
+    expect(next).toHaveBeenCalledTimes(2);
+  });
+});
