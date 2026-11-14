@@ -46,6 +46,26 @@ function headings(markdown: string): string[] {
   return Array.from(prose.matchAll(/^#{1,6} .+$/gmu), (match) => match[0]);
 }
 
+function assertTableOfContents(markdown: string, tocHeading: string): void {
+  const documentHeadings = headings(markdown);
+  expect(
+    documentHeadings.filter((heading) => heading === tocHeading),
+    'must contain exactly one table-of-contents heading',
+  ).toHaveLength(1);
+  const toc = new RegExp(`^${tocHeading}\n([\\s\\S]*?)(?=^## )`, 'mu').exec(markdown)?.[1];
+  expect(toc).toBeDefined();
+  const fragments = Array.from((toc ?? '').matchAll(/\]\(#([^)]+)\)/gu), (match) => match[1]);
+  const anchors = documentHeadings.map((heading) =>
+    heading.replace(/^#+ /u, '').toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replaceAll(' ', '-'),
+  );
+
+  expect(fragments.length).toBeGreaterThan(0);
+  expect(
+    fragments.filter((fragment) => !anchors.includes(fragment)),
+    'must resolve every table-of-contents fragment to a heading',
+  ).toEqual([]);
+}
+
 function compileExamples(sources: ReadonlyMap<string, string>) {
   const compilerOptions: CompilerOptions = {
     allowImportingTsExtensions: true,
@@ -206,17 +226,38 @@ describe('Redis client ownership documentation', () => {
     expect(() => evaluateNamedClients(lateProvider)).toThrow(/Cannot access 'AnalyticsStore' before initialization/u);
   });
 
-  it('resolves every English README table-of-contents fragment to a heading', () => {
-    const markdown = read(documentPairs[0][0]);
-    const toc = /^## Table of Contents\n([\s\S]*?)(?=^## )/mu.exec(markdown)?.[1];
-    expect(toc).toBeDefined();
-    const fragments = Array.from((toc ?? '').matchAll(/\]\(#([^)]+)\)/gu), (match) => match[1]);
-    const anchors = headings(markdown).map((heading) =>
-      heading.replace(/^#+ /u, '').toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replaceAll(' ', '-'),
-    );
+  describe.each([
+    [documentPairs[0][0], '## Table of Contents', '#installation', '#public-api-overview'],
+    [documentPairs[0][1], '## 목차', '#설치', '#공개-api-개요'],
+  ])('%s table of contents', (relativePath, tocHeading, installationFragment, publicApiFragment) => {
+    it('resolves every fragment to a heading', () => {
+      assertTableOfContents(read(relativePath), tocHeading);
+    });
 
-    expect(fragments.length).toBeGreaterThan(0);
-    expect(fragments.filter((fragment) => !anchors.includes(fragment))).toEqual([]);
+    it('rejects a broken anchor', () => {
+      const markdown = read(relativePath).replace(`](${publicApiFragment})`, '](#public-api)');
+
+      expect(() => assertTableOfContents(markdown, tocHeading))
+        .toThrow('must resolve every table-of-contents fragment to a heading');
+    });
+
+    it('rejects a duplicate table of contents shadowing a broken later anchor', () => {
+      const markdown = read(relativePath).replace(`](${publicApiFragment})`, '](#public-api)');
+      const duplicateToc = markdown.replace(
+        `${tocHeading}\n`,
+        `${tocHeading}\n\n- [Installation](${installationFragment})\n\n${tocHeading}\n`,
+      );
+
+      expect(() => assertTableOfContents(duplicateToc, tocHeading))
+        .toThrow('must contain exactly one table-of-contents heading');
+    });
+
+    it('rejects an empty duplicate table of contents at the end of the document', () => {
+      const duplicateToc = `${read(relativePath)}\n${tocHeading}\n`;
+
+      expect(() => assertTableOfContents(duplicateToc, tocHeading))
+        .toThrow('must contain exactly one table-of-contents heading');
+    });
   });
 
   it.each(documentPairs)('%s and %s retain matching fences and heading structure', (englishPath, koreanPath) => {
