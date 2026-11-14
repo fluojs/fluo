@@ -6,6 +6,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { contractDigest, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
 
 export class WorkflowPreparationError extends TypeError {
   constructor(reason) {
@@ -33,6 +34,10 @@ const list = (value) => Array.isArray(value) && value.every((item) => typeof ite
   && new Set(value).size === value.length;
 const digest = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
 const commit = (value) => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value);
+const registeredDispatch = (root, dispatch) => {
+  validateDispatchTarget(dispatch, readRegisteredAgents(root));
+  return dispatch;
+};
 
 export const sourceFootprintCategories = Object.freeze([
   'direct_callers', 'reflective_integration', 'governance', 'book',
@@ -298,7 +303,9 @@ export function prepareReviewInput(input) {
     changed_paths: changedPaths, diff: input.diff, artifact_root: input.artifact_root,
     required_checks: input.required_checks, evidence: input.evidence, readable_index: readableIndex, footprint };
   return { status: 'prepared', kind: 'review-input', common,
-    reviewers: input.policy.active_axes.map((reviewer) => ({ reviewer, input: common })) };
+    reviewers: input.policy.active_axes.map((reviewer) => ({
+      reviewer, dispatch: registeredDispatch(root, reviewerTargets[reviewer]), input: common,
+    })) };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -313,11 +320,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         'preflight preparation: invalid stage/root');
     }
     const result = stage === 'review' ? prepareReviewInput(input)
-      : { status: 'prepared', kind: 'preflight-input', footprint: prepareSourceFootprint(input.root, input.footprint) };
+      : { status: 'prepared', kind: 'preflight-input', dispatch: registeredDispatch(input.root, dispatchFor('preflight')), footprint: prepareSourceFootprint(input.root, input.footprint) };
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`${JSON.stringify({ status: 'blocked', kind: 'input-preparation',
-      fix_back_eligible: false, error: error.message })}\n`);
+      fix_back_eligible: false, error: error.message,
+      ...(error instanceof DispatchPreparationError ? { code: error.code, subagent_type: error.subagent_type } : {}) })}\n`);
     process.exitCode = 1;
   }
 }

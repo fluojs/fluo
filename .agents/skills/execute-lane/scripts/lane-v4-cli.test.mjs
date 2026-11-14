@@ -17,6 +17,190 @@ import { localCheckBinding } from './lane-v4.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
 
+test('#4091 set-fact review: wrong or absent identity -> byte-identical lane', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const input = f.review();
+  for (const agent of [undefined, 'fluo-code-reviewer', 'unregistered', 'deep-high']) {
+    const invalid = structuredClone(input);
+    if (agent === undefined) delete invalid.reviews[0].agent;
+    else invalid.reviews[0].agent = agent;
+    const before = readFileSync(f.lanePath);
+
+    f.set('review', invalid, input.head_sha, false);
+
+    assert.deepEqual(readFileSync(f.lanePath), before);
+  }
+});
+
+test('#4091 record: new successful child stages require assigned identities before lane write', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const review = f.review();
+  const record = (phase, result, ok = true) => f.cli('record', [...f.common,
+    '--phase', phase, '--result-json', JSON.stringify(result)], ok);
+  for (const [phase, agent] of [
+    ['preflight', 'fluo-issue-preflight'], ['implement', 'fluo-issue-implementer'],
+    ['fix-back', 'fluo-issue-implementer'],
+  ]) {
+    for (const substitute of [undefined, 'unregistered', 'deep-high', 'fluo-code-reviewer']) {
+      const before = readFileSync(f.lanePath);
+
+      record(phase, { ok: true, ...(substitute ? { agent: substitute } : {}) }, false);
+
+      assert.deepEqual(readFileSync(f.lanePath), before);
+    }
+    const beforeCategory = readFileSync(f.lanePath);
+    record(phase, { ok: true, agent, category: 'deep-high' }, false);
+    assert.deepEqual(readFileSync(f.lanePath), beforeCategory);
+    record(phase, { ok: true, agent });
+    assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['42'].attempts[phase], 0);
+  }
+  const before = readFileSync(f.lanePath);
+  record('review', { ok: true }, false);
+  assert.deepEqual(readFileSync(f.lanePath), before);
+  record('review', { ok: true, ...review });
+  const invalid = structuredClone(review);
+  invalid.reviews[0].agent = 'fluo-code-reviewer';
+  const reviewed = readFileSync(f.lanePath);
+  record('review', { ok: true, ...invalid }, false);
+  assert.deepEqual(readFileSync(f.lanePath), reviewed);
+});
+
+test('#4091 record: unavailable assigned target -> input-preparation block without implementation retry', (t) => {
+  const f = fixture(t);
+  const result = { ok: false, error: { kind: 'input-preparation', code: 'dispatch-target-unavailable',
+    subagent_type: 'fluo-issue-preflight', fix_back_eligible: false } };
+
+  f.cli('record', [...f.common, '--phase', 'preflight', '--result-json', JSON.stringify(result)]);
+
+  const stored = JSON.parse(readFileSync(f.lanePath)).issues['42'];
+  assert.equal(stored.blocker.type, 'input-preparation');
+  assert.equal(stored.blocker.fix_back_eligible, false);
+  assert.equal(stored.blocker.phase, 'preflight');
+  assert.deepEqual(stored.attempts, {});
+  assert.equal(f.plan().decision.reason, 'input-preparation');
+});
+
+test('#4091 record: removed registration -> typed preparation rejection and unchanged lane', (t) => {
+  const f = fixture(t);
+  const configPath = join(f.root, '.omo/omo.jsonc');
+  const config = JSON.parse(readFileSync(configPath));
+  delete config.agents['fluo-issue-preflight'];
+  writeFileSync(configPath, JSON.stringify(config));
+  const before = readFileSync(f.lanePath);
+
+  const result = f.cli('record', [...f.common, '--phase', 'preflight', '--result-json',
+    JSON.stringify({ ok: true, agent: 'fluo-issue-preflight' })], false);
+
+  const error = JSON.parse(result.stderr);
+  assert.equal(error.kind, 'input-preparation');
+  assert.equal(error.code, 'dispatch-target-unavailable');
+  assert.equal(error.fix_back_eligible, false);
+  assert.deepEqual(readFileSync(f.lanePath), before);
+});
+
+test('#4091 registration JSONC: comments, trailing commas and URL strings -> record and review admission', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const input = f.review();
+  const path = join(f.root, '.omo/omo.jsonc');
+  const { agents } = JSON.parse(readFileSync(path));
+  writeFileSync(path, `// registered stage agents
+{ /* operator note */
+  "routes": ["https://example.test//model/*prompt*/",],
+  "agents": ${JSON.stringify(agents)},
+}`);
+
+  f.cli('record', [...f.common, '--phase', 'preflight', '--result-json',
+    JSON.stringify({ ok: true, agent: 'fluo-issue-preflight' })]);
+  f.set('review', input, input.head_sha);
+
+  const stored = JSON.parse(readFileSync(f.lanePath)).issues['42'];
+  assert.equal(stored.attempts.preflight, 0);
+  assert.equal(stored.facts.review.value.verdict, 'pass');
+});
+
+for (const defect of ['missing', 'broken']) {
+  test(`#4091 registration unreadable: ${defect} config -> typed block and unchanged lane bytes`, (t) => {
+    const f = fixture(t);
+    f.set('preflight', f.preflight());
+    f.implement();
+    const input = f.review();
+    const path = join(f.root, '.omo/omo.jsonc');
+    if (defect === 'missing') rmSync(path);
+    else writeFileSync(path, '{"agents":');
+    const before = readFileSync(f.lanePath);
+    const commands = [
+      ['record', [...f.common, '--phase', 'preflight', '--result-json',
+        JSON.stringify({ ok: true, agent: 'fluo-issue-preflight' })]],
+      ['set-fact', [...f.common, '--kind', 'review', '--head', input.head_sha, '--value', JSON.stringify(input)]],
+    ];
+
+    for (const [command, args] of commands) {
+      const result = f.cli(command, args, false);
+
+      const block = JSON.parse(result.stderr);
+      assert.equal(block.kind, 'input-preparation');
+      assert.equal(block.code, 'dispatch-registration-unreadable');
+      assert.equal(block.fix_back_eligible, false);
+      assert.deepEqual(readFileSync(f.lanePath), before);
+    }
+  });
+}
+
+for (const [defect, content, code] of [
+  ['missing', null, 'dispatch-registration-unreadable'],
+  ['broken', '{"agents":', 'dispatch-registration-unreadable'],
+  ['invalid-shape', '[]', 'dispatch-registration-unreadable'],
+  ['unregistered', '{"agents":{}}', 'dispatch-target-unavailable'],
+]) {
+  test(`#4091 terminal observation: ${defect} registration -> typed block for retrospective outputs`, (t) => {
+    const f = fixture(t);
+    f.state.issue.state = 'CLOSED';
+    f.update();
+    const path = join(f.root, '.omo/omo.jsonc');
+    if (content === null) rmSync(path);
+    else writeFileSync(path, content);
+    const before = readFileSync(f.lanePath);
+    const commands = [
+      ['watch', ['--once']], ['plan-all', ['--with-retro']], ['retro-plan', []], ['retro-evidence', []],
+    ];
+
+    for (const [command, extra] of commands) {
+      const result = f.cli(command, [...f.common, ...extra], false);
+
+      const block = JSON.parse(result.stderr);
+      assert.equal(result.status, 1);
+      assert.equal(block.status, 'blocked');
+      assert.equal(block.kind, 'input-preparation');
+      assert.equal(block.code, code);
+      assert.equal(block.fix_back_eligible, false);
+      assert.deepEqual(readFileSync(f.lanePath), before);
+    }
+  });
+}
+
+test('#4091 observations: unreadable registration during active work -> plan, plan-all and watch remain usable', (t) => {
+  const f = fixture(t);
+  writeFileSync(join(f.root, '.omo/omo.jsonc'), '{"agents":');
+  const before = readFileSync(f.lanePath);
+
+  const planned = f.plan();
+  const all = JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout);
+  const watched = f.cli('watch', ['--lane', f.lanePath, '--once']);
+
+  assert.equal(planned.decision.action, 'preflight');
+  assert.deepEqual(planned.decision.dispatch, { subagent_type: 'fluo-issue-preflight' });
+  assert.deepEqual(all, [{ issue: 42, decision: planned.decision }]);
+  assert.equal(watched.status, 0);
+  assert.equal(watched.stderr, '');
+  assert.deepEqual(readFileSync(f.lanePath), before);
+});
+
 test('gh pager: readiness and actual observation close -> final run attempt collection without key input', async (t) => {
   const value = fixture(t);
   value.implement();
@@ -110,6 +294,8 @@ const fixture = (t, isolatedOrchestrator = false, parent = process.env.FLUO_PROD
   if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
   const bin = join(root, 'bin');
   mkdirSync(bin);
+  mkdirSync(join(root, '.omo'));
+  cpSync(new URL('../../../../.omo/omo.jsonc', import.meta.url), join(root, '.omo/omo.jsonc'));
   const ghState = join(root, 'gh.json');
   const ghLog = join(root, 'gh.log');
   const state = { issue: { state: 'OPEN', title: 'Document route precedence', body: 'Keep route precedence stable.' }, pr: null };
@@ -188,7 +374,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
   const review = () => {
     const { obs } = plan();
     return { head_sha: obs.headSha, preflight_sha256: obs.preflightPolicy.sha256, active_axes: obs.preflightPolicy.active_axes,
-      reviews: obs.preflightPolicy.active_axes.map((reviewer) => ({ reviewer, reviewed_head_sha: obs.headSha,
+      reviews: obs.preflightPolicy.active_axes.map((reviewer) => ({ reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha,
         preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [] })) };
   };
   const verify = (ok = true, forceFull = false) => {
@@ -1568,7 +1754,7 @@ const generatedFixture = (t) => {
     const current = JSON.parse(f.cli('plan', args).stdout).obs;
     const review = { head_sha: current.headSha, preflight_sha256: current.preflightPolicy.sha256,
       active_axes: current.preflightPolicy.active_axes,
-      reviews: current.preflightPolicy.active_axes.map((reviewer) => ({ reviewer,
+      reviews: current.preflightPolicy.active_axes.map((reviewer) => ({ reviewer, agent: `fluo-${reviewer}-reviewer`,
         reviewed_head_sha: current.headSha, preflight_sha256: current.preflightPolicy.sha256,
         verdict_signal: 'PASS', blockers: [] })) };
     f.cli('set-fact', [...args, '--kind', 'review', '--head', current.headSha, '--value', JSON.stringify(review)]);
@@ -1659,7 +1845,7 @@ test('CLI measurements: actual record and fresh observations -> retrospective co
   const head = f.plan().obs.headSha;
   const measurement = { runId: 'fixture-run', attempt: 1, stage: 'focused', head,
     clock: 'simulation', elapsedMs: 12, scope: 'stage-execution' };
-  const args = [...f.common, '--phase', 'review', '--result-json', JSON.stringify({ ok: true, measurements: [measurement] })];
+  const args = [...f.common, '--phase', 'review', '--result-json', JSON.stringify({ ok: true, ...f.review(), measurements: [measurement] })];
   f.cli('record', args);
   f.cli('record', args);
   const events = readRetroEvents(f.root, 'fixture');
@@ -1670,7 +1856,7 @@ test('CLI measurements: actual record and fresh observations -> retrospective co
   assert.equal(report.totalElapsedMs, null);
   assert.ok(events.some((event) => event.kind === 'observation' && event.data.action === 'wait-generated-integration'));
   f.cli('record', [...f.common, '--phase', 'review', '--result-json',
-    JSON.stringify({ ok: true, measurements: [{ ...measurement, head: 'f'.repeat(40) }] })], false);
+    JSON.stringify({ ok: true, ...f.review(), measurements: [{ ...measurement, head: 'f'.repeat(40) }] })], false);
 });
 
 test('CLI generated integration: real conflict and authoritative fixture generation -> new-head focused/browser/review/CI guards', (t) => {

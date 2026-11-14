@@ -38,9 +38,17 @@ Runtime state belongs under `.omo/`; skills and memory are not run-state stores.
 }
 ```
 
-Custom `fluo-*` roles are prompt references, not assumed registered
-`subagent_type` values. Entrypoint leads read the role reference and pass it in
-a self-contained category-routed `task` assignment.
+The project `.omo/omo.jsonc` registers six stage `subagent_type` values:
+`fluo-issue-preflight`, `fluo-issue-implementer`, `fluo-contract-reviewer`,
+`fluo-code-reviewer`, `fluo-verification-reviewer`, and `fluo-retrospective`.
+Use the engine/preparation `dispatch` target; each agent reads its own role
+reference from the supplied repository or checkout first. New successes identify
+the assigned agent, and each new review envelope has its axis-specific `agent`.
+Unavailable targets produce typed `input-preparation` blocks with
+`fix_back_eligible: false`; category workers cannot replace these agents.
+Unregistered guardian/auditor roles keep category-routed reference assignments.
+Search reviewer categories remain in `search-issue/references/domain.json`,
+validated against the repository-owned allowlist in `dispatch-targets.mjs`.
 
 `execute-lane` alone owns execution ordering, retries, CI subscriptions, merge,
 and cleanup. Stage skills perform one lane-bound action and return evidence;
