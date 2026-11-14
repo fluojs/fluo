@@ -152,7 +152,11 @@ prototype을 유지하며 subclass constructor를 호출하지 않고 복사하�
 private member(`#field`, `#method()`, decorator가 붙은 `accessor`)를 선언한 instance는
 분리된 복사본 대신 reference로 반환합니다. Private state는 복사할 수 없으며, 복사본은
 나중에 그 state를 읽을 때 `TypeError`를 던지기 때문입니다. 이 규칙은 위의 형태별 복사보다
-우선하므로 private member를 선언한 typed array subclass도 reference로 반환합니다. Primitive는 그대로 반환하며
+우선하므로 private member를 선언한 typed array subclass도 reference로 반환합니다. 실제
+private member를 놓치지 않도록 판정은 보수적으로 수행합니다. Class source text의 어느 위치든
+(문자열, 정규식, 주석 내부 포함) `#` 뒤에 identifier 시작 문자가 오면 private member를 선언한
+class로 간주합니다. 알려진 한계로, source에 그런 text만 포함된 class(예: `pattern = /#tag/`
+field나 `'#id'` 문자열)도 복사하지 않고 reference로 반환합니다. Primitive는 그대로 반환하며
 function은 reference로 반환합니다. 이 계약은 process 내부 복제에 해당하며 wire
 serialization 형식이 아닙니다.
 

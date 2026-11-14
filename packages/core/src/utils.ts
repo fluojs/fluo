@@ -36,145 +36,11 @@ function cloneTypedArray(value: ArrayBufferView): ArrayBufferView {
   return cloned;
 }
 
-const identifierStart = /[\p{ID_Start}$_\\]/u;
-const identifierPart = /[\p{ID_Continue}$\u200c\u200d\\]/u;
-// Keywords after which a `/` starts a regular expression literal instead of a division.
-const regexPrecedingKeywords = new Set([
-  'await', 'case', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'of', 'return', 'throw', 'typeof', 'void', 'yield',
-]);
-
-/**
- * Tokenizes engine-produced class source and reports whether it contains a `#name` private-name
- * token. Strings, template literal text, comments, and regular expression literals are skipped as
- * whole tokens; a `/` is a regular expression only where the previous token cannot end an operand.
- */
-function sourceDeclaresPrivateMember(source: string): boolean {
-  const templateBraceDepths: number[] = [];
-  let braceDepth = 0;
-  let regexAllowed = true;
-  let afterDot = false;
-  let index = 0;
-
-  // Scans template text from `index` until its closing backtick or the next `${` substitution.
-  const scanTemplate = (): void => {
-    for (; index < source.length; index += 1) {
-      const char = source[index];
-
-      if (char === '\\') {
-        index += 1;
-      } else if (char === '`') {
-        index += 1;
-        regexAllowed = false;
-        return;
-      } else if (char === '$' && source[index + 1] === '{') {
-        index += 2;
-        braceDepth += 1;
-        templateBraceDepths.push(braceDepth);
-        regexAllowed = true;
-        return;
-      }
-    }
-  };
-
-  while (index < source.length) {
-    const char = source[index];
-    const next = source[index + 1];
-
-    if (/\s/u.test(char)) {
-      index += 1;
-      continue;
-    }
-
-    const wasAfterDot: boolean = afterDot;
-    afterDot = false;
-
-    if (char === '/' && next === '/') {
-      const end = source.indexOf('\n', index);
-      index = end === -1 ? source.length : end + 1;
-      afterDot = wasAfterDot;
-    } else if (char === '/' && next === '*') {
-      const end = source.indexOf('*/', index + 2);
-      index = end === -1 ? source.length : end + 2;
-      afterDot = wasAfterDot;
-    } else if (char === '/' && regexAllowed) {
-      let inClass = false;
-
-      for (index += 1; index < source.length; index += 1) {
-        const regexChar = source[index];
-
-        if (regexChar === '\\') {
-          index += 1;
-        } else if (regexChar === '[') {
-          inClass = true;
-        } else if (regexChar === ']') {
-          inClass = false;
-        } else if ((regexChar === '/' && !inClass) || regexChar === '\n') {
-          break;
-        }
-      }
-
-      index += 1;
-      regexAllowed = false;
-    } else if (char === '"' || char === "'") {
-      for (index += 1; index < source.length && source[index] !== char; index += 1) {
-        if (source[index] === '\\') {
-          index += 1;
-        }
-      }
-
-      index += 1;
-      regexAllowed = false;
-    } else if (char === '`') {
-      index += 1;
-      scanTemplate();
-    } else if (char === '#') {
-      if (identifierStart.test(next ?? '')) {
-        return true;
-      }
-
-      index += 1;
-      regexAllowed = true;
-    } else if (identifierStart.test(char)) {
-      const start = index;
-
-      for (index += 1; index < source.length && identifierPart.test(source[index]); index += 1) {
-        // Consume the identifier or keyword.
-      }
-
-      regexAllowed = !wasAfterDot && regexPrecedingKeywords.has(source.slice(start, index));
-    } else if (/[0-9]/.test(char) || (char === '.' && /[0-9]/.test(next ?? ''))) {
-      for (index += 1; index < source.length && /[\w.]/u.test(source[index]); index += 1) {
-        // Consume the numeric literal body; exponent signs are separate punctuators.
-      }
-
-      regexAllowed = false;
-    } else if (char === '}' && templateBraceDepths.at(-1) === braceDepth) {
-      templateBraceDepths.pop();
-      braceDepth -= 1;
-      index += 1;
-      scanTemplate();
-    } else {
-      if (char === '{') {
-        braceDepth += 1;
-      } else if (char === '}') {
-        braceDepth -= 1;
-      }
-
-      if ((char === '+' || char === '-') && next === char) {
-        // Postfix increment/decrement ends an operand, so a following `/` is a division.
-        index += 2;
-        regexAllowed = false;
-        continue;
-      }
-
-      afterDot = char === '.' || (char === '?' && next === '.');
-      index += afterDot && char === '?' ? 2 : 1;
-      regexAllowed = char !== ')' && char !== ']';
-    }
-  }
-
-  return false;
-}
+// Conservative private-name probe: any `#` followed by an identifier-start character (or a `\`
+// starting a Unicode escape such as `#\u0061`) in the class source counts, without lexing strings,
+// regular expressions, or comments. This can never miss a real private member; text such as
+// `/#tag/` or `'#id'` is a documented false positive.
+const privateNamePattern = /#[A-Za-z_$\\\u0080-\uffff]/;
 
 function declaresPrivateMembers(prototype: object | null): boolean {
   for (let current = prototype; current && current !== Object.prototype; current = Object.getPrototypeOf(current)) {
@@ -187,7 +53,7 @@ function declaresPrivateMembers(prototype: object | null): boolean {
     let declares = privateMemberDeclarations.get(constructor);
 
     if (declares === undefined) {
-      declares = sourceDeclaresPrivateMember(Function.prototype.toString.call(constructor));
+      declares = privateNamePattern.test(Function.prototype.toString.call(constructor));
       privateMemberDeclarations.set(constructor, declares);
     }
 
@@ -312,7 +178,10 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
  * available, succeeds, or throws. Functions are returned by reference. Node `Buffer` values are
  * copied without the deprecated `Buffer()` constructor. Instances whose class or ancestor class
  * declares ECMAScript private members (`#field` or `#method()`) are returned by reference because
- * private slots cannot be copied onto a detached instance.
+ * private slots cannot be copied onto a detached instance. Detection is conservative: a class counts
+ * as declaring private members when its source text contains `#` followed by an identifier-start
+ * character anywhere, including inside strings, regular expressions, or comments, so a class such
+ * as one with a `pattern = /#tag/` field is also returned by reference instead of copied.
  *
  * @param value Value to clone.
  * @returns A detached clone for supported runtime shapes, or the original primitive/function.
@@ -331,7 +200,12 @@ export function cloneWithFallback<T>(value: T): T {
  * constructor. Functions are returned by reference. Instances whose class or ancestor class declares
  * ECMAScript private members (`#field` or `#method()`) are returned by reference instead of as a
  * detached copy that would fail later when private state is read; this takes precedence over every
- * shape-specific copy, including typed array subclasses.
+ * shape-specific copy, including typed array subclasses. Detection is conservative and never misses
+ * a real private member: a class counts as declaring private members when its source text contains
+ * `#` followed by an identifier-start character anywhere, including inside strings, regular
+ * expressions, or comments. As a known limitation, a class whose source merely contains such text
+ * (for example a `pattern = /#tag/` field or a `'#id'` string) is returned by reference instead
+ * of copied.
  *
  * @param value Value to clone through the fallback path.
  * @returns A deep clone for supported runtime shapes, or the original value for primitives/functions.

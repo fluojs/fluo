@@ -134,9 +134,21 @@ describe('fallbackClone', () => {
     expect(cloned.method.read()).toBe('method')
   })
 
-  it('detaches classes whose regular expression literals contain a hash character', () => {
+  it('returns classes whose source merely contains private-name-like text by reference', () => {
     class PublicValue {
       pattern = /#tag/
+      options = { retries: 1 }
+    }
+
+    const source = new PublicValue()
+    const cloned = fallbackClone(source)
+
+    expect(cloned).toBe(source)
+  })
+
+  it('deep-copies plain classes whose source contains no private-name text', () => {
+    class PublicValue {
+      pattern = /tag/
       options = { retries: 1 }
     }
 
@@ -147,6 +159,28 @@ describe('fallbackClone', () => {
     expect(cloned).toBeInstanceOf(PublicValue)
     cloned.options.retries = 2
     expect(source.options.retries).toBe(1)
+  })
+
+  it('detects private members declared after a control-statement regular expression containing a quote', () => {
+    class Secret {
+      enabled = true
+
+      check() {
+        if (this.enabled) /'/.test('x')
+      }
+
+      #secret = 1
+
+      get secret() {
+        return this.#secret
+      }
+    }
+
+    const source = new Secret()
+    const cloned = fallbackClone(source)
+
+    expect(cloned).toBe(source)
+    expect(cloned.secret).toBe(1)
   })
 
   it('detects private members declared after a regular expression literal containing a quote', () => {

@@ -154,7 +154,12 @@ and are copied without calling the subclass constructor, so cloning a `Buffer` d
 private members (`#field`, `#method()`, or a decorated `accessor`) are returned by reference instead
 of as a detached copy, because private state cannot be copied and a copy would throw a `TypeError`
 when that state is read later. This rule takes precedence over the shape-specific copies above, so
-a typed array subclass that declares private members is also returned by reference. Primitives are unchanged and functions are returned by reference.
+a typed array subclass that declares private members is also returned by reference. Detection is
+conservative so a real private member is never missed: a class counts as declaring private members
+when its source text contains `#` followed by an identifier-start character anywhere, including
+inside strings, regular expressions, or comments. As a known limitation, a class whose source merely
+contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is also returned
+by reference instead of copied. Primitives are unchanged and functions are returned by reference.
 This is an in-process copy contract, not a wire serialization format.
 
 ### AsyncModuleOptions for dynamic configuration
