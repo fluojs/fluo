@@ -10,6 +10,7 @@ import { MemoryStore } from './stores/memory-store.js';
 import type { NormalizedCacheModuleOptions } from './types.js';
 
 const cacheOptions: NormalizedCacheModuleOptions = {
+  rememberCacheErrors: 'throw',
   global: false,
   keyPrefix: 'fluo:cache:',
   store: 'memory',
