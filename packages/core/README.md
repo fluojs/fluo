@@ -148,9 +148,13 @@ methods and getters remain available. Own string/symbol properties and circular 
 on plain objects and custom instances; plain objects retain their original prototype, including `null`.
 
 Date, RegExp (including `lastIndex`), Map, Set, ArrayBuffer, typed array, and DataView values are
-copied with detached contents. Primitives are unchanged and functions are returned by reference.
-This is an in-process copy contract, not a wire serialization format. Buffer and private-field
-instances are not yet specified; see [issue #4015](https://github.com/fluojs/fluo/issues/4015).
+copied with detached contents. Typed array subclasses, including Node `Buffer`, keep their prototype
+and are copied without calling the subclass constructor, so cloning a `Buffer` does not emit the
+`DEP0005` deprecation warning. Instances whose class or an ancestor class declares ECMAScript
+private members (`#field`, `#method()`, or a decorated `accessor`) are returned by reference instead
+of as a detached copy, because private state cannot be copied and a copy would throw a `TypeError`
+when that state is read later. Primitives are unchanged and functions are returned by reference.
+This is an in-process copy contract, not a wire serialization format.
 
 ### AsyncModuleOptions for dynamic configuration
 

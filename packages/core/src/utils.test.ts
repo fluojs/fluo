@@ -36,6 +36,103 @@ describe('fallbackClone', () => {
     expect(cloned[marker]).toEqual({ enabled: true })
     expect(cloned[marker]).not.toBe(source[marker])
   })
+
+  it('copies Buffer values without the deprecated Buffer constructor', () => {
+    const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined)
+
+    try {
+      const source = Buffer.from('ab')
+      const cloned = fallbackClone(source)
+
+      expect(emitWarning).not.toHaveBeenCalled()
+      expect(Buffer.isBuffer(cloned)).toBe(true)
+      expect(cloned).not.toBe(source)
+      expect(cloned.toString()).toBe('ab')
+      cloned[0] = 0x7a
+      expect(source.toString()).toBe('ab')
+    } finally {
+      emitWarning.mockRestore()
+    }
+  })
+
+  it('keeps typed array subclasses and views detached with equal contents', () => {
+    class TaggedBytes extends Uint8Array {
+      tag() {
+        return `bytes:${this.length}`
+      }
+    }
+
+    const backing = new ArrayBuffer(8)
+    const source = {
+      bytes: new Uint8Array([1, 2, 3]),
+      floats: new Float64Array([1.5, -2]),
+      view: new DataView(backing, 2, 4),
+      tagged: new TaggedBytes([4, 5]),
+      window: new Uint16Array(backing, 2, 2),
+    }
+    source.view.setUint8(0, 9)
+
+    const cloned = fallbackClone(source)
+
+    expect(cloned.bytes).toEqual(source.bytes)
+    expect(cloned.bytes.buffer).not.toBe(source.bytes.buffer)
+    expect(cloned.floats).toBeInstanceOf(Float64Array)
+    expect(Array.from(cloned.floats)).toEqual([1.5, -2])
+    expect(cloned.view.byteLength).toBe(4)
+    expect(cloned.view.getUint8(0)).toBe(9)
+    expect(cloned.view.buffer).not.toBe(backing)
+    expect(cloned.tagged).toBeInstanceOf(TaggedBytes)
+    expect(cloned.tagged.tag()).toBe('bytes:2')
+    expect(Array.from(cloned.tagged)).toEqual([4, 5])
+    expect(cloned.window.length).toBe(2)
+    expect(cloned.window.byteOffset).toBe(0)
+    expect(cloned.window.buffer.byteLength).toBe(4)
+    cloned.bytes[0] = 0
+    expect(source.bytes[0]).toBe(1)
+  })
+
+  it('returns instances whose classes declare private members by reference', () => {
+    class PrivateValue {
+      #secret = 1
+      label = 'public'
+
+      get secret() {
+        return this.#secret
+      }
+    }
+
+    class DerivedPrivateValue extends PrivateValue {}
+
+    class PrivateMethodValue {
+      #read() {
+        return 'method'
+      }
+
+      read() {
+        return this.#read()
+      }
+    }
+
+    const source = {
+      direct: new PrivateValue(),
+      derived: new DerivedPrivateValue(),
+      method: new PrivateMethodValue(),
+      nested: [{ value: 1 }],
+    }
+
+    const cloned = fallbackClone(source)
+    const direct = cloneWithFallback(source.direct)
+
+    expect(cloned).not.toBe(source)
+    expect(cloned.nested[0]).not.toBe(source.nested[0])
+    expect(cloned.direct).toBe(source.direct)
+    expect(cloned.derived).toBe(source.derived)
+    expect(cloned.method).toBe(source.method)
+    expect(direct).toBe(source.direct)
+    expect(cloned.direct.secret).toBe(1)
+    expect(cloned.derived.secret).toBe(1)
+    expect(cloned.method.read()).toBe('method')
+  })
 })
 
 describe('cloneWithFallback', () => {
