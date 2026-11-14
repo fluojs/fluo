@@ -153,9 +153,12 @@ private member(`#field`, `#method()`, decorator가 붙은 `accessor`)를 선언�
 분리된 복사본 대신 reference로 반환합니다. Private state는 복사할 수 없으며, 복사본은
 나중에 그 state를 읽을 때 `TypeError`를 던지기 때문입니다. 이 규칙은 위의 형태별 복사보다
 우선하므로 private member를 선언한 typed array subclass도 reference로 반환합니다. 실제
-private member를 놓치지 않도록 판정은 보수적으로 수행합니다. Class source text의 어느 위치든
-(문자열, 정규식, 주석 내부 포함) `#` 뒤에 identifier 시작 문자가 오면 private member를 선언한
-class로 간주합니다. 알려진 한계로, source에 그런 text만 포함된 class(예: `pattern = /#tag/`
+private member를 놓치지 않도록 판정은 보수적으로 수행합니다. Class source text 또는 prototype
+chain에 있는 method나 accessor의 source 어느 위치든(문자열, 정규식, 주석 내부 포함) `#` 뒤에
+identifier 시작 문자가 오면 private member를 선언한 class로 간주합니다. Prototype chain의
+`constructor`가 없거나, 가려졌거나(예: `['constructor']() {}` method), 해당 prototype과 맞지 않는
+instance도 class를 식별할 수 없으므로 reference로 반환합니다. 다른 realm(예: `node:vm`)에서
+생성한 typed array도 복사하며 원래 prototype을 유지합니다. 알려진 한계로, source에 그런 text만 포함된 class(예: `pattern = /#tag/`
 field나 `'#id'` 문자열)도 복사하지 않고 reference로 반환합니다. Primitive는 그대로 반환하며
 function은 reference로 반환합니다. 이 계약은 process 내부 복제에 해당하며 wire
 serialization 형식이 아닙니다.

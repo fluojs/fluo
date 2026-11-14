@@ -1,3 +1,5 @@
+import { runInNewContext } from 'node:vm'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import { cloneMutableValue } from './metadata/shared.js'
@@ -214,6 +216,44 @@ describe('fallbackClone', () => {
 
     expect(cloned.bytes).toBe(source)
     expect(cloned.bytes.secret).toBe(1)
+  })
+
+  it('returns instances whose class constructor is shadowed on the prototype by reference', () => {
+    class Secret {
+      #value = 1
+
+      get value() {
+        return this.#value
+      }
+
+      ['constructor']() {}
+    }
+
+    class OpaqueSecret {
+      #value = 1;
+
+      ['constructor']() {}
+    }
+
+    const source = new Secret()
+    const opaque = new OpaqueSecret()
+    const cloned = fallbackClone({ source, opaque })
+
+    expect(cloned.source).toBe(source)
+    expect(cloned.source.value).toBe(1)
+    expect(cloned.opaque).toBe(opaque)
+  })
+
+  it('copies typed arrays created in another realm', () => {
+    const source = runInNewContext('new Uint8Array([1, 2])') as Uint8Array
+    const cloned = fallbackClone({ bytes: source })
+
+    expect(cloned.bytes).not.toBe(source)
+    expect(Object.getPrototypeOf(cloned.bytes)).toBe(Object.getPrototypeOf(source))
+    expect(Array.from(cloned.bytes)).toEqual([1, 2])
+    expect(cloned.bytes.buffer).not.toBe(source.buffer)
+    cloned.bytes[0] = 9
+    expect(source[0]).toBe(1)
   })
 })
 

@@ -156,8 +156,12 @@ of as a detached copy, because private state cannot be copied and a copy would t
 when that state is read later. This rule takes precedence over the shape-specific copies above, so
 a typed array subclass that declares private members is also returned by reference. Detection is
 conservative so a real private member is never missed: a class counts as declaring private members
-when its source text contains `#` followed by an identifier-start character anywhere, including
-inside strings, regular expressions, or comments. As a known limitation, a class whose source merely
+when its source text, or the source of any method or accessor on its prototype chain, contains `#`
+followed by an identifier-start character anywhere, including inside strings, regular expressions,
+or comments. An instance whose prototype chain has a missing, shadowed (for example a
+`['constructor']() {}` method), or non-matching `constructor` is also returned by reference because
+its class cannot be identified. Typed arrays created in another realm (for example through
+`node:vm`) are copied as well and keep their original prototype. As a known limitation, a class whose source merely
 contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is also returned
 by reference instead of copied. Primitives are unchanged and functions are returned by reference.
 This is an in-process copy contract, not a wire serialization format.

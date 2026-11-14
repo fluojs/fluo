@@ -12,24 +12,27 @@ function cloneIntoDescriptorValue(
   };
 }
 
-const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype) as object;
+// The intrinsic %TypedArray%.prototype[Symbol.toStringTag] getter reads the [[TypedArrayName]] slot,
+// so it names the element type for typed arrays from any realm and ignores subclass overrides.
+const typedArrayNameGetter = Object.getOwnPropertyDescriptor(
+  Object.getPrototypeOf(Uint8Array.prototype) as object,
+  Symbol.toStringTag,
+)?.get as (this: ArrayBufferView) => string;
 const privateMemberDeclarations = new WeakMap<object, boolean>();
 
 function cloneTypedArray(value: ArrayBufferView): ArrayBufferView {
   const prototype = Object.getPrototypeOf(value) as object;
-  let intrinsicPrototype = prototype;
-
-  while (Object.getPrototypeOf(intrinsicPrototype) !== typedArrayPrototype) {
-    intrinsicPrototype = Object.getPrototypeOf(intrinsicPrototype) as object;
-  }
-
-  const Intrinsic = intrinsicPrototype.constructor as new (buffer: ArrayBuffer) => ArrayBufferView;
-  // Avoid subclass constructors such as Node's deprecated `new Buffer(buffer)` path.
+  // Select the current realm's intrinsic by name instead of prototype identity so typed arrays from
+  // another realm are copied too, and subclass constructors such as Node's deprecated
+  // `new Buffer(buffer)` path are never invoked.
+  const Intrinsic = (globalThis as unknown as Record<string, new (buffer: ArrayBuffer) => ArrayBufferView>)[
+    typedArrayNameGetter.call(value)
+  ];
   const cloned = new Intrinsic(
     (value.buffer as ArrayBuffer).slice(value.byteOffset, value.byteOffset + value.byteLength),
   );
 
-  if (prototype !== intrinsicPrototype) {
+  if (prototype !== Intrinsic.prototype) {
     Object.setPrototypeOf(cloned, prototype);
   }
 
@@ -42,23 +45,54 @@ function cloneTypedArray(value: ArrayBufferView): ArrayBufferView {
 // `/#tag/` or `'#id'` is a documented false positive.
 const privateNamePattern = /#[A-Za-z_$\\\u0080-\uffff]/;
 
+function sourceDeclaresPrivateNames(fn: unknown): boolean {
+  if (typeof fn !== 'function') {
+    return false;
+  }
+
+  let declares = privateMemberDeclarations.get(fn);
+
+  if (declares === undefined) {
+    declares = privateNamePattern.test(Function.prototype.toString.call(fn));
+    privateMemberDeclarations.set(fn, declares);
+  }
+
+  return declares;
+}
+
+// Node implements `Buffer.prototype` in JavaScript whose method comments contain text such as
+// `Buffer#write`; the host prototype itself declares no private members, so only that level is skipped.
+const hostBufferPrototype = (globalThis as { Buffer?: { prototype: object } }).Buffer?.prototype;
+
 function declaresPrivateMembers(prototype: object | null): boolean {
   for (let current = prototype; current && current !== Object.prototype; current = Object.getPrototypeOf(current)) {
-    const constructor = Object.getOwnPropertyDescriptor(current, 'constructor')?.value as unknown;
-
-    if (typeof constructor !== 'function') {
+    if (current === hostBufferPrototype) {
       continue;
     }
 
-    let declares = privateMemberDeclarations.get(constructor);
+    const constructor = Object.getOwnPropertyDescriptor(current, 'constructor')?.value as unknown;
 
-    if (declares === undefined) {
-      declares = privateNamePattern.test(Function.prototype.toString.call(constructor));
-      privateMemberDeclarations.set(constructor, declares);
+    // A missing, shadowed (for example a `['constructor']() {}` method), or foreign constructor
+    // hides the class source, so the instance may carry private slots that cannot be inspected.
+    if (typeof constructor !== 'function' || (constructor as { prototype?: unknown }).prototype !== current) {
+      return true;
     }
 
-    if (declares) {
+    if (sourceDeclaresPrivateNames(constructor)) {
       return true;
+    }
+
+    for (const key of Reflect.ownKeys(current)) {
+      const descriptor = Object.getOwnPropertyDescriptor(current, key);
+
+      if (
+        descriptor &&
+        (sourceDeclaresPrivateNames(descriptor.value) ||
+          sourceDeclaresPrivateNames(descriptor.get) ||
+          sourceDeclaresPrivateNames(descriptor.set))
+      ) {
+        return true;
+      }
     }
   }
 
@@ -179,9 +213,12 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
  * copied without the deprecated `Buffer()` constructor. Instances whose class or ancestor class
  * declares ECMAScript private members (`#field` or `#method()`) are returned by reference because
  * private slots cannot be copied onto a detached instance. Detection is conservative: a class counts
- * as declaring private members when its source text contains `#` followed by an identifier-start
- * character anywhere, including inside strings, regular expressions, or comments, so a class such
- * as one with a `pattern = /#tag/` field is also returned by reference instead of copied.
+ * as declaring private members when its source text, or the source of any method or accessor on its
+ * prototype chain, contains `#` followed by an identifier-start character anywhere, including inside
+ * strings, regular expressions, or comments, so a class such as one with a `pattern = /#tag/` field
+ * is also returned by reference instead of copied. An instance whose prototype chain has a missing,
+ * shadowed, or non-matching `constructor` is also returned by reference because its class cannot be
+ * identified.
  *
  * @param value Value to clone.
  * @returns A detached clone for supported runtime shapes, or the original primitive/function.
@@ -201,11 +238,14 @@ export function cloneWithFallback<T>(value: T): T {
  * ECMAScript private members (`#field` or `#method()`) are returned by reference instead of as a
  * detached copy that would fail later when private state is read; this takes precedence over every
  * shape-specific copy, including typed array subclasses. Detection is conservative and never misses
- * a real private member: a class counts as declaring private members when its source text contains
- * `#` followed by an identifier-start character anywhere, including inside strings, regular
- * expressions, or comments. As a known limitation, a class whose source merely contains such text
- * (for example a `pattern = /#tag/` field or a `'#id'` string) is returned by reference instead
- * of copied.
+ * a real private member: a class counts as declaring private members when its source text, or the
+ * source of any method or accessor on its prototype chain, contains `#` followed by an
+ * identifier-start character anywhere, including inside strings, regular expressions, or comments.
+ * An instance whose prototype chain has a missing, shadowed, or non-matching `constructor` is also
+ * returned by reference because its class cannot be identified. As a known limitation, a class whose
+ * source merely contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is
+ * returned by reference instead of copied. Typed arrays created in another realm are copied as
+ * well and keep their original prototype.
  *
  * @param value Value to clone through the fallback path.
  * @returns A deep clone for supported runtime shapes, or the original value for primitives/functions.
