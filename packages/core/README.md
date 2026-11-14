@@ -16,12 +16,12 @@ Shared contracts, standard decorators, and metadata primitives that every fluo p
 - [Key Capabilities](#key-capabilities)
 - [Troubleshooting](#troubleshooting)
 - [Public API](#public-api)
+- [Duplicate-copy error identity](#duplicate-copy-error-identity)
+- [Compatible framework service copies](#compatible-framework-service-copies)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
 ## Installation
-
-[`@fluojs/diagnostics`](../diagnostics/README.md) owns shared graph/trace/live/timing data declarations. Existing Studio type imports from `@fluojs/core/internal` remain as re-exports. New data-only consumers should use diagnostics; metadata execution remains in core. [Import migration](../../docs/getting-started/migrate-diagnostics.md) is optional.
 
 ```bash
 npm install @fluojs/core
@@ -137,6 +137,43 @@ const metadata = getModuleMetadata(AppModule);
 console.log(metadata.providers);
 ```
 
+### Deterministic internal cloning
+
+The `cloneWithFallback` and `fallbackClone` utilities from `@fluojs/core/internal` share one
+prototype-preserving deep-clone contract. The result does not depend on whether the runtime's
+`structuredClone` is available, succeeds, or throws, or whether a sibling field contains a function.
+Custom class instances remain detached instances of their original prototype at every supported
+nesting level, including object fields, array items, Map keys/values, and Set entries. Prototype
+methods and getters remain available. Own string/symbol properties and circular references are preserved
+on plain objects and custom instances; plain objects retain their original prototype, including `null`.
+
+Date, RegExp (including `lastIndex`), Map, Set, ArrayBuffer, typed array, and DataView values are
+copied with detached contents. ArrayBuffer, typed array, and DataView subclasses, including Node
+`Buffer`, keep their prototype and own string/symbol properties (with circular references
+preserved) and are copied without calling the subclass constructor, so cloning a `Buffer` does not
+emit the `DEP0005` deprecation warning. Instances whose class or an ancestor class declares ECMAScript
+private members (`#field`, `#method()`, or a decorated `accessor`) are returned by reference instead
+of as a detached copy, because private state cannot be copied and a copy would throw a `TypeError`
+when that state is read later. This rule takes precedence over the shape-specific copies above, so
+a typed array subclass that declares private members is also returned by reference. Detection is
+conservative so a real private member is never missed: a class counts as declaring private members
+when its source text, or the source of any method or accessor on its prototype chain, contains `#`
+followed by an identifier-start character anywhere, including inside strings, regular expressions,
+or comments. An object with any own getter or setter, or with an own function-valued property whose
+source mentions `this` or a private name, is also returned by reference, so an object stamped with
+private fields through a constructor return override (even one whose prototype is `Object.prototype`)
+keeps working even when its accessor reads them through a helper. Own functions that mention neither,
+such as a callback sibling, do not prevent copying. An instance whose prototype chain has a missing, shadowed (for example a
+`['constructor']() {}` method), or non-matching `constructor` is also returned by reference because
+its class cannot be identified. Typed arrays and DataViews created in another realm (for example through
+`node:vm`) are copied as well and keep their original prototype. As a known limitation, a class whose source merely
+contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is also returned
+by reference instead of copied. Conversely, private or identity-keyed state reached only indirectly,
+through closures that capture the instance without `this` or through external helpers or WeakMaps
+called from prototype methods whose source contains no private name, is not detected, and such an
+instance is copied; this is a known limitation. Primitives are unchanged and functions are returned by reference.
+This is an in-process copy contract, not a wire serialization format.
+
 ### AsyncModuleOptions for dynamic configuration
 
 `AsyncModuleOptions<T>` is the standard contract for modules that require asynchronous initialization, such as those relying on an external `ConfigService`.
@@ -241,6 +278,8 @@ Standard decorators cannot automatically infer types for abstract classes or int
 
 ## Public API
 
+[`@fluojs/diagnostics`](../diagnostics/README.md) owns shared graph/trace/live/timing data declarations. Existing Studio type imports from `@fluojs/core/internal` remain as re-exports. New data-only consumers should use diagnostics; metadata execution remains in core. [Import migration](../../docs/getting-started/migrate-diagnostics.md) is optional.
+
 For the breaking declaration changes, follow the
 [Core and DI migration guide](../../docs/getting-started/migrate-core-di-declarations.md).
 `Module({ global: true })` replaces `Global`; injection is variadic only. Existing
@@ -275,21 +314,24 @@ See the [optional import migration](../../docs/getting-started/migrate-persisten
 - **Request-pipeline integration seam**: DTO validation/binding metadata helpers plus standard decorator metadata-bag readers via `@fluojs/core/request-pipeline`
 - **Internal subpath**: broader metadata helpers, controller/route helpers, injection helpers, and clone utilities via `@fluojs/core/internal`
 
+## Duplicate-copy error identity
+
+Public fluo errors carry a versioned package-owner contract. Use `isFluoError(...)`, or an owner package's narrower predicate, instead of constructor identity when errors can cross package boundaries; unbranded lookalikes and incompatible contract versions are rejected.
+
+If a non-configurable value at the internal `Symbol.for('fluo.metadata.registry.v1')` key is not a compatible metadata registry, core metadata access throws `InvariantError` (`INVARIANT_ERROR`) instead of silently splitting metadata stores. Configurable invalid values are replaced with a shared registry; the legacy `fluo.metadata.registry` key is ignored.
+
+## Compatible framework service copies
+
+Internal framework-owned service compatibility metadata is versioned and opt-in. It is not a public token API and never changes ordinary application constructor identity.
+
 ## Related Packages
 
 - `@fluojs/di`: resolves the tokens and scopes defined here into live instances
 - `@fluojs/runtime`: compiles the module graph from `@Module` metadata
 - `@fluojs/http`: consumes controller and route metadata built on the same primitives
 
-## Duplicate-copy error identity
-
-Public fluo errors carry a versioned package-owner contract. Use `isFluoError(...)`, or an owner package's narrower predicate, instead of constructor identity when errors can cross package boundaries; unbranded lookalikes and incompatible contract versions are rejected.
-
 ## Example Sources
 
 - `packages/core/src/index.ts`
 - `packages/core/src/decorators.ts`
 - `packages/core/src/metadata.ts`
-## Compatible framework service copies
-
-Internal framework-owned service compatibility metadata is versioned and opt-in. It is not a public token API and never changes ordinary application constructor identity.

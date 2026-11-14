@@ -14,6 +14,7 @@
 
 import { contractDigest, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { validateReviewFact } from '../../review-head/scripts/contracts.mjs';
+import { dispatchFor } from './dispatch-targets.mjs';
 
 export const ATTEMPT_CEILING = 3;
 
@@ -82,28 +83,78 @@ const requireRecord = (value, name) => {
 	return value;
 };
 
+export const validateRetryPolicy = (policy) => {
+	requireRecord(policy, 'retry_policy');
+	const fields = ['retry_count_is_terminal', 'max_same_failure_repeats',
+		'max_wall_clock_minutes', 'stop_on_child_contract_error'];
+	if (Reflect.ownKeys(policy).length !== fields.length
+		|| fields.some((field) => !Object.hasOwn(policy, field))
+		|| typeof policy.retry_count_is_terminal !== 'boolean'
+		|| policy.stop_on_child_contract_error !== true) {
+		throw new TypeError('retry_policy requires exactly four approved fields, boolean retry_count_is_terminal and stop_on_child_contract_error: true');
+	}
+	const positiveLimits = [policy.max_same_failure_repeats, policy.max_wall_clock_minutes]
+		.every((limit) => Number.isSafeInteger(limit) && limit > 0);
+	const nullLimits = policy.retry_count_is_terminal === false
+		&& policy.max_same_failure_repeats === null && policy.max_wall_clock_minutes === null;
+	if (!positiveLimits && !nullLimits) {
+		throw new TypeError('retry_policy limits must both be positive integers, or both null with retry_count_is_terminal: false');
+	}
+};
+
 /**
  * Fold one child result into the lane. Pure.
  * A well-formed success resets the phase attempt counter. Anything else
- * (failure, malformed shape) is a retry until ATTEMPT_CEILING, at which
- * point a typed, user-resumable blocker is recorded.
+ * (failure, malformed shape) follows the approved retry policy. Legacy
+ * entries without one retry until ATTEMPT_CEILING. Blockers are resumable.
  */
-export const applyChildResult = (lane, phase, result) => {
+export const applyChildResult = (lane, phase, result, { retryPolicy, now } = {}) => {
 	requireRecord(lane, 'lane');
 	if (!PHASES.has(phase)) {
 		throw new TypeError(`unknown phase: ${phase}`);
 	}
+	if (retryPolicy !== undefined && retryPolicy !== null) validateRetryPolicy(retryPolicy);
 	const next = structuredClone(lane);
 	next.attempts ??= {};
 	const wellFormed =
 		typeof result === 'object' && result !== null && result.ok === true;
-	if (wellFormed) {
+	if (wellFormed && !(retryPolicy?.stop_on_child_contract_error &&
+		result.error?.type === 'child-contract-error')) {
 		next.attempts[phase] = 0;
+		if (next.retry_telemetry) delete next.retry_telemetry[phase];
 		return next;
 	}
 	const attempts = (next.attempts[phase] ?? 0) + 1;
 	next.attempts[phase] = attempts;
-	if (attempts >= ATTEMPT_CEILING) {
+	if (!retryPolicy) {
+		if (attempts >= ATTEMPT_CEILING) {
+			next.blocker = { type: 'attempts-exhausted', phase };
+		}
+		return next;
+	}
+	if (!Number.isFinite(now)) {
+		throw new TypeError('retry policy requires the observation time in milliseconds');
+	}
+	const previous = next.retry_telemetry?.[phase];
+	const failure = JSON.stringify(result?.error ?? result?.failed_command ?? result);
+	const telemetry = {
+		started_at: previous?.started_at ?? now,
+		elapsed_ms: now - (previous?.started_at ?? now),
+		failure,
+		same_failure_repeats: previous && previous.failure === failure
+			? previous.same_failure_repeats + 1 : 1,
+	};
+	next.retry_telemetry ??= {};
+	next.retry_telemetry[phase] = telemetry;
+	if (retryPolicy.stop_on_child_contract_error &&
+		(!result || Array.isArray(result) || typeof result.ok !== 'boolean'
+			|| result.error?.type === 'child-contract-error')) {
+		next.blocker = { type: 'child-contract-error', phase };
+	} else if (retryPolicy.retry_count_is_terminal &&
+		telemetry.elapsed_ms >= retryPolicy.max_wall_clock_minutes * 60_000) {
+		next.blocker = { type: 'retry-time-exhausted', phase };
+	} else if (retryPolicy.retry_count_is_terminal &&
+		telemetry.same_failure_repeats >= retryPolicy.max_same_failure_repeats) {
 		next.blocker = { type: 'attempts-exhausted', phase };
 	}
 	return next;
@@ -176,6 +227,10 @@ export const decideNext = (lane, obs) => {
 	requireRecord(lane, 'lane');
 	requireRecord(obs, 'obs');
 
+	if (obs.observationFailures?.length) {
+		return { action: 'observation-failed', failures: obs.observationFailures };
+	}
+
 	// 1. Standing typed blockers park the issue until a human acts.
 	if (lane.blocker !== null && lane.blocker !== undefined) {
 		return { action: 'blocked', reason: lane.blocker.type, blocker: lane.blocker };
@@ -203,24 +258,24 @@ export const decideNext = (lane, obs) => {
 	// The lead's observed diff may expand the policy, never shrink it.
 	const preflight = evaluatePreflight(obs.preflight, { ...obs, issue: lane.issue });
 	if (!preflight.valid) {
-		return { action: 'preflight', reason: preflight.reason, ...(preflight.files ? { files: preflight.files } : {}) };
+		return { action: 'preflight', dispatch: dispatchFor('preflight'), reason: preflight.reason, ...(preflight.files ? { files: preflight.files } : {}) };
 	}
 
 	// 3. Nothing implemented yet (or implementation retry).
 	if (!obs.branch || !obs.worktree || !obs.hasNewCommits) {
-		return { action: 'implement' };
+		return { action: 'implement', dispatch: dispatchFor('implement') };
 	}
 
 	// 4. Release governance: public package changes ship a changeset
 	//    before review, so reviewers see the final head.
 	if (obs.publicPackagesTouched === true && obs.changesetPresent !== true) {
-		return { action: 'fix-back', reason: 'changeset-missing', head: obs.headSha };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'changeset-missing', head: obs.headSha };
 	}
 
 	// Integration evidence is distinct from full local CI. Upstream movement
 	// alone does not request it; the CLI observes incorporated generated inputs.
 	if (obs.generatedIntegrationRequired?.length && !obs.generatedIntegration) {
-		return { action: 'fix-back', reason: 'generated-integration-evidence-missing', head: obs.headSha };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'generated-integration-evidence-missing', head: obs.headSha };
 	}
 
 	// 5. Recompute the selective gate from exact-head, exact-policy evidence.
@@ -229,10 +284,10 @@ export const decideNext = (lane, obs) => {
 	try {
 		review = validateReviewFact(obs.review, obs.headSha, preflight.policy);
 	} catch {
-		return { action: 'review', head: obs.headSha, policy: preflight.policy };
+		return { action: 'review', dispatch: dispatchFor('review', preflight.policy.active_axes), head: obs.headSha, policy: preflight.policy };
 	}
 	if (review.verdict === 'block') {
-		return { action: 'fix-back', reason: 'review-block', head: obs.headSha };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'review-block', head: obs.headSha };
 	}
 	if (review.verdict === 'needs-human-check') {
 		return { action: 'blocked', reason: 'needs-human-check' };
@@ -244,10 +299,10 @@ export const decideNext = (lane, obs) => {
 	try {
 		binding = localCheckBinding(review, obs.reviewAcceptedAt);
 	} catch {
-		return { action: 'review', head: obs.headSha, policy: preflight.policy };
+		return { action: 'review', dispatch: dispatchFor('review', preflight.policy.active_axes), head: obs.headSha, policy: preflight.policy };
 	}
 	if (obs.localChecks?.status === 'failed' && isCurrentLocalCheck(obs.localChecks, obs.headSha, binding)) {
-		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'local-checks-failed', head: obs.headSha };
 	}
 	// Only publication preparation consumes lead-confirmed sibling failures.
 	// A byte comparison is not a new PASS and never runs or integrates code.
@@ -261,7 +316,7 @@ export const decideNext = (lane, obs) => {
 		}
 		const failing = baselines.filter(record => record.status === 'still-failing');
 		if (failing.length) {
-			return { action: 'fix-back', reason: 'known-baseline-still-failing',
+			return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'known-baseline-still-failing',
 				head: obs.headSha, baselines: failing };
 		}
 	}
@@ -279,7 +334,7 @@ export const decideNext = (lane, obs) => {
 		return { action: 'resolve-conflict', pr: obs.pr.number };
 	}
 	if (obs.pr.ciStatus === 'failing') {
-		return { action: 'fix-back', reason: 'ci-failing', pr: obs.pr.number };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'ci-failing', pr: obs.pr.number };
 	}
 	if (obs.pr.ciStatus !== 'passing') {
 		return { action: 'wait-ci', pr: obs.pr.number };

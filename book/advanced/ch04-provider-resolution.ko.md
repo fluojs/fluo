@@ -27,26 +27,30 @@
 ## 4.1 From public provider syntax to normalized records
 Fluo의 컨테이너는 공개 provider 형태를 그대로 해석하지 않습니다. 첫 단계는 항상 정규화입니다. 이 결정 덕분에 실제 resolve 경로는 작고 예측 가능하게 유지됩니다. 런타임은 다섯 가지 공개 API를 반복 분기하는 대신 하나의 검증된 레코드 형태만 다루면 되기 때문입니다.
 
-공개 surface는 `path:packages/di/src/types.ts:36-121`에 선언되어 있습니다. 이 경계에서 Fluo는 class constructor, `{ useClass }`, `{ useFactory }`, `{ useValue }`, `{ useExisting }`를 모두 받습니다. 이 형태들은 작성 편의성용 문법입니다. 실행 모델 자체는 아닙니다.
+공개 surface는 `path:packages/di/src/types.ts:18-110`에 선언되어 있습니다. 이 경계에서 Fluo는 class constructor, `{ useClass }`, `{ useFactory }`, `{ useValue }`, `{ useExisting }`를 모두 받습니다. 이 형태들은 작성 편의성용 문법입니다. 실행 모델 자체는 아닙니다.
 
 공개 타입은 provider가 받아들일 수 있는 모양과 검증 뒤의 정규화 모양을 분리해서 보여 줍니다.
 
-`path:packages/di/src/types.ts:36-54`
+`path:packages/di/src/types.ts:18-37`
 ```typescript
 export interface ClassProvider<T = unknown> {
   provide: Token<T>;
   useClass: ClassType<T>;
-  inject?: Array<Token | ForwardRefToken | OptionalInjectToken>;
+  inject?: InjectionToken[];
   scope?: Scope;
   multi?: boolean;
 }
 
+/**
+ * Provider declaration that computes its value through a factory function.
+ */
 export interface FactoryProvider<T = unknown> {
   provide: Token<T>;
   useFactory: (...deps: unknown[]) => MaybePromise<T>;
-  inject?: Array<Token | ForwardRefToken | OptionalInjectToken>;
+  inject?: InjectionToken[];
   scope?: Scope;
   multi?: boolean;
+  /** Class metadata source used when the factory should inherit `@Scope(...)` metadata. */
   resolverClass?: ClassType;
 }
 ```
@@ -55,39 +59,74 @@ export interface FactoryProvider<T = unknown> {
 
 `useValue`와 `useExisting`까지 포함한 전체 public union은 아래처럼 `NormalizedProvider`와 만납니다.
 
-`path:packages/di/src/types.ts:56-121`
+`useExisting`도 정규화할 때 `multi`를 보존합니다. `multi: true`이면 alias는 등록
+순서에 따라 target의 해석된 값을 contribution으로 추가하고 target의 scope를
+따릅니다. singleton consumer는 request-scoped target을 생성 전에 거부하며,
+multi override는 전체 set을 교체합니다. `multi: true`가 없으면 기존처럼
+target 값 하나를 해석합니다.
+
+value provider와 alias provider도 선택적 `scope`를 받으며 기본값은 계속 `'singleton'`입니다. value provider는 이 scope를 그대로 따릅니다. `'transient'`는 resolve마다 바인딩된 값을 캐시하거나 dispose하지 않고 반환하고, `'request'`는 request scope마다 캐시하므로 request scope에서 `scope: 'request'` value provider를 등록할 수 있습니다. alias는 인스턴스를 소유하지 않으므로 인스턴스 수명은 여전히 target의 scope가 결정합니다. alias의 scope는 alias를 어디에 등록할 수 있는지와 검증 방식을 결정합니다. `scope: 'request'` alias는 request scope에 등록할 수 있고, request scope 안에서만 resolve되며, target이 singleton이어도 singleton consumer를 alias 이름을 담은 `ScopeMismatchError`로 거부합니다.
+
+`path:packages/di/src/types.ts:42-73`
 ```typescript
 export interface ValueProvider<T = unknown> {
   provide: Token<T>;
   useValue: T;
+  /** Lifetime of the bound value; defaults to `'singleton'`. The container never copies the value. */
+  scope?: Scope;
   multi?: boolean;
 }
 
+/**
+ * Provider declaration that aliases one token to another token's resolved value.
+ */
 export interface ExistingProvider<T = unknown> {
   provide: Token<T>;
   useExisting: Token;
+  /**
+   * Placement and validation scope of the alias token; defaults to `'singleton'`. The alias never owns an
+   * instance, so the target's own scope still decides the instance lifetime.
+   */
+  scope?: Scope;
+  /** Contributes the target's resolved value in registration order, preserving its scope. */
+  multi?: boolean;
 }
 
+/**
+ * Public provider shape accepted by container registration and override APIs.
+ */
+export type Provider<T = unknown> =
+  | ClassType<T>
+  | ClassProvider<T>
+  | FactoryProvider<T>
+  | ValueProvider<T>
+  | ExistingProvider<T>;
+```
+
+`path:packages/di/src/types.ts:98-110`
+```typescript
 export interface NormalizedProvider<T = unknown> {
-  inject: Array<Token | ForwardRefToken | OptionalInjectToken>;
-  provide: Token<T>;
-  scope: Scope;
-  type: 'class' | 'factory' | 'value' | 'existing';
-  useClass?: ClassType<T>;
-  useFactory?: (...deps: unknown[]) => MaybePromise<T>;
-  useValue?: T;
-  useExisting?: Token;
-  multi?: boolean;
+  readonly inject: readonly InjectionToken[];
+  readonly provide: Token<T>;
+  /** Class metadata source retained for factory providers. */
+  readonly resolverClass?: ClassType;
+  readonly scope: Scope;
+  readonly type: 'class' | 'factory' | 'value' | 'existing';
+  readonly useClass?: ClassType<T>;
+  readonly useFactory?: (...deps: unknown[]) => MaybePromise<T>;
+  readonly useValue?: T;
+  readonly useExisting?: Token;
+  readonly multi?: boolean;
 }
 ```
 
 여기서 중요한 차이는 public provider가 여러 문법으로 열려 있어도, 정규화 레코드는 `type`과 구현 필드의 조합으로 닫힌다는 점입니다. `NormalizedProvider`는 이 record shape를 이미 참조하던 소비자를 위해 root export로 남아 있는 compatibility-only 공개 타입입니다. 애플리케이션 코드는 여전히 `Provider`나 구체 provider interface로 provider를 작성해야 하며, normalized record 생성은 컨테이너가 소유합니다.
 
-실제 정규화 진입점은 `path:packages/di/src/provider-normalization.ts:168-249`의 `normalizeProvider()`입니다. 이 함수가 이 장의 첫 번째 핵심 알고리즘입니다. 모든 입력 provider를 `type`, `provide`, `inject`, `scope`, 구현 필드를 갖는 `NormalizedProvider`로 변환합니다.
+실제 정규화 진입점은 `path:packages/di/src/provider-normalization.ts:178-287`의 `normalizeProvider()`입니다. 이 함수가 이 장의 첫 번째 핵심 알고리즘입니다. 모든 입력 provider를 `type`, `provide`, `inject`, `scope`, 구현 필드를 갖는 `NormalizedProvider`로 변환합니다.
 
 class constructor와 value provider는 정규화의 가장 단순한 두 분기입니다.
 
-`path:packages/di/src/provider-normalization.ts:168-198`
+`path:packages/di/src/provider-normalization.ts:178-216`
 ```typescript
 export function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isClassConstructor(provider)) {
@@ -95,7 +134,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 
     return freezeNormalizedProvider({
       inject: normalizeInject(metadata?.inject, provider),
-      provide: provider,
+      provide: normalizeFrameworkServiceToken(provider),
       scope: normalizeProviderScope(metadata?.scope, provider) ?? 'singleton',
       type: 'class',
       useClass: provider,
@@ -108,27 +147,35 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 
   const objectProvider: ProviderObjectInput = provider;
   assertObjectProvider(objectProvider);
-  const explicitScope = normalizeProviderScope(objectProvider.scope, objectProvider.provide);
+  const provide = normalizeFrameworkServiceToken(objectProvider.provide);
+  const explicitScope = normalizeProviderScope(objectProvider.scope, provide);
+  const multi = normalizeProviderMulti(objectProvider.multi, provide);
 
   if ('useValue' in objectProvider) {
+    if (Object.hasOwn(objectProvider, 'inject')) {
+      throw new InvalidProviderError('Value providers must not declare inject dependencies.', {
+        token: objectProvider.provide,
+      });
+    }
+
     return freezeNormalizedProvider({
       inject: [],
-      multi: objectProvider.multi,
-      provide: objectProvider.provide,
-      scope: 'singleton',
+      multi,
+      provide,
+      scope: explicitScope ?? 'singleton',
       type: 'value',
       useValue: objectProvider.useValue,
     });
   }
 ```
 
-class provider는 `getClassDiMetadata()`를 통해 명시적으로 기록된 inject와 scope를 읽습니다. value provider는 이미 값이 있으므로 inject 배열을 비우고 singleton 기본 scope를 붙입니다.
+class provider는 `getClassDiMetadata()`를 통해 명시적으로 기록된 inject와 scope를 읽습니다. value provider는 이미 값이 있으므로 inject 배열을 비우고, 명시적 scope를 유지하며 없으면 singleton 기본 scope를 붙입니다.
 
-정규화 로직은 `path:packages/di/src/provider-normalization.ts:103-153`에서 `inject` 경계도 검증합니다. 값 자체가 배열이어야 하며, 각 엔트리는 문자열, symbol, constructable class token 또는 올바른 `ForwardRef.create()` / `Optional.create()` wrapper여야 합니다. 이 조기 검증 덕분에 잘못된 입력이 나중에 raw `TypeError`나 흐릿한 resolution 실패로 바뀌지 않습니다. 입력이 이 지점에서 표준화되므로, 하위 리졸버는 의존성 목록이 이미 실행 가능한 형태라고 가정할 수 있습니다.
+정규화 로직은 `path:packages/di/src/provider-normalization.ts:113-163`에서 `inject` 경계도 검증합니다. 값 자체가 배열이어야 하며, 각 엔트리는 문자열, symbol, constructable class token 또는 올바른 `ForwardRef.create()` / `Optional.create()` wrapper여야 합니다. 이 조기 검증 덕분에 잘못된 입력이 나중에 raw `TypeError`나 흐릿한 resolution 실패로 바뀌지 않습니다. 입력이 이 지점에서 표준화되므로, 하위 리졸버는 의존성 목록이 이미 실행 가능한 형태라고 가정할 수 있습니다.
 
 조기 검증 자체는 작은 helper 하나로 고정되어 있습니다.
 
-`path:packages/di/src/provider-normalization.ts:140-153`
+`path:packages/di/src/provider-normalization.ts:150-163`
 ```typescript
 function normalizeInject(inject: unknown, providerToken: Token): readonly NormalizedInjectToken[] {
   if (inject === undefined) {
@@ -136,7 +183,10 @@ function normalizeInject(inject: unknown, providerToken: Token): readonly Normal
   }
 
   if (!Array.isArray(inject)) {
-    throw new InvalidProviderError('Provider inject must be an array.', { token: providerToken });
+    throw new InvalidProviderError('Provider inject must be an array.', {
+      token: providerToken,
+      hint: 'Pass dependency tokens as inject: [DependencyA, DependencyB].',
+    });
   }
 
   return inject.map((token, index) => normalizeInjectToken(token, providerToken, index));
@@ -145,7 +195,7 @@ function normalizeInject(inject: unknown, providerToken: Token): readonly Normal
 
 함수 형태 token은 normalized graph에 들어가기 전에 public `Constructor` 계약을 만족하는지 검사합니다.
 
-`path:packages/di/src/provider-normalization.ts:43-62`
+`path:packages/di/src/provider-normalization.ts:42-61`
 ```typescript
 function isConstructableFunction(value: unknown): value is ClassType {
   if (typeof value !== 'function') {
@@ -175,20 +225,30 @@ function isToken(value: unknown): value is Token {
 
 factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선순위를 더 분명히 드러냅니다.
 
-`path:packages/di/src/provider-normalization.ts:200-232`
+`path:packages/di/src/provider-normalization.ts:218-260`
 ```typescript
   if ('useFactory' in objectProvider) {
     if (!isFactoryFunction(objectProvider.useFactory)) {
-      throw new InvalidProviderError('Factory provider useFactory must be a function.', { token: objectProvider.provide });
+      throw new InvalidProviderError('Factory provider useFactory must be a function.', { token: provide });
     }
 
-    const metadata = objectProvider.resolverClass ? getClassDiMetadata(objectProvider.resolverClass) : undefined;
+    const { resolverClass } = objectProvider;
+
+    if (resolverClass !== undefined && !isClassType(resolverClass)) {
+      throw new InvalidProviderError('Factory provider resolverClass must be a constructor when declared.', {
+        token: provide,
+        hint: 'Pass the class whose @Scope(...) metadata the factory should inherit, or omit resolverClass.',
+      });
+    }
+
+    const metadata = resolverClass ? getClassDiMetadata(resolverClass) : undefined;
 
     return freezeNormalizedProvider({
-      inject: normalizeInject(objectProvider.inject, objectProvider.provide),
-      multi: objectProvider.multi,
-      provide: objectProvider.provide,
-      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
+      inject: normalizeInject(objectProvider.inject, provide),
+      multi,
+      provide,
+      resolverClass,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, provide) ?? 'singleton',
       type: 'factory',
       useFactory: objectProvider.useFactory,
     });
@@ -196,41 +256,41 @@ factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선
 
   if ('useClass' in objectProvider) {
     if (!isClassType(objectProvider.useClass)) {
-      throw new InvalidProviderError('Class provider useClass must be a constructor.', { token: objectProvider.provide });
+      throw new InvalidProviderError('Class provider useClass must be a constructor.', { token: provide });
     }
 
     const metadata = getClassDiMetadata(objectProvider.useClass);
 
     return freezeNormalizedProvider({
-      inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, objectProvider.provide),
-      multi: objectProvider.multi,
-      provide: objectProvider.provide,
-      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
+      inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, provide),
+      multi,
+      provide,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, provide) ?? 'singleton',
       type: 'class',
       useClass: objectProvider.useClass,
     });
   }
 ```
 
-factory provider는 명시적 `provider.scope`를 먼저 보고, 없으면 `resolverClass` 메타데이터를 본 뒤 기본 singleton으로 떨어집니다. class provider object는 `inject`가 생략됐거나 명시적으로 `undefined`일 때 구현 클래스 메타데이터를 사용하며, 그 밖의 명시적 값은 최종 권위를 갖습니다. 이 값 검사는 의도적입니다. `inject: undefined`는 decorator metadata fallback을 보존하지만, `inject: null`은 `normalizeInject()`에 도달해 거부됩니다.
+factory provider는 명시적 `provider.scope`를 먼저 보고, 없으면 `resolverClass` 메타데이터를 본 뒤 기본 singleton으로 떨어집니다. 선언된 `resolverClass`는 constructor여야 하며, 그 밖의 값은 메타데이터를 읽기 전에 `InvalidProviderError`로 거부됩니다. class provider object는 `inject`가 생략됐거나 명시적으로 `undefined`일 때 구현 클래스 메타데이터를 사용하며, 그 밖의 명시적 값은 최종 권위를 갖습니다. 이 값 검사는 의도적입니다. `inject: undefined`는 decorator metadata fallback을 보존하지만, `inject: null`은 `normalizeInject()`에 도달해 거부됩니다.
 
 이 함수는 의존성의 재귀적 정규화도 맡습니다. 팩토리 프로바이더의 `inject` 리스트에 복합 정의가 섞여 있으면, `normalizeProvider`는 `normalizeInjectToken`을 통해 이를 안정적인 내부 토큰으로 바꿉니다. 표현이 한 가지로 모이면 DI 컨테이너는 모듈 컴파일 단계에서 의존성 그래프를 더 일관되게 만들 수 있습니다.
 
-현재 컨테이너 구현은 의존성마다 별도 source tag를 저장하지 않습니다. 대신 `path:packages/di/src/container.ts:179-193`의 local registration map, multi registration map, request cache, singleton cache가 계층 조회와 수명 주기 분리를 위한 상태를 나눕니다. 뒤의 해결 단계는 이 저장소와 parent lookup을 조합해 어느 컨테이너 계층을 조회할지 판단합니다.
+현재 컨테이너 구현은 의존성마다 별도 source tag를 저장하지 않습니다. 대신 `path:packages/di/src/container.ts:301-311`의 local registration map, multi registration map, request cache, singleton cache가 계층 조회와 수명 주기 분리를 위한 상태를 나눕니다. 뒤의 해결 단계는 이 저장소와 parent lookup을 조합해 어느 컨테이너 계층을 조회할지 판단합니다.
 
-`normalizeProvider`의 또 다른 세부 사항은 `forwardRef`와 `optional` wrapper를 평가하지 않고 `inject` 배열에 보존한다는 점입니다. 의존성 토큰이 `forwardRef` 팩토리로 감싸져 있으면, 정규화 단계는 wrapper 자체를 남기고 실제 token 평가는 `resolveForwardRefToken()`까지 늦춥니다. 표준 의존성 조회의 단순성을 유지하면서 정의 순서 문제를 다루기 위한 장치입니다. `path:packages/di/src/provider-normalization.ts:103-153`과 `path:packages/di/src/container.ts:1367-1375`가 이 handoff를 보여 줍니다.
+`normalizeProvider`의 또 다른 세부 사항은 `forwardRef`와 `optional` wrapper를 평가하지 않고 `inject` 배열에 보존한다는 점입니다. 의존성 토큰이 `forwardRef` 팩토리로 감싸져 있으면, 정규화 단계는 wrapper 자체를 남기고 실제 token 평가는 `resolveForwardRefToken()`까지 늦춥니다. 표준 의존성 조회의 단순성을 유지하면서 정의 순서 문제를 다루기 위한 장치입니다. `path:packages/di/src/provider-normalization.ts:113-163`과 `path:packages/di/src/container.ts:1928-1936`가 이 handoff를 보여 줍니다.
 
 마지막으로 정규화는 최종 검증을 수행합니다. `provide` 같은 필수 필드가 있는지, 값 프로바이더와 팩토리를 동시에 지정하는 식의 명백한 모순이 없는지 확인합니다. 이 방어선 덕분에 DI 컨테이너의 내부 상태는 유효한 레코드만 다루게 됩니다. `normalizeProvider`를 통과한 provider는 Fluo 엔진이 실행 가능한 구성 조각으로 취급할 수 있습니다.
 
-평범한 class 등록의 경우 컨테이너는 `getClassDiMetadata()`로 constructor 메타데이터를 읽고, 명시적 scope가 없으면 `'singleton'`을 사용합니다. 이 흐름은 `path:packages/di/src/provider-normalization.ts:168-179`에 보입니다. 즉 class 문법은 결국 token이 자기 자신인 normalized class provider의 sugar일 뿐입니다.
+평범한 class 등록의 경우 컨테이너는 `getClassDiMetadata()`로 constructor 메타데이터를 읽고, 명시적 scope가 없으면 `'singleton'`을 사용합니다. 이 흐름은 `path:packages/di/src/provider-normalization.ts:178-189`에 보입니다. 즉 class 문법은 결국 token이 자기 자신인 normalized class provider의 sugar일 뿐입니다.
 
-factory provider는 조금 더 미묘합니다. 컨테이너는 우선 `provider.scope`를 존중하지만, `resolverClass`가 있으면 그 클래스의 scope 메타데이터를 읽고, 마지막 fallback으로 singleton default를 사용합니다. 이 우선순위는 `path:packages/di/src/provider-normalization.ts:200-215`에 드러납니다. 즉 비동기 또는 계산형 provider도 class provider와 같은 scope 언어에 참여합니다.
+factory provider는 조금 더 미묘합니다. 컨테이너는 우선 `provider.scope`를 존중하지만, `resolverClass`가 있으면 그 클래스의 scope 메타데이터를 읽고, 마지막 fallback으로 singleton default를 사용합니다. 이 우선순위는 `path:packages/di/src/provider-normalization.ts:218-243`에 드러납니다. 즉 비동기 또는 계산형 provider도 class provider와 같은 scope 언어에 참여합니다.
 
-`{ provide, useClass }`도 같은 상속 패턴을 따릅니다. `path:packages/di/src/provider-normalization.ts:217-232`는 `objectProvider.inject`가 `undefined`일 때 컨테이너가 `objectProvider.useClass`의 메타데이터를 사용하는 모습을 보여줍니다. undefined가 아닌 provider 값은 최종 권위를 가지며, class decorator는 fallback 계약을 제공합니다.
+`{ provide, useClass }`도 같은 상속 패턴을 따릅니다. `path:packages/di/src/provider-normalization.ts:245-260`는 `objectProvider.inject`가 `undefined`일 때 컨테이너가 `objectProvider.useClass`의 메타데이터를 사용하는 모습을 보여줍니다. undefined가 아닌 provider 값은 최종 권위를 가지며, class decorator는 fallback 계약을 제공합니다.
 
-두 개의 helper wrapper도 이 정규화 단계와 연결됩니다. 겉으로는 dependency 문법처럼 보이지만 실제로는 나중 resolution을 위한 표시자입니다. `ForwardRef.create()`와 `Optional.create()`은 `path:packages/di/src/types.ts:137-168`에 선언되어 있습니다. 이 static 메서드들은 직접 resolve를 수행하지 않습니다. 후속 단계가 특별 취급할 수 있도록 token을 감쌀 뿐입니다.
+두 개의 helper wrapper도 이 정규화 단계와 연결됩니다. 겉으로는 dependency 문법처럼 보이지만 실제로는 나중 resolution을 위한 표시자입니다. `ForwardRef.create()`와 `Optional.create()`은 `path:packages/di/src/types.ts:115-154`에 선언되어 있습니다. 이 static 메서드들은 직접 resolve를 수행하지 않습니다. 후속 단계가 특별 취급할 수 있도록 token을 감쌀 뿐입니다.
 
-배열이 아닌 `inject`, 유효하지 않은 엔트리, 잘못된 wrapper, 지원하지 않는 `scope`가 provider 정규화에 들어오면 `path:packages/di/src/provider-normalization.ts`는 provider context와 작성 힌트를 담은 `InvalidProviderError`를 던집니다. 이것은 중요한 선택입니다. Fluo는 작성 오류를 등록/정규화 단계에서 드러내고 싶어 합니다. 그래프가 절반쯤 활성화된 뒤 생성 시점에 뒤늦게 터뜨리려 하지 않습니다.
+배열이 아닌 `inject`, 유효하지 않은 엔트리, 잘못된 wrapper, 지원하지 않는 `scope`, boolean이 아닌 `multi`, constructor가 아닌 `resolverClass`, `{ provide: 'S', useExisting: 'S' }` 같은 직접 self-alias가 provider 정규화에 들어오면 `path:packages/di/src/provider-normalization.ts`는 provider context와 작성 힌트를 담은 `InvalidProviderError`를 던집니다. 이것은 중요한 선택입니다. Fluo는 작성 오류를 등록/정규화 단계에서 드러내고 싶어 합니다. 그래프가 절반쯤 활성화된 뒤 생성 시점에 뒤늦게 터뜨리려 하지 않습니다.
 
 정규화 알고리즘은 다음처럼 요약할 수 있습니다.
 
@@ -240,7 +300,7 @@ for each incoming provider:
     read @Inject/@Scope metadata from the class
     return normalized class provider
   else if provider has useValue:
-    return normalized value provider with empty inject list
+    return normalized value provider with empty inject list and explicit scope -> singleton default
   else if provider has useFactory:
     normalize inject tokens
     compute scope from explicit scope -> resolverClass metadata -> singleton default
@@ -250,7 +310,8 @@ for each incoming provider:
     compute scope from explicit scope -> class metadata -> singleton default
     return normalized class provider
   else if provider has useExisting:
-    return normalized alias provider
+    reject an alias whose useExisting is its own provide token
+    return normalized alias provider with explicit scope -> singleton default
   else:
     throw InvalidProviderError
 ```
@@ -262,15 +323,15 @@ for each incoming provider:
 운영 관점에서 보면 4.1의 의미는 분명합니다. Fluo의 DI 컨테이너가 런타임에 단순하게 보이는 이유는, 복잡성 대부분을 초반 정규화 단계에서 미리 소화하기 때문입니다. `resolve()`가 시작될 때쯤이면 provider는 이미 하나의 내부 형태로 정리되어 있습니다.
 
 ## 4.2 Registration semantics, duplicate checks, and scope guardrails
-정규화가 끝나면 `register()`가 정책을 적용합니다. 구현은 `path:packages/di/src/container.ts:218-260`에 있습니다. 이 메서드는 단순히 map에 append하는 함수가 아닙니다. 이후 resolution이 예측 가능하도록 그래프 규칙을 강제합니다.
+정규화가 끝나면 `register()`가 정책을 적용합니다. 구현은 `path:packages/di/src/container.ts:377-419`에 있습니다. 이 메서드는 단순히 map에 append하는 함수가 아닙니다. 이후 resolution이 예측 가능하도록 그래프 규칙을 강제합니다.
 
-첫 번째 규칙은 disposal 안전성입니다. 컨테이너 또는 ancestor가 이미 닫혀 있으면 등록은 `ContainerResolutionError`로 중단됩니다. 이는 `path:packages/di/src/container.ts:218-224`에서 확인할 수 있습니다. 이 가드는 이미 폐기된 그래프 위에 stale cache를 가진 새 provider를 얹는 상황을 막습니다.
+첫 번째 규칙은 disposal 안전성입니다. 컨테이너 또는 ancestor가 이미 닫혀 있으면 등록은 `ContainerResolutionError`로 중단됩니다. 이는 `path:packages/di/src/container.ts:377-383`에서 확인할 수 있습니다. 이 가드는 이미 폐기된 그래프 위에 stale cache를 가진 새 provider를 얹는 상황을 막습니다.
 
-두 번째 규칙은 request-scope 위생입니다. `requestScopeEnabled`가 true인 child container에서 default-scope provider를 직접 등록하면 `ScopeMismatchError`가 발생합니다. 코드는 `path:packages/di/src/container.ts:226-238`에 있습니다. 이것은 single과 multi provider 모두에서 실수로 request-local singleton을 만드는 것을 막기 위한 보호장치입니다.
+두 번째 규칙은 request-scope 위생입니다. `requestScopeEnabled`가 true인 child container에서 default-scope provider를 직접 등록하면 `ScopeMismatchError`가 발생합니다. 코드는 `path:packages/di/src/container.ts:385-397`에 있습니다. 이것은 single과 multi provider 모두에서 실수로 request-local singleton을 만드는 것을 막기 위한 보호장치입니다.
 
 등록 초반부는 폐기 상태, 정규화, request scope 가드를 한 흐름으로 묶습니다.
 
-`path:packages/di/src/container.ts:218-238`
+`path:packages/di/src/container.ts:377-397`
 ```typescript
   register(...providers: Provider[]): this {
     if (this.isDisposedInHierarchy()) {
@@ -297,19 +358,19 @@ for each incoming provider:
 
 이 코드는 provider가 map에 들어가기 전에 그래프 상태와 scope 위치를 먼저 확인합니다. 그래서 잘못된 등록은 cache나 인스턴스 생성 단계까지 내려가지 않습니다.
 
-왜 이것이 중요한가? 컨테이너는 `cacheFor()` 쪽에 이미 문서화된 footgun을 가지고 있기 때문입니다. `path:packages/di/src/container.ts:938-970`은 request scope에 locally overridden singleton이 들어오면, 실제로는 root singleton cache가 아니라 request cache에 저장되어 request-scoped처럼 동작하게 됨을 설명합니다. Fluo는 이 동작을 조용히 허용하기보다, 가장 흔한 실수 경로를 등록 단계에서 차단합니다.
+왜 이것이 중요한가? `cacheFor()`는 request scope에 local로 존재하는 singleton-scope provider를 root singleton cache가 아니라 해당 request cache에 저장하기 때문입니다. `path:packages/di/src/container.ts:1274-1306`은 이 등록 거부 덕분에 이미 보이는 token을 `container.override()`로 교체하는 경우만 그런 local singleton을 만들 수 있고, 그 replacement는 해당 request scope와 함께 살고 dispose된다고 설명합니다. Fluo는 singleton 표기가 조용히 request 수명처럼 동작하도록 두지 않고, 실수로 들어오는 `register()` 경로를 등록 단계에서 거부합니다.
 
-중복 검사는 single-provider와 multi-provider 경로로 나뉩니다. `path:packages/di/src/container.ts:542-562`의 `assertNoRegistrationConflict()`는 token이 로컬 또는 ancestor에 이미 호환되지 않는 형태로 존재하는지 검사합니다. 단순한 `Map.has()`보다 훨씬 강한 정책입니다. 부모-자식 계층 간 충돌도 실제 충돌로 취급합니다.
+중복 검사는 single-provider와 multi-provider 경로로 나뉩니다. `path:packages/di/src/container.ts:827-847`의 `assertNoRegistrationConflict()`는 token이 로컬 또는 ancestor에 이미 호환되지 않는 형태로 존재하는지 검사합니다. 단순한 `Map.has()`보다 훨씬 강한 정책입니다. 부모-자식 계층 간 충돌도 실제 충돌로 취급합니다.
 
-ancestor helper인 `path:packages/di/src/container.ts:564-582`를 보면 정확한 정책이 드러납니다. single provider는 같은 token이 visible 범위 어딘가에서 multi로 존재하면 추가할 수 없습니다. multi provider도 visible 범위 어딘가에서 single로 존재하면 추가할 수 없습니다. 이 규칙 덕분에 `container.resolve(token)`의 의미가 어느 계층에서 호출하느냐에 따라 바뀌지 않습니다.
+ancestor helper인 `path:packages/di/src/container.ts:849-867`를 보면 정확한 정책이 드러납니다. single provider는 같은 token이 visible 범위 어딘가에서 multi로 존재하면 추가할 수 없습니다. multi provider도 visible 범위 어딘가에서 single로 존재하면 추가할 수 없습니다. 이 규칙 덕분에 `container.resolve(token)`의 의미가 어느 계층에서 호출하느냐에 따라 바뀌지 않습니다.
 
 테스트도 이 동작을 고정합니다. `path:packages/di/src/container.test.ts:737-755`는 두 방향의 금지된 교차 등록을 모두 검증합니다. token이 single로 시작했다면 intentional override 없이는 계속 single입니다. multi로 시작했다면 이후 등록도 multi를 유지하거나 override 의미를 사용해야 합니다.
 
-multi-provider 등록 자체는 additive입니다. `path:packages/di/src/container.ts:242-251`은 normalized provider를 token별 배열에 push합니다. 나중에 `collectMultiProviders()`가 바로 이 자료구조를 사용합니다. 반면 single provider는 `registrations.set()`으로 `path:packages/di/src/container.ts:251-254`에서 한 번만 local slot을 차지합니다.
+multi-provider 등록 자체는 additive입니다. `path:packages/di/src/container.ts:401-410`은 normalized provider를 token별 배열에 push합니다. 나중에 `collectMultiProviders()`가 바로 이 자료구조를 사용합니다. 반면 single provider는 `registrations.set()`으로 `path:packages/di/src/container.ts:411-413`에서 한 번만 local slot을 차지합니다.
 
 충돌 검사를 통과한 뒤에는 multi와 single이 서로 다른 저장소로 갈라집니다.
 
-`path:packages/di/src/container.ts:240-256`
+`path:packages/di/src/container.ts:399-415`
 ```typescript
       this.assertNoRegistrationConflict(normalized.provide, normalized.multi === true);
 
@@ -332,11 +393,11 @@ multi-provider 등록 자체는 additive입니다. `path:packages/di/src/contain
 
 이 분리 덕분에 resolver는 token을 single 값으로 볼지, 배열로 집계할지 명확히 판단할 수 있습니다. 같은 token에 두 의미가 섞이지 않도록 바로 앞에서 conflict 검사를 수행하는 이유도 여기에 있습니다.
 
-override semantics는 의도적으로 destructive합니다. `path:packages/di/src/container.ts:262-269`의 주석은 multi override가 해당 token의 기존 전체 집합을 갈아치운다고 명시합니다. 구현은 먼저 들어온 override provider를 token별로 묶은 뒤, 각 token마다 single과 multi 등록을 한 번 지우고 replacement set을 넣습니다. multi-provider 묶음 안의 특정 엔트리만 부분적으로 바꾸는 API는 없습니다.
+override semantics는 의도적으로 destructive합니다. `path:packages/di/src/container.ts:424-428`의 주석은 multi override가 해당 token의 기존 전체 집합을 갈아치운다고 명시합니다. 구현은 먼저 들어온 override provider를 token별로 묶은 뒤, 각 token마다 single과 multi 등록을 한 번 지우고 replacement set을 넣습니다. multi-provider 묶음 안의 특정 엔트리만 부분적으로 바꾸는 API는 없습니다.
 
 override는 기존 single slot과 multi array를 모두 지운 뒤, 하나의 single provider 또는 한 번에 전달된 전체 multi-provider replacement set을 기준으로 삼습니다.
 
-`path:packages/di/src/container.ts:298-329`
+`path:packages/di/src/container.ts:482-517`
 ```typescript
     for (const [token, normalizedProviders] of normalizedByToken) {
       const firstProvider = normalizedProviders[0];
@@ -355,6 +416,10 @@ override는 기존 single slot과 multi array를 모두 지운 뒤, 하나의 si
         throw new DuplicateProviderError(token);
       }
 
+      plannedOverrides.set(token, { containsMultiProvider, firstProvider, normalizedProviders });
+    }
+
+    for (const [token, { containsMultiProvider, firstProvider, normalizedProviders }] of plannedOverrides) {
       this.invalidateAffectedCachedEntriesInHierarchy(token);
       this.registrations.delete(token);
       this.multiRegistrations.delete(token);
@@ -376,7 +441,7 @@ override는 기존 single slot과 multi array를 모두 지운 뒤, 하나의 si
 
 single과 multi의 충돌 금지는 local map뿐 아니라 ancestor까지 확인합니다.
 
-`path:packages/di/src/container.ts:542-562`
+`path:packages/di/src/container.ts:827-847`
 ```typescript
   private assertNoRegistrationConflict(token: Token, multi: boolean): void {
     if (multi) {
@@ -423,13 +488,13 @@ on register(provider):
 핵심 구현 포인트는 이렇습니다. Fluo는 인스턴스가 생기기 전에 provider shape invariant를 강제합니다. 그래서 에러가 런타임 미스터리가 아니라 설정 단계의 명확한 위반으로 드러납니다. 이것이 뒤이어 나오는 resolution 알고리즘을 간결하게 유지하는 중요한 이유입니다.
 
 ## 4.3 The resolve pipeline: token lookup, chain tracking, and instantiation
-공개 API는 매우 작습니다. `path:packages/di/src/container.ts:459-470`의 `resolve()`는 계층적 disposal을 검사하고 예약된 stale disposal을 기다린 뒤 `resolveWithChain(token, [], new Set())`로 위임합니다. 재미있는 내용은 모두 그 아래에 있습니다.
+공개 API는 매우 작습니다. `path:packages/di/src/container.ts:657-670`의 `resolve()`는 계층적 disposal을 검사하고 예약된 stale disposal을 기다린 뒤 `resolveWithChain(token, [], new Set())`로 위임합니다. 재미있는 내용은 모두 그 아래에 있습니다.
 
-`path:packages/di/src/container.ts:670-683`의 `resolveWithChain()`은 트래픽 디렉터입니다. 먼저 `resolveForwardRefCircularDependency()`로 현재 token이 이미 active chain 안에 있는지 검사합니다. 그 다음에야 `resolveFromRegisteredProviders()`로 내려갑니다. 즉 순환 의존성 검사는 나중에 덧붙인 부가기능이 아니라, 재귀 resolution의 첫 분기입니다.
+`path:packages/di/src/container.ts:955-968`의 `resolveWithChain()`은 트래픽 디렉터입니다. 먼저 `resolveForwardRefCircularDependency()`로 현재 token이 이미 active chain 안에 있는지 검사합니다. 그 다음에야 `resolveFromRegisteredProviders()`로 내려갑니다. 즉 순환 의존성 검사는 나중에 덧붙인 부가기능이 아니라, 재귀 resolution의 첫 분기입니다.
 
 공개 API와 내부 진입점은 작게 유지됩니다.
 
-`path:packages/di/src/container.ts:459-470`
+`path:packages/di/src/container.ts:657-670`
 ```typescript
   async resolve<T>(token: Token<T>): Promise<T> {
     if (this.isDisposedInHierarchy()) {
@@ -439,9 +504,11 @@ on register(provider):
       );
     }
 
-    await this.assertStaleDisposalsSettled();
+    return this.trackResolution(async () => {
+      await this.assertStaleDisposalsSettled();
 
-    return this.resolveWithChain(token, [], new Set<Token>());
+      return this.resolveWithChain(normalizeFrameworkServiceToken(token), [], new Set<Token>());
+    });
   }
 ```
 
@@ -449,7 +516,7 @@ on register(provider):
 
 그 다음 단계는 cycle 확인 후 등록 기반 해결로 내려갑니다.
 
-`path:packages/di/src/container.ts:670-683`
+`path:packages/di/src/container.ts:955-968`
 ```typescript
   private async resolveWithChain<T>(
     token: Token<T>,
@@ -469,15 +536,15 @@ on register(provider):
 
 이 구조 때문에 cycle detector는 재귀 호출의 외부 감시자가 아니라 resolver의 첫 분기입니다. `allowForwardRef`도 같은 인자 흐름 안에 있으므로 특정 dependency entry에서만 의미를 갖습니다.
 
-`resolveWithChain` 내부에서 Fluo는 `allowForwardRef` 플래그도 함께 전달합니다. `path:packages/di/src/container.ts:670-680`에서 이 플래그는 cycle 검사 helper로 들어갑니다. 실제 `forwardRef` wrapper 해석은 뒤의 `resolveDepToken()`에서 일어나고, cycle이 남아 있으면 같은 active set 검사로 실패합니다.
+`resolveWithChain` 내부에서 Fluo는 `allowForwardRef` 플래그도 함께 전달합니다. `path:packages/di/src/container.ts:955-965`에서 이 플래그는 cycle 검사 helper로 들어갑니다. 실제 `forwardRef` wrapper 해석은 뒤의 `resolveDepToken()`에서 일어나고, cycle이 남아 있으면 같은 active set 검사로 실패합니다.
 
-파이프라인의 또 다른 핵심은 alias redirect입니다. `path:packages/di/src/container.ts:738-742`의 `resolveAliasTarget()`과 `path:packages/di/src/container.ts:806-812`의 `resolveExistingProviderTarget()`은 `{ useExisting }` provider에 대한 재귀 조회를 처리합니다. 단순한 맵 조회가 아니라 target token으로 다시 resolver를 호출합니다. 이때 의존성 체인을 보존하므로, 에러에는 원래 alias부터 최종 실패 지점까지의 경로가 남습니다.
+파이프라인의 또 다른 핵심은 alias redirect입니다. `path:packages/di/src/container.ts:1029-1033`의 `resolveAliasTarget()`과 `path:packages/di/src/container.ts:1118-1124`의 `resolveExistingProviderTarget()`은 `{ useExisting }` provider에 대한 재귀 조회를 처리합니다. 단순한 맵 조회가 아니라 target token으로 다시 resolver를 호출합니다. 이때 의존성 체인을 보존하므로, 에러에는 원래 alias부터 최종 실패 지점까지의 경로가 남습니다.
 
-`resolveFromRegisteredProviders`(`path:packages/di/src/container.ts:685-720`)는 스코핑 계층도 구현합니다. 토큰이 로컬 컨테이너에 없다고 바로 실패하지 않고, 부모 체인이 있으면 위로 올라가며 같은 규칙을 적용합니다. 그래서 request container 같은 child는 root singleton을 상속받으면서 특정 서비스만 로컬에서 재정의할 수 있습니다. 이 계층적 해결이 모듈 구성과 요청 격리의 기반이 됩니다.
+`resolveFromRegisteredProviders`(`path:packages/di/src/container.ts:970-1011`)는 스코핑 계층도 구현합니다. 토큰이 로컬 컨테이너에 없다고 바로 실패하지 않고, 부모 체인이 있으면 위로 올라가며 같은 규칙을 적용합니다. 그래서 request container 같은 child는 root singleton을 상속받으면서 특정 서비스만 로컬에서 재정의할 수 있습니다. 이 계층적 해결이 모듈 구성과 요청 격리의 기반이 됩니다.
 
 실제 provider 선택 순서는 local single, collected multi, required visible single 순서입니다.
 
-`path:packages/di/src/container.ts:685-705`
+`path:packages/di/src/container.ts:970-990`
 ```typescript
   private async resolveFromRegisteredProviders<T>(token: Token<T>, chain: Token[], activeTokens: Set<Token>): Promise<T> {
     const localSingleProvider = this.registrations.get(token);
@@ -504,11 +571,11 @@ on register(provider):
 
 이 발췌는 resolver가 token 의미를 재해석하지 않는다는 점을 보여 줍니다. registration 단계에서 single과 multi 충돌을 막았기 때문에, 여기서는 순서대로 조회하고 해당 경로로 실행하면 됩니다.
 
-마지막으로 `cacheFor` 헬퍼(`path:packages/di/src/container.ts:938-970`)는 해결된 인스턴스가 스코프에 맞는 캐시에 들어가도록 합니다. 이 함수가 singleton과 request 수명 주기를 실제 cache 선택으로 바꾸는 지점입니다. 인스턴스를 서로 다른 cache 객체로 나누기 때문에 요청 간 오염을 막고, singleton identity도 해당 계층의 규칙에 맞게 유지할 수 있습니다.
+마지막으로 `cacheFor` 헬퍼(`path:packages/di/src/container.ts:1274-1306`)는 해결된 인스턴스가 스코프에 맞는 캐시에 들어가도록 합니다. 이 함수가 singleton과 request 수명 주기를 실제 cache 선택으로 바꾸는 지점입니다. 인스턴스를 서로 다른 cache 객체로 나누기 때문에 요청 간 오염을 막고, singleton identity도 해당 계층의 규칙에 맞게 유지할 수 있습니다.
 
 scope cache 선택은 provider scope와 현재 컨테이너가 request scope인지에 따라 갈라집니다.
 
-`path:packages/di/src/container.ts:949-970`
+`path:packages/di/src/container.ts:1285-1306`
 ```typescript
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     if (provider.scope === 'singleton') {
@@ -536,37 +603,37 @@ scope cache 선택은 provider scope와 현재 컨테이너가 request scope인�
 
 singleton 기본 provider는 보통 root cache를 사용하지만, request container에 로컬로 등록된 기본 scope provider는 request cache로 들어갑니다. request-scoped provider를 root에서 해결하려 하면 명확한 scope error가 납니다.
 
-리졸버의 순환 의존성 감지는 단순한 스택 깊이 체크가 아닙니다. `path:packages/di/src/container.ts:744-762`의 `resolveForwardRefCircularDependency()`는 `activeTokens` set에서 cycle을 만든 정확한 token을 식별하고, 함께 유지되는 chain으로 의존성 경로를 보고합니다. `path:packages/di/src/container.ts:881-896`의 `withTokenInChain()`은 예외가 발생해도 이 set이 현재 해결 상태와 동기화되도록 `finally`에서 정리합니다.
+리졸버의 순환 의존성 감지는 단순한 스택 깊이 체크가 아닙니다. `path:packages/di/src/container.ts:1035-1053`의 `resolveForwardRefCircularDependency()`는 `activeTokens` set에서 cycle을 만든 정확한 token을 식별하고, 함께 유지되는 chain으로 의존성 경로를 보고합니다. `path:packages/di/src/container.ts:1217-1232`의 `withTokenInChain()`은 예외가 발생해도 이 set이 현재 해결 상태와 동기화되도록 `finally`에서 정리합니다.
 
-또한 해결 알고리즘은 missing provider를 구조화해서 보고합니다. `path:packages/di/src/container.ts:722-736`의 `requireProvider()`는 provider가 없을 때 token과 hint를 담은 `ContainerResolutionError`를 던집니다. 덕분에 그래프의 어느 token이 등록되지 않았는지 추적할 수 있습니다.
+또한 해결 알고리즘은 missing provider를 구조화해서 보고합니다. `path:packages/di/src/container.ts:1013-1027`의 `requireProvider()`는 provider가 없을 때 token과 hint를 담은 `ContainerResolutionError`를 던집니다. 덕분에 그래프의 어느 token이 등록되지 않았는지 추적할 수 있습니다.
 
-`path:packages/di/src/container.ts:700-705`에서 보이는 것은 별도 프레임워크 토큰 shortcut이 아니라 multi 결과 반환 뒤 alias target을 확인하는 provider 분기입니다. 이 장에서는 이 범위를 앞의 `resolveFromRegisteredProviders()` 발췌로 통합합니다. 현재 소스 기준으로 핵심 규칙은 등록 맵, multi collection, alias redirect, scope cache 순서입니다.
+`path:packages/di/src/container.ts:985-990`에서 보이는 것은 별도 프레임워크 토큰 shortcut이 아니라 multi 결과 반환 뒤 alias target을 확인하는 provider 분기입니다. 이 장에서는 이 범위를 앞의 `resolveFromRegisteredProviders()` 발췌로 통합합니다. 현재 소스 기준으로 핵심 규칙은 등록 맵, multi collection, alias redirect, scope cache 순서입니다.
 
 해결 알고리즘은 외부 사이드 이펙트를 만들지 않도록 구성됩니다. `resolveProviderDeps` 단계에서 컨테이너는 메타데이터 조회와 리플렉션 접근을 읽기 전용으로 다룹니다. DI 시스템이 관리 대상 클래스의 런타임 동작을 수정하지 않기 위한 원칙입니다. 서비스를 관찰하거나 해결하는 행위가 서비스 내부 상태를 바꾸지 않아야 resolver를 신뢰할 수 있습니다.
 
-해결 파이프라인은 "멀티 프로바이더(multi-provider)" 집계도 지원합니다. 토큰이 multi provider로 표시되면, `resolveFromRegisteredProviders`(`path:packages/di/src/container.ts:685-697`)는 관련 등록을 모아 하나의 배열로 해결합니다. 등록 순서가 보존되므로 미들웨어 체인이나 플러그인 시스템도 예측 가능하게 동작합니다. 각 entry는 독립적으로 해결되므로 같은 token 아래에서도 서로 다른 scope나 구현 타입을 가질 수 있습니다.
+해결 파이프라인은 "멀티 프로바이더(multi-provider)" 집계도 지원합니다. 토큰이 multi provider로 표시되면, `resolveFromRegisteredProviders`(`path:packages/di/src/container.ts:970-983`)는 관련 등록을 모아 하나의 배열로 해결합니다. 등록 순서가 보존되므로 미들웨어 체인이나 플러그인 시스템도 예측 가능하게 동작합니다. 각 entry는 독립적으로 해결되므로 같은 token 아래에서도 서로 다른 scope나 구현 타입을 가질 수 있습니다.
 
-해결의 마지막 단계에 별도 런타임 인스턴스 검증기가 있는 것은 아닙니다. `path:packages/di/src/container.ts:1308-1353`은 alias chain을 따라 effective provider를 찾는 scope 검사용 helper입니다. 즉 현재 소스에서 마지막 방어선은 반환값 타입 검사보다, singleton이 request-scoped dependency를 가리키지 못하게 하는 provider graph 검사에 가깝습니다.
+해결의 마지막 단계에 별도 런타임 인스턴스 검증기가 있는 것은 아닙니다. `path:packages/di/src/container.ts:1869-1914`은 alias chain을 따라 effective provider를 찾는 scope 검사용 helper입니다. 즉 현재 소스에서 마지막 방어선은 반환값 타입 검사보다, singleton이 request-scoped dependency를 가리키지 못하게 하는 provider graph 검사에 가깝습니다.
 
-`path:packages/di/src/container.ts:1220-1228`의 `instantiate` class 분기는 lifecycle hook 호출이 아니라 constructor 실행입니다. dependency를 먼저 resolve한 뒤 `new provider.useClass(...deps)`로 인스턴스를 만듭니다. 이 장에서는 생성 경로가 normalized provider와 dependency loop만 사용한다는 점에 집중합니다.
+`path:packages/di/src/container.ts:1696-1704`의 `instantiate` class 분기는 lifecycle hook 호출이 아니라 constructor 실행입니다. dependency를 먼저 resolve한 뒤 `new provider.useClass(...deps)`로 인스턴스를 만듭니다. 이 장에서는 생성 경로가 normalized provider와 dependency loop만 사용한다는 점에 집중합니다.
 
-컨테이너가 계층을 나누는 대표 진입점은 request scope 생성입니다. `path:packages/di/src/container.ts:438-447`은 child container가 parent를 가리키고 root singleton cache를 공유하도록 만듭니다. 동적 module provider 등록 자체는 이 파일의 별도 bootstrap 로직이 아니라 `register()`와 `override()`의 정규화, 충돌 검사, cache invalidation 규칙으로 흡수됩니다.
+컨테이너가 계층을 나누는 대표 진입점은 request scope 생성입니다. `path:packages/di/src/container.ts:630-643`은 child container가 parent를 가리키고 root singleton cache를 공유하도록 만듭니다. 동적 module provider 등록 자체는 이 파일의 별도 bootstrap 로직이 아니라 `register()`와 `override()`의 정규화, 충돌 검사, cache invalidation 규칙으로 흡수됩니다.
 
-또 다른 세부 사항은 cache가 값이 아니라 `Promise<unknown>`을 저장한다는 점입니다. `resolveScopedOrSingletonInstance`(`path:packages/di/src/container.ts:814-835`)는 생성 promise를 cache에 넣고, 실패하면 해당 entry를 지웁니다. 이 구조는 같은 singleton을 동시에 여러 번 만들지 않으면서도 실패한 생성 시도는 다음 resolve에서 다시 시도할 수 있게 합니다.
+또 다른 세부 사항은 cache가 값이 아니라 `Promise<unknown>`을 저장한다는 점입니다. `resolveScopedOrSingletonInstance`(`path:packages/di/src/container.ts:1126-1165`)는 생성 promise를 cache에 넣고, 실패하면 해당 entry를 지웁니다. 이 구조는 같은 singleton을 동시에 여러 번 만들지 않으면서도 실패한 생성 시도는 다음 resolve에서 다시 시도할 수 있게 합니다.
 
 마지막으로 해결 알고리즘은 컨테이너의 "폐기(disposal)" 수명 주기와 맞물립니다. `container.dispose()`가 호출되면 `resolve()`와 `register()`는 앞의 폐기 상태 가드에서 새 작업을 거부합니다. 종료 중 새 인스턴스가 만들어지면 메모리 누수나 끊기지 않은 데이터베이스 연결로 이어질 수 있으므로, disposal 상태는 registration과 resolution 양쪽의 계약에 포함됩니다.
 
-`path:packages/di/src/container.ts:685-720`의 `resolveFromRegisteredProviders()`가 실질적인 pipeline입니다. 순서가 중요합니다. 우선 local single registration을 확인합니다. 없으면 collected multi providers를 확인합니다. multi가 있으면 배열로 resolve합니다. 그 이후에야 single provider를 반드시 요구합니다.
+`path:packages/di/src/container.ts:970-1011`의 `resolveFromRegisteredProviders()`가 실질적인 pipeline입니다. 순서가 중요합니다. 우선 local single registration을 확인합니다. 없으면 collected multi providers를 확인합니다. multi가 있으면 배열로 resolve합니다. 그 이후에야 single provider를 반드시 요구합니다.
 
 이 순서는 token 의미를 설명해 줍니다. 직접 single provider가 있으면 token은 single로 해석됩니다. 그렇지 않고 multi set이 비어 있지 않으면 multi로 해석됩니다. 그래서 registration conflict 검사가 엄격해야 합니다. resolver는 token의 의미가 이미 애매하지 않다고 가정하고 있기 때문입니다.
 
-alias는 scope cache보다 먼저 처리됩니다. `path:packages/di/src/container.ts:700-705`의 분기는 `path:packages/di/src/container.ts:806-812`의 `resolveExistingProviderTarget()`과 `path:packages/di/src/container.ts:738-742`의 `resolveAliasTarget()`을 사용해 chain tracking을 유지한 채 다른 token으로 resolution을 redirect합니다. 즉 `{ useExisting }`는 복사된 인스턴스가 아닙니다. 기존 token에 대한 위임 조회입니다.
+alias는 scope cache보다 먼저 처리됩니다. `path:packages/di/src/container.ts:985-990`의 분기는 `path:packages/di/src/container.ts:1118-1124`의 `resolveExistingProviderTarget()`과 `path:packages/di/src/container.ts:1029-1033`의 `resolveAliasTarget()`을 사용해 chain tracking을 유지한 채 다른 token으로 resolution을 redirect합니다. 즉 `{ useExisting }`는 복사된 인스턴스가 아닙니다. 기존 token에 대한 위임 조회입니다.
 
-transient provider는 cache를 의도적으로 건너뛰는 유일한 경로입니다. `path:packages/di/src/container.ts:707-709`는 transient를 `withTokenInChain()` 아래에서 바로 `instantiate()`로 보냅니다. 그 외의 non-alias provider는 cache를 확인한 뒤 `path:packages/di/src/container.ts:711-719`와 `path:packages/di/src/container.ts:814-835`를 통해 `resolveScopedOrSingletonInstance()`로 갑니다.
+transient provider는 cache를 의도적으로 건너뛰는 유일한 경로입니다. `path:packages/di/src/container.ts:992-994`는 transient를 `withTokenInChain()` 아래에서 바로 `instantiate()`로 보냅니다. 그 외의 non-alias provider는 cache를 확인한 뒤 `path:packages/di/src/container.ts:996-1010`와 `path:packages/di/src/container.ts:1126-1165`를 통해 `resolveScopedOrSingletonInstance()`로 갑니다.
 
 alias 분기 이후에는 transient와 cache 기반 provider가 갈라집니다.
 
-`path:packages/di/src/container.ts:707-719`
+`path:packages/di/src/container.ts:992-1010`
 ```typescript
     if (provider.scope === 'transient') {
       return (await this.withTokenInChain(token, chain, activeTokens, async (c, at) => this.instantiate(provider, c, at))) as T;
@@ -575,7 +642,13 @@ alias 분기 이후에는 transient와 cache 기반 provider가 갈라집니다.
     const cachedInstance = this.getCachedScopedOrSingletonInstance(provider);
 
     if (cachedInstance) {
-      return (await cachedInstance) as T;
+      const releasePendingResolution = linkPendingResolution(cachedInstance, activeTokens, token);
+
+      try {
+        return (await cachedInstance) as T;
+      } finally {
+        releasePendingResolution?.();
+      }
     }
 
     return (await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
@@ -585,11 +658,11 @@ alias 분기 이후에는 transient와 cache 기반 provider가 갈라집니다.
 
 transient는 cache를 보지 않고 바로 생성됩니다. 그 외 scope는 기존 singleton promise가 있으면 재사용하고, 그렇지 않으면 같은 chain 추적 안에서 scope-aware cache 선택으로 넘어가므로 cycle 보고와 cache 정책이 분리되지 않습니다.
 
-`path:packages/di/src/container.ts:881-896`의 `withTokenInChain()`은 작지만 결정적인 helper입니다. 현재 token을 chain 배열과 active set에 넣고, `finally`에서 반드시 제거합니다. 이 구조 덕분에 Fluo는 두 가지를 동시에 얻습니다. 하나는 사람이 읽는 dependency chain입니다. 다른 하나는 O(1) membership 검사로 동작하는 cycle detector입니다.
+`path:packages/di/src/container.ts:1217-1232`의 `withTokenInChain()`은 작지만 결정적인 helper입니다. 현재 token을 chain 배열과 active set에 넣고, `finally`에서 반드시 제거합니다. 이 구조 덕분에 Fluo는 두 가지를 동시에 얻습니다. 하나는 사람이 읽는 dependency chain입니다. 다른 하나는 O(1) membership 검사로 동작하는 cycle detector입니다.
 
 chain과 active set은 같은 helper에서 함께 갱신되고, 예외가 나도 함께 정리됩니다.
 
-`path:packages/di/src/container.ts:881-896`
+`path:packages/di/src/container.ts:1217-1232`
 ```typescript
   private async withTokenInChain<T>(
     token: Token,
@@ -611,11 +684,11 @@ chain과 active set은 같은 helper에서 함께 갱신되고, 예외가 나도
 
 배열은 에러 메시지의 경로를 만들고, set은 현재 recursion 안에 있는 token인지 빠르게 판단합니다. `finally`가 있어 실패한 생성 시도 뒤에도 다음 resolve가 오염되지 않습니다.
 
-실제 객체 생성은 `path:packages/di/src/container.ts:1201-1232`의 `instantiate()`에서 일어납니다. 이 메서드는 먼저 `assertSingletonDependencyScopes()` 호출합니다. 그다음 provider type별로 분기합니다. value provider는 값을 그대로 반환합니다. factory provider는 dependency를 resolve하고 `useFactory`를 호출한 뒤 결과가 synchronous인지 promise-like인지 기록합니다. class provider는 dependency를 resolve한 뒤 `new useClass(...deps)`를 수행합니다.
+실제 객체 생성은 `path:packages/di/src/container.ts:1677-1708`의 `instantiate()`에서 일어납니다. 이 메서드는 먼저 `assertSingletonDependencyScopes()` 호출합니다. 그다음 provider type별로 분기합니다. value provider는 값을 그대로 반환합니다. alias(`existing`) provider는 모든 호출자가 `useExisting` target을 먼저 resolve하므로 이 switch에 도달하지 않습니다. 이 분기는 현재 chain과 cycle-detection 상태를 버리는 새 resolution을 시작하는 대신 `InvariantError`를 던집니다. factory provider는 dependency를 resolve하고 `useFactory`를 호출한 뒤 결과가 synchronous인지 promise-like인지 기록합니다. class provider는 dependency를 resolve한 뒤 `new useClass(...deps)`를 수행합니다.
 
 객체 생성 단계는 normalized provider의 `type`만 보고 실행됩니다.
 
-`path:packages/di/src/container.ts:1201-1232`
+`path:packages/di/src/container.ts:1677-1708`
 ```typescript
   private async instantiate<T>(provider: NormalizedProvider<T>, chain: Token[], activeTokens: Set<Token>): Promise<T> {
     this.assertSingletonDependencyScopes(provider);
@@ -624,7 +697,7 @@ chain과 active set은 같은 helper에서 함께 갱신되고, 예외가 나도
       case 'value':
         return provider.useValue as T;
       case 'existing':
-        return await this.resolveWithChain(provider.useExisting as Token<T>, [], new Set());
+        throw new InvariantError('Alias provider must resolve its useExisting target before instantiate().');
       case 'factory': {
         if (!provider.useFactory) {
           throw new InvariantError('Factory provider is missing useFactory.');
@@ -653,11 +726,11 @@ chain과 active set은 같은 helper에서 함께 갱신되고, 예외가 나도
 
 이 발췌는 value, factory, class가 같은 생성 함수 안에서 갈라진다는 점을 보여 줍니다. Factory diagnostics와 class construction은 같은 순차 dependency-resolution 규칙을 공유합니다.
 
-dependency resolution 자체는 순차 루프입니다. `path:packages/di/src/container.ts:1377-1385`의 `resolveProviderDeps()`는 `provider.inject.length`에 맞는 배열을 만들고, 각 token을 순서대로 resolve합니다. 여기에는 speculative parallelism이 없습니다. 그 덕분에 chain ordering과 error reporting이 안정적으로 유지됩니다.
+dependency resolution 자체는 순차 루프입니다. `path:packages/di/src/container.ts:1938-1946`의 `resolveProviderDeps()`는 `provider.inject.length`에 맞는 배열을 만들고, 각 token을 순서대로 resolve합니다. 여기에는 speculative parallelism이 없습니다. 그 덕분에 chain ordering과 error reporting이 안정적으로 유지됩니다.
 
 dependency 배열은 provider의 `inject` 순서를 그대로 따릅니다.
 
-`path:packages/di/src/container.ts:1377-1385`
+`path:packages/di/src/container.ts:1938-1946`
 ```typescript
   private async resolveProviderDeps(provider: NormalizedProvider, chain: Token[], activeTokens: Set<Token>): Promise<unknown[]> {
     const deps = new Array<unknown>(provider.inject.length);
@@ -705,11 +778,11 @@ resolveFromRegisteredProviders(token, chain, active):
 고급 독자에게 중요한 결론은 이것입니다. Fluo의 resolver는 재귀적이지만 결코 마법적이지 않습니다. 모든 재귀 단계는 `container.ts`에 그대로 드러나 있고, 모든 분기는 runtime reflection이 아니라 normalized provider 데이터로부터 결정됩니다.
 
 ## 4.4 Optional tokens, forward references, aliases, and multi providers
-Fluo 설계의 우아한 지점은 special case가 한곳에 모인다는 점입니다. 모두 `path:packages/di/src/container.ts:857-879`의 `resolveDepToken()`으로 흘러갑니다. 이 helper 하나가 optional wrapper, forward reference, ordinary token을 해석합니다.
+Fluo 설계의 우아한 지점은 special case가 한곳에 모인다는 점입니다. 모두 `path:packages/di/src/container.ts:1193-1215`의 `resolveDepToken()`으로 흘러갑니다. 이 helper 하나가 optional wrapper, forward reference, ordinary token을 해석합니다.
 
 special dependency entry는 모두 이 helper에서 해석됩니다.
 
-`path:packages/di/src/container.ts:857-879`
+`path:packages/di/src/container.ts:1193-1215`
 ```typescript
   private async resolveDepToken(
     depEntry: Token | ForwardRefToken | OptionalInjectToken,
@@ -717,7 +790,7 @@ special dependency entry는 모두 이 helper에서 해석됩니다.
     activeTokens: Set<Token>,
   ): Promise<unknown> {
     if (isOptionalToken(depEntry)) {
-      const innerToken = depEntry.token;
+      const innerToken = normalizeFrameworkServiceToken(depEntry.token);
 
       if (!this.has(innerToken)) {
         return undefined;
@@ -732,21 +805,21 @@ special dependency entry는 모두 이 helper에서 해석됩니다.
       return this.resolveWithChain(resolvedToken, chain, activeTokens, /* allowForwardRef */ true);
     }
 
-    return this.resolveWithChain(depEntry as Token, chain, activeTokens);
+    return this.resolveWithChain(normalizeFrameworkServiceToken(depEntry as Token), chain, activeTokens);
   }
 ```
 
 optional은 먼저 등록 여부를 보고 없으면 `undefined`를 반환합니다. `forwardRef`는 컨테이너의 `forwardRefTokenCache`를 통해 factory 결과 token을 얻은 뒤, `allowForwardRef` 플래그를 켠 상태로 같은 resolver에 들어갑니다.
 
-optional injection은 가장 작은 분기입니다. dependency entry가 `OptionalInjectToken`이면 컨테이너는 먼저 `has(innerToken)`을 검사합니다. token이 없으면 에러 없이 `undefined`를 반환합니다. 있으면 평범하게 resolve합니다. 정확한 코드는 `path:packages/di/src/container.ts:862-870`에 있고, 두 결과는 `path:packages/di/src/container.test.ts:972-1009`에서 검증합니다.
+optional injection은 가장 작은 분기입니다. dependency entry가 `OptionalInjectToken`이면 컨테이너는 먼저 `has(innerToken)`을 검사합니다. token이 없으면 에러 없이 `undefined`를 반환합니다. 있으면 평범하게 resolve합니다. 정확한 코드는 `path:packages/di/src/container.ts:1198-1206`에 있고, 두 결과는 `path:packages/di/src/container.test.ts:972-1009`에서 검증합니다.
 
-forward reference도 의도적으로 단순합니다. `isForwardRef(depEntry)`가 참이면 wrapper는 `resolveForwardRefToken()`을 통해 lazy evaluation 되고 결과가 cache되며, 그 token을 `resolveWithChain(..., allowForwardRef=true)`에 넘깁니다. 이는 `path:packages/di/src/container.ts:872-876`과 `path:packages/di/src/container.ts:1367-1375`에 보입니다. 이 wrapper는 token lookup 시점을 늦출 뿐입니다. proxy 인스턴스나 lazy object를 만들어 주지 않습니다.
+forward reference도 의도적으로 단순합니다. `isForwardRef(depEntry)`가 참이면 wrapper는 `resolveForwardRefToken()`을 통해 lazy evaluation 되고 결과가 cache되며, 그 token을 `resolveWithChain(..., allowForwardRef=true)`에 넘깁니다. 이는 `path:packages/di/src/container.ts:1208-1212`과 `path:packages/di/src/container.ts:1928-1936`에 보입니다. 이 wrapper는 token lookup 시점을 늦출 뿐입니다. proxy 인스턴스나 lazy object를 만들어 주지 않습니다.
 
-이 구분이 중요합니다. 실제 constructor cycle이 남아 있으면 `resolveForwardRefCircularDependency()`는 여전히 예외를 던집니다. 다만 이번에는 `forwardRef only defers token lookup and does not resolve true circular construction`라는 detail string을 함께 붙입니다. 근거는 `path:packages/di/src/container.ts:744-762`와 `path:packages/di/src/container.test.ts:439-455`입니다.
+이 구분이 중요합니다. 실제 constructor cycle이 남아 있으면 `resolveForwardRefCircularDependency()`는 여전히 예외를 던집니다. 다만 이번에는 `forwardRef only defers token lookup and does not resolve true circular construction`라는 detail string을 함께 붙입니다. 근거는 `path:packages/di/src/container.ts:1035-1053`와 `path:packages/di/src/container.test.ts:439-455`입니다.
 
 forward reference가 허용된 재귀에서도 active token이 다시 보이면 cycle로 처리됩니다.
 
-`path:packages/di/src/container.ts:744-762`
+`path:packages/di/src/container.ts:1035-1053`
 ```typescript
   private resolveForwardRefCircularDependency(
     token: Token,
@@ -771,34 +844,44 @@ forward reference가 허용된 재귀에서도 active token이 다시 보이면 
 
 따라서 `forwardRef`는 선언 시점의 token lookup만 늦춥니다. 이미 생성 중인 token을 다시 만들 수 있게 허용하는 escape hatch는 아닙니다.
 
-alias는 dependency-entry 수준이 아니라 provider 수준 기능입니다. `useExisting` provider는 `path:packages/di/src/provider-normalization.ts:234-246`에서 정규화되고, 나중에 `path:packages/di/src/container.ts:738-742`의 `resolveAliasTarget()`이 실제 target token으로 redirect합니다. 즉 alias token은 target token의 resolved value에 대한 또 다른 이름입니다.
+alias는 dependency-entry 수준이 아니라 provider 수준 기능입니다. `useExisting` provider는 `path:packages/di/src/provider-normalization.ts:262-284`에서 정규화되고, 나중에 `path:packages/di/src/container.ts:1029-1033`의 `resolveAliasTarget()`이 실제 target token으로 redirect합니다. 즉 alias token은 target token의 resolved value에 대한 또 다른 이름입니다.
 
 정규화 단계에서 alias provider는 의존성 없는 `existing` 레코드로 닫힙니다.
 
-`path:packages/di/src/provider-normalization.ts:234-246`
+`path:packages/di/src/provider-normalization.ts:262-284`
 ```typescript
   if ('useExisting' in objectProvider) {
-    if (objectProvider.useExisting == null) {
-      throw new InvalidProviderError('Alias provider useExisting must be a non-null token.', { token: objectProvider.provide });
+    if (!isToken(objectProvider.useExisting)) {
+      throw new InvalidProviderError('Alias provider useExisting must be a string, symbol, or constructable class token.', { token: provide });
+    }
+
+    const useExisting = normalizeFrameworkServiceToken(objectProvider.useExisting);
+
+    if (useExisting === provide) {
+      throw new InvalidProviderError('Alias provider useExisting must not reference the alias token itself.', {
+        token: provide,
+        hint: 'Point useExisting at a different registered token.',
+      });
     }
 
     return freezeNormalizedProvider({
       inject: [],
-      provide: objectProvider.provide,
-      scope: 'singleton',
+      multi,
+      provide,
+      scope: explicitScope ?? 'singleton',
       type: 'existing',
-      useExisting: objectProvider.useExisting,
+      useExisting,
     });
   }
 ```
 
-이 레코드는 값을 복사하지 않습니다. `useExisting` target을 보관했다가 resolution 단계에서 같은 체인 추적으로 다시 조회하게 만듭니다.
+이 레코드는 값을 복사하지 않습니다. `useExisting` target을 보관했다가 resolution 단계에서 같은 체인 추적으로 다시 조회하게 만듭니다. 직접 self-alias는 나중에 순환 의존성으로 실패하는 대신 여기서 거부되며, alias의 명시적 scope는 등록 위치, request scope resolve 검사, singleton 의존성 검증에만 쓰입니다.
 
-그래서 alias chain도 허용됩니다. `path:packages/di/src/container.test.ts:1058-1074`는 여러 단계를 거친 alias chain이 결국 원래 인스턴스를 반환함을 보여 줍니다. 하지만 alias cycle은 허용되지 않습니다. `path:packages/di/src/container.ts:1308-1353`의 `resolveEffectiveProvider()`는 request-scope mismatch를 확인하기 위해 alias chain을 따라가다가, token이 반복되면 `CircularDependencyError`를 던집니다. 회귀 테스트는 `path:packages/di/src/container.test.ts:1076-1091`입니다.
+그래서 alias chain도 허용됩니다. `path:packages/di/src/container.test.ts:1058-1074`는 여러 단계를 거친 alias chain이 결국 원래 인스턴스를 반환함을 보여 줍니다. 하지만 alias cycle은 허용되지 않습니다. `path:packages/di/src/container.ts:1869-1914`의 `resolveEffectiveProvider()`는 request-scope mismatch를 확인하기 위해 alias chain을 따라가다가, token이 반복되면 `CircularDependencyError`를 던집니다. 회귀 테스트는 `path:packages/di/src/container.test.ts:1076-1091`입니다.
 
 alias target 조회는 체인을 유지한 채 target token으로 redirect합니다.
 
-`path:packages/di/src/container.ts:738-742`
+`path:packages/di/src/container.ts:1029-1033`
 ```typescript
   private async resolveAliasTarget<T>(existingTarget: Token<T>, token: Token, chain: Token[], activeTokens: Set<Token>): Promise<T> {
     return await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
@@ -807,24 +890,24 @@ alias target 조회는 체인을 유지한 채 target token으로 redirect합니
   }
 ```
 
-`path:packages/di/src/container.ts:806-812`
+`path:packages/di/src/container.ts:1118-1124`
 ```typescript
   private resolveExistingProviderTarget(provider: NormalizedProvider): Token | undefined {
     if (provider.type !== 'existing') {
       return undefined;
     }
 
-    return provider.useExisting;
+    return this.assertAliasResolvableHere(provider).useExisting;
   }
 ```
 
 alias는 별도 인스턴스를 만들지 않고 target token을 다시 해결합니다. `withTokenInChain`을 거치기 때문에 alias token도 에러 경로와 cycle 감지에 남습니다.
 
-multi provider는 또 다른 층위를 추가합니다. `path:packages/di/src/container.ts:584-604`의 `collectMultiProviders()`는 child scope에서 explicit override가 없는 한, 부모와 로컬 배열을 병합합니다. 그래서 request child는 root plugin list를 이어받으면서 request-scoped local plugin을 추가할 수 있습니다. default-scope local replacement는 일반 request-scope 등록에서 거부되므로 `override()`를 사용해야 합니다.
+multi provider는 또 다른 층위를 추가합니다. `path:packages/di/src/container.ts:869-889`의 `collectMultiProviders()`는 child scope에서 explicit override가 없는 한, 부모와 로컬 배열을 병합합니다. 그래서 request child는 root plugin list를 이어받으면서 request-scoped local plugin을 추가할 수 있습니다. default-scope local replacement는 일반 request-scope 등록에서 거부되므로 `override()`를 사용해야 합니다.
 
 multi provider collection은 parent entries 뒤에 local entries를 붙입니다.
 
-`path:packages/di/src/container.ts:584-604`
+`path:packages/di/src/container.ts:869-889`
 ```typescript
   private collectMultiProviders(token: Token): NormalizedProvider[] {
     const cached = this.readCachedPlan(this.multiProviderPlanCache, token);
@@ -853,11 +936,11 @@ override marker가 있으면 parent collection은 끊깁니다. 그렇지 않으
 
 동작은 정밀합니다. `path:packages/di/src/container.test.ts:1257-1267`은 request-scoped child registration이 parent multi set 뒤에 append됨을 증명합니다. `path:packages/di/src/container.test.ts:1269-1279`는 child multi `override()`가 parent collection을 끊음을, `path:packages/di/src/container.test.ts:1281-1291`은 child single override도 같은 cutoff를 적용함을 증명합니다.
 
-multi entry의 resolution은 single resolution과 다릅니다. `path:packages/di/src/container.ts:778-804`의 `resolveMultiProviderInstance()`는 token이 아니라 normalized provider object를 key로 cache합니다. 그래서 동일 token 아래 여러 entry가 있더라도, 각 entry는 자기 자신의 singleton/request identity를 유지할 수 있습니다.
+multi entry의 resolution은 single resolution과 다릅니다. `path:packages/di/src/container.ts:1069-1116`의 `resolveMultiProviderInstance()`는 token이 아니라 normalized provider object를 key로 cache합니다. 그래서 동일 token 아래 여러 entry가 있더라도, 각 entry는 자기 자신의 singleton/request identity를 유지할 수 있습니다.
 
 multi entry는 token 하나가 아니라 provider record 하나를 기준으로 cache됩니다.
 
-`path:packages/di/src/container.ts:778-795`
+`path:packages/di/src/container.ts:1069-1086`
 ```typescript
   private async resolveMultiProviderInstance(
     provider: NormalizedProvider,
@@ -865,18 +948,18 @@ multi entry는 token 하나가 아니라 provider record 하나를 기준으로 
     activeTokens: Set<Token>,
   ): Promise<unknown> {
     if (provider.type === 'existing') {
-      return await this.resolveWithChain(provider.useExisting as Token, chain, activeTokens);
+      return await this.resolveWithChain(this.assertAliasResolvableHere(provider).useExisting as Token, chain, activeTokens);
     }
 
     if (provider.scope === 'transient') {
       return await this.instantiate(provider, chain, activeTokens);
     }
 
-    if (this.shouldResolveMultiProviderFromRoot(provider)) {
-      return await this.root().resolveMultiProviderInstance(provider, chain, activeTokens);
-    }
+    const cacheOwner = this.cacheOwnerFor(provider);
 
-    const cache = this.multiCacheFor(provider);
+    if (cacheOwner !== this) {
+      return await cacheOwner.resolveMultiProviderInstance(provider, chain, activeTokens);
+    }
 ```
 
 동일 token 아래 여러 provider가 있어도 각 normalized provider가 독립적으로 해석됩니다. 이 발췌 이후의 cache set/get 분기는 provider object를 key로 쓰므로 multi entry마다 identity가 분리됩니다.
@@ -910,7 +993,7 @@ collectMultiProviders(token):
 
 실무적으로 보면 Fluo는 여러 고급 authoring pattern을 지원하면서도 정신 모델을 지나치게 넓히지 않습니다. special wrapper는 token lookup 규칙을 바꾸고, alias는 token identity를 바꾸며, multi provider는 결과 cardinality를 바꿉니다. 하지만 모두 같은 recursive resolver 위에서 동작합니다.
 
-이 설계는 테스트용 특수 컨테이너 구현도 단순하게 만듭니다. `path:packages/di/src/container.ts:670-720`의 핵심 해결 로직은 특정 등록 맵에 고정되어 있지 않으므로, 테스트 컨테이너는 전체 그래프를 다시 정규화하지 않고 개별 token을 재정의할 수 있습니다. 이런 "정밀 재정의(surgical override)"는 통합 테스트를 빠르고 안정적으로 유지하는 데 도움이 됩니다. 실제 데이터베이스 서비스를 mock 서비스로 교체하면, 리졸버는 그 token 아래의 새 정의를 따라갑니다.
+이 설계는 테스트용 특수 컨테이너 구현도 단순하게 만듭니다. `path:packages/di/src/container.ts:955-1011`의 핵심 해결 로직은 특정 등록 맵에 고정되어 있지 않으므로, 테스트 컨테이너는 전체 그래프를 다시 정규화하지 않고 개별 token을 재정의할 수 있습니다. 이런 "정밀 재정의(surgical override)"는 통합 테스트를 빠르고 안정적으로 유지하는 데 도움이 됩니다. 실제 데이터베이스 서비스를 mock 서비스로 교체하면, 리졸버는 그 token 아래의 새 정의를 따라갑니다.
 
 통합된 해결 경로는 구현 유형이 달라도 모든 provider가 같은 프레임워크 규칙을 받도록 합니다. class provider, factory provider, value provider 모두 동일한 의존성 추적과 cycle 감지 로직에 참여합니다. 이 일관성은 Fluo의 "표준 우선" 접근에 중요합니다. 유형마다 별도 규칙을 늘리기보다, 모두에게 적용되는 하나의 해결 계약을 유지합니다.
 
@@ -920,7 +1003,7 @@ collectMultiProviders(token):
 
 마지막으로 해결 파이프라인은 "핫 패스(hot-path)" 성능을 고려해 구성됩니다. 불필요한 할당을 피하고 chain 추적에 효율적인 자료 구조를 사용해 `resolve()` 호출의 오버헤드를 줄입니다. 이미 singleton cache에 있는 서비스를 해결하는 경우에는 몇 번의 조회로 끝납니다. 복잡한 의존성 그래프에서도 부트스트랩과 런타임 비용을 통제하기 위한 설계입니다.
 
-해결 로직은 컨테이너의 "폐기(disposal)" 생명주기도 존중합니다. 컨테이너 또는 ancestor가 폐기된 상태라면 새 인스턴스 생성을 막기 위해 해결 시도를 중단합니다. 이는 `path:packages/di/src/container.ts:459-470`의 public `resolve()` 가드에서 확인할 수 있습니다. 생성과 종료가 같은 상태 모델을 공유해야 애플리케이션 실행 기간 전체에서 resource ownership이 흔들리지 않습니다.
+해결 로직은 컨테이너의 "폐기(disposal)" 생명주기도 존중합니다. 컨테이너 또는 ancestor가 폐기된 상태라면 새 인스턴스 생성을 막기 위해 해결 시도를 중단합니다. 이는 `path:packages/di/src/container.ts:657-670`의 public `resolve()` 가드에서 확인할 수 있습니다. 생성과 종료가 같은 상태 모델을 공유해야 애플리케이션 실행 기간 전체에서 resource ownership이 흔들리지 않습니다.
 
 ## 4.5 Error contracts and why they are part of the algorithm
 Fluo에서 에러 보고는 사후 포장이 아닙니다. `path:packages/di/src/errors.ts:1-154`의 error class들은 컨테이너 계약의 일부입니다. 깨진 module graph나 provider declaration을 운영자가 어떻게 추적하는지 자체를 규정합니다.
@@ -931,11 +1014,11 @@ Fluo에서 에러 보고는 사후 포장이 아닙니다. `path:packages/di/src
 
 이 가이드 메시지는 단순한 도움말보다 더 실용적인 역할을 합니다. 실패 지점마다 개발자가 자신의 provider 구성과 module boundary를 다시 볼 수 있게 만듭니다. 즉 throw site는 구조화된 context만 붙이면 되고, 한 formatter가 사람이 읽기 좋은 형태로 정리해 줍니다.
 
-`ContainerResolutionError`는 missing provider, disposed-container operation, 기타 lifecycle failure를 담당합니다. missing-provider 분기는 `path:packages/di/src/container.ts:722-736`의 `requireProvider()`에서 던져집니다. 거기 들어 있는 hint 문구를 보십시오. 이미 reader를 module `providers`, `exports`, `imports` 관계 쪽으로 유도하고 있습니다.
+`ContainerResolutionError`는 missing provider, disposed-container operation, 기타 lifecycle failure를 담당합니다. missing-provider 분기는 `path:packages/di/src/container.ts:1013-1027`의 `requireProvider()`에서 던져집니다. 거기 들어 있는 hint 문구를 보십시오. 이미 reader를 module `providers`, `exports`, `imports` 관계 쪽으로 유도하고 있습니다.
 
 missing provider 에러는 token과 복구 hint를 같은 자리에서 구성합니다.
 
-`path:packages/di/src/container.ts:722-736`
+`path:packages/di/src/container.ts:1013-1027`
 ```typescript
   private requireProvider(token: Token): NormalizedProvider {
     const provider = this.lookupProvider(token);
@@ -956,13 +1039,13 @@ missing provider 에러는 token과 복구 hint를 같은 자리에서 구성합
 
 이 발췌는 실패한 token lookup이 단순한 `undefined` 반환으로 끝나지 않는다는 점을 보여 줍니다. 에러는 등록 위치와 module import/export 관계를 점검하라는 방향을 함께 제공합니다.
 
-`RequestScopeResolutionError`는 request-scoped provider를 request scope 밖에서 resolve할 때 `cacheFor()`와 `multiCacheFor()`에서 발생합니다. 근거는 `path:packages/di/src/container.ts:958-970`과 `path:packages/di/src/container.ts:981-993`입니다. 이것은 단순 생성 실패가 아니라 아키텍처 위반을 설명하는 런타임 에러입니다.
+`RequestScopeResolutionError`는 request-scoped provider를 request scope 밖에서 resolve할 때 `cacheFor()`와 `multiCacheFor()`에서 발생합니다. 근거는 `path:packages/di/src/container.ts:1294-1306`과 `path:packages/di/src/container.ts:1317-1329`입니다. 이것은 단순 생성 실패가 아니라 아키텍처 위반을 설명하는 런타임 에러입니다.
 
-`ScopeMismatchError`는 한 단계 더 위의 검증입니다. `path:packages/di/src/container.ts:1234-1306`의 `assertSingletonDependencyScopes()`와 재귀 helper는 singleton 생성 전에 dependency graph를 순회하고, request-scoped provider에 도달하는 path를 거부합니다. 이 탐색은 effective provider, multi-provider contribution, wrapper, nested dependency, class metadata를 따라가므로 alias, multi token, transitive edge에도 동일하게 적용됩니다.
+`ScopeMismatchError`는 한 단계 더 위의 검증입니다. `path:packages/di/src/container.ts:1710-1828`의 `assertSingletonDependencyScopes()`와 재귀 helper는 singleton 생성 전에 dependency graph를 순회하고, request-scoped provider에 도달하는 path를 거부합니다. 이 탐색은 effective provider, multi-provider contribution, wrapper, nested dependency, class metadata를 따라가므로 alias, multi token, transitive edge에도 동일하게 적용됩니다.
 
 singleton dependency scope 검사는 provider 생성 전에 실행됩니다.
 
-`path:packages/di/src/container.ts:1234-1251`
+`path:packages/di/src/container.ts:1710-1727`
 ```typescript
   private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
     if (provider.scope !== 'singleton') {
@@ -971,7 +1054,7 @@ singleton dependency scope 검사는 provider 생성 전에 실행됩니다.
 
     const requestScopedDependency = this.findRequestScopedDependency(provider.inject, new Set<Token>([provider.provide]));
 
-    if (requestScopedDependency) {
+    if (requestScopedDependency !== undefined) {
       throw new ScopeMismatchError(
         `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(requestScopedDependency)}.`,
         {
@@ -988,9 +1071,9 @@ singleton dependency scope 검사는 provider 생성 전에 실행됩니다.
 
 `CircularDependencyError`는 의도적으로 매우 노골적입니다. `path:packages/di/src/errors.ts:106-125`의 constructor는 full chain과 함께, shared logic 분리, mediator, 또는 생성 이후 경계로 이동을 권장하는 first-party hint를 넣습니다. 그 복구 조언은 표준 해결 모델에 뿌리를 두고 있습니다.
 
-고급 분석 루프를 마무리하려면 장의 주장을 소스의 실제 행동 계약과 일치시켜야 합니다. `path:packages/di/src/provider-normalization.ts:168-249`는 `normalizeProvider`가 실제로 모든 프로바이더 형태의 기본 진입점임을 확인합니다. `path:packages/di/src/container.ts:670-683`은 `resolveWithChain`이 운영의 첫 번째 분기로 사이클 감지를 처리함을 증명합니다. `path:packages/di/src/container.ts:1201-1232`는 `instantiate`가 생성자가 실행되기 전에 싱글톤 스코프 위생을 강제함을 보여줍니다. `path:packages/di/src/container.ts:857-879`는 optional, forwardRef, 표준 토큰이 통합된 해결 헬퍼를 공유함을 보여줍니다. `path:packages/di/src/container.test.ts:1223-1255`와 `path:packages/di/src/container.test.ts:737-755`의 테스트는 대표적인 multi-provider 집계·순서 보존과 registration-conflict 동작을 보여 줍니다.
+고급 분석 루프를 마무리하려면 장의 주장을 소스의 실제 행동 계약과 일치시켜야 합니다. `path:packages/di/src/provider-normalization.ts:178-287`는 `normalizeProvider`가 실제로 모든 프로바이더 형태의 기본 진입점임을 확인합니다. `path:packages/di/src/container.ts:955-968`은 `resolveWithChain`이 운영의 첫 번째 분기로 사이클 감지를 처리함을 증명합니다. `path:packages/di/src/container.ts:1677-1708`는 `instantiate`가 생성자가 실행되기 전에 싱글톤 스코프 위생을 강제함을 보여줍니다. `path:packages/di/src/container.ts:1193-1215`는 optional, forwardRef, 표준 토큰이 통합된 해결 헬퍼를 공유함을 보여줍니다. `path:packages/di/src/container.test.ts:1223-1255`와 `path:packages/di/src/container.test.ts:737-755`의 테스트는 대표적인 multi-provider 집계·순서 보존과 registration-conflict 동작을 보여 줍니다.
 
-이 표준 우선 아키텍처는 모듈 그래프가 복잡해져도 DI 컨테이너를 예측 가능한 상태 머신으로 유지합니다. 복잡성은 정규화 단계로 옮기고, 등록 중에는 스코프와 토폴로지 규칙을 강제합니다. `path:packages/di/src/types.ts:137-168`의 `ForwardRef.create()` 지원도 이 모델 안에 들어 있으며, 프록시 객체를 만들지 않고 조회 지연 marker만 제공합니다.
+이 표준 우선 아키텍처는 모듈 그래프가 복잡해져도 DI 컨테이너를 예측 가능한 상태 머신으로 유지합니다. 복잡성은 정규화 단계로 옮기고, 등록 중에는 스코프와 토폴로지 규칙을 강제합니다. `path:packages/di/src/types.ts:115-154`의 `ForwardRef.create()` 지원도 이 모델 안에 들어 있으며, 프록시 객체를 만들지 않고 조회 지연 marker만 제공합니다.
 
 구현 관점의 디버깅 체크리스트는 다음과 같습니다.
 - 등록 직후 실패하면 normalization과 duplicate check를 먼저 본다.

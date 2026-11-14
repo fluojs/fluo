@@ -24,11 +24,31 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs init --from-lane-v2 .om
 node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs plan --root . --lane <lane.json> --issue <n>
 ```
 
-The v2 ledger supplies the lane id, base, confirmed issues, dependencies, and
-merge grant. Its source path and byte digest remain provenance. External
-issue dependencies are rejected. Read predicted conflicts before dispatch.
+The v2 ledger supplies the lane id, base, confirmed issues, dependencies,
+merge grant and approved `retry_policy`. Its source path and byte digest remain
+provenance. External issue dependencies are rejected. Read predicted conflicts before dispatch.
 Hand-initialized lanes need an explicit merge grant; importing a ledger does
 not authorize expanding its issue set.
+
+An imported `retry_policy` must contain exactly `retry_count_is_terminal`,
+`max_same_failure_repeats`, `max_wall_clock_minutes` and
+`stop_on_child_contract_error`. The terminal flag is boolean and the stop flag
+is exactly true. Both limits must be positive integers, or both null with the
+terminal flag false. Invalid policies raise `TypeError` before any lane is
+created. The pure engine applies the same validation before handling any result;
+a missing or nonnumeric bounded limit never becomes unlimited retries.
+
+`init` rejects an existing lane file, for both explicit issue specs and v2
+intake, preserving its bytes. It never resets an active lane. State writers
+(`record`, `set-fact`, `approve-merge`, `clear-blocker`) serialize the entire
+read/validate/update operation with a per-file exclusive lock and publish complete
+JSON atomically. Readers can continue during a write. Node's built-in SQLite
+holds an OS-owned write transaction on the persistent `.lock` file, with a
+60 second contention timeout that fails without changing lane state. The OS
+releases a killed writer's ownership, so subsequent writers recover without
+deleting the lock file or stealing ownership from a live process. Concurrent
+recovery contenders serialize through that same OS lock; no PID reuse or
+elapsed-time guess determines ownership. Lane data remains JSON, not SQL.
 
 ## Canonical order
 
@@ -63,6 +83,56 @@ alone neither publishes a PR nor authorizes merge.
 Resolve sibling paths relative to this skill. Read the stage before executing
 its action. Only the lead writes shared lane state and performs remote writes.
 Implementers stay in their assigned worktree; reviewers are read-only.
+
+### Registered dispatch and admission
+
+Use the returned `dispatch` as the native task route (`subagent_type`), with
+`run_in_background: true`. `preflight` selects `fluo-issue-preflight`;
+`implement` and every `fix-back` select `fluo-issue-implementer`. A `review`
+decision maps each effective axis to `fluo-contract-reviewer`,
+`fluo-code-reviewer`, or `fluo-verification-reviewer`. Review preparation puts
+the same route on `reviewers[i].dispatch`, leaving `common` identical.
+Retrospective analysis selects `fluo-retrospective`. These six agents are
+registered in `.omo/omo.jsonc` and read their own role reference first.
+`scripts/dispatch-targets.mjs` supplies routing values, shared registration
+reading and validation. The JSONC configuration and its own `agents` map must
+be plain objects. A registered name is an own key with a plain-object definition
+(including null-prototype maps); inherited keys never count. Missing, unreadable
+or structurally invalid registration produces `dispatch-registration-unreadable`.
+A missing or invalid agent entry produces `dispatch-target-unavailable`. Both
+are typed input-preparation blocks with `fix_back_eligible: false`.
+
+Observation stays independent of registration: `plan`, `plan-all` without
+`--with-retro`, and `watch` while work remains keep working with unreadable
+configuration. Their intended `dispatch` metadata is not an availability check.
+Preparation, success admission and a new retrospective analysis request validate
+registration. When every issue is done, `watch` can therefore exit nonzero with
+the typed JSON block while preparing `RETRO-READY`; readable registration retains
+the existing output and exit behavior. Existing retrospective reports remain
+reusable without reading registration again.
+
+The lead binds actual child routing to the new `record` success wrapper:
+`{ok:true, agent:"fluo-issue-preflight", ...}` or
+`{ok:true, agent:"fluo-issue-implementer", ...}`. Keep the preflight artifact,
+implementer `Result`, and effective policy digest unchanged. Review `record`
+successes include `{ok:true, head_sha, preflight_sha256, active_axes, reviews}`;
+every envelope includes the assigned `agent`. `set-fact --kind review` applies
+the same strict new-input admission. Missing, wrong-axis, unregistered, or
+category substitute identity cannot record success. Keep raw failures as
+retrospective evidence under the existing retry contract.
+
+If a target is unregistered or cannot run, do not use a category worker.
+Record the lead's observation as
+`{ok:false,error:{kind:"input-preparation",code:"dispatch-target-unavailable",
+subagent_type:"<assigned target>",fix_back_eligible:false}}` for that phase.
+This parks it as `input-preparation` without an implementation retry; restore
+the route and clear that phase's blocker before planning again. It is never a
+reviewer product BLOCK or an implementation fix-back.
+
+Stored canonical review facts without `agent` retain their original validation,
+content, `accepted_at` and local-check/waiver bindings. Only stored-fact reading
+allows this legacy shape; new `record` and `set-fact` inputs require identity.
+Dispatch metadata never enters accepted preflight or effective policy digests.
 
 ## Preflight and review policy
 
@@ -147,10 +217,53 @@ of actual focused results and packed command/report metadata for every axis.
 4. Run `plan` again until every issue is observably done or has a typed
    blocker requiring a decision.
 
-Failed or malformed children requeue under lane retry accounting. An exhausted
-attempt budget is resumable; never hide failure as success. Preserve the same
-issue/branch/worktree/optional PR during fix-back. Use a fresh implementation
+Failed children requeue under the imported retry policy. Adaptive policies
+(`retry_count_is_terminal: false`) retain attempt counts, repeated failure counts
+and elapsed milliseconds as telemetry, without stopping fixable work at either
+limit. Bounded policies enforce `max_same_failure_repeats` for consecutive equal
+failure payloads and `max_wall_clock_minutes` from the phase's first failure.
+Failure identity uses `result.error`, then `result.failed_command`, then the
+result itself. `stop_on_child_contract_error` parks malformed results (no boolean
+`ok`) and explicit `error: {type: "child-contract-error"}` (even with `ok: true`) as
+`child-contract-error`. A success resets only that phase's attempts and telemetry.
+Existing v4 files with absent or null `retry_policy` retain the legacy ceiling
+of 3, including retrying malformed results. Stored null remains null; no migration
+is needed. Every non-null policy retains strict validation.
+
+`record` persists a child-contract-error policy outcome and its raw stage event
+without admitting phase evidence, including for `resolve-conflict` and
+`verify-local`. Ordinary stage results still require their existing head and
+evidence bindings, even when a prior contract-error blocker is already present.
+
+An exhausted attempt budget is resumable; never hide failure as success. Preserve
+the same issue/branch/worktree/optional PR during fix-back. Use a fresh implementation
 child for remediation, carrying canonical blockers and accepted preflight.
+
+To explicitly resume a parked phase, use:
+
+```text
+node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs clear-blocker --root . --lane <lane.json> --issue <n> --phase <blocked-phase>
+```
+
+The phase must match the current blocker's phase. This clears that blocker and
+resets only that phase's attempts and retry telemetry, preserving all other
+issues, facts, approvals and counters. It appends an `incident` with
+`action: "clear-blocker"`, a fresh `operation_id` and the removed blocker to the
+existing retrospective store, retaining every clear even after identical repeated
+exhaustion. Run a fresh `plan` afterward; clearing a blocker supplies no passing
+evidence or additional authority.
+
+Required PR, issue and dependency GitHub observations fail closed.
+`plan` and `plan-all` return the `observation-failed` action with
+`failures: [{source, subject, code}]`, where source is `pr`, `issue` or
+`dependency`, and code is `command-failed` or `invalid-response`. `watch`
+uses the same decisions and emits the matching action transition.
+The explicit `gh pr view` no-pull-request outcome remains a successful absence;
+authentication, network and other errors cannot become absence or changed issue
+content. Failed observations authorize no stage action, including preflight,
+implementation or PR creation. Restore observation access and plan again;
+watch reports the transition and continues observing rather than settling it
+as a policy blocker.
 
 Dependencies release from fresh GitHub issue-closed observations, not task
 completion. Use the CLI `watch` through a monitor to receive transitions and

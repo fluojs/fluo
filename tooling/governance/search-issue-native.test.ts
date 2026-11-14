@@ -80,6 +80,22 @@ const runRejectedIntake = (...arguments_: readonly string[]) => {
 };
 
 describe('$search-issue native registration workflow', () => {
+  it('#4091 reviewer routes: repository domain -> supported native categories', async () => {
+    const { validateReviewerRoutes, reviewerCategories } = await import(
+      new URL('../../.agents/skills/execute-lane/scripts/dispatch-targets.mjs', import.meta.url).href
+    );
+    const domain = parseJsonFile(resolve(skillRoot, 'references/domain.json'));
+    const reviewers = domain['reviewers'];
+    expect(isRecord(reviewers)).toBe(true);
+    if (!isRecord(reviewers)) throw new TypeError('Expected reviewer routes');
+    expect(() => validateReviewerRoutes(reviewers)).not.toThrow();
+    for (const category of reviewerCategories) {
+      expect(() => validateReviewerRoutes({ fixture: { category } })).not.toThrow();
+    }
+    for (const category of ['deep', 'depp-high', 'unregistered', '', null]) {
+      expect(() => validateReviewerRoutes({ ...reviewers, fixture: { category } })).toThrow(TypeError);
+    }
+  });
   it('requires the explicit fixture-only boundary for synthetic scenarios', () => {
     const outputDirectory = mkdtempSync(resolve(tmpdir(), 'fluo-search-issue-'));
     try {

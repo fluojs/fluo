@@ -30,6 +30,7 @@ import {
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
+  enforceHttpRuntimeCancellationAndContextIsolation,
   enforceMandatoryFirstPartyDependencyEngineAlignment,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInCloudflareWorkerServices,
@@ -51,6 +52,44 @@ import {
   migrationGuideSnapshotsFromGit,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
+
+describe('HTTP byte-range contract governance', () => {
+  it.each([
+    [
+      'GET-only selection',
+      'packages/http/src/byte-range-response.ts',
+      "return method.toUpperCase() === 'GET';",
+      "return ['GET', 'HEAD'].includes(method.toUpperCase());",
+      /GET-only and effective-200-only/u,
+    ],
+    [
+      'effective-200-only selection',
+      'packages/http/src/byte-range-response.ts',
+      'isByteRangeRequestMethod(request.method) && response.statusCode === 200',
+      'isByteRangeRequestMethod(request.method)',
+      /GET-only and effective-200-only/u,
+    ],
+    [
+      'full HEAD byte length',
+      'packages/http/src/dispatch/dispatch-response-policy.ts',
+      "response.setHeader('Content-Length', String(headRepresentation.byteLength));",
+      "response.setHeader('Content-Length', '0');",
+      /HEAD full-length/u,
+    ],
+  ])('rejects byte-range contract drift in %s', (_label, path, original, replacement, expectedError) => {
+    // Given: a runtime source that regresses one corrected byte-range guarantee.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === path ? content.replace(original, replacement) : content;
+    };
+
+    // When: the central HTTP runtime content guard checks that source.
+    const enforceContract = () => enforceHttpRuntimeCancellationAndContextIsolation(readText);
+
+    // Then: it rejects the regression rather than accepting the old contract.
+    expect(enforceContract).toThrow(expectedError);
+  });
+});
 
 describe('cache-manager direct Redis client documentation guard', () => {
   it('accepts the direct ioredis contract and consumer evidence in both locales', () => {
@@ -2945,6 +2984,40 @@ describe('changedFilesFromGit', () => {
 });
 
 describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
+  it.each([
+    ['book/advanced/ch02-metadata.md', 'getInjectionSchema', 2],
+    ['book/advanced/ch02-metadata.ko.md', 'getInjectionSchema', 2],
+    ['book/advanced/ch03-custom-decorators.md', 'defineInjectionMetadata', 1],
+    ['book/advanced/ch03-custom-decorators.ko.md', 'defineInjectionMetadata', 1],
+  ] as const)('resolves injection source citations to the complete declaration in %s', (chapterPath, declarationName, citationCount) => {
+    // Given: the real injection declarations and the chapter's path:line references.
+    const source = createSourceFile(
+      'injection.ts',
+      readFileSync(join(repoRoot, 'packages/core/src/metadata/injection.ts'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+    );
+    const declaration = source.statements.filter(isFunctionDeclaration)
+      .find((statement) => statement.name?.text === declarationName);
+    if (declaration === undefined) {
+      throw new TypeError(`Expected injection declaration ${declarationName}.`);
+    }
+    const chapter = readFileSync(join(repoRoot, chapterPath), 'utf8');
+
+    // When: every citation is resolved to its inclusive source range.
+    const ranges = [...chapter.matchAll(/`path:packages\/core\/src\/metadata\/injection\.ts:(\d+)-(\d+)`/gu)]
+      .map((match) => [Number(match[1]), Number(match[2])]);
+
+    // Then: citations start at the export and end at the declaration's closing brace.
+    expect(ranges).toHaveLength(citationCount);
+    for (const range of ranges) {
+      expect(range).toEqual([
+        source.getLineAndCharacterOfPosition(declaration.getStart(source)).line + 1,
+        source.getLineAndCharacterOfPosition(declaration.getEnd() - 1).line + 1,
+      ]);
+    }
+  });
+
   it('keeps the advanced metadata key-merge examples synchronized with core source', () => {
     // Given: the authoritative core implementation and both localized chapter mirrors.
     const source = readFileSync(join(repoRoot, 'packages/core/src/metadata/shared.ts'), 'utf8');
@@ -2953,7 +3026,7 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 
     // When: the implementation and path-anchored documentation examples are extracted.
     const implementationMatch = /export function mergeMetadataPropertyKeys[\s\S]*?\n\}\n/u.exec(source);
-    const documentedExamplePattern = /`path:packages\/core\/src\/metadata\/shared\.ts:369-397`\n```typescript\n([\s\S]*?)\n```/u;
+    const documentedExamplePattern = /`path:packages\/core\/src\/metadata\/shared\.ts:396-417`\n```typescript\n([\s\S]*?)\n```/u;
     const englishMatch = documentedExamplePattern.exec(english);
     const koreanMatch = documentedExamplePattern.exec(korean);
 

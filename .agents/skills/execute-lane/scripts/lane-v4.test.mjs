@@ -32,7 +32,7 @@ const policy = evaluatePreflight(preflight, binding).policy;
 const makeReview = (signal = 'PASS', head = 'a'.repeat(40)) => buildReviewFact({
 	head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
 	reviews: policy.active_axes.map((reviewer) => ({
-		reviewer, reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: signal,
+		reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: signal,
 		blockers: signal === 'BLOCK' ? [{ reviewer, signature: 'route:order', evidence: 'router.ts:1', fix_back_eligible: true, status: 'unresolved' }] : [],
 	})),
 }, head, policy);
@@ -71,6 +71,31 @@ const makeObs = (overrides = {}) => ({
 	...overrides,
 });
 
+test('#4091 decisions: child stages -> registered dispatch targets without policy changes', () => {
+	const cases = [
+		[{ preflight: null }, 'preflight', { subagent_type: 'fluo-issue-preflight' }],
+		[{ hasNewCommits: false }, 'implement', { subagent_type: 'fluo-issue-implementer' }],
+		[{ changesetPresent: false }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ generatedIntegrationRequired: [{}] }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ review: makeReview('BLOCK') }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ localChecks: { ...makeObs().localChecks, status: 'failed' } }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ knownBaselines: [{ head: 'a'.repeat(40), status: 'still-failing' }] }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ pr: { number: 1, state: 'OPEN', headSha: 'a'.repeat(40), ciStatus: 'failing' } }, 'fix-back', { subagent_type: 'fluo-issue-implementer' }],
+		[{ review: null }, 'review', {
+			contract: { subagent_type: 'fluo-contract-reviewer' },
+			code: { subagent_type: 'fluo-code-reviewer' },
+			verification: { subagent_type: 'fluo-verification-reviewer' },
+		}],
+	];
+	for (const [patch, action, dispatch] of cases) {
+		const next = decideNext(makeLane(), makeObs(patch));
+
+		assert.equal(next.action, action);
+		assert.deepEqual(next.dispatch, dispatch);
+		if (action === 'review') assert.deepEqual(next.policy, policy);
+	}
+});
+
 // Regression evidence: legacy facts must not bypass the mandatory gates.
 test('mandatory preflight precedes implementation', () => {
 	assert.equal(decideNext(makeLane(), makeObs({ branch: null, worktree: null, preflight: null })).action, 'preflight');
@@ -101,7 +126,7 @@ test('C1: an arbitrary local-check fact does not block a reviewed ordinary chang
 
 test('C1: a revalidated local receipt that becomes invalid routes to fix-back', () => {
 	const next = decideNext(makeLane(), makeObs({ localChecks: { ...makeObs().localChecks, status: 'failed', valid: false } }));
-	assert.deepEqual(next, { action: 'fix-back', reason: 'local-checks-failed', head: 'a'.repeat(40) });
+	assert.deepEqual(next, { action: 'fix-back', dispatch: { subagent_type: 'fluo-issue-implementer' }, reason: 'local-checks-failed', head: 'a'.repeat(40) });
 });
 
 test('C1: receipt references fail closed before filesystem access', () => {
@@ -154,7 +179,7 @@ test('focused-first: reviewed CI and harness changes -> publication without full
 		obs.review = buildReviewFact({
 			head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256, active_axes: pathPolicy.active_axes,
 			reviews: pathPolicy.active_axes.map((reviewer) => ({
-				reviewer, reviewed_head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256,
+				reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256,
 				verdict_signal: 'PASS', blockers: [],
 			})),
 		}, obs.headSha, pathPolicy);
@@ -179,7 +204,7 @@ test('focused-first: reviewed CI heads -> publication unless applicable local fa
 	ciObs.review = buildReviewFact({
 		head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256, active_axes: ciPolicy.active_axes,
 		reviews: ciPolicy.active_axes.map((reviewer) => ({
-			reviewer, reviewed_head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256,
+			reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256,
 			verdict_signal: 'PASS', blockers: [],
 		})),
 	}, ciObs.headSha, ciPolicy);
@@ -363,6 +388,118 @@ test('C2: success resets the attempt counter', () => {
 	lane = applyChildResult(lane, 'implement', { ok: true });
 	assert.equal(lane.attempts.implement, 0);
 	assert.equal(lane.blocker, null);
+});
+
+const adaptivePolicy = {
+	retry_count_is_terminal: false, max_same_failure_repeats: 2,
+	max_wall_clock_minutes: 1, stop_on_child_contract_error: true,
+};
+
+test('retry policy: adaptive count and elapsed telemetry -> fixable work keeps retrying', () => {
+	let lane = makeLane();
+	for (let i = 0; i < 6; i++) {
+		lane = applyChildResult(lane, 'implement', { ok: false, error: 'same' },
+			{ retryPolicy: adaptivePolicy, now: i * 120_000 });
+	}
+	assert.equal(lane.attempts.implement, 6);
+	assert.equal(lane.blocker, null);
+	assert.equal(lane.retry_telemetry.implement.elapsed_ms, 600_000);
+	assert.equal(lane.retry_telemetry.implement.same_failure_repeats, 6);
+	const success = applyChildResult(lane, 'implement', { ok: true },
+		{ retryPolicy: adaptivePolicy, now: 700_000 });
+	assert.equal(success.attempts.implement, 0);
+	assert.equal(success.retry_telemetry.implement, undefined);
+});
+
+test('retry policy: bounded repeat and wall clock limits -> original budget blocks', () => {
+	const retryPolicy = { ...adaptivePolicy, retry_count_is_terminal: true };
+	let lane = applyChildResult(makeLane(), 'implement', { ok: false, error: 'first' }, { retryPolicy, now: 0 });
+	lane = applyChildResult(lane, 'implement', { ok: false, error: 'different' }, { retryPolicy, now: 1 });
+	assert.equal(lane.blocker, null);
+	const repeat = applyChildResult(lane, 'implement', { ok: false, error: 'different' }, { retryPolicy, now: 2 });
+	assert.deepEqual(repeat.blocker, { type: 'attempts-exhausted', phase: 'implement' });
+	const elapsed = applyChildResult(lane, 'implement', { ok: false, error: 'third' }, { retryPolicy, now: 60_000 });
+	assert.deepEqual(elapsed.blocker, { type: 'retry-time-exhausted', phase: 'implement' });
+});
+
+test('retry policy: malformed child and explicit contract error -> policy blocker', () => {
+	for (const result of [null, {}, { ok: 'true' }, { ok: false, error: { type: 'child-contract-error' } }]) {
+		const lane = applyChildResult(makeLane(), 'implement', result, { retryPolicy: adaptivePolicy, now: 0 });
+		assert.deepEqual(lane.blocker, { type: 'child-contract-error', phase: 'implement' });
+	}
+	assert.throws(() => applyChildResult(makeLane(), 'implement', null,
+		{ retryPolicy: { ...adaptivePolicy, stop_on_child_contract_error: false }, now: 0 }), TypeError);
+	const retry = applyChildResult(makeLane(), 'implement', null);
+	assert.equal(retry.blocker, null);
+});
+
+test('retry policy: malformed policy at engine boundary -> throws for failures and apparent success', () => {
+	const malformed = [
+		{ retry_count_is_terminal: true, stop_on_child_contract_error: true },
+		{ ...adaptivePolicy, unknown: 1 },
+		{ ...adaptivePolicy, stop_on_child_contract_error: false },
+		{ ...adaptivePolicy, retry_count_is_terminal: 'true' },
+		{ ...adaptivePolicy, max_same_failure_repeats: undefined },
+		{ ...adaptivePolicy, max_wall_clock_minutes: '1' },
+		{ ...adaptivePolicy, max_wall_clock_minutes: 0 },
+		{ ...adaptivePolicy, max_wall_clock_minutes: -1 },
+		{ ...adaptivePolicy, max_wall_clock_minutes: 1.5 },
+		{ ...adaptivePolicy, max_same_failure_repeats: Number.NaN },
+		{ ...adaptivePolicy, max_same_failure_repeats: Number.POSITIVE_INFINITY },
+		{ ...adaptivePolicy, max_same_failure_repeats: null },
+		false, [],
+	];
+
+	for (const retryPolicy of malformed) {
+		for (const result of [{ ok: false, error: 'same' }, { ok: true }]) {
+			assert.throws(() => applyChildResult(makeLane(), 'implement', result,
+				{ retryPolicy, now: 0 }), TypeError);
+		}
+	}
+});
+
+test('retry policy: null -> legacy failure ceiling and success reset match absent policy', () => {
+	let current = makeLane();
+	let legacy = makeLane();
+	for (let attempt = 1; attempt <= ATTEMPT_CEILING; attempt++) {
+		legacy = applyChildResult(legacy, 'implement', { ok: false });
+
+		assert.doesNotThrow(() => {
+			current = applyChildResult(current, 'implement', { ok: false }, { retryPolicy: null });
+		});
+
+		assert.deepEqual(current, legacy);
+		assert.equal(current.attempts.implement, attempt);
+	}
+	assert.deepEqual(current.blocker, { type: 'attempts-exhausted', phase: 'implement' });
+	legacy = applyChildResult(legacy, 'implement', { ok: true });
+	assert.doesNotThrow(() => {
+		current = applyChildResult(current, 'implement', { ok: true }, { retryPolicy: null });
+	});
+	assert.deepEqual(current, legacy);
+	assert.equal(current.attempts.implement, 0);
+});
+
+test('retry policy: explicit contract error with ok true -> blocker before success, legacy unchanged', () => {
+	const lane = makeLane({ attempts: { implement: 2 },
+		retry_telemetry: { implement: { started_at: 0, elapsed_ms: 2, failure: 'old', same_failure_repeats: 1 } } });
+	const result = { ok: true, error: { type: 'child-contract-error' } };
+
+	const next = applyChildResult(lane, 'implement', result, { retryPolicy: adaptivePolicy, now: 3 });
+
+	assert.deepEqual(next.blocker, { type: 'child-contract-error', phase: 'implement' });
+	assert.equal(next.attempts.implement, 3);
+	assert.equal(next.retry_telemetry.implement.elapsed_ms, 3);
+	assert.deepEqual(applyChildResult(lane, 'implement', result),
+		{ ...lane, attempts: { implement: 0 }, retry_telemetry: {} });
+});
+
+test('decision: failed required observations -> typed failure before every write action', () => {
+	const observationFailures = [{ source: 'pr', subject: 'issue-3096', code: 'command-failed' }];
+	for (const patch of [{}, { preflight: null }, { hasNewCommits: false }, { pr: { state: 'MERGED' } }]) {
+		assert.deepEqual(decideNext(makeLane(), makeObs({ ...patch, observationFailures })),
+			{ action: 'observation-failed', failures: observationFailures });
+	}
 });
 
 test('C2: needs-human-check review verdict is a policy block', () => {

@@ -1,4 +1,5 @@
 import { assertContract } from '../../../workflow-contracts/contracts.mjs';
+import { assertAgentIdentity, reviewerTargets } from '../../execute-lane/scripts/dispatch-targets.mjs';
 
 export const REVIEWERS = ['contract', 'code', 'verification'];
 export const VERDICTS = ['pass', 'block', 'needs-human-check'];
@@ -34,15 +35,21 @@ const hasExactKeys = (value, keys) => {
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 };
 
-const assertReview = (review, headSha, policySha) => {
+const assertReview = (review, headSha, policySha, stored) => {
   if (!isRecord(review)) {
     fail('each reviewer result must be an object');
   }
-  if (!hasExactKeys(review, ['reviewer', 'reviewed_head_sha', 'preflight_sha256', 'verdict_signal', 'blockers'])) {
+  const keys = ['reviewer', 'reviewed_head_sha', 'preflight_sha256', 'verdict_signal', 'blockers'];
+  // Only persisted facts may omit identity. Never normalize or rewrite their bytes.
+  if (!stored || Object.hasOwn(review, 'agent')) keys.push('agent');
+  if (!hasExactKeys(review, keys)) {
     fail('reviewer result has non-canonical keys');
   }
   if (!REVIEWERS.includes(review.reviewer)) {
     fail('reviewer must be contract, code, or verification');
+  }
+  if (!stored || Object.hasOwn(review, 'agent')) {
+    assertAgentIdentity(reviewerTargets[review.reviewer], review.agent);
   }
   if (review.reviewed_head_sha !== headSha) {
     fail('every reviewer must bind the same head as the gate');
@@ -78,14 +85,17 @@ export const buildReviewFact = (input, headSha, policy) => {
 export const validateReviewFact = (value, headSha, policy) => {
   if (!isRecord(value)) fail('review fact must be an object');
   const { head, verdict, blockers, ...input } = value;
-  const expected = buildReviewFact(input, headSha, policy);
+  if (input.head_sha !== headSha) fail('review must bind the current head');
+  const expected = { ...input, ...aggregate(input, policy, true), head: headSha };
   if (head !== headSha || verdict !== expected.verdict || JSON.stringify(blockers) !== JSON.stringify(expected.blockers)) {
     fail('review fact does not match reviewer evidence');
   }
   return expected;
 };
 
-export const aggregateReviewerGate = (input, policy) => {
+export const aggregateReviewerGate = (input, policy) => aggregate(input, policy, false);
+
+const aggregate = (input, policy, stored) => {
   if (!isRecord(input) || !hasExactKeys(input, ['head_sha', 'preflight_sha256', 'active_axes', 'reviews'])) {
     fail('input must contain exactly head_sha, preflight_sha256, active_axes, reviews');
   }
@@ -109,7 +119,7 @@ export const aggregateReviewerGate = (input, policy) => {
   }
 
   for (const review of input.reviews) {
-    assertReview(review, input.head_sha, policy.sha256);
+    assertReview(review, input.head_sha, policy.sha256, stored);
   }
 
   const reviewerNames = input.reviews.map((review) => review.reviewer);

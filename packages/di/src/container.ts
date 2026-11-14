@@ -305,6 +305,7 @@ export class Container {
   private multiRequestCache: Map<NormalizedProvider, Promise<unknown>> | undefined;
   private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
   private readonly materializedCachePromises: Promise<unknown>[] = [];
+  private readonly inFlightResolutions = new Set<Promise<unknown>>();
   private readonly pendingDisposables: Disposable[] = [];
   private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
@@ -661,9 +662,11 @@ export class Container {
       );
     }
 
-    await this.assertStaleDisposalsSettled();
+    return this.trackResolution(async () => {
+      await this.assertStaleDisposalsSettled();
 
-    return this.resolveWithChain(normalizeFrameworkServiceToken(token), [], new Set<Token>());
+      return this.resolveWithChain(normalizeFrameworkServiceToken(token), [], new Set<Token>());
+    });
   }
 
   private async resolveMultiContribution(token: Token, contributionIndex: number): Promise<unknown> {
@@ -674,24 +677,45 @@ export class Container {
       );
     }
 
-    await this.assertStaleDisposalsSettled();
+    return this.trackResolution(async () => {
+      await this.assertStaleDisposalsSettled();
 
-    const normalizedToken = normalizeFrameworkServiceToken(token);
-    const providers = this.collectMultiProviders(normalizedToken);
-    const provider = providers[contributionIndex];
+      const normalizedToken = normalizeFrameworkServiceToken(token);
+      const providers = this.collectMultiProviders(normalizedToken);
+      const provider = providers[contributionIndex];
 
-    if (!provider) {
-      throw new ContainerResolutionError(
-        `Multi-provider contribution ${contributionIndex} is not registered for ${formatTokenName(token)}.`,
-        { token, hint: 'Resolve a contribution index returned by the registered multi-provider order.' },
+      if (!provider) {
+        throw new ContainerResolutionError(
+          `Multi-provider contribution ${contributionIndex} is not registered for ${formatTokenName(token)}.`,
+          { token, hint: 'Resolve a contribution index returned by the registered multi-provider order.' },
+        );
+      }
+
+      this.assertSingletonDependencyScopes(provider);
+
+      return await this.withTokenInChain(normalizedToken, [], new Set<Token>(), async (chain, activeTokens) =>
+        this.resolveMultiProviderInstance(provider, chain, activeTokens),
       );
+    });
+  }
+
+  private async trackResolution<T>(run: () => Promise<T>): Promise<T> {
+    const resolution = run();
+    const owners: Container[] = [];
+
+    // A child resolution may materialize both request caches and ancestor singletons.
+    for (let owner: Container | undefined = this; owner; owner = owner.parent) {
+      owners.push(owner);
+      owner.inFlightResolutions.add(resolution);
     }
 
-    this.assertSingletonDependencyScopes(provider);
-
-    return await this.withTokenInChain(normalizedToken, [], new Set<Token>(), async (chain, activeTokens) =>
-      this.resolveMultiProviderInstance(provider, chain, activeTokens),
-    );
+    try {
+      return await resolution;
+    } finally {
+      for (const owner of owners) {
+        owner.inFlightResolutions.delete(resolution);
+      }
+    }
   }
 
   /**
@@ -743,20 +767,29 @@ export class Container {
     let completed = false;
 
     try {
+      const entries = this.disposalCacheEntries();
+      // An admitted resolution may consume a stale failure while this attempt drains.
+      const retryableStaleTasks = this.retainedStaleDisposalTasks();
       // Dispose all live request-scope children before tearing down this scope's cache.
-      if (this.childScopes && this.childScopes.size > 0) {
-        const childResults = await Promise.allSettled(Array.from(this.childScopes).map((child) => child.disposeFromParent()));
+      const children = new Set(this.childScopes);
+      const childResults = Promise.allSettled(Array.from(children).map((child) => child.disposeFromParent()));
 
-        for (const result of childResults) {
-          if (result.status === 'rejected') {
-            this.collectDisposalError(result.reason, errors);
-          }
+      // Admitted resolutions may attach children only after their first request cache write.
+      await Promise.allSettled(this.inFlightResolutions);
+      const lateChildResults = await Promise.allSettled(
+        Array.from(this.childScopes ?? [])
+          .filter((child) => !children.has(child))
+          .map((child) => child.disposeFromParent()),
+      );
+
+      for (const result of [...await childResults, ...lateChildResults]) {
+        if (result.status === 'rejected') {
+          this.collectDisposalError(result.reason, errors);
         }
-
       }
 
       try {
-        await this.disposeCache(this.disposalCacheEntries());
+        await this.disposeCache(entries, retryableStaleTasks);
       } catch (error) {
         this.collectDisposalError(error, errors);
       }
@@ -1039,7 +1072,7 @@ export class Container {
     activeTokens: Set<Token>,
   ): Promise<unknown> {
     if (provider.type === 'existing') {
-      return await this.resolveWithChain(provider.useExisting as Token, chain, activeTokens);
+      return await this.resolveWithChain(this.assertAliasResolvableHere(provider).useExisting as Token, chain, activeTokens);
     }
 
     if (provider.scope === 'transient') {
@@ -1087,7 +1120,7 @@ export class Container {
       return undefined;
     }
 
-    return provider.useExisting;
+    return this.assertAliasResolvableHere(provider).useExisting;
   }
 
   private async resolveScopedOrSingletonInstance(
@@ -1241,13 +1274,13 @@ export class Container {
   /**
    * Resolve the cache map that should hold the instance for `provider`.
    *
-   * **Singleton-in-request-scope**: if a provider with `scope: 'singleton'` (the default) is
-   * registered directly on a request-scope child container (rather than the root), it is cached
-   * in the child's `requestCache` instead of the root's `singletonCache`. This means it behaves
-   * as request-scoped despite the singleton scope annotation. This is intentional — it allows
-   * test and override scenarios to inject short-lived values without polluting the global cache
-   * — but the divergence from the declared scope is a known footgun for consumers who
-   * inadvertently register singletons on child containers.
+   * **Singleton override in a request scope**: `register()` rejects a singleton-scope provider on
+   * a request-scope container with `ScopeMismatchError`, so a singleton-scope provider becomes
+   * local to a request scope only through `container.override()` of a token that is already
+   * visible there. That replacement is cached in the request scope's `requestCache` instead of
+   * the root's `singletonCache`: it is shared with nested request children, disposed with the
+   * request scope, and never replaces the singleton instance seen by the root or other requests.
+   * Inherited singleton-scope providers always use the root `singletonCache`.
    */
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     if (provider.scope === 'singleton') {
@@ -1317,10 +1350,12 @@ export class Container {
     return entries;
   }
 
-  private async disposeCache(entries: Array<[NormalizedProvider | Token, Promise<unknown>]>): Promise<void> {
+  private async disposeCache(
+    entries: Array<[NormalizedProvider | Token, Promise<unknown>]>,
+    retryableStaleTasks: readonly StaleDisposalTask[],
+  ): Promise<void> {
     const errors: unknown[] = [];
 
-    const retryableStaleTasks = this.retainedStaleDisposalTasks();
     const attemptedStaleInstances = new Set<Disposable>();
 
     try {
@@ -1353,9 +1388,12 @@ export class Container {
     const disposables: Disposable[] = [];
     const seenInstances = new Set<unknown>();
     const errors: unknown[] = [];
-    const activePromises = new Set(entries.map(([, promise]) => promise));
-
-    const settled = await Promise.allSettled(entries.map(([, p]) => p));
+    // Admitted calls have settled, so this final read includes every late cache write.
+    // Retain the initial snapshot as rejected resolutions can evict their cache entries.
+    const activePromises = new Set(
+      [...entries, ...this.disposalCacheEntries()].map(([, promise]) => promise),
+    );
+    const settled = await Promise.allSettled(activePromises);
 
     for (const result of settled) {
       if (result.status === 'rejected') {
@@ -1643,7 +1681,7 @@ export class Container {
       case 'value':
         return provider.useValue as T;
       case 'existing':
-        return await this.resolveWithChain(provider.useExisting as Token<T>, [], new Set());
+        throw new InvariantError('Alias provider must resolve its useExisting target before instantiate().');
       case 'factory': {
         if (!provider.useFactory) {
           throw new InvariantError('Factory provider is missing useFactory.');
@@ -1676,7 +1714,7 @@ export class Container {
 
     const requestScopedDependency = this.findRequestScopedDependency(provider.inject, new Set<Token>([provider.provide]));
 
-    if (requestScopedDependency) {
+    if (requestScopedDependency !== undefined) {
       throw new ScopeMismatchError(
         `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(requestScopedDependency)}.`,
         {
@@ -1701,7 +1739,7 @@ export class Container {
 
       const requestScopedToken = this.findRequestScopedDependencyToken(depToken, visited);
 
-      if (requestScopedToken) {
+      if (requestScopedToken !== undefined) {
         return requestScopedToken;
       }
     }
@@ -1719,8 +1757,14 @@ export class Container {
     try {
       const multiRequestScopedToken = this.findRequestScopedMultiContribution(token, visited);
 
-      if (multiRequestScopedToken) {
+      if (multiRequestScopedToken !== undefined) {
         return multiRequestScopedToken;
+      }
+
+      const requestScopedAlias = this.findRequestScopedAlias(token);
+
+      if (requestScopedAlias !== undefined) {
+        return requestScopedAlias;
       }
 
       const provider = this.resolveEffectiveProvider(token);
@@ -1766,7 +1810,7 @@ export class Container {
             ? this.findRequestScopedDependencyToken(multiProvider.useExisting, visited)
             : this.findRequestScopedDependency(multiProvider.inject, visited);
 
-        if (requestScopedToken) {
+        if (requestScopedToken !== undefined) {
           return requestScopedToken;
         }
       }
@@ -1781,6 +1825,45 @@ export class Container {
     }
 
     return undefined;
+  }
+
+  /**
+   * Finds the first alias declared with `scope: 'request'` on the single-provider alias chain of `token`.
+   * Alias cycles stop the walk so `resolveEffectiveProvider()` keeps reporting them as circular dependencies.
+   */
+  private findRequestScopedAlias(token: Token): Token | undefined {
+    const visitedAliases = new Set<Token>();
+    let provider = this.lookupProvider(token);
+
+    while (provider?.type === 'existing' && provider.useExisting !== undefined && !visitedAliases.has(provider.provide)) {
+      if (provider.scope === 'request') {
+        return provider.provide;
+      }
+
+      visitedAliases.add(provider.provide);
+      provider = this.lookupProvider(provider.useExisting);
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Aliases never own an instance, but an alias declared with `scope: 'request'` is only resolvable from a
+   * request scope, matching request-scoped class, factory, and value providers.
+   */
+  private assertAliasResolvableHere(provider: NormalizedProvider): NormalizedProvider {
+    if (provider.scope === 'request' && !this.requestScopeEnabled) {
+      throw new RequestScopeResolutionError(
+        `Request-scoped provider ${formatTokenName(provider.provide)} cannot be resolved outside request scope.`,
+        {
+          token: provider.provide,
+          scope: 'request',
+          hint: 'Wrap the resolve call inside a request-scoped child container created via container.createRequestScope().',
+        },
+      );
+    }
+
+    return provider;
   }
 
   private resolveEffectiveProvider(

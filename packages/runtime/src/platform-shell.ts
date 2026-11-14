@@ -111,7 +111,7 @@ export class RuntimePlatformShell implements PlatformShell {
         await component.component.start();
         startedComponents.push(component);
       } catch (error) {
-        this.diagnostics.append([createPlatformFailureIssue(component.component.id, 'start', error)]);
+        this.diagnostics.append('start', [createPlatformFailureIssue(component.component.id, 'start', error)]);
         const startFailure = new InvariantError(
           `Platform component "${component.component.id}" failed to start: ${error instanceof Error ? error.message : String(error)}`,
           { cause: error },
@@ -121,7 +121,7 @@ export class RuntimePlatformShell implements PlatformShell {
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.diagnostics.append([
+          this.diagnostics.append('start-rollback', [
             createPlatformFailureIssue(component.component.id, 'start-rollback', rollbackError),
           ]);
         }
@@ -185,19 +185,19 @@ export class RuntimePlatformShell implements PlatformShell {
         result = await registration.component.validate();
       } catch (error) {
         const issue = createPlatformFailureIssue(registration.component.id, 'validate', error);
-        this.diagnostics.append([issue]);
+        this.diagnostics.append('validate', [issue]);
         failures.push(issue);
         continue;
       }
 
       if (result.warnings) {
-        this.diagnostics.append(result.warnings);
+        this.diagnostics.append('validate', result.warnings);
       }
 
       if (!result.ok || result.issues.some((issue) => issue.severity === 'error')) {
         const reportedIssues =
           result.issues.length > 0 ? result.issues : [createPlatformValidationFailureIssue(registration.component.id)];
-        this.diagnostics.append(reportedIssues);
+        this.diagnostics.append('validate', reportedIssues);
         failures.push(...reportedIssues);
       }
     }
@@ -215,7 +215,7 @@ export class RuntimePlatformShell implements PlatformShell {
       } catch (error) {
         errors.push(error);
         pendingComponents.unshift(component);
-        this.diagnostics.append([createPlatformFailureIssue(component.component.id, 'stop', error)]);
+        this.diagnostics.append('stop', [createPlatformFailureIssue(component.component.id, 'stop', error)]);
       }
     }
 

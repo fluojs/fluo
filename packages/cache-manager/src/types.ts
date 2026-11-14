@@ -199,6 +199,12 @@ export interface CacheModuleOptions extends CacheModuleInternalOptions {
   ttl?: number;
   /** Opt-in positive-TTL jitter applied before store handoff. Only omission or `undefined` disables jitter. */
   ttlJitter?: CacheTtlJitterOptions;
+  /**
+   * Store-error policy for `remember` only. Omission or `undefined` selects `'throw'`.
+   * `'bypass'` treats failed store reads as misses and returns loaded values after failed writes.
+   * Loader, TTL preparation, invalidation cleanup, and lifecycle failures still propagate unchanged.
+   */
+  rememberCacheErrors?: 'throw' | 'bypass';
   httpKeyStrategy?: CacheKeyStrategy;
   principalScopeResolver?: PrincipalScopeResolver;
   /** Opt-in privacy-safe observer notified after each cache operation completes. */
@@ -220,6 +226,8 @@ export interface NormalizedCacheModuleOptions {
   store: 'memory' | 'redis' | CacheStore;
   ttl: number;
   ttlJitter?: NormalizedCacheTtlJitterOptions;
+  /** Validated `remember` store-error policy; defaults to `'throw'` at module registration. */
+  rememberCacheErrors: 'throw' | 'bypass';
   httpKeyStrategy: CacheKeyStrategy;
   principalScopeResolver: PrincipalScopeResolver | undefined;
   /** Opt-in privacy-safe observer notified after each cache operation completes. */

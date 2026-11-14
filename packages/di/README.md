@@ -121,6 +121,8 @@ actual returned array type.
 
 A singleton provider must not depend on a request-scoped provider. That mismatch throws `ScopeMismatchError` before any provider factory or constructor in the graph runs, and the check covers single, alias (`useExisting`), and multi-provider registrations. A singleton that injects a multi token fails the same way when any contribution under that token is request-scoped, so no partial contribution set is materialized first.
 
+Value and alias providers accept the same optional `scope`, with `singleton` as the default. A value provider follows its scope directly: `transient` returns the bound value on every resolve without caching it or calling its `onDestroy()`, and `request` caches it per request scope; the container never copies the value. An alias never owns an instance, so the target's scope still decides the instance lifetime. The alias scope decides where the alias may be registered and how it is validated: a `request` alias may be registered on a request scope, throws `RequestScopeResolutionError` when resolved from the root, and makes a singleton consumer throw `ScopeMismatchError` naming the alias even when its target is a singleton.
+
 During disposal, each container tears down successfully materialized cached instances in reverse creation order across single-provider and multi-provider caches, so dependents are destroyed before their dependencies. Each container first recursively tears down live request-scope children it owns, so disposing a non-root request scope also closes nested request scopes before its own request cache. Root disposal then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
 
 Starting `dispose()` is terminal for `resolve()`, `register()`, `override()`, and `createRequestScope()`. Concurrent callers share the active disposal attempt. If an `onDestroy()` hook fails, the container retains only that failed hook for a later explicit `dispose()` retry, preserving child-before-parent/root and reverse-creation ordering. Hooks that completed successfully are never run again, and disposal becomes idempotent after every retained hook succeeds.
@@ -181,9 +183,9 @@ const requestContainer = container.createRequestScope();
 const scopedService = await requestContainer.resolve(RequestScopedService);
 ```
 
-Request-scope containers may resolve providers from their parent chain, but request-owned registrations must not introduce new singleton providers. Register singleton providers on the root container before creating request scopes. If a request scope needs local additions, declare them with `scope: 'request'` or use `override()` for an explicit request-local replacement. The same rule applies to multi providers: default-scope multi providers belong on the root container, while request-local multi providers must opt into request scope or be replaced through `override()`.
+Request-scope containers may resolve providers from their parent chain, but request-owned registrations must not introduce new singleton providers. Register singleton providers on the root container before creating request scopes. If a request scope needs local additions, declare them with `scope: 'request'` or use `override()` for an explicit request-local replacement. This applies to every provider strategy, including value and alias providers: `requestScope.register({ provide: 'REQ', useValue: 1, scope: 'request' })` succeeds. The same rule applies to multi providers: default-scope multi providers belong on the root container, while request-local multi providers must opt into request scope or be replaced through `override()`.
 
-Provider objects are validated at registration time: every object provider must include a string, symbol, or constructable class `provide` token and exactly one strategy (`useClass`, `useValue`, `useFactory`, or `useExisting`). Alias providers require the same valid token forms for `useExisting`. For class providers, an omitted or `undefined` `inject` value falls back to the `useClass` `@Inject(...)` metadata; any other explicit `inject` value must be an array containing valid tokens or well-formed `ForwardRef.create(...)` / `Optional.create(...)` wrappers. Value providers must omit `inject`; declaring it as an own property is rejected even when its value is `undefined`. Explicit `scope` values must be `singleton`, `request`, or `transient`. Invalid provider shapes throw `InvalidProviderError` before they can affect the container graph.
+Provider objects are validated at registration time: every object provider must include a string, symbol, or constructable class `provide` token and exactly one strategy (`useClass`, `useValue`, `useFactory`, or `useExisting`). Alias providers require the same valid token forms for `useExisting`. For class providers, an omitted or `undefined` `inject` value falls back to the `useClass` `@Inject(...)` metadata; any other explicit `inject` value must be an array containing valid tokens or well-formed `ForwardRef.create(...)` / `Optional.create(...)` wrappers. Value providers must omit `inject`; declaring it as an own property is rejected even when its value is `undefined`. Explicit `scope` values must be `singleton`, `request`, or `transient`. A declared `multi` flag must be a boolean, a declared factory `resolverClass` must be a constructor, and an alias must not point at its own token (`{ provide: 'S', useExisting: 'S' }`). Invalid provider shapes throw `InvalidProviderError` before they can affect the container graph.
 
 ## NestJS Scope and Optional Dependency Migration
 
@@ -339,6 +341,33 @@ have no compatibility aliases. Follow the
 | Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. Use `isDiError(...)` at package boundaries; it validates the versioned DI owner contract and required common fields across compatible duplicate copies. |
 
 Resolving a multi-provider token returns an array of resolved values in registration order.
+
+Alias providers also accept `multi: true`. Each alias contributes its target's
+resolved value at its registration position alongside class, factory, or value
+contributions:
+
+```typescript
+class Plugin {}
+const PLUGINS = Symbol('plugins');
+const container = new Container().register(
+  Plugin,
+  { provide: PLUGINS, useValue: 'first', multi: true },
+  { provide: PLUGINS, useExisting: Plugin, multi: true },
+);
+const plugins = await container.resolve<unknown[]>(PLUGINS);
+// ['first', the same instance returned by container.resolve(Plugin)]
+await container.dispose();
+```
+
+The alias follows the target's scope: singleton identity is shared, request
+targets use the resolving request scope, and transient targets are resolved
+afresh. A singleton consumer cannot inject a multi token with a request-scoped
+alias target; it fails with `ScopeMismatchError` before any factory or constructor
+runs. `hasRequestScopedDependency(...)` follows those targets too.
+`override(...)` replaces the entire multi set, including alias contributions;
+single and multi replacements for one token cannot be mixed in the same call.
+Omitting `multi` or setting it to `false` keeps ordinary single-alias resolution.
+Executable evidence: `packages/di/src/container-multi-alias.test.ts`.
 
 ## Related Packages
 

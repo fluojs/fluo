@@ -250,7 +250,7 @@ function describeProviderForCacheKey(provider: Provider): string {
   }
 
   if ('useExisting' in provider) {
-    return `useExisting:${provide}:${describeTokenForCacheKey(provider.useExisting)}`;
+    return `useExisting:${provide}:${describeTokenForCacheKey(provider.useExisting)}:${multi}`;
   }
 
   return `useValue:${provide}:${multi}`;

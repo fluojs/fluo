@@ -78,20 +78,34 @@ function getStandardRouteMetadata(target: object, propertyKey: MetadataPropertyK
 }
 
 /**
- * Define controller metadata.
+ * Clone and replace the controller record stored on this exact target, without merging on write.
+ * Guard and interceptor collections are copied on write and on read. Entries that are arrays, Date,
+ * Map, Set, or plain objects (prototype Object.prototype or null) pass through cloneMutableValue,
+ * which deep-clones them with reference-preserving exceptions at every nesting level: an object
+ * with any own getter or setter, an object with an own function whose source mentions `this` or a
+ * private name (for example `{ allowed: true, canActivate() { return this.allowed; } }`), and a
+ * class instance whose class or prototype-chain methods reference a private name, or whose
+ * constructor is missing or mismatched, are kept by reference, so caller mutations of such objects
+ * remain visible in stored metadata. Other top-level entries, including functions and class
+ * instances, are kept by reference.
  *
- * @param target The target.
- * @param metadata The metadata.
+ * @param target Controller constructor whose own stored record is replaced.
+ * @param metadata Complete controller record to copy into the store.
  */
 export function defineControllerMetadata(target: Function, metadata: ControllerMetadata): void {
   controllerMetadataStore.write(target, metadata);
 }
 
 /**
- * Get controller metadata.
+ * Merge the exact target's stored controller record with standard metadata into a new mutable record.
+ * Stored records are not inherited through the prototype chain. Non-nullish stored basePath
+ * and version take precedence; basePath defaults to ''. Guards and interceptors merge
+ * stored-first and deduplicate by reference after both sources' collections and supported
+ * mutable entries are cloned as described in defineControllerMetadata, including its
+ * reference-preserving exceptions.
  *
- * @param target The target.
- * @returns The get controller metadata result.
+ * @param target Controller constructor to inspect.
+ * @returns A fresh merged record, or undefined when neither source has a record.
  */
 export function getControllerMetadata(target: Function): ControllerMetadata | undefined {
   const stored = controllerMetadataStore.read(target);
@@ -110,11 +124,14 @@ export function getControllerMetadata(target: Function): ControllerMetadata | un
 }
 
 /**
- * Define route metadata.
+ * Clone and replace the route record for one property on this exact target, without merging on write.
+ * Each header entry and the redirect record are shallow-copied, and guard/interceptor
+ * collections are copied with entries cloned as described in defineControllerMetadata,
+ * including its reference-preserving exceptions.
  *
- * @param target The target.
- * @param propertyKey The property key.
- * @param metadata The metadata.
+ * @param target Object whose own route map receives the record.
+ * @param propertyKey Route property whose previous stored record is replaced.
+ * @param metadata Complete route record to copy into the store.
  */
 export function defineRouteMetadata(
   target: object,
@@ -161,11 +178,18 @@ function mergeRouteMetadata(
 }
 
 /**
- * Get route metadata.
+ * Merge one route's stored and standard records into a new mutable record.
+ * Only this exact target's stored map is read, without prototype inheritance.
+ * Non-nullish stored fields take precedence over standard fields; guards and interceptors
+ * merge stored-first and deduplicate by reference. Headers and redirect pass through
+ * cloneMutableValue. Guard and interceptor arrays are new, but their stored entries are returned
+ * without cloning; standard entries are cloned before merging. Every clone here follows
+ * defineControllerMetadata, including its reference-preserving exceptions.
  *
- * @param target The target.
- * @param propertyKey The property key.
- * @returns The get route metadata result.
+ * @param target Object whose route metadata is inspected.
+ * @param propertyKey Route property to read from both sources.
+ * @returns A fresh merged record, or undefined when neither source has a record.
+ * @throws InvariantError when a present merged record lacks method or path.
  */
 export function getRouteMetadata(target: object, propertyKey: MetadataPropertyKey): RouteMetadata | undefined {
   const stored = routeMetadataStore.get(target)?.get(propertyKey);

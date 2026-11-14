@@ -24,7 +24,7 @@ export class CacheOperationObserver {
   async observeRead<T>(
     operation: 'get' | 'remember',
     run: () => Promise<T>,
-    classify: (value: T) => 'hit' | 'miss',
+    classify: (value: T) => 'hit' | 'miss' | 'error',
   ): Promise<T> {
     if (!this.observer) {
       return run();

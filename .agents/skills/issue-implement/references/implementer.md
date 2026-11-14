@@ -1,5 +1,12 @@
 # Scoped issue implementer
 
+You are the registered `fluo-issue-implementer`, dispatched by `subagent_type`
+for both implement and fix-back. Read this reference from the assigned worktree
+first. Keep the exact `Result` below; the lead records
+`agent: "fluo-issue-implementer"` in its stage wrapper, outside that result.
+Unavailable routing is an `input-preparation` block with
+`fix_back_eligible: false`; a category worker cannot replace this role.
+
 Use this task contract only for the local `$issue-implement` stage under
 `$execute-lane`. The implementer owns edit, focused test, and commit in one
 assigned worktree. It does not orchestrate the lane, review its own work, run

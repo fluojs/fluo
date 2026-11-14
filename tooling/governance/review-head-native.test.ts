@@ -16,7 +16,7 @@ const review = (
   blockers: readonly Record<string, unknown>[] = [],
   reviewedHeadSha = headSha,
 ) => ({
-  reviewer, reviewed_head_sha: reviewedHeadSha, preflight_sha256: policy.sha256,
+  reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: reviewedHeadSha, preflight_sha256: policy.sha256,
   verdict_signal: verdictSignal, blockers,
 });
 const gate = (
@@ -62,6 +62,26 @@ describe('$review-head native exact-head selective gate', () => {
       review('contract', 'NEEDS-HUMAN-CHECK'), review('code'), review('verification'),
     ]), policy)).toEqual({ verdict: 'needs-human-check', blockers: [] });
   });
+
+  it('rejects missing agent identity on new reviewer input', async () => {
+    const { aggregateReviewerGate } = await loadContracts();
+    const { agent: _agent, ...unidentified } = review('contract');
+    const input = gate([unidentified, review('code'), review('verification')]);
+
+    expect(() => aggregateReviewerGate(input, policy)).toThrow(TypeError);
+  });
+
+  it.each(['fluo-code-reviewer', 'fluo-unregistered-reviewer', 'deep-high'])(
+    'rejects substituted reviewer agent: %s',
+    async (agent) => {
+      const { aggregateReviewerGate } = await loadContracts();
+      const input = gate([
+        { ...review('contract'), agent }, review('code'), review('verification'),
+      ]);
+
+      expect(() => aggregateReviewerGate(input, policy)).toThrow(TypeError);
+    },
+  );
 
   it.each([
     ['missing', [review('contract'), review('code')]],

@@ -77,6 +77,14 @@ Built-in HTTP/Prisma/Drizzle/Redis `timeoutMs`는 양의 유한값이어야 하�
 
 HTTP readiness의 admission은 **binary**입니다. Body의 세 상태는 severity bucket이 아닙니다. Custom `readinessChecks`를 선언 순서대로 await하며 첫 `false`에서 중단합니다. 이 검사 뒤에 bootstrap hook이 등록한 Terminus 검사가 실행되어 indicator readiness와 platform readiness를 병렬로 확인합니다. Platform status가 정확히 `ready`여야 통과하므로 `critical: false`인 `degraded`도 HTTP `/ready`를 차단합니다.
 
+Runtime은 첫 callback timeout에서도 중단하며 HTTP `503`과 `{ status: 'unavailable' }`을 반환합니다. Callback마다 독립적인 5000 ms budget을 사용합니다. 직접 `HealthModule.forRoot({ readinessCheckTimeoutMs })`를 사용하는 경우 조정할 수 있습니다. 양의 유한 숫자는 내림 후 최소 1 ms로 정규화하고 0, 음수, NaN, Infinity와 숫자가 아닌 값은 5000 ms를 사용합니다. 정상 callback은 정확히 현재 `RequestContext`를 받으며 starting marker는 callback 실행 전에 중단합니다. 일반 동기 throw와 promise rejection은 `unavailable`로 바뀌지 않고 HTTP error 처리로 전파됩니다.
+
+Platform budget은 typed registration wrapper `{ component, dependencies?, readiness?: { timeoutMs?, critical? } }`로 전달합니다. `PlatformOptionsBase.readiness`를 명시적으로 전달하며 runtime은 private component option을 반영하지 않습니다. Bare component는 기본값을 사용합니다. `snapshot()`을 포함해 각 component의 `ready()`와 `health()`에는 독립적인 기본 5000 ms budget이 적용되며 callback budget과 같은 숫자 정규화를 사용합니다. Direct probe는 등록 순서를 유지하고 timeout 이후 다음 component도 검사합니다. Readiness timeout은 기본 critical인 `not-ready`로 반영하며 registration `critical: false`는 aggregate readiness `degraded`를 만듭니다. Health timeout은 `unhealthy`입니다. Snapshot 집계는 같은 probe 결과를 사용하며 component identity, dependency 순서와 ownership을 보존합니다. Diagnostic은 component, phase와 timeout budget을 식별하며 반복 polling은 lifecycle diagnostic을 버리지 않고 component/probe phase별 최신 issue만 보존합니다.
+
+Platform과 runtime callback budget은 Terminus의 `execution.indicatorTimeoutMs`(indicator 실행에만 적용)와 별개입니다. Terminus가 추가한 callback은 기본 5000 ms runtime budget을 사용하므로 이를 넘기는 indicator/platform 작업은 잘리고 `/ready`는 `503 unavailable`을 반환합니다. **현재 제한:** `TerminusModuleOptions`에는 이 callback budget을 늘리는 option이 없습니다. `readinessCheckTimeoutMs`는 직접 `HealthModule`을 사용하는 경우만 설정할 수 있습니다. Indicator나 platform budget만 늘려서는 Terminus HTTP readiness 대기가 연장되지 않습니다.
+
+Timeout은 비동기 settle만 제한하며 동기적으로 막힌 JavaScript를 중단하거나 promise/driver를 취소하지 않습니다. Deadline 전 완료는 timer를 해제하고 늦은 completion/rejection은 timeout report를 덮어쓰거나 unhandled rejection을 만들지 않습니다. Runtime platform/callback timeout은 retry, cache, in-flight serialization을 추가하지 않으며 Terminus indicator serialization도 유지됩니다.
+
 `readiness: false`는 해당 indicator의 probe만 `/ready`에서 제외합니다. 같은 dependency가 별도 platform component로 등록되어 readiness를 실패시키면 gate는 여전히 실패합니다. 반대로 custom readiness 조건의 실패나 platform health만의 실패를 같은 조건으로 취급하지 않습니다. Custom readiness 조건은 `/health`에서 실행하지 않고, platform health가 unhealthy여도 platform readiness와 나머지 조건이 ready이면 `/ready`는 `200`일 수 있습니다.
 
 ### 범위가 명시된 module 예제

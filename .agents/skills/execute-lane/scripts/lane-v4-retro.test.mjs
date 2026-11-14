@@ -32,6 +32,9 @@ const fixture = (t, completeCi = false) => {
 	mkdirSync(directory, { recursive: true });
 	const root = mkdtempSync(resolve(directory, "retrospective-lane-"));
 	if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
+	mkdirSync(resolve(root, ".omo"));
+	writeFileSync(resolve(root, ".omo/omo.jsonc"),
+		readFileSync(new URL("../../../../.omo/omo.jsonc", import.meta.url)));
 	if (completeCi) recordCiSnapshot(root, laneId, 1, ciRun(), [ciJob()]);
 	return root;
 };
@@ -95,6 +98,55 @@ test("final CI preparation: missing final run collection -> no retrospective dis
 	assert.equal(request.action, "collect-ci");
 	assert.deepEqual(request.issues, [1]);
 });
+
+test('#4091 retrospective: complete CI -> analyst dispatch; unfinished lane -> no dispatch', (t) => {
+	const root = fixture(t, true);
+
+	const request = retrospectiveRequest(root, laneId, snapshots);
+
+	assert.equal(request.action, 'retro');
+	assert.deepEqual(request.dispatch, { subagent_type: 'fluo-retrospective' });
+	const waiting = retrospectiveRequest(root, laneId, [{ issue: 1, decision: { action: 'review' } }]);
+	assert.deepEqual(waiting, { action: 'wait-lane', remaining: [1] });
+});
+
+test('#4091 retrospective: missing analyst registration -> typed input preparation', (t) => {
+	const root = fixture(t, true);
+	writeFileSync(resolve(root, '.omo/omo.jsonc'), '{"agents":{}}');
+
+	assert.throws(() => retrospectiveRequest(root, laneId, snapshots),
+		(error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+			&& error.code === 'dispatch-target-unavailable' && error.subagent_type === 'fluo-retrospective');
+});
+
+test('#4091 registration JSONC: comments and trailing commas -> retrospective analyst dispatch', (t) => {
+	const root = fixture(t, true);
+	const path = resolve(root, '.omo/omo.jsonc');
+	const { agents } = JSON.parse(readFileSync(path));
+	writeFileSync(path, `// registered stage agents
+{ /* operator note */
+  "routes": ["https://example.test//model/*prompt*/",],
+  "agents": ${JSON.stringify(agents)},
+}`);
+
+	const request = retrospectiveRequest(root, laneId, snapshots);
+
+	assert.equal(request.action, 'retro');
+	assert.equal(request.dispatch.subagent_type, 'fluo-retrospective');
+});
+
+for (const defect of ['missing', 'broken']) {
+	test(`#4091 registration unreadable: ${defect} config -> typed retrospective block`, (t) => {
+		const root = fixture(t, true);
+		const path = resolve(root, '.omo/omo.jsonc');
+		if (defect === 'missing') rmSync(path);
+		else writeFileSync(path, '{"agents":');
+
+		assert.throws(() => retrospectiveRequest(root, laneId, snapshots),
+			(error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+				&& error.code === 'dispatch-registration-unreadable');
+	});
+}
 
 for (const defect of ["missing-observation", "old-head", "old-attempt", "incomplete-jobs", "tampered-event"]) {
 	test(`final CI preparation: ${defect} -> collection required or integrity rejection`, (t) => {
@@ -556,11 +608,11 @@ console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON
 	assert.equal(pendingHandoff.issues[0].decision.action, "done");
 	assert.equal(pendingHandoff.retrospective.action, "retro");
 	assert.equal(pendingHandoff.settled, false);
-	assert.ok(
-		execute("watch", ["--once"]).split("\n").some((line) =>
-			line.startsWith("RETRO-READY ")
-		),
-	);
+	const watchLines = execute("watch", ["--once"]).split("\n");
+	assert.ok(watchLines.some((line) => line.startsWith("RETRO-READY ")));
+	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("RETRO-READY ")).slice("RETRO-READY ".length)), request);
+	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("LANE-SETTLED ")).slice("LANE-SETTLED ".length)),
+		[{ issue: 1, action: "done" }]);
 	assert.equal(invoke("retro-evidence").events.length, 3);
 	const analysis = resolve(root, "analysis.json");
 	writeFileSync(analysis, JSON.stringify(report(request, event.eventId)));
@@ -636,6 +688,25 @@ test("normal record automatically retains unsuccessful implementation stage evid
 		Object.hasOwn(JSON.parse(readFileSync(path)), "retrospective"),
 		false,
 	);
+	const stageBytes = readFileSync(resolve(root, events[0].path));
+	const lane = JSON.parse(readFileSync(path));
+	lane.issues[1].blocker = { type: "attempts-exhausted", phase: "implement" };
+	writeFileSync(path, JSON.stringify(lane));
+
+	execFileSync(process.execPath, [
+		cli, "clear-blocker", "--root", root, "--lane", path,
+		"--issue", "1", "--phase", "implement",
+	]);
+
+	assert.deepEqual(readFileSync(resolve(root, events[0].path)), stageBytes);
+	const retained = readRetroEvents(root, laneId);
+	assert.equal(retained.length, 2);
+	const { operation_id, ...cleared } = retained.find((event) => event.kind === "incident").data;
+	assert.match(operation_id, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
+	assert.deepEqual(cleared, {
+		action: "clear-blocker", phase: "implement",
+		blocker: { type: "attempts-exhausted", phase: "implement" },
+	});
 });
 
 test("CI collector queries each run attempt separately and reuses completed observations", (t) => {

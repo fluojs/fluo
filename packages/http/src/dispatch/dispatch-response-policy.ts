@@ -164,6 +164,17 @@ function readFrameworkResponseValueFinalizer(requestContext: RequestContext): Fr
   return (context) => Reflect.apply(finalizer, undefined, [context]);
 }
 
+/**
+ * Reports whether an awaited success-response step must stop before writing.
+ *
+ * @param request Adapter-normalized request whose cancellation surfaces are inspected.
+ * @param response Response that another path may already have committed.
+ * @returns Whether the request aborted or the response was committed during the await.
+ */
+function isSuccessWriteInterrupted(request: FrameworkRequest, response: FrameworkResponse): boolean {
+  return request.signal?.aborted === true || request.isAborted?.() === true || response.committed;
+}
+
 function isResponseBodyForbidden(status: number | undefined): boolean {
   return status === 204 || status === 205 || status === 304;
 }
@@ -249,9 +260,13 @@ export async function writeSuccessResponse(
   }
 
   const responseValueFinalizer = readFrameworkResponseValueFinalizer(requestContext);
-  const responseValue = responseValueFinalizer
-    ? await responseValueFinalizer({ handler, request, requestContext, response, value })
-    : value;
+  let responseValue = value;
+  if (responseValueFinalizer) {
+    responseValue = await responseValueFinalizer({ handler, request, requestContext, response, value });
+    if (isSuccessWriteInterrupted(request, response)) {
+      return;
+    }
+  }
   const representation = readFrameworkResponseRepresentation(responseValue);
   const writerValue = readFrameworkResponseWriter(responseValue)
     ? responseValue
@@ -286,7 +301,7 @@ export async function writeSuccessResponse(
           validators,
           value: writerValue,
         });
-        if (request.signal?.aborted === true || request.isAborted?.() === true || response.committed) {
+        if (isSuccessWriteInterrupted(request, response)) {
           return;
         }
         applyWriterSuccessResponseMetadata();
@@ -369,6 +384,10 @@ export async function writeSuccessResponse(
 
   if (request.method.toUpperCase() === 'HEAD') {
     applyImplicitHeadContentType(response, responseValue);
+    const headRepresentation = formatter ? formatter.format(responseValue) : responseValue;
+    if (isByteRangeByteSource(headRepresentation) && !isResponseBodyForbidden(response.statusCode)) {
+      response.setHeader('Content-Length', String(headRepresentation.byteLength));
+    }
     return response.send(undefined);
   }
 
