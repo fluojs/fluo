@@ -215,7 +215,7 @@ The resolution step enforces the same structure again.
 
 The actual cache map is selected by `cacheFor()`.
 `path:packages/di/src/container.ts:1285-1329` shows the core rules.
-A default-scope provider normally uses the root `singletonCache`. The one exception is a provider locally registered in a request child, which uses the request cache. The method comment documents this exception as a footgun on purpose.
+A default-scope provider normally uses the root `singletonCache`. The one exception is a singleton-scope replacement local to a request child, which uses the request cache. Because `register()` rejects singleton-scope providers on a request scope with `ScopeMismatchError`, the method comment documents `container.override()` of an already-visible token as the only way to reach that exception.
 
 We will inspect the cache selection rules closely once. The request, override, and disposal sections later recap from this excerpt.
 

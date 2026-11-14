@@ -358,7 +358,7 @@ The early part of registration combines disposal state, normalization, and the r
 
 This code checks graph state and Scope position before the Provider enters a map. Invalid registration never reaches the cache or instance creation layer.
 
-Why does this matter? Because the container already has a documented footgun in `cacheFor()`. `path:packages/di/src/container.ts:1274-1306` explains that if a locally overridden singleton enters a request Scope, it is stored in the request cache rather than the root singleton cache, so it behaves like request-scoped. Fluo blocks the most common mistake during registration instead of allowing it silently.
+Why does this matter? Because `cacheFor()` stores any singleton-scope Provider that is local to a request Scope in that request cache rather than the root singleton cache. `path:packages/di/src/container.ts:1274-1306` documents that, because this check rejects the `register()` case with `ScopeMismatchError`, `container.override()` of an already-visible Token is the only way to create such a local singleton, so the replacement lives and is disposed with that request Scope. Fluo rejects the accidental `register()` path during registration instead of silently giving a singleton annotation request-like lifetime.
 
 Duplicate checks split into single-Provider and multi-Provider paths. `assertNoRegistrationConflict()` in `path:packages/di/src/container.ts:827-847` checks whether the Token already exists locally or in an ancestor in an incompatible form. This is much stronger than a plain `Map.has()`. Conflicts across parent and child layers are treated as real conflicts.
 
@@ -684,7 +684,7 @@ The chain and active set are updated together in one helper and cleaned together
 
 The array builds error-message paths, and the set quickly checks whether a Token is already in current recursion. Because `finally` is present, a failed creation attempt doesn't contaminate the next resolve.
 
-Actual object creation happens in `instantiate()` at `path:packages/di/src/container.ts:1677-1708`. This method first calls `assertSingletonDependencyScopes()`. Then it branches by Provider type. A value Provider returns the value as is. A factory Provider resolves dependencies, calls `useFactory`, and records whether the result is synchronous or promise-like. A class Provider resolves dependencies and runs `new useClass(...deps)`.
+Actual object creation happens in `instantiate()` at `path:packages/di/src/container.ts:1677-1708`. This method first calls `assertSingletonDependencyScopes()`. Then it branches by Provider type. A value Provider returns the value as is. An alias (`existing`) Provider never reaches this switch, because every caller resolves its `useExisting` target first; its branch throws `InvariantError` rather than starting a fresh resolution that would discard the current chain and cycle-detection state. A factory Provider resolves dependencies, calls `useFactory`, and records whether the result is synchronous or promise-like. A class Provider resolves dependencies and runs `new useClass(...deps)`.
 
 The creation step runs only from the normalized Provider's `type`.
 
@@ -697,7 +697,7 @@ The creation step runs only from the normalized Provider's `type`.
       case 'value':
         return provider.useValue as T;
       case 'existing':
-        return await this.resolveWithChain(provider.useExisting as Token<T>, [], new Set());
+        throw new InvariantError('Alias provider must resolve its useExisting target before instantiate().');
       case 'factory': {
         if (!provider.useFactory) {
           throw new InvariantError('Factory provider is missing useFactory.');
