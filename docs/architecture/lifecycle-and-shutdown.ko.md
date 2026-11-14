@@ -84,15 +84,17 @@ Bootstrap 실패 시 런타임은 확보한 lifecycle instance에 `bootstrap-fai
 
 Runtime-owned cleanup registration은 동기 또는 비동기 callback을 받습니다. close와
 bootstrap-failure cleanup은 등록 순서대로 callback을 실행하고 다음 cleanup phase 전에 각각을
-await합니다. 실패해도 이후 registration은 건너뛰지 않습니다. close는 failure를 aggregate하고
-완료되지 않은 cleanup phase만 retry 가능하게 남기며, bootstrap은 원래 bootstrap error를 보존하고
-cleanup failure를 `ApplicationLogger`로 보고합니다.
+await합니다. 실패해도 이후 registration은 건너뛰지 않습니다. close는 현재 시도의 failure를
+aggregate하고 다음 명시적 close에서 실패한 registration만 원래 순서대로 재시도합니다. 같은 함수를
+중복 등록해도 각 application 또는 context의 registration마다 성공을 독립적으로 보존하며, 모두
+성공하면 phase가 완료됩니다. Bootstrap은 원래 bootstrap error를 보존하고 cleanup failure를
+`ApplicationLogger`로 보고합니다.
 
 ## 실패, 재시도와 자원 소유권
 
 1. `Application.close()`는 첫 await 전에 terminal gate를 닫고 진행 중 listen의 settlement를 기다립니다. 늦게 완료된 listen은 ready로 돌아가지 않습니다. 연결된 microservice를 연결 역순으로 닫은 뒤 부모의 readiness reset → runtime cleanup → destroy hooks → application shutdown hooks → adapter close → container dispose 순서로 진행합니다. Context에는 child HTTP adapter 종료가 없습니다.
 2. `Application.get()`, `ApplicationContext.get()`, `Application.listen()`, `Application.dispatch()`, `Application.connectMicroservice()`, `Application.startAllMicroservices()`는 shutdown 시작 후 거부됩니다. Provider/runtime resolution 전후 모두 gate를 검사하므로 close와 겹친 비동기 해석 결과도 반환하거나 child로 연결하지 않습니다. Pending/실패 중 기존 공개 state는 유지되지만 사용 가능하다는 뜻은 아닙니다. 성공한 close 뒤 provider lookup도 disposed container에서 실패합니다.
-3. Runtime cleanup과 shutdown hook의 개별 실패는 나머지 callback/hook과 이후 adapter/container 정리를 건너뛰지 않습니다. 단일 실패는 error로, 여러 실패는 `AggregateError`로 reject합니다. 완료된 phase는 재시도에서 건너뜁니다. **Runtime cleanup phase가 실패하면 등록된 callback 전체를, lifecycle hook phase가 실패하면 두 hook pass 전체를 다시 실행**하므로 이 훅들은 성공했던 작업의 재진입도 처리해야 합니다. 이는 container의 실패한 `onDestroy()`만 재시도하는 정책과 다릅니다. Readiness reset 자체가 throw하면 그 시도의 이후 phase로 진행하지 않습니다.
+3. Runtime cleanup과 shutdown hook의 개별 실패는 나머지 callback/hook과 이후 adapter/container 정리를 건너뛰지 않습니다. 단일 실패는 error로, 현재 시도의 여러 실패는 발생 순서를 보존한 `AggregateError`로 reject합니다. 완료된 phase는 재시도에서 건너뜁니다. **Runtime cleanup phase가 실패하면 실패한 registration만 원래 순서대로 재시도하고, lifecycle hook phase가 실패하면 두 hook pass 전체를 다시 실행합니다.** 성공한 cleanup registration은 다시 실행하지 않으며, lifecycle hook은 성공했던 작업의 재진입도 처리해야 합니다. Container disposal은 실패한 `onDestroy()`만 재시도합니다. Readiness reset 자체가 throw하면 그 시도의 이후 phase로 진행하지 않습니다.
 4. DI disposal은 materialize된 container-managed instance와 소유한 child scope를 정리하며 성공한 `onDestroy()`는 다시 호출하지 않습니다. 실패 뒤에도 container의 register/override/resolve/createRequestScope는 terminal입니다. 직접 dispose한 child의 후속 재시도는 그 caller가, parent가 시작한 실패한 child disposal은 parent hierarchy가 소유합니다. Lifecycle `onModuleDestroy()`/`onApplicationShutdown()`와 DI `onDestroy()`는 별도 계약이며 하나의 hook으로 합쳐지지 않습니다.
 5. Adapter retry는 adapter 소유입니다. Runtime은 incomplete adapter phase에서 `close(signal)`을 다시 호출할 뿐 모든 adapter를 재시작하거나 같은 drain을 보장하지 않습니다. `MicroserviceApplication.close()`는 성공/실패 결과를 terminal하게 보존하므로 부모 close 재시도가 child transport teardown을 재실행하지 않습니다. `startAllMicroservices()` 실패는 먼저 시작된 child만 역순 rollback하며 원래 시작 오류를 유지합니다.
 6. Bootstrap 실패 시 확보한 readiness/runtime cleanup/hook/HTTP adapter/container 정리를 시도하고 원래 오류를 보존합니다. 반환된 앱의 readiness/listen/시작 로그/signal 등록 실패도 `app.close('bootstrap-failed')`를 거칩니다. Cleanup이나 logger 실패가 원래 오류를 바꾸지 않습니다. Factory 호출 이전에 생성한 외부 자원은 여전히 application이 소유합니다.
@@ -161,7 +163,7 @@ HTTP 앱은 `FluoFactory.create(AppModule, { adapter })` 뒤 `app.listen()`과 `
     "container.dispose"
   ],
   "retry": {
-    "runtimeCleanup": "incomplete-phase-all-registrations",
+    "runtimeCleanup": "failed-registrations-only",
     "lifecycleHooks": "incomplete-phase-all-hooks",
     "adapter": "adapter-owned",
     "container": "failed-onDestroy-only",

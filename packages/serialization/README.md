@@ -105,7 +105,10 @@ When the same field is decorated in a base class and a derived class, transforms
 
 ### HTTP response shaping with an interceptor
 
+When `SerializerInterceptor` is passed as a class token to `@UseInterceptors(...)`, it is resolved from the request container. Register it as a provider in the controller's module:
+
 ```ts
+import { Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
 
@@ -123,6 +126,12 @@ class UsersController {
     await context.response.send('id,username\n1,fluo');
   }
 }
+
+@Module({
+  controllers: [UsersController],
+  providers: [SerializerInterceptor],
+})
+class UsersModule {}
 ```
 
 The two routes use different response owners:

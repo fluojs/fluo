@@ -97,7 +97,9 @@ For the complete Chapter 14 path, import `ConfigModule.forRoot()` and the global
 
 ## Decorator metadata preload ordering
 
-Fluo's built-in decorators store their runtime records in framework-owned stores and do not require import-time global mutation. A migrated custom standard decorator that reads `context.metadata` is different, as are `@fluojs/serialization` decorators: their decorated classes need `Symbol.metadata` while the class module is being evaluated.
+<!-- fluo-contract: validation.metadata-preload -->
+
+Importing fluo packages does not install `Symbol.metadata`. Field decorators and `@ValidateClass(...)` from `@fluojs/validation`, `@fluojs/serialization` decorators, and migrated custom standard decorators that read `context.metadata` need `Symbol.metadata` before their decorated class modules evaluate. This is TC39 decorator metadata, not an instruction to enable unsupported `reflect-metadata` or `emitDecoratorMetadata`.
 
 Do not statically import the decorated application graph and then call `ensureMetadataSymbol()` in the same bootstrap module. ESM evaluates static dependencies before the bootstrap module body, so that call is too late. Use a preload entrypoint that installs the symbol before dynamically importing the ordinary bootstrap graph:
 
@@ -433,6 +435,8 @@ The runtime rejects subscription resolver results that are not `AsyncIterable`; 
 
 ### Nested DTO and Mapped Type Rewrites
 
+<!-- fluo-contract: validation.mapped-defaults -->
+
 NestJS commonly combines class-validator with class-transformer so reflected or transformer metadata supplies the nested constructor:
 
 ```typescript
@@ -481,9 +485,21 @@ import {
 
 class UpdateUserDto extends PartialType(CreateUserDto) {}
 class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
-class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
+class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {
+  address = new AddressDto();
+}
 class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
 ```
+
+`PickType`, `OmitType`, and `IntersectionType` do not run source DTO constructors
+or copy field initializer/default values. The derived class initializes retained
+fields discovered through validation or binding metadata to `undefined`.
+Consequently, `CreateUserDto.address = new AddressDto()` does not carry over
+automatically. Redeclare `address` in the subclass when a nested object default
+is needed, as shown in `AddressOnlyDto` above. `PartialType` also avoids source
+constructors and defaults; its purpose is to preserve `undefined` for missing
+patch fields. Do not restore create defaults on `UpdateUserDto`, because that
+would erase the patch distinction between omission and an explicit update.
 
 All four helpers are exported only from `@fluojs/validation/mapped-types`; root imports have no compatibility aliases. Migrate `@nestjs/mapped-types` bindings and mapped bindings from `@nestjs/swagger` to that subpath. `PickType`, `OmitType`, and `PartialType` preserve applicable field-level validation and binding metadata but intentionally do not copy base class-level validators, because a subset or optionalized DTO may no longer satisfy those validators' field assumptions. Audit and redeclare any class-level rule that is still valid on the derived DTO. `IntersectionType` preserves field-level and class-level validation from every input DTO because the intersection retains all source contracts. Do not assume NestJS mapped-type class-level metadata behavior carries over implicitly.
 

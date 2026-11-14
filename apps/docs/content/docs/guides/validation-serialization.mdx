@@ -386,18 +386,31 @@ export class PublicPostDto {
 
 For HTTP handlers, use `SerializerInterceptor` instead of calling `serialize()` in every route.
 
+When passed as a class token to `@UseInterceptors(...)`, `SerializerInterceptor` is resolved from the request container. Register it as a provider in the controller's module, alongside the existing service providers:
+
 ```ts
+import { Inject, Module } from '@fluojs/core';
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
+import { PostsService } from './posts.service';
 
 @Controller('/posts')
 @UseInterceptors(SerializerInterceptor)
+@Inject(PostsService)
 export class PostsController {
+  constructor(private readonly postsService: PostsService) {}
+
   @Get('/')
   findAll() {
     return this.postsService.findAllPublic();
   }
 }
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService, SerializerInterceptor],
+})
+export class PostsModule {}
 ```
 
 The usual flow is:
