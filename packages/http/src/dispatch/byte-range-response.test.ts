@@ -687,6 +687,46 @@ describe('single byte range response', () => {
     expect(streamPulls).toBe(pullsAfterGet);
   });
 
+  it('does not advertise the raw byte length on HEAD when a formatter changes the representation', async () => {
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([1, 2]);
+      }
+
+      @Head('/logo')
+      headLogo() {
+        return Uint8Array.from([1, 2]);
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const getResponse = createResponse();
+    const headResponse = createResponse();
+
+    await dispatcher.dispatch(createRequest({ accept: 'application/json' }), getResponse);
+    await dispatcher.dispatch(createRequest({ accept: 'application/json' }, 'HEAD'), headResponse);
+
+    expect(getResponse.sentBodies).toEqual(['{"0":1,"1":2}']);
+    expect(headResponse.statusCode).toBe(200);
+    expect(headResponse.headers['Content-Type']).toBe(getResponse.headers['Content-Type']);
+    expect(headResponse.headers['Content-Length']).toBe(getResponse.headers['Content-Length']);
+    expect(headResponse.headers['Content-Length']).not.toBe('2');
+    expect(headResponse.sentBodies).toEqual([undefined]);
+  });
+
   it('does not write a canonical error after incremental range streaming starts', async () => {
     @Controller('/assets')
     class AssetController {
