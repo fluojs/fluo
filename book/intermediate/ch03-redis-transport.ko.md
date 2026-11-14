@@ -33,7 +33,8 @@ Redis Pub/Sub을 사용하려면 `RedisPubSubMicroserviceTransport`에 발행자
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices/redis';
 import Redis from 'ioredis';
 
 const publisher = new Redis({ host: 'localhost', port: 6379 });
@@ -82,7 +83,7 @@ Subscriber를 어떻게 만드는지에 따라 소유권 경계가 달라집니�
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { getRedisClientToken, RedisModule } from '@fluojs/redis';
-import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices/redis';
 import type Redis from 'ioredis';
 
 const COMMAND_REDIS = getRedisClientToken();

@@ -42,6 +42,33 @@ function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T
 }
 
 describe('dispatchWebRequest', () => {
+  it('materializes reserved multipart field names as own request body data', async () => {
+    const form = new FormData();
+    form.append('__proto__', 'first');
+    form.append('constructor', '');
+    form.append('toString', '홍길동');
+    form.append('__proto__', 'second');
+    const raw = new Request('https://runtime.test/uploads', { body: form, method: 'POST' });
+    const factory = createWebRequestResponseFactory();
+
+    const request = await factory.createRequest(raw, raw.signal);
+    await factory.materializeRequest?.(request);
+
+    expect(Object.keys(request.body as object)).toEqual(['__proto__', 'constructor', 'toString']);
+    for (const [name, value] of [
+      ['__proto__', ['first', 'second']],
+      ['constructor', ''],
+      ['toString', '홍길동'],
+    ] as const) {
+      expect(Object.hasOwn(request.body as object, name)).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(request.body, name)).toMatchObject({
+        enumerable: true,
+        value,
+      });
+    }
+    expect(request.rawBody).toBeUndefined();
+  });
+
   it('keeps metadata and lazy query snapshots independent when the same raw Request is wrapped again', async () => {
     const factory = createWebRequestResponseFactory();
     const raw = new Request('https://runtime.test/items/a%2Fb?tag=one&tag=two&empty=&flag&plus=hello+world&bad=%E0%A4%A', {

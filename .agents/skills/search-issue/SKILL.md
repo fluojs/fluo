@@ -126,6 +126,19 @@ The lead is the only ledger writer and the only owner of GitHub mutations.
 Reviewers are independent and read-only, so do not create a persistent team for
 ordinary package waves.
 
+Use `scripts/run.mjs` for every real ledger transition and registration;
+never hand-write a ledger or call `gh issue create` separately. Initialize with
+`init --input <intake.json> --root <repository> --out <run-directory>`.
+The input contains `run_id`, `repository` (`owner/repo`), `authority`, and
+`intake` (`scope_mode`, `packages`, `purposes`). See `references/workflow.md`
+for start, collect, drafts, triage, register, publish, block, and resume.
+Every command validates `references/run-ledger.schema.json` and the invocation,
+draft, and receipt invariants before advancing.
+
+`run-scenario.mjs --fixture-only` adapts synthetic task results and issue numbers
+at the fixture boundary, then uses the same construction, validation, drafting,
+and registration transitions. Production input rejects those fields.
+
 Do not use foreground or serial reviewer calls. If native background task
 batching is unavailable, block the run instead of removing reviewer todos or
 inventing reviewer results.
@@ -151,3 +164,7 @@ Stop when every expected invocation and draft is terminal, all creation
 receipts reconcile, the ledger is complete, and the artifact/handoff contract
 is satisfied. Stop fail-closed with a named reason when intake, reviewer
 results, triage, registration, or publication is incomplete.
+
+On interruption, use `run.mjs block --reason <reason>` with the same root and
+run directory. Continue through `run.mjs resume`; neither command completes
+unfinished native invocations or discards terminal results and receipts.

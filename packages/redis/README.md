@@ -12,7 +12,7 @@ Shared Redis connection layer for fluo. It provides a default app-scoped `ioredi
 - [When to use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
-- [Public API](#public-api)
+- [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
@@ -87,9 +87,9 @@ An unnamed registration and a registration with `name: 'default'` own distinct r
 
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.
-- Lifecycle-owned `connect()` and `quit()` calls are bounded by package timeouts (`10_000` ms by default) so bootstrap and shutdown do not wait forever on a stalled Redis command. Override them with `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs`; pass `0` only when the host process intentionally owns an unbounded wait.
+- Lifecycle-owned `connect()` and `quit()` calls are bounded by package timeouts (`10_000` ms by default) so bootstrap and shutdown do not wait forever on a stalled Redis command. Override them with `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs`; pass `0` only when the host process intentionally owns an unbounded wait. All finite non-negative values are supported, including intervals above the host timer limit of `2_147_483_647` ms.
 - During shutdown, ready/connecting clients attempt `quit()` first for graceful teardown, while monitoring, wait, and closed-transition states use `disconnect()` directly.
-- If `quit()` fails, Fluo falls back to `disconnect()` and only rethrows when the client still remains open afterward.
+- If `quit()` fails or times out, Fluo observes closure before calling `disconnect()` and allows up to another `10_000` ms for the asynchronous transition to `end`. Successful cleanup resolves shutdown; otherwise, the original QUIT error or timeout is rethrown. This cleanup deadline still applies when `quitTimeoutMs: 0` disables the QUIT timeout and QUIT rejects.
 
 ### Option Normalization
 
@@ -134,15 +134,6 @@ import {
 const ANALYTICS_REDIS = getRedisServiceToken('analytics');
 const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
-    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
-  ],
-})
-export class AppModule {}
-
 @Inject(RedisService, ANALYTICS_REDIS, ANALYTICS_REDIS_CLIENT)
 export class AnalyticsStore {
   constructor(
@@ -151,6 +142,16 @@ export class AnalyticsStore {
     private readonly analyticsClient: Redis,
   ) {}
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
+  ],
+  providers: [AnalyticsStore],
+})
+export class AppModule {}
 ```
 
 ### Raw Client Access
@@ -183,7 +184,7 @@ export class AdvancedService {
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { getRedisClientToken, RedisModule } from '@fluojs/redis';
-import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices/redis';
 import type Redis from 'ioredis';
 
 const COMMAND_REDIS = getRedisClientToken();

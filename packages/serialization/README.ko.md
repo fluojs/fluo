@@ -87,7 +87,7 @@ class SecureDto {
 }
 ```
 
-`ExposeClassOptions`는 `Expose(...)`가 받는 class-level option을 표현하는 export 타입입니다. DTO가 field-level `@Expose()` metadata가 있는 field만 내보내야 할 때 `excludeExtraneous: true`를 사용하세요.
+`ExposeClassOptions`는 `Expose(...)`가 받는 class-level option을 표현하는 export 타입입니다. DTO가 field-level `@Expose()` metadata가 있는 instance field만 내보내야 할 때 `excludeExtraneous: true`를 사용하세요. Static field에만 `@Expose()`를 적용해도 같은 이름의 instance field가 노출되거나 output key가 생성되지 않습니다.
 
 ### 값 변환
 
@@ -148,6 +148,7 @@ fluo의 직렬화 엔진은 활성 순환 참조를 자동으로 감지하고 `u
 ### 상속된 데코레이터 계약
 
 기반 클래스에 선언한 직렬화 메타데이터는 파생 DTO에도 상속됩니다. 공통 필드에 적용한 `@Expose()`, `@Exclude()`, `@Transform()` 규칙은 서브클래스 인스턴스를 직렬화할 때도 그대로 반영됩니다.
+Field decorator는 instance field만 대상으로 합니다. Static field에 적용하면 상속 관계에서도 무시되므로 같은 이름의 instance field를 노출하거나 제외하거나 변환하지 않습니다.
 파생 클래스의 데코레이터 갱신은 해당 클래스만 소유하므로 field나 class option을 override해도 base DTO나 sibling DTO의 이후 직렬화는 바뀌지 않습니다.
 
 Class-level `excludeExtraneous`도 일반 상속 규칙을 따릅니다. 파생 클래스에 option 없는 `@Expose()`를 붙여도 가장 가까운 상속 설정이 유지되므로, expose-only 기반 DTO는 subclass에서도 expose-only 상태를 유지합니다. 일반 enumerable field를 다시 포함하려는 의도가 있을 때만 파생 클래스에 `@Expose({ excludeExtraneous: false })`를 명시하세요. 이 경우에도 상속된 field-level `@Exclude()` metadata는 계속 적용됩니다.
@@ -169,7 +170,7 @@ Decorated metadata가 없는 class instance도 재귀적으로 순회하므로, 
 - **HTTP 통합**: `SerializerInterceptor`는 아직 commit되지 않은 handler 결과를 직렬화합니다. Response가 commit된 뒤에는 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다.
 - **타입**: `ExposeClassOptions`는 class-level `Expose(...)` option 타입으로 root entrypoint에서 export되며, `TransformFunction`은 `Transform(...)`에 전달하는 callback 타입으로 export됩니다.
 
-`Expose`는 class와 field에 적용할 수 있습니다. `Exclude`와 `Transform`은 field에 적용합니다.
+`Expose`는 class와 instance field에 적용할 수 있습니다. `Exclude`와 `Transform`은 instance field에 적용합니다. 세 데코레이터 모두 static field에 적용하면 예외 없이 무시합니다. Static 값은 그대로 유지되고 static transform callback은 실행되지 않습니다.
 
 ## 관련 패키지
 

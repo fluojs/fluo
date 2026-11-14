@@ -1,12 +1,179 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
+import * as core from '@fluojs/core';
+import * as redis from '@fluojs/redis';
+import {
+  createCompilerHost,
+  createProgram,
+  createSourceFile,
+  flattenDiagnosticMessageText,
+  getPreEmitDiagnostics,
+  ModuleKind,
+  ModuleResolutionKind,
+  ScriptKind,
+  ScriptTarget,
+  transpileModule,
+  type CompilerOptions,
+} from 'typescript';
 import { describe, expect, it } from 'vitest';
 
+import { collectWorkspaceAliases } from '../vitest/src/index.js';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const documentPairs = [
+  ['packages/redis/README.md', 'packages/redis/README.ko.md'],
+  ['book/intermediate/ch03-redis-transport.md', 'book/intermediate/ch03-redis-transport.ko.md'],
+] as const;
 
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+function codeFences(markdown: string): string[] {
+  return Array.from(markdown.matchAll(/^```[^\n]*\n[\s\S]*?^```/gmu), (match) => match[0]);
+}
+
+function typescriptExamples(markdown: string): string[] {
+  return codeFences(markdown)
+    .filter((fence) => /^```(?:ts|typescript)\n/u.test(fence))
+    .map((fence) => fence.slice(fence.indexOf('\n') + 1, -3));
+}
+
+function headings(markdown: string) {
+  const prose = markdown.replace(/^```[^\n]*\n[\s\S]*?^```/gmu, (fence) => ' '.repeat(fence.length));
+  return Array.from(prose.matchAll(/^ {0,3}(#{1,6})([ \t][^\r\n]*|)$/gmu), (match) => ({
+    level: match[1].length,
+    text: match[2].replace(/[ \t]+#+[ \t]*$/u, '').replace(/^[ \t]+|[ \t]+$/gu, ''),
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
+function assertTableOfContents(markdown: string, tocHeading: string): void {
+  const documentHeadings = headings(markdown);
+  const tocTitle = headings(tocHeading)[0].text;
+  const tocHeadings = documentHeadings.filter((heading) => heading.text === tocTitle);
+  expect(
+    tocHeadings,
+    'must contain exactly one table-of-contents heading',
+  ).toHaveLength(1);
+  const tocIndex = documentHeadings.indexOf(tocHeadings[0]);
+  const toc = markdown.slice(tocHeadings[0].end, documentHeadings[tocIndex + 1]?.start);
+  const fragments = Array.from(toc.matchAll(/\]\(#([^)]+)\)/gu), (match) => match[1]);
+  const anchors = documentHeadings.map(({ text }) =>
+    text.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replaceAll(' ', '-'),
+  );
+
+  expect(fragments.length).toBeGreaterThan(0);
+  expect(
+    fragments.filter((fragment) => !anchors.includes(fragment)),
+    'must resolve every table-of-contents fragment to a heading',
+  ).toEqual([]);
+}
+
+function compileExamples(sources: ReadonlyMap<string, string>) {
+  const compilerOptions: CompilerOptions = {
+    allowImportingTsExtensions: true,
+    esModuleInterop: true,
+    module: ModuleKind.ESNext,
+    moduleResolution: ModuleResolutionKind.Bundler,
+    noEmit: true,
+    paths: Object.fromEntries(
+      Object.entries(collectWorkspaceAliases(new URL('../../', import.meta.url)))
+        .map(([name, sourcePath]) => [name, [sourcePath]]),
+    ),
+    strict: true,
+    target: ScriptTarget.ES2022,
+    types: ['node'],
+  };
+  const host = createCompilerHost(compilerOptions, true);
+  const defaultFileExists = host.fileExists.bind(host);
+  const defaultReadFile = host.readFile.bind(host);
+  const defaultGetSourceFile = host.getSourceFile.bind(host);
+  host.fileExists = (fileName) => sources.has(fileName) || defaultFileExists(fileName);
+  host.readFile = (fileName) => sources.get(fileName) ?? defaultReadFile(fileName);
+  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
+    const source = sources.get(fileName);
+    return source === undefined
+      ? defaultGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile)
+      : createSourceFile(fileName, source, languageVersion, true, ScriptKind.TS);
+  };
+
+  return createProgram([...sources.keys()], compilerOptions, host);
+}
+
+function assertDocumentedExamples(documents: ReadonlyMap<string, string>): void {
+  const sources = new Map<string, string>();
+  for (const [relativePath, markdown] of documents) {
+    const examples = typescriptExamples(markdown).filter((source) =>
+      source.includes('RedisPubSubMicroserviceTransport') || source.includes('class AnalyticsStore'),
+    );
+    expect(examples, relativePath).toHaveLength(2);
+    examples.forEach((source, index) => {
+      // Resolve ioredis from the package's installed peer, without replacing its declarations.
+      const examplePath = join(repoRoot, 'packages/redis', `${relativePath.replaceAll('/', '-')}-${index}.ts`);
+      sources.set(examplePath, source);
+    });
+  }
+
+  const program = compileExamples(sources);
+  const diagnostics = getPreEmitDiagnostics(program).map((diagnostic) => {
+    const message = flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+    if (diagnostic.file === undefined || diagnostic.start === undefined) {
+      return `TS${diagnostic.code}: ${message}`;
+    }
+    const position = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
+    return `${diagnostic.file.fileName}:${position.line + 1}:${position.character + 1} TS${diagnostic.code}: ${message}`;
+  });
+
+  expect(diagnostics, diagnostics.join('\n')).toEqual([]);
+  expect(program.getSourceFiles().some((file) => file.fileName.endsWith('/ioredis/built/index.d.ts'))).toBe(true);
+  const checker = program.getTypeChecker();
+  for (const [sourcePath, exported] of [
+    ['packages/microservices/src/index.ts', false],
+    ['packages/microservices/src/transports/redis-transport.ts', true],
+  ] as const) {
+    const source = program.getSourceFile(join(repoRoot, sourcePath));
+    const symbol = source === undefined ? undefined : checker.getSymbolAtLocation(source);
+    expect(symbol, sourcePath).toBeDefined();
+    const exports = symbol === undefined ? [] : checker.getExportsOfModule(symbol).map((entry) => entry.name);
+    expect(exports.includes('RedisPubSubMicroserviceTransport'), sourcePath).toBe(exported);
+  }
+}
+
+function evaluateNamedClients(source: string): void {
+  const compiled = transpileModule(source, {
+    compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 },
+    reportDiagnostics: true,
+  });
+  expect(compiled.diagnostics).toEqual([]);
+  const exports: Record<string, unknown> = {};
+  const publicPackages = new Map<string, unknown>([
+    ['@fluojs/core', core],
+    ['@fluojs/redis', redis],
+  ]);
+
+  runInNewContext(compiled.outputText, {
+    exports,
+    Symbol,
+    require(name: string) {
+      if (!publicPackages.has(name)) {
+        throw new Error(`Unexpected runtime import: ${name}`);
+      }
+      return publicPackages.get(name);
+    },
+  }, { timeout: 1_000 });
+
+  const { AppModule, AnalyticsStore } = exports;
+  if (typeof AppModule !== 'function' || typeof AnalyticsStore !== 'function') {
+    throw new Error('Missing Named Clients classes');
+  }
+  expect(
+    core.getModuleMetadata(AppModule)?.providers,
+    'must register AnalyticsStore in AppModule.providers',
+  ).toEqual([AnalyticsStore]);
 }
 
 function getOwningModuleBlock(content: string, factoryName: string): string {
@@ -30,6 +197,162 @@ function getOwningModuleBlock(content: string, factoryName: string): string {
 }
 
 describe('Redis client ownership documentation', () => {
+  it('typechecks all documented Pub/Sub and Named Clients fences against real public exports', () => {
+    const documents = new Map(documentPairs.flat().map((relativePath) => [relativePath, read(relativePath)]));
+
+    assertDocumentedExamples(documents);
+  }, 30_000);
+
+  it.each(documentPairs.flat())('%s rejects a Pub/Sub import restored to the package root', (relativePath) => {
+    const documents = new Map(documentPairs.flat().map((path) => [path, read(path)]));
+    documents.set(relativePath, read(relativePath).replaceAll(
+      "from '@fluojs/microservices/redis'",
+      "from '@fluojs/microservices'",
+    ));
+
+    expect(() => assertDocumentedExamples(documents)).toThrow(
+      'TS2305: Module \'"@fluojs/microservices"\' has no exported member \'RedisPubSubMicroserviceTransport\'.',
+    );
+  }, 30_000);
+
+  it('keeps the manifest root, Pub/Sub and Streams entrypoints on their declared public boundaries', () => {
+    const manifest = JSON.parse(read('packages/microservices/package.json'));
+
+    expect(manifest.exports).toMatchObject({
+      '.': { types: './dist/index.d.ts', import: './dist/index.js' },
+      './redis': { types: './dist/transports/redis-transport.d.ts', import: './dist/transports/redis-transport.js' },
+      './redis-streams': {
+        types: './dist/transports/redis-streams-transport.d.ts',
+        import: './dist/transports/redis-streams-transport.js',
+      },
+    });
+  });
+
+  it.each(documentPairs[0])('%s evaluates Named Clients with AnalyticsStore registered in AppModule', (relativePath) => {
+    const examples = typescriptExamples(read(relativePath)).filter((source) => source.includes('class AnalyticsStore'));
+    expect(examples).toHaveLength(1);
+    const example = examples[0];
+    if (example === undefined) {
+      throw new Error(`Missing Named Clients example in ${relativePath}`);
+    }
+
+    evaluateNamedClients(example);
+  });
+
+  it.each(documentPairs[0])('%s rejects Named Clients without AnalyticsStore registration', (relativePath) => {
+    const markdown = read(relativePath).replace('providers: [AnalyticsStore]', 'providers: []');
+    const example = typescriptExamples(markdown).find((source) => source.includes('class AnalyticsStore'));
+    if (example === undefined) {
+      throw new Error(`Missing Named Clients example in ${relativePath}`);
+    }
+
+    expect(() => evaluateNamedClients(example)).toThrow('must register AnalyticsStore in AppModule.providers');
+  });
+
+  it('rejects a Named Clients example that registers AnalyticsStore before declaring it', () => {
+    const example = typescriptExamples(read(documentPairs[0][0]))
+      .find((source) => source.includes('class AnalyticsStore'));
+    if (example === undefined) {
+      throw new Error('Missing Named Clients example');
+    }
+    const providerStart = example.indexOf('@Inject(');
+    const moduleStart = example.indexOf('@Module({');
+    const lateProvider = example.slice(0, providerStart)
+      + example.slice(moduleStart) + example.slice(providerStart, moduleStart);
+
+    expect(() => evaluateNamedClients(lateProvider)).toThrow(/Cannot access 'AnalyticsStore' before initialization/u);
+  });
+
+  describe.each([
+    [documentPairs[0][0], '## Table of Contents', '#installation', '#public-api-overview'],
+    [documentPairs[0][1], '## 목차', '#설치', '#공개-api-개요'],
+  ])('%s table of contents', (relativePath, tocHeading, installationFragment, publicApiFragment) => {
+    it('resolves every fragment to a heading', () => {
+      assertTableOfContents(read(relativePath), tocHeading);
+    });
+
+    it('rejects a broken anchor', () => {
+      const markdown = read(relativePath).replace(`](${publicApiFragment})`, '](#public-api)');
+
+      expect(() => assertTableOfContents(markdown, tocHeading))
+        .toThrow('must resolve every table-of-contents fragment to a heading');
+    });
+
+    it('rejects a duplicate table of contents shadowing a broken later anchor', () => {
+      const markdown = read(relativePath).replace(`](${publicApiFragment})`, '](#public-api)');
+      const duplicateToc = markdown.replace(
+        `${tocHeading}\n`,
+        `${tocHeading}\n\n- [Installation](${installationFragment})\n\n${tocHeading}\n`,
+      );
+
+      expect(() => assertTableOfContents(duplicateToc, tocHeading))
+        .toThrow('must contain exactly one table-of-contents heading');
+    });
+
+    it.each([
+      ['trailing whitespace', `${tocHeading} \t`],
+      ['closing hashes', `${tocHeading} ## \t`],
+      ['one leading space', ` ${tocHeading}`],
+      ['two leading spaces', `  ${tocHeading}`],
+      ['three leading spaces', `   ${tocHeading}`],
+      ...[1, 3, 4, 5, 6].map((level) => [
+        `level ${level}`,
+        tocHeading.replace(/^##/u, '#'.repeat(level)),
+      ]),
+    ])('rejects a %s normalized duplicate table of contents shadowing a broken later anchor', (_, duplicateHeading) => {
+      const markdown = read(relativePath).replace(`](${publicApiFragment})`, '](#public-api)');
+      const duplicateToc = markdown.replace(
+        `${tocHeading}\n`,
+        `${tocHeading}\n\n- [Installation](${installationFragment})\n\n${duplicateHeading}\n`,
+      );
+
+      expect(() => assertTableOfContents(duplicateToc, tocHeading))
+        .toThrow('must contain exactly one table-of-contents heading');
+    });
+
+    it.each([1, 2, 3, 4, 5, 6])('resolves normalized ATX headings at level %i within the TOC body only', (level) => {
+      const markdown = read(relativePath).replace(/^## (.+)$/gmu, (_, title: string) =>
+        `   ${'#'.repeat(level)} \t${title} ## \t`
+        + (title === tocHeading.slice(3) ? '' : '\n\n[Outside the TOC](#public-api)'));
+
+      expect(() => assertTableOfContents(markdown, tocHeading)).not.toThrow();
+    });
+
+    it.each([
+      ['four leading spaces', `    ${tocHeading}`],
+      ['seven opening hashes', tocHeading.replace(/^##/u, '#######')],
+      ['missing opening separator', tocHeading.replace(/^## /u, '##')],
+      ['missing closing separator', `${tocHeading}##`],
+      ['escaped closing hashes', `${tocHeading} \\##`],
+    ])('does not count %s as the same ATX heading', (_, otherHeading) => {
+      const markdown = `${read(relativePath)}\n\n${otherHeading}\n`;
+
+      expect(() => assertTableOfContents(markdown, tocHeading)).not.toThrow();
+    });
+
+    it('rejects an empty duplicate table of contents at the end of the document', () => {
+      const duplicateToc = `${read(relativePath)}\n${tocHeading}\n`;
+
+      expect(() => assertTableOfContents(duplicateToc, tocHeading))
+        .toThrow('must contain exactly one table-of-contents heading');
+    });
+  });
+
+  it('compares normalized table-of-contents titles case-sensitively', () => {
+    const markdown = `${read(documentPairs[0][0])}\n\n   ## table of contents ## \t\n`;
+
+    expect(() => assertTableOfContents(markdown, '## Table of Contents')).not.toThrow();
+  });
+
+  it.each(documentPairs)('%s and %s retain matching fences and heading structure', (englishPath, koreanPath) => {
+    const english = read(englishPath);
+    const korean = read(koreanPath);
+
+    expect(codeFences(korean)).toEqual(codeFences(english));
+    expect(headings(korean).map((heading) => heading.level))
+      .toEqual(headings(english).map((heading) => heading.level));
+  });
+
   it('keeps client construction and raw Pub/Sub cleanup ownership aligned across companion docs', () => {
     const failureSafeShutdown = `  const shutdownErrors: unknown[] = [];
 

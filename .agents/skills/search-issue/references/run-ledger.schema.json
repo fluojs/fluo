@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "run_id", "repository", "identity_sha256", "status", "intake", "authority", "invocations", "findings", "rd_briefs", "drafts", "registration_triage", "registration_results", "handoff", "blocked_reason"],
+  "properties": {
+    "version": { "const": 1 },
+    "run_id": { "type": "string", "pattern": "^(?!.*(?:\\.|\\.lock)$)[A-Za-z0-9][A-Za-z0-9+._-]*$" },
+    "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "identity_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "status": { "enum": ["intake", "running", "triage", "registering", "published", "completed", "blocked"] },
+    "intake": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "packages", "purposes"],
+      "properties": {
+        "mode": { "enum": ["all", "group", "package", "groups", "packages"] },
+        "packages": { "$ref": "#/$defs/names" },
+        "purposes": { "$ref": "#/$defs/names" }
+      }
+    },
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["explicit_harness_invocation", "investigation_only"],
+      "properties": {
+        "explicit_harness_invocation": { "type": "boolean" },
+        "investigation_only": { "type": "boolean" }
+      }
+    },
+    "invocations": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["invocation_id", "package", "reviewer", "expected_result_type", "status", "task_id", "result"],
+        "properties": {
+          "invocation_id": { "type": "string", "minLength": 1 },
+          "package": { "type": "string", "minLength": 1 },
+          "reviewer": { "type": "string", "minLength": 1 },
+          "expected_result_type": { "enum": ["audit_finding", "rd_brief"] },
+          "status": { "enum": ["expected", "started", "completed", "failed", "blocked"] },
+          "task_id": { "type": ["string", "null"], "minLength": 1 },
+          "result": { "type": ["object", "null"] }
+        }
+      }
+    },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "rd_briefs": { "type": "array", "items": { "type": "object" } },
+    "drafts": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["draft_id", "package", "packages", "title", "findings", "rd_briefs", "labels"],
+        "properties": {
+          "draft_id": { "type": "string", "pattern": "^D[1-9][0-9]*$" },
+          "package": { "type": "string", "minLength": 1 },
+          "packages": { "$ref": "#/$defs/names" },
+          "title": { "type": "string", "minLength": 1 },
+          "findings": { "type": "array", "items": { "type": "object" } },
+          "rd_briefs": { "type": "array", "items": { "type": "object" } },
+          "labels": { "$ref": "#/$defs/names" }
+        }
+      }
+    },
+    "registration_triage": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["draft_id", "decision", "reason", "labels", "duplicate_of", "safety_route", "confidence"],
+        "properties": {
+          "draft_id": { "type": "string", "minLength": 1 },
+          "decision": { "enum": ["register", "defer", "reject"] },
+          "reason": { "type": "string", "minLength": 1 },
+          "labels": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "duplicate_of": { "type": ["integer", "null"], "minimum": 1 },
+          "safety_route": { "enum": ["public-issue", "security-disclosure", "support"] },
+          "confidence": { "enum": ["high", "medium", "low"] }
+        }
+      }
+    },
+    "registration_results": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["draft_id", "decision", "issue_number", "issue_url", "marker"],
+        "properties": {
+          "draft_id": { "type": "string", "minLength": 1 },
+          "decision": { "enum": ["register", "defer", "reject"] },
+          "issue_number": { "type": ["integer", "null"], "minimum": 1 },
+          "issue_url": { "type": ["string", "null"], "minLength": 1 },
+          "marker": { "type": ["string", "null"], "minLength": 1 }
+        }
+      }
+    },
+    "handoff": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["artifact_path", "command"],
+          "properties": {
+            "artifact_path": { "type": "string", "minLength": 1 },
+            "command": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "blocked_reason": { "type": ["string", "null"], "minLength": 1 }
+  },
+  "$defs": {
+    "names": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+  }
+}

@@ -128,6 +128,8 @@ CacheModule.forRootAsync({
 
 The synchronous `CacheModule.forRoot(options)` path remains appropriate when options are already prepared. The lifecycle-managed Redis path can resolve a default or named raw client from `@fluojs/redis` through `store: 'redis'` and optional `redis.clientName`. If the application already owns a compatible Redis client, pass it directly through `redis.client`. This path does not require `@fluojs/redis`: the object only needs the exported `RedisCompatibleClient` operations (`get`, `set`, `del`, and tuple-returning `scan`). A directly supplied client takes precedence over `redis.clientName`, and the application remains responsible for connecting and closing it.
 
+An ioredis `Redis` instance satisfies the public `RedisCompatibleClient` contract directly, without an adapter or type assertion. Memory-only consumers need neither `ioredis` nor `@fluojs/redis`.
+
 ```typescript
 import Redis from 'ioredis';
 import { Module } from '@fluojs/core';
