@@ -15,6 +15,7 @@ import type {
 } from './types.js';
 
 const baseOptions: NormalizedCacheModuleOptions = {
+  rememberCacheErrors: 'throw',
   global: false,
   httpKeyStrategy: 'route',
   keyPrefix: 'fluo:cache:',
