@@ -142,7 +142,14 @@ HTTP route decorators such as `@Controller()`, `@Get()`, and `@Post()` accept on
 
 Trailing slashes and duplicate slashes are normalized during route mapping, so `//users///:id/` resolves to `/users/:id`.
 
-Route decorators do **not** support wildcard, regex-like, or mixed-segment syntax such as `*`, `?`, `/(.*)`, `user-:id`, or `:id.json`. Wildcard matching remains middleware-only via `forRoutes('/users/*')`.
+Route decorators do **not** support wildcard, regex-like, or mixed-segment syntax such as `*`, `?`, `/(.*)`, `user-:id`, or `:id.json`. Wildcard matching remains middleware-only via `forRoutes(AuthMiddleware, '/users/*')`.
+
+Register `forRoutes(AuthMiddleware, '/*')` to run middleware on `/`, `/users`, and `/users/42`
+before the handler. `normalizeRoutePattern(...)` preserves the canonical root wildcard `/*`,
+including duplicate-slash forms such as `////*`. `matchRoutePattern(...)` normalizes duplicate
+and trailing slashes in patterns and paths: `/cats/*` matches `/cats` and `/cats/42`, but
+does not match `/cat` or `/cats-other`. Exact patterns such as `/users/` match `/users`,
+without matching `/users/42`.
 
 Catch-all route grammar is intentionally deferred. The
 [HTTP catch-all route grammar decision](../../docs/architecture/http-catch-all-route-grammar.md)
@@ -594,10 +601,10 @@ Node.js, Express, and Fastify expose this capability. Fetch-style Web, Bun, Deno
 
 ## HTTP-Owned React Navigation
 
-Only a successful opted-in `@fluojs/react` page can offer the version 1 client navigation
+Only a successful opted-in `@fluojs/react` page can offer the version 2 client navigation
 representation. The dispatcher selects it after matching, URI versioning, middleware, DTO
 binding/validation, guards, interceptors, handler execution, and response-value finalization,
-when a GET sends exactly `Accept: application/vnd.fluo.react-navigation+json;v=1`.
+when a GET sends exactly `Accept: application/vnd.fluo.react-navigation+json;v=2`.
 HTTP applies route metadata, matched URL/params, status, response validators, existing `Vary`
 and `Set-Cookie`, plus `Vary: Accept` on the payload. By default, navigation JSON receives
 `Cache-Control: private, no-store`; if the application already set `Cache-Control`, HTTP
@@ -687,6 +694,30 @@ preserved when HTTP adds `Accept`. Successful-route `@Produces(...)` metadata do
 representations. See the
 [HTTP error representation decision](../../docs/architecture/http-error-representations.md) for the
 complete phase and fallback contract.
+
+For progressive forms, only a POST with exactly
+`Accept: application/vnd.fluo.form+json;v=1` selects the independent form v1 protocol.
+Throw `HttpFormRejection.create({ fieldErrors, formErrors })` for a deliberate domain
+validation rejection: it creates a status-400 exception with explicit, bounded safe messages.
+`HttpFormErrors` contains readonly `fieldErrors: Readonly<Record<string, readonly string[]>>`
+and `formErrors: readonly string[]`.
+
+For actual DTO validation failures, configure `errorRepresentation.form.project` with a
+`HttpFormRepresentationProvider`. Its `project(context: HttpErrorRepresentationContext)`
+returns `HttpFormErrors | undefined` or `Promise<HttpFormErrors | undefined>`, synchronously
+or asynchronously. The HTTP-owned context includes the classified error, canonical JSON,
+request, active request-scope container and optional handler/request id; it exposes no
+response writer. `HttpErrorRepresentationOptions` still requires `html`, so add `form`
+alongside the HTML provider shown above rather than supplying a form-only options object.
+
+HTTP retains the original status for negotiated validation. An arbitrary 400/422 is not
+automatically typed validation; generic errors and missing, undefined, malformed, oversized
+or throwing projections retain canonical JSON. Author only allowlisted nonsecret field/form
+messages: submitted values, exception bodies, credentials and stacks must not be disclosed.
+The projection allows at most 32 field keys, 8 messages per field/form and 256 characters per
+message. Applications remain responsible for the messages they author. See the
+[progressive forms contract](../../docs/contracts/react-progressive-forms.md) for native
+submission, negotiation and safe disclosure.
 
 ### Rate limiting behind proxies
 
@@ -873,6 +904,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 
 `FAST_PATH_ELIGIBILITY_SYMBOL` and `FAST_PATH_STATS_SYMBOL` have stable same-realm identities across compatible duplicate package copies, so adapters and diagnostics can read metadata written by another copy without sharing dispatcher-owned mutable state.
 
+- **Form error representations**: `HttpFormRejection` creates deliberate safe status-400 rejections; `HttpFormErrors` holds readonly field/form messages; `HttpFormRepresentationProvider` projects HTTP-owned DTO validation context into safe errors or `undefined`, synchronously or asynchronously.
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`, `InputPolicy`
 - **Explicit input materialization**: `InputPolicyOptions`, `createSchemaDto`, `StandardSchemaBinder`, `SchemaDtoOptions`, `SchemaBindingField`
