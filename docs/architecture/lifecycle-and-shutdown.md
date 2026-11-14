@@ -84,15 +84,17 @@ The runtime exposes shutdown hooks as explicit contracts only. Signal registrati
 
 Runtime-owned cleanup registrations accept synchronous or asynchronous callbacks. Close and
 bootstrap-failure cleanup execute registrations in order and await every callback before the next
-cleanup phase. A failure does not skip later registrations: close aggregates failures and leaves
-only its incomplete cleanup phase retryable, while bootstrap keeps the original bootstrap error and
-reports cleanup failures through `ApplicationLogger`.
+cleanup phase. A failure does not skip later registrations: close aggregates current-attempt failures
+and retries only failed registrations in their original order on the next explicit close. Each
+registration retains success independently on its application or context, including duplicate callback
+functions; the phase completes once all registrations succeed. Bootstrap keeps the original bootstrap
+error and reports cleanup failures through `ApplicationLogger`.
 
 ## Failures, Retries, and Resource Ownership
 
 1. `Application.close()` closes the terminal gate before its first await, then waits for active listen to settle. A late listen completion cannot restore ready state. Connected microservices close in reverse connection order, followed by parent readiness reset → runtime cleanup → destroy hooks → application shutdown hooks → adapter close → container dispose. Contexts have no child HTTP adapter to close.
 2. `Application.get()`, `ApplicationContext.get()`, `Application.listen()`, `Application.dispatch()`, `Application.connectMicroservice()`, and `Application.startAllMicroservices()` reject once shutdown starts. Provider/runtime resolution checks admission both before and after awaiting, so a racing result is neither returned nor attached as a child. The public state remains unchanged while close is pending or failed; this does not mean the app is usable. Provider lookups after successful close also fail through the disposed container.
-3. Individual runtime cleanup and shutdown hook failures do not skip later callbacks/hooks or adapter/container cleanup. Close rejects with an error for one failure or `AggregateError` for multiple failures. Retry skips completed phases. **A failed runtime cleanup phase replays all registered callbacks; a failed lifecycle hook phase replays both complete hook passes.** Hooks must therefore tolerate re-entry into previously successful work. This differs from retrying only failed container `onDestroy()` hooks. If readiness reset itself throws, that attempt does not proceed to later phases.
+3. Individual runtime cleanup and shutdown hook failures do not skip later callbacks/hooks or adapter/container cleanup. Close rejects with an error for one failure or `AggregateError` for multiple current-attempt failures, preserving failure order. Retry skips completed phases. **A failed runtime cleanup phase retries only failed registrations in their original order; a failed lifecycle hook phase replays both complete hook passes.** Successful cleanup registrations never replay, while lifecycle hooks must tolerate re-entry into previously successful work. Container disposal retries only failed `onDestroy()` hooks. If readiness reset itself throws, that attempt does not proceed to later phases.
 4. DI disposal cleans materialized container-managed instances and owned child scopes, without repeating successful `onDestroy()` hooks. Register/override/resolve/createRequestScope remain terminal after failure. A directly disposed child's caller owns later retries; a parent-started failed child disposal remains owned by the parent hierarchy. Lifecycle `onModuleDestroy()`/`onApplicationShutdown()` and DI `onDestroy()` are separate contracts, not one combined hook.
 5. Adapters own their retries. The runtime calls `close(signal)` again for an incomplete adapter phase; it does not restart all adapters or guarantee identical drain behavior. `MicroserviceApplication.close()` publishes its cached operation before synchronously notifying `markShutdownStarted()` with the runtime receiver. Even if notification throws, it waits for active listen settlement, attempts transport close, then attempts standalone owned-context close; notification and applicable cleanup stages run once, and both close calls receive the original signal unchanged. A listen failure remains with its startup caller and cannot replace close errors or restore ready state. Connected children never close their parent context. A notification-only `Error` retains its identity; multiple failures are an `AggregateError` in notification, transport, owned-context order. Concurrent, reentrant, and later close callers share the terminal success/failure result, so parent close retries do not repeat child teardown and failure never reopens shell ingress. A failed `startAllMicroservices()` rolls back only previously started children in reverse order and preserves the original startup error.
 6. Bootstrap failure attempts acquired readiness/runtime cleanup/hooks/HTTP adapter/container cleanup and preserves the original error. Readiness/listen/startup-log/signal-registration failures on the returned app also attempt `app.close('bootstrap-failed')`. Cleanup or logger failures cannot replace the initiating error. Application-created external resources before Factory remain application-owned.
@@ -161,7 +163,7 @@ Only the JSON below is consumed as machine fields by `tooling/governance/runtime
     "container.dispose"
   ],
   "retry": {
-    "runtimeCleanup": "incomplete-phase-all-registrations",
+    "runtimeCleanup": "failed-registrations-only",
     "lifecycleHooks": "incomplete-phase-all-hooks",
     "adapter": "adapter-owned",
     "container": "failed-onDestroy-only",
