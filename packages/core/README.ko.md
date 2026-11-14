@@ -156,14 +156,18 @@ private member(`#field`, `#method()`, decorator가 붙은 `accessor`)를 선언�
 우선하므로 private member를 선언한 typed array subclass도 reference로 반환합니다. 실제
 private member를 놓치지 않도록 판정은 보수적으로 수행합니다. Class source text 또는 prototype
 chain에 있는 method나 accessor의 source 어느 위치든(문자열, 정규식, 주석 내부 포함) `#` 뒤에
-identifier 시작 문자가 오면 private member를 선언한 class로 간주합니다. 같은 규칙을 값 자체의
-own function property, getter, setter에도 적용하므로, constructor return override로 private
-field가 stamp된 객체(prototype이 `Object.prototype`인 경우 포함)도 own accessor나 function이
-그 field를 읽으면 reference로 반환합니다. Prototype chain의
+identifier 시작 문자가 오면 private member를 선언한 class로 간주합니다. Own getter나 setter가
+하나라도 있거나, source에 `this` 또는 private name이 있는 own function property가 있는 객체도
+reference로 반환하므로, constructor return override로 private field가 stamp된 객체(prototype이
+`Object.prototype`인 경우 포함)는 accessor가 helper를 거쳐 그 field를 읽어도 계속 동작합니다.
+둘 다 없는 own function(예: callback 형제 필드)은 복사를 막지 않습니다. Prototype chain의
 `constructor`가 없거나, 가려졌거나(예: `['constructor']() {}` method), 해당 prototype과 맞지 않는
 instance도 class를 식별할 수 없으므로 reference로 반환합니다. 다른 realm(예: `node:vm`)에서
 생성한 typed array와 DataView도 복사하며 원래 prototype을 유지합니다. 알려진 한계로, source에 그런 text만 포함된 class(예: `pattern = /#tag/`
-field나 `'#id'` 문자열)도 복사하지 않고 reference로 반환합니다. Primitive는 그대로 반환하며
+field나 `'#id'` 문자열)도 복사하지 않고 reference로 반환합니다. 반대로 `this` 없이 instance를
+capture한 closure, 또는 source에 private name이 없는 prototype method에서 호출하는 외부 helper나
+WeakMap을 통해서만 간접적으로 닿는 private state나 identity 기반 state는 감지하지 못하며 그런
+instance는 복사됩니다. 이는 알려진 한계입니다. Primitive는 그대로 반환하며
 function은 reference로 반환합니다. 이 계약은 process 내부 복제에 해당하며 wire
 serialization 형식이 아닙니다.
 

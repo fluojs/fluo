@@ -159,15 +159,19 @@ a typed array subclass that declares private members is also returned by referen
 conservative so a real private member is never missed: a class counts as declaring private members
 when its source text, or the source of any method or accessor on its prototype chain, contains `#`
 followed by an identifier-start character anywhere, including inside strings, regular expressions,
-or comments. The same rule applies to the value's own function-valued properties, getters, and
-setters, so an object stamped with private fields through a constructor return override (even one
-whose prototype is `Object.prototype`) is returned by reference when an own accessor or function
-reads them. An instance whose prototype chain has a missing, shadowed (for example a
+or comments. An object with any own getter or setter, or with an own function-valued property whose
+source mentions `this` or a private name, is also returned by reference, so an object stamped with
+private fields through a constructor return override (even one whose prototype is `Object.prototype`)
+keeps working even when its accessor reads them through a helper. Own functions that mention neither,
+such as a callback sibling, do not prevent copying. An instance whose prototype chain has a missing, shadowed (for example a
 `['constructor']() {}` method), or non-matching `constructor` is also returned by reference because
 its class cannot be identified. Typed arrays and DataViews created in another realm (for example through
 `node:vm`) are copied as well and keep their original prototype. As a known limitation, a class whose source merely
 contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is also returned
-by reference instead of copied. Primitives are unchanged and functions are returned by reference.
+by reference instead of copied. Conversely, private or identity-keyed state reached only indirectly,
+through closures that capture the instance without `this` or through external helpers or WeakMaps
+called from prototype methods whose source contains no private name, is not detected, and such an
+instance is copied; this is a known limitation. Primitives are unchanged and functions are returned by reference.
 This is an in-process copy contract, not a wire serialization format.
 
 ### AsyncModuleOptions for dynamic configuration

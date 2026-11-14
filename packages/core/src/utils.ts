@@ -128,12 +128,40 @@ function descriptorDeclaresPrivateNames(descriptor: PropertyDescriptor | undefin
   );
 }
 
-// Own function-valued data properties, getters, and setters are scanned like prototype members: a
-// constructor return override can stamp private fields onto an arbitrary object (even one whose
-// prototype is `Object.prototype`) and attach functions that read them.
 function ownPropertiesDeclarePrivateMembers(value: object): boolean {
   for (const key of Reflect.ownKeys(value)) {
     if (descriptorDeclaresPrivateNames(Object.getOwnPropertyDescriptor(value, key))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+const thisReferencePattern = /\bthis\b/;
+
+// A constructor return override can stamp private fields onto an arbitrary object (even one whose
+// prototype is `Object.prototype`) and attach accessors or functions that read them, possibly through
+// a helper whose source names no private member. Any own accessor therefore keeps the object by
+// reference, as does an own function whose source mentions `this` or a private name. Own functions
+// without either (for example a config `onReload` callback) are not treated as readers.
+function ownPropertiesMayReadPrivateState(value: object): boolean {
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+
+    if (!descriptor) {
+      continue;
+    }
+
+    if (descriptor.get || descriptor.set) {
+      return true;
+    }
+
+    if (
+      typeof descriptor.value === 'function' &&
+      (sourceDeclaresPrivateNames(descriptor.value) ||
+        thisReferencePattern.test(Function.prototype.toString.call(descriptor.value)))
+    ) {
       return true;
     }
   }
@@ -187,7 +215,7 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
   // This runs before every shape-specific path so built-in subclasses (for example typed arrays)
   // that declare private members are never rebuilt without their private state.
   if (
-    ownPropertiesDeclarePrivateMembers(value) ||
+    ownPropertiesMayReadPrivateState(value) ||
     declaresPrivateMembers(Object.getPrototypeOf(value) as object | null)
   ) {
     seen.set(value, value);
@@ -278,11 +306,14 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
  * as declaring private members when its source text, or the source of any method or accessor on its
  * prototype chain, contains `#` followed by an identifier-start character anywhere, including inside
  * strings, regular expressions, or comments, so a class such as one with a `pattern = /#tag/` field
- * is also returned by reference instead of copied. The same rule applies to the value's own
- * function-valued properties, getters, and setters, so an object stamped with private fields through a
- * constructor return override is returned by reference when an own accessor or function reads them.
- * An instance whose prototype chain has a missing, shadowed, or non-matching `constructor` is also
- * returned by reference because its class cannot be identified.
+ * is also returned by reference instead of copied. An object with any own getter or setter, or with an
+ * own function-valued property whose source mentions `this` or a private name, is returned by
+ * reference, so an object stamped with private fields through a constructor return override keeps
+ * working even when its accessor reads them through a helper. An instance whose prototype chain has a
+ * missing, shadowed, or non-matching `constructor` is also returned by reference because its class
+ * cannot be identified. As a known limitation, private or identity-keyed state reached only
+ * indirectly, through closures that capture the instance without `this` or through external helpers
+ * or WeakMaps called from prototype methods whose source contains no private name, is not detected.
  *
  * @param value Value to clone.
  * @returns A detached clone for supported runtime shapes, or the original primitive/function.
@@ -305,13 +336,17 @@ export function cloneWithFallback<T>(value: T): T {
  * a real private member: a class counts as declaring private members when its source text, or the
  * source of any method or accessor on its prototype chain, contains `#` followed by an
  * identifier-start character anywhere, including inside strings, regular expressions, or comments.
- * The value's own function-valued properties, getters, and setters are inspected with the same rule,
- * so an object stamped with private fields through a constructor return override (even one whose
- * prototype is `Object.prototype`) is returned by reference when an own accessor or function reads
- * them. An instance whose prototype chain has a missing, shadowed, or non-matching `constructor` is also
- * returned by reference because its class cannot be identified. As a known limitation, a class whose
- * source merely contains such text (for example a `pattern = /#tag/` field or a `'#id'` string) is
- * returned by reference instead of copied. Typed arrays and DataViews created in another realm are
+ * An object with any own getter or setter, or with an own function-valued property whose source
+ * mentions `this` or a private name, is returned by reference, so an object stamped with private fields
+ * through a constructor return override (even one whose prototype is `Object.prototype`) keeps working
+ * even when its accessor reads them through a helper; own functions mentioning neither (for example a
+ * callback sibling) do not prevent copying. An instance whose prototype chain has a missing, shadowed,
+ * or non-matching `constructor` is also returned by reference because its class cannot be identified.
+ * As a known limitation, a class whose source merely contains such text (for example a
+ * `pattern = /#tag/` field or a `'#id'` string) is returned by reference instead of copied, while
+ * private or identity-keyed state reached only indirectly, through closures that capture the instance
+ * without `this` or through external helpers or WeakMaps called from prototype methods whose source
+ * contains no private name, is not detected and such an instance is copied. Typed arrays and DataViews created in another realm are
  * copied as well and keep their original prototype.
  *
  * @param value Value to clone through the fallback path.

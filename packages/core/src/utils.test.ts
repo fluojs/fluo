@@ -247,6 +247,7 @@ describe('fallbackClone', () => {
   it('returns private-stamped objects whose own accessors or function properties read private fields by reference', () => {
     class Base {
       constructor(value: object) {
+        // biome-ignore lint/correctness/noConstructorReturn: the fixture stamps private fields onto an arbitrary object.
         return value
       }
     }
@@ -331,24 +332,84 @@ describe('fallbackClone', () => {
     expect(cloned.plain).toEqual(plain)
   })
 
-  it('deep-copies objects whose own function properties contain no private-name text', () => {
-    const source = {
+  it('returns private-stamped objects whose own getter reads private state through a helper by reference', () => {
+    class Base {
+      constructor(value: object) {
+        // biome-ignore lint/correctness/noConstructorReturn: the fixture stamps private fields onto an arbitrary object.
+        return value
+      }
+    }
+
+    class Secret extends Base {
+      #v = 1
+
+      static read(value: Secret) {
+        return value.#v
+      }
+
+      constructor(value: object) {
+        super(value)
+        Object.defineProperty(this, 'value', {
+          get(this: Secret) {
+            return Secret.read(this)
+          },
+        })
+      }
+    }
+
+    const source = new Secret({}) as unknown as { value: number }
+
+    expect(Object.getPrototypeOf(source)).toBe(Object.prototype)
+
+    const cloned = fallbackClone({ source })
+
+    expect(fallbackClone(source)).toBe(source)
+    expect(cloned.source).toBe(source)
+    expect(cloned.source.value).toBe(1)
+  })
+
+  it('returns objects with own accessors or own functions referencing this or a private name by reference', () => {
+    const method = {
       options: { retries: 1 },
       read() {
         return this.options.retries
       },
+    }
+    const accessor = {
+      options: { retries: 1 },
       get retries() {
-        return this.options.retries
+        return 1
       },
     }
+    const privateName = { options: { retries: 1 }, read: () => '#v' }
+
+    const cloned = fallbackClone({ method, accessor, privateName })
+
+    expect(cloned.method).toBe(method)
+    expect(cloned.method.read()).toBe(1)
+    expect(cloned.accessor).toBe(accessor)
+    expect(cloned.privateName).toBe(privateName)
+  })
+
+  it('deep-copies data-only objects and instances whose own functions avoid this and private names', () => {
+    class Plain {
+      nested = { count: 1 }
+      format = (value: number) => `n${value}`
+    }
+    const instance = new Plain()
+    const source = { options: { retries: 1 }, instance, notify: () => undefined }
 
     const cloned = fallbackClone(source)
 
     expect(cloned).not.toBe(source)
-    expect(cloned.read).toBe(source.read)
+    expect(cloned.notify).toBe(source.notify)
+    expect(cloned.instance).not.toBe(instance)
+    expect(cloned.instance).toBeInstanceOf(Plain)
+    expect(cloned.instance.format(2)).toBe('n2')
     cloned.options.retries = 2
+    cloned.instance.nested.count = 2
     expect(source.options.retries).toBe(1)
-    expect(cloned.retries).toBe(2)
+    expect(instance.nested.count).toBe(1)
   })
 
   it('copies typed arrays created in another realm', () => {
