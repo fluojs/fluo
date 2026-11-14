@@ -54,13 +54,15 @@ You might wonder why DTOs use TypeScript classes instead of interfaces. In TypeS
 Now let’s add rules that describe what a valid post creation request means in FluoBlog.
 
 ```typescript
-import { IsBoolean, IsOptional, IsString, MinLength } from '@fluojs/validation';
+import { IsBoolean, IsDefined, IsOptional, IsString, MinLength } from '@fluojs/validation';
 
 export class CreatePostDto {
+  @IsDefined()
   @IsString()
   @MinLength(3)
   title = '';
 
+  @IsDefined()
   @IsString()
   @MinLength(10)
   body = '';
@@ -90,9 +92,11 @@ Use `--dry-run` first when you want to see the target path and file-write plan w
 
 You will often see examples where DTO fields are initialized with simple defaults. This pattern makes the class easier to materialize and inspect visually, and it helps readers who are new to class-based validation follow the flow. Defaults act like small signposts that make the example's intent easier to see.
 
+Defaults do not replace presence validation. Omitted `title` or `body` fields keep their empty-string defaults and fail `@MinLength(3)` or `@MinLength(10)`. Explicit `null` or `undefined` values replace those defaults and fail `@IsDefined()`; ordinary string and length validators skip those missing values.
+
 ### What These Rules Mean
 
-`title` must be a string and at least three characters long, and `body` must be a string and at least ten characters long. `published` can be omitted, but if it exists, it must be a boolean. The rules are small, but even this much is enough to leave the request contract clearly in code and show the value of catching invalid input early.
+`title` and `body` are required: neither may be `null` or `undefined`. `title` must be a string and at least three characters long, and `body` must be a string and at least ten characters long. Values meeting those rules pass validation. `published` remains optional; when it is neither `null` nor `undefined`, it must be a boolean. The rules are small, but even this much is enough to leave the request contract clearly in code and show the value of catching invalid input early.
 
 ### Why Decorators?
 
