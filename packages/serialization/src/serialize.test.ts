@@ -793,6 +793,38 @@ describe('serialize', () => {
     });
   });
 
+  it('preserves foreign-realm URL and URLSearchParams through internal brand checks while walking spoofed tags', () => {
+    // node:vm contexts expose no URL globals, so a host URL re-parented onto a foreign-realm prototype models a
+    // cross-realm instance: its toString tag survives and `instanceof` fails, while its internal state is intact.
+    const foreignUrlPrototype = runInNewContext('({ [Symbol.toStringTag]: "URL" })') as object;
+    const foreignParamsPrototype = runInNewContext('({ [Symbol.toStringTag]: "URLSearchParams" })') as object;
+    const url = Object.setPrototypeOf(new URL('https://fluo.test/users?id=1'), foreignUrlPrototype) as object;
+    const params = Object.setPrototypeOf(new URLSearchParams('page=2'), foreignParamsPrototype) as object;
+
+    for (const value of [url, params]) {
+      expect(value instanceof URL || value instanceof URLSearchParams).toBe(false);
+      expect(serialize(value)).toBe(value);
+    }
+
+    const serialized = serialize({ nested: { url, params }, list: [url, params] }) as {
+      list: object[];
+      nested: { params: object; url: object };
+    };
+
+    expect(serialized.nested.url).toBe(url);
+    expect(serialized.nested.params).toBe(params);
+    expect(serialized.list[0]).toBe(url);
+    expect(serialized.list[1]).toBe(params);
+
+    const spoofedUrl = Object.assign(Object.create(foreignUrlPrototype) as object, { href: 'https://spoof.test' });
+    const spoofedParams = Object.assign(Object.create(foreignParamsPrototype) as object, { page: '2' });
+
+    expect(serialize(spoofedUrl)).toEqual({ href: 'https://spoof.test' });
+    expect(serialize(spoofedUrl)).not.toBe(spoofedUrl);
+    expect(serialize(spoofedParams)).toEqual({ page: '2' });
+    expect(serialize(spoofedParams)).not.toBe(spoofedParams);
+  });
+
   it('passes undecorated toJSON value objects through so the JSON writer applies their own representation', () => {
     class Money {
       constructor(public cents: number) {}

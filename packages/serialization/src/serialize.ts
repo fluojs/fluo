@@ -55,6 +55,8 @@ const probeMap = function (this: object) { return Map.prototype.has.call(this, u
 const probeSet = function (this: object) { return Set.prototype.has.call(this, undefined); };
 const probeWeakMap = function (this: object) { return WeakMap.prototype.has.call(this, {}); };
 const probeWeakSet = function (this: object) { return WeakSet.prototype.has.call(this, {}); };
+const getURLHref = Object.getOwnPropertyDescriptor(URL.prototype, 'href')!.get!;
+const probeURLSearchParams = function (this: object) { return URLSearchParams.prototype.has.call(this, ''); };
 
 /**
  * `Object.prototype.toString` reports `[object Error]` from the `[[ErrorData]]` slot only when no string
@@ -92,6 +94,8 @@ const opaqueBrandChecks = new Map<string, (value: object) => boolean>([
   ['[object Set]', (value) => hasInternalSlot(probeSet, value)],
   ['[object WeakMap]', (value) => hasInternalSlot(probeWeakMap, value)],
   ['[object WeakSet]', (value) => hasInternalSlot(probeWeakSet, value)],
+  ['[object URL]', (value) => hasInternalSlot(getURLHref, value)],
+  ['[object URLSearchParams]', (value) => hasInternalSlot(probeURLSearchParams, value)],
   ['[object RegExp]', (value) => hasInternalSlot(getRegExpSource, value)],
   ['[object ArrayBuffer]', (value) => hasInternalSlot(getArrayBufferByteLength, value)],
   ['[object Error]', hasErrorBrand],
