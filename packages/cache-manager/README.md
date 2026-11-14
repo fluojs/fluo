@@ -61,6 +61,8 @@ Register the `CacheModule` and use the `CacheInterceptor` on your controllers.
 
 The built-in memory path is intentionally bounded by default: when you omit `ttl`, fluo applies a 300-second default TTL and keeps at most 1,000 live memory-store entries before evicting the oldest keys.
 
+The `store` option accepts `'memory'`, `'redis'`, or a custom `CacheStore` object. Omitting `store` or setting it to `undefined` keeps the memory default. `CacheModule.forRoot(...)` validates the store synchronously during registration: unsupported strings such as `'mongo'` throw a configuration error naming the built-in choices instead of silently falling back to memory.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
@@ -348,6 +350,8 @@ When the application closes, `CacheService` stops new store reads/writes, waits 
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
+Validation checks that `get`, `set`, `del`, and `reset` are callable and names any missing or non-function methods in the configuration error. It does not call store operations and accepts both plain objects and class instances with prototype methods. Optional `close`, `dispose`, and `atomicUpdate` capabilities remain optional and are not validated at registration.
+
 ### Observing Cache Operations
 
 The platform status helpers report cache availability only. To measure hit rate, latency, and error outcomes, pass an opt-in `observer` to `CacheModule.forRoot(...)`. The observer is independent of `@fluojs/metrics`; wire it to whichever metrics backend the application already uses.
@@ -426,6 +430,8 @@ CacheModule.forRootAsync({
 ```
 
 The async path supports the same store selection as `forRoot(...)`: `'memory'`, `'redis'` with a DI-resolved or directly supplied client, and any custom `CacheStore` instance.
+
+The same store validation runs when the factory result resolves, whether `useFactory` returns options directly or through a Promise. Invalid store configuration rejects option resolution/bootstrap before a cache service backed by that store is usable. The `forRootAsync(...)` registration call does not run the factory, so it cannot synchronously reject a store value that the factory has not yet returned.
 
 ### Manual Module Composition
 
