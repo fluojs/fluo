@@ -1,9 +1,10 @@
+import type { EventEmitter } from 'node:events';
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-interface MockRedisInstance {
+interface MockRedisInstance extends EventEmitter {
   options: Record<string, unknown>;
   status: string;
   connect(): Promise<void>;
@@ -65,13 +66,15 @@ const mockRedisState = vi.hoisted(() => ({
   setCalls: [] as Array<{ args: unknown[]; key: string; value: string }>,
 }));
 
-vi.mock('ioredis', () => ({
-  default: class MockRedis {
+vi.mock('ioredis', async () => {
+  const { EventEmitter } = await import('node:events');
+  return { default: class MockRedis extends EventEmitter {
     readonly options: Record<string, unknown>;
     status = mockRedisState.initialStatus;
     private readonly storage = new Map<string, string>();
 
     constructor(options: Record<string, unknown> = {}) {
+      super();
       this.options = options;
       mockRedisState.instances.push(this);
     }
@@ -152,8 +155,8 @@ vi.mock('ioredis', () => ({
       const existed = this.storage.delete(key);
       return existed ? 1 : 0;
     }
-  },
-}));
+  } };
+});
 
 import {
   createRedisPlatformStatusSnapshot,
@@ -444,12 +447,17 @@ describe('@fluojs/redis', () => {
     );
   });
 
-  it('does not forward module-only name, global, and lifecycle fields to ioredis', async () => {
+  it.each([
+    { global: true },
+    { global: false },
+    { global: false, name: 'cache' },
+  ] as const)('does not forward module-only name, global, and lifecycle fields to ioredis for %j', async (registration) => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
         RedisModule.forRoot({
-          name: 'cache',
+          ...registration,
+          db: 2,
           host: '127.0.0.1',
           lifecycle: { connectTimeoutMs: 25, quitTimeoutMs: 30 },
           port: 6380,
@@ -460,6 +468,7 @@ describe('@fluojs/redis', () => {
     const app = await FluoFactory.create(AppModule);
 
     expect(mockRedisState.instances[0]?.options).toMatchObject({
+      db: 2,
       host: '127.0.0.1',
       lazyConnect: true,
       port: 6380,
@@ -489,6 +498,7 @@ describe('@fluojs/redis', () => {
     defineModule(AppModule, {
       imports: [
         RedisModule.forRoot({
+          global: false,
           host: '127.0.0.1',
           name: 'cache',
           port: 26379,
@@ -511,6 +521,7 @@ describe('@fluojs/redis', () => {
       sentinels: [{ host: '127.0.0.1', port: 26379 }],
     });
     expect(mockRedisState.instances[0]?.options).not.toHaveProperty('sentinelName');
+    expect(mockRedisState.instances[0]?.options).not.toHaveProperty('global');
     expect(clientConsumer.redis).toBe(mockRedisState.instances[0]);
     expect(serviceConsumer.redis.getRawClient()).toBe(clientConsumer.redis);
 
@@ -627,8 +638,7 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
   });
 
-  it('does not rethrow quit failures after fallback disconnect reaches a close transition state', async () => {
-    mockRedisState.disconnectStatus = 'close';
+  it('does not rethrow quit failures after fallback disconnect completes a close transition', async () => {
     mockRedisState.quitError = new Error('quit failed');
 
     class AppModule {}
@@ -637,10 +647,19 @@ describe('@fluojs/redis', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
+    const client = mockRedisState.instances[0]!;
+    vi.spyOn(client, 'disconnect').mockImplementation(() => {
+      mockRedisState.events.push('disconnect');
+      client.status = 'close';
+      queueMicrotask(() => {
+        client.status = 'end';
+        client.emit('end');
+      });
+    });
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
-    expect(mockRedisState.instances[0]?.status).toBe('close');
+    expect(client.status).toBe('end');
   });
 
   it('disconnects a monitoring client during shutdown', async () => {
@@ -782,6 +801,7 @@ describe('@fluojs/redis', () => {
   });
 
   it('rethrows quit failures when disconnect does not close the client', async () => {
+    vi.useFakeTimers();
     mockRedisState.disconnectLeavesOpen = true;
     mockRedisState.quitError = new Error('quit failed');
 
@@ -792,7 +812,9 @@ describe('@fluojs/redis', () => {
 
     const app = await FluoFactory.create(AppModule);
 
-    await expect(app.close()).rejects.toThrow('quit failed');
+    const closeAssertion = expect(app.close()).rejects.toThrow('quit failed');
+    await vi.advanceTimersByTimeAsync(10_000);
+    await closeAssertion;
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
   });
 
