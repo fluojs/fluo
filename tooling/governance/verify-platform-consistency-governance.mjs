@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
-import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
+import { enforceCacheManagerNestjsMigrationDocs as enforceCacheManagerMigrationOptionsDocs } from './cache-manager-nestjs-migration-docs.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { behavioralChangedFiles, isNavigationDocument } from './docs-navigation-changes.mjs';
@@ -115,7 +115,6 @@ const staticAssetRegressionEvidence = [
 ];
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
-export { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-migration-docs.mjs';
 export { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
@@ -1024,6 +1023,43 @@ function assert(condition, message) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+export function enforceCacheManagerNestjsMigrationDocs(readText = read) {
+  enforceCacheManagerMigrationOptionsDocs(readText);
+  for (const locale of ['', '.ko']) {
+    for (const document of [
+      `packages/cache-manager/README${locale}.md`,
+      `docs/getting-started/migrate-from-nestjs${locale}.md`,
+      `book/beginner/ch17-cache${locale}.md`,
+    ]) {
+      const markdown = readText(document);
+      const directClientParagraph = markdown.split(/\n\s*\n/u).find((paragraph) =>
+        paragraph.includes('ioredis `Redis`') && paragraph.includes('`RedisCompatibleClient`') &&
+        /without an adapter or type assertion|adapter나 type assertion 없이/u.test(paragraph));
+      assert(directClientParagraph, `${document} must describe direct ioredis RedisCompatibleClient compatibility without assertions.`);
+      const examples = [...markdown.matchAll(/```(?:typescript|ts)\n([\s\S]*?)```/gu)]
+        .map((match) => match[1])
+        .filter((source) => source.includes("import Redis from 'ioredis'"));
+      assert(
+        examples.some((source) => source.includes('redis: { client: cacheClient }')),
+        `${document} must retain a direct ioredis redis.client example.`,
+      );
+      assert(
+        !/not a claim that a raw ioredis instance|raw ioredis 인스턴스 전체가 기존/u.test(markdown),
+        `${document} must not contradict direct ioredis compatibility.`,
+      );
+    }
+    const contextPath = `docs/CONTEXT${locale}.md`;
+    const context = readText(contextPath);
+    for (const target of [
+      `../packages/cache-manager/README${locale}.md#`,
+      `./getting-started/migrate-from-nestjs${locale}.md#cache-manager-`,
+      '../packages/cache-manager/src/redis-client.consumer.test.ts',
+    ]) {
+      assert(context.includes(target), `${contextPath} must link the direct Redis client contract and evidence: ${target}.`);
+    }
+  }
 }
 
 export function enforceCliMigrationTransformDocs(readText = read) {

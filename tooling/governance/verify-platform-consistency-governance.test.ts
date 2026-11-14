@@ -20,6 +20,7 @@ import { enforceEmailNestjsMigrationDocs } from './email-nestjs-migration-docs.m
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCacheManagerNestjsMigrationDocs,
   enforceCanonicalRuntimeMatrixReferences,
   enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
@@ -50,6 +51,72 @@ import {
   migrationGuideSnapshotsFromGit,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
+
+describe('cache-manager direct Redis client documentation guard', () => {
+  it('accepts the direct ioredis contract and consumer evidence in both locales', () => {
+    expect(() => enforceCacheManagerNestjsMigrationDocs()).not.toThrow();
+  });
+
+  const documents = [
+    'packages/cache-manager/README.md',
+    'packages/cache-manager/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'book/beginner/ch17-cache.md',
+    'book/beginner/ch17-cache.ko.md',
+  ];
+
+  it.each(documents)('rejects a removed assertion-free compatibility guarantee in %s', (document) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document
+        ? content.replace(/without an adapter or type assertion|adapter나 type assertion 없이/gu, '')
+        : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must describe direct ioredis RedisCompatibleClient compatibility`,
+    );
+  });
+
+  it.each(documents)('rejects replacing the direct-client example with DI in %s', (document) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document
+        ? content.replace('redis: { client: cacheClient }', "redis: { clientName: 'cache' }")
+        : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must retain a direct ioredis redis.client example`,
+    );
+  });
+
+  it.each(['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'])('rejects missing consumer evidence in %s', (document) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document ? content.replace('../packages/cache-manager/src/redis-client.consumer.test.ts', '') : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must link the direct Redis client contract and evidence`,
+    );
+  });
+
+  it.each([
+    ['packages/cache-manager/README.md', 'not a claim that a raw ioredis instance is structurally assignable'],
+    ['packages/cache-manager/README.ko.md', 'raw ioredis 인스턴스 전체가 기존 RedisCompatibleClient 타입에 할당 가능하다는 뜻은 아닙니다'],
+  ])('rejects the obsolete compatibility denial in %s', (document, denial) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document ? `${content}\n${denial}` : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must not contradict direct ioredis compatibility`,
+    );
+  });
+});
 
 describe('OpenAPI documentation migration guard', () => {
   it('rejects a positional ApiResponse signature', () => {

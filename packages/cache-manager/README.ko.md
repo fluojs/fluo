@@ -147,6 +147,8 @@ CacheModule.forRoot({
 
 `redis.client`는 가장 높은 우선순위의 override이며 DI 기반 client 선택을 완전히 우회합니다. Export된 `RedisCompatibleClient` 계약을 만족하는 모든 client를 받을 수 있고, 이 경로에서는 `@fluojs/redis`를 load하거나 요구하지 않습니다. 직접 전달한 client의 connection startup과 shutdown은 애플리케이션이 소유합니다.
 
+ioredis `Redis` 인스턴스는 adapter나 type assertion 없이 공개 `RedisCompatibleClient` 계약을 직접 만족합니다. 같은 client를 `CacheModule.forRootAsync(...)`나 `RedisStore` 생성자에도 전달할 수 있습니다.
+
 ```typescript
 import Redis from 'ioredis';
 import { Module } from '@fluojs/core';
@@ -244,7 +246,7 @@ CacheModule.forRoot({
 
 직접 `RedisStore`를 조합할 때는 `RedisStoreOptions.atomicUpdates: true`를 사용합니다. Compatible client는 `duplicate({ lazyConnect: false, retryStrategy: () => null, reconnectOnError: () => false })`로 export된 구조적 `RedisAtomicClient` seam(`watch`, `get`, `multi`, `disconnect`)을 반환해야 하며, `multi()`는 `RedisAtomicTransaction`(`set`, `del`, `exec`)을 반환합니다. 이 선택적 타입의 소유자는 `@fluojs/cache-manager`입니다. [`@fluojs/redis`](../redis/README.ko.md#원시-클라이언트-접근-raw-client-access)가 이미 노출하는 full raw ioredis client가 이 seam을 제공하며 RedisService runtime API가 추가되는 것은 아닙니다. 각 atomic operation은 격리 duplicate를 소유하고 `finally`에서 disconnect하여 실패 시에도 WATCH를 해제합니다. 주입/공유 client는 Redis module 또는 애플리케이션 소유로 남으며 cache가 닫지 않습니다. 작업 전용 연결은 재접속하지 않으며, 연결이 끊기면 WATCH 없는 새 연결에서 commit하지 않고 원래 client 오류를 전파합니다. 공유 client의 재접속 정책은 유지됩니다.
 
-새 `RedisAtomicClient` seam은 실제 ioredis와 호환되지만 raw ioredis 인스턴스 전체가 기존 `RedisCompatibleClient` 타입에 구조적으로 할당 가능하다는 뜻은 아닙니다. 기존 `scan(cursor, ...args: Array<string | number>)` 시그니처는 ioredis overload와 다릅니다. 이 공개 계약은 그대로이며, 예제와 native fixture에는 이 차이를 cast로 숨기지 말고 canonical RedisModule DI 경로를 사용하세요.
+ioredis `Redis` 인스턴스는 `RedisCompatibleClient`와 선택적 `RedisAtomicClient` seam을 모두 만족합니다. 공개 `scan` 계약은 reset이 사용하는 `scan(cursor, 'MATCH', pattern, 'COUNT', count)` 호출을 나타내며, string 또는 number cursor를 담은 tuple을 동기나 비동기로 반환합니다. 더 넓은 string/number rest parameter를 받는 custom client도 계속 호환됩니다. `redis.client`로 직접 등록할 때도 명시적으로 활성화하면 원자 갱신을 지원하며, 원본 client의 lifecycle은 애플리케이션이 소유합니다.
 
 `PXAT`를 위해 Redis **6.2 이상**, standalone/single-primary 트랜잭션, 비어 있지 않은 앱 전용 prefix를 사용하세요. 빈 prefix는 `RangeError`, `duplicate` 없는 client는 `unsupported`로 reject됩니다. Redis Cluster 지원은 주장하지 않습니다. Namespace prefix 전체가 같은 hash tag를 사용하지 않으면 data, epoch, marker key가 cross-slot이 되며, 이 조건만 충족해도 Cluster 지원을 보장하는 것은 아닙니다.
 

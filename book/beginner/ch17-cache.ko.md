@@ -128,6 +128,8 @@ CacheModule.forRootAsync({
 
 Option이 이미 준비된 경우에는 동기 `CacheModule.forRoot(options)` 경로가 적합합니다. Lifecycle-managed Redis 경로는 `store: 'redis'`와 선택적 `redis.clientName`을 통해 `@fluojs/redis`의 기본 또는 named raw client를 해석할 수 있습니다. 애플리케이션이 compatible Redis client를 이미 소유한다면 `redis.client`로 직접 전달하세요. 이 경로에는 `@fluojs/redis`가 필요하지 않습니다. 객체는 export된 `RedisCompatibleClient` operation(`get`, `set`, `del`, tuple-returning `scan`)만 제공하면 됩니다. 직접 전달한 client는 `redis.clientName`보다 우선하며, connect와 close 책임은 애플리케이션에 남습니다.
 
+ioredis `Redis` 인스턴스는 adapter나 type assertion 없이 공개 `RedisCompatibleClient` 계약을 직접 만족합니다. Memory-only 소비자에게는 `ioredis`와 `@fluojs/redis` 모두 필요하지 않습니다.
+
 ```typescript
 import Redis from 'ioredis';
 import { Module } from '@fluojs/core';

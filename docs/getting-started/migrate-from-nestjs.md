@@ -987,6 +987,8 @@ Kafka and RabbitMQ keep inbound consumer callbacks pending until handler executi
 - **Custom store adaptation.** `store` accepts `'memory'`, `'redis'`, or a `CacheStore` object. NestJS store adapters such as `cache-manager-redis-store` do not satisfy that contract; either use the built-in `store: 'redis'` path or wrap the adapter in an object exposing `get`, `set`, `del`, and `reset`. Convert callback/options completion to the Promise result that `CacheStore` expects, map Fluo `ttlSeconds` to the legacy adapter TTL in seconds, and make `reset()` delete only the cache namespace. Never blindly forward `CacheService.reset()` to a whole-database `flushDb`, because that could delete application-owned data outside the configured cache namespace.
 - **Teardown ownership.** Application shutdown closes `CacheService`, which forwards teardown to a store `close()` hook. A `dispose()`-only store remains compatible when `close()` is absent, but new custom stores that own sockets, pools, or timers should implement `close()`. A raw client passed through `redis.client` is never closed by the module and must be closed from the application lifecycle, while a client resolved through `@fluojs/redis` keeps that package's own lifecycle ownership.
 
+An ioredis `Redis` instance satisfies the public `RedisCompatibleClient` contract directly, without an adapter or type assertion. Direct registration does not require `@fluojs/redis`; memory-only consumers need neither Redis peer.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { CacheModule } from '@fluojs/cache-manager';

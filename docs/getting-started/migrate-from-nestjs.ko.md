@@ -970,6 +970,8 @@ Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할
 - **Custom store 적응.** `store`는 `'memory'`, `'redis'`, 또는 `CacheStore` 객체를 받습니다. `cache-manager-redis-store` 같은 NestJS store adapter는 이 계약을 만족하지 않으므로 내장 `store: 'redis'` 경로를 쓰거나 `get`, `set`, `del`, `reset`을 노출하는 객체로 adapter를 감싸세요. callback/options 완료는 `CacheStore`가 기대하는 Promise 결과로 변환하고, Fluo `ttlSeconds`는 legacy adapter TTL의 초 단위로 매핑하며, `reset()`은 cache namespace만 삭제하게 하세요. 애플리케이션이 소유한 configured cache namespace 밖의 데이터를 삭제할 수 있으므로 `CacheService.reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다.
 - **Teardown 소유권.** 애플리케이션 shutdown은 `CacheService`를 닫고, teardown은 store의 `close()` hook으로 전달합니다. `close()`가 없는 `dispose()` 전용 store도 계속 호환되지만 socket, pool, timer를 소유하는 새 custom store는 `close()`를 구현해야 합니다. `redis.client`로 직접 전달한 raw client는 module이 닫지 않으므로 애플리케이션 lifecycle에서 닫아야 하고, `@fluojs/redis`로 resolve한 client는 해당 패키지의 lifecycle 소유권을 유지합니다.
 
+ioredis `Redis` 인스턴스는 adapter나 type assertion 없이 공개 `RedisCompatibleClient` 계약을 직접 만족합니다. 직접 등록에는 `@fluojs/redis`가 필요하지 않으며, memory-only 소비자에게는 두 Redis peer 모두 필요하지 않습니다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { CacheModule } from '@fluojs/cache-manager';
