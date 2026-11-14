@@ -76,10 +76,11 @@ function appendPrincipalScope(
     return key;
   }
 
-  const issuer = encodeURIComponent(principal.issuer ?? 'unknown');
   const subject = encodeURIComponent(principal.subject);
 
-  return `${key}|principal:${issuer}:${subject}`;
+  return principal.issuer === undefined
+    ? `${key}|principal:${subject}`
+    : `${key}|principal:${encodeURIComponent(principal.issuer)}:${subject}`;
 }
 
 function defaultCacheKey(
@@ -92,7 +93,7 @@ function defaultCacheKey(
   }
 
   // Query components and principal fields are already URI-encoded separately.
-  const path = escapeCacheKeyComponent(context.requestContext.request.path);
+  const path = escapeCacheKeyComponent(context.requestContext.request.path).replaceAll('?', '%3F');
   const query = context.requestContext.request.query;
 
   if (strategy === 'route') {
