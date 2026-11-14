@@ -437,7 +437,7 @@ function resolveSyncMultiAliasTarget(token: Token, state: SyncResolverState): un
   while (collectMultiProviders(state.introspection, target).length === 0) {
     const provider = lookupProvider(state.introspection, target);
 
-    if (provider?.type !== 'existing' || !provider.useExisting) {
+    if (provider?.type !== 'existing' || provider.useExisting === undefined) {
       break;
     }
 
@@ -454,7 +454,7 @@ function resolveSyncMultiAliasTarget(token: Token, state: SyncResolverState): un
 
 function resolveSyncMultiProvider(provider: NormalizedProvider, state: SyncResolverState): unknown {
   if (provider.type === 'existing') {
-    if (!provider.useExisting) {
+    if (provider.useExisting === undefined) {
       throw new Error('Existing provider is missing useExisting token.');
     }
 

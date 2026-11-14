@@ -122,6 +122,19 @@ describe('@fluojs/testing', () => {
     });
   });
 
+  it('get: multi alias resolves an empty-string target token (#4017)', async () => {
+    @Module({
+      providers: [{ provide: '', useValue: 42 }, { provide: 'plugins', useExisting: '', multi: true }],
+    })
+    class PluginModule {}
+    const testingModule = await Test.createTestingModule({ rootModule: PluginModule }).compile();
+
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      expect(testingModule.get<number[]>('plugins')).toEqual([42]);
+    });
+  });
+
   it('exposes Test.createTestingModule for NestJS-style module builder access', async () => {
     const TOKEN = Symbol('token');
 
