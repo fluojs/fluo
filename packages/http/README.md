@@ -1031,7 +1031,7 @@ The dispatcher owns RFC 9110 precedence and comparison: a successful `If-Match` 
 
 ## Byte Range Responses
 
-Returning a `Uint8Array` or `ArrayBuffer` enables RFC single-range `bytes` responses automatically for `GET` and the `HEAD` metadata mirror. A valid range produces `206`, `Accept-Ranges: bytes`, `Content-Range`, and the exact identity-byte `Content-Length`; malformed or multi-range fields fall back to the complete representation, while unsatisfiable ranges return bodyless `416` with `Accept-Ranges: bytes`, `Content-Range: bytes */<size>`, and `Content-Length: 0`. `POST`, unsafe, and custom methods ignore `Range` and retain their ordinary full status, body, and metadata.
+Returning a `Uint8Array` or `ArrayBuffer` enables RFC single-range `bytes` responses automatically only for `GET` when the effective ordinary response status is `200`. Route `successStatus` metadata retains precedence over a handler-set status; every effective non-200 status, including `403`, keeps its complete response without range slicing or `Content-Range`. A valid range produces `206`, `Accept-Ranges: bytes`, `Content-Range`, and the exact identity-byte `Content-Length`; malformed or multi-range fields fall back to the complete representation, while unsatisfiable ranges return bodyless `416` with `Accept-Ranges: bytes`, `Content-Range: bytes */<size>`, and `Content-Length: 0`. Oversized decimal end offsets and suffix lengths clamp to the representation bounds without precision loss; oversized starts, reversed bounds, and zero suffixes remain unsatisfiable. `HEAD`, `POST`, unsafe, and custom methods ignore `Range`.
 
 Use `createByteRangeResponse(...)` for a portable `ReadableStream` and provide its exact full size. Pass a factory when `HEAD` must not construct the stream:
 
@@ -1044,7 +1044,7 @@ return createByteRangeResponse(
 );
 ```
 
-The dispatcher evaluates normal conditional requests first. `If-Range` then permits a partial response only for an exact strong `ETag` or a current `Last-Modified` date; otherwise it sends the complete representation. Partial responses preserve identity bytes and bypass Node compression so range offsets and lengths remain meaningful. `HEAD` preserves GET status and metadata without opening the stream. The application owns its bytes, exact size, and any filesystem resource: `createByteRangeResponse(...)` never opens, stats, seeks, sizes, or closes files, and it intentionally does not construct multi-range responses.
+The dispatcher evaluates normal conditional requests first. `If-Range` then permits a partial response only for an exact strong `ETag` or a current `Last-Modified` date; otherwise it sends the complete representation. Partial responses preserve identity bytes and bypass Node compression so range offsets and lengths remain meaningful. These rules also apply to explicit byte-range responses and static assets, including selected encoded bytes. Migration: `HEAD` now ignores every `Range` field and returns complete representation metadata: an otherwise successful six-byte representation stays `200` with `Content-Length: 6`, no `Content-Range`, and no body or stream-factory invocation. Use `GET` to inspect a selected range. Conditional and bodyless status decisions remain in force. The application owns its bytes, exact size, and any filesystem resource: `createByteRangeResponse(...)` never opens, stats, seeks, sizes, or closes files, and it intentionally does not construct multi-range responses.
 
 ## Related Packages
 

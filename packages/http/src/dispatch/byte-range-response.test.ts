@@ -8,8 +8,11 @@ import {
   createHandlerMapping,
   Get,
   Head,
+  HttpCode,
   Post,
+  Produces,
   Route,
+  type RequestContext,
   type FrameworkRequest,
   type FrameworkResponse,
   type FrameworkResponseStream,
@@ -65,6 +68,162 @@ function createResponse(): RecordedResponse {
 }
 
 describe('single byte range response', () => {
+  describe.each(['bytes', 'buffer', 'writer', 'stream'] as const)('%s representation', (source) => {
+    const bytes = Uint8Array.from([0, 1, 2, 3, 4, 5]);
+
+    function createAssetDispatcher(status?: number, handlerStatus?: number) {
+      let factoryCalls = 0;
+      const value = () => {
+        if (source === 'bytes') {
+          return bytes;
+        }
+        if (source === 'buffer') {
+          return bytes.buffer;
+        }
+        return createByteRangeResponse(source === 'writer' ? bytes : () => {
+          factoryCalls += 1;
+          return new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(bytes);
+              controller.close();
+            },
+          });
+        }, { size: 6 });
+      };
+
+      @Controller('/assets')
+      class AssetController {
+        @Get('/logo')
+        @HttpCode(status ?? 200)
+        getLogo(_input: unknown, context: RequestContext) {
+          if (handlerStatus !== undefined) {
+            context.response.setStatus(handlerStatus);
+          }
+          return value();
+        }
+
+        @Get('/handler')
+        handlerLogo(_input: unknown, context: RequestContext) {
+          context.response.setStatus(handlerStatus ?? 200);
+          return value();
+        }
+
+        @Head('/logo')
+        headLogo() {
+          return value();
+        }
+      }
+
+      return {
+        dispatcher: createDispatcher({
+          handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+          rootContainer: new Container().register(AssetController),
+        }),
+        factoryCalls: () => factoryCalls,
+      };
+    }
+
+    it.each(['bytes=2-4', 'bytes=9-', 'items=2-4', 'bytes=0-999999999999999999999'])(
+      'HEAD with %s returns full metadata without opening a stream',
+      async (range) => {
+        const { dispatcher, factoryCalls } = createAssetDispatcher();
+        const response = createStreamingResponse();
+
+        await dispatcher.dispatch(createRequest({ range }, 'HEAD'), response);
+
+        expect(response.statusCode).toBe(200);
+        expect(response.headers['Content-Length']).toBe('6');
+        expect(response.headers['Content-Range']).toBeUndefined();
+        expect(response.sentBodies).toEqual([undefined]);
+        expect(response.stream.chunks).toEqual([]);
+        expect(factoryCalls()).toBe(0);
+      },
+    );
+
+    it.each(['bytes=0-999999999999999999999', 'bytes=-999999999999999999999', 'bytes=000-0005'])(
+      'GET with %s selects the full six-byte interval',
+      async (range) => {
+        const { dispatcher } = createAssetDispatcher();
+        const response = createStreamingResponse();
+
+        await dispatcher.dispatch(createRequest({ range }), response);
+
+        expect(response.statusCode).toBe(206);
+        expect(response.headers['Content-Range']).toBe('bytes 0-5/6');
+        expect(response.headers['Content-Length']).toBe('6');
+        expect(source === 'stream' ? response.stream.chunks : response.sentBodies).toEqual([bytes]);
+      },
+    );
+
+    it.each([201, 202, 203, 403])('GET with effective route status %s ignores every range', async (status) => {
+      for (const range of ['bytes=2-4', 'bytes=9-']) {
+        const { dispatcher } = createAssetDispatcher(status);
+        const response = createStreamingResponse();
+
+        await dispatcher.dispatch(createRequest({ range }), response);
+
+        expect(response.statusCode).toBe(status);
+        expect(response.headers['Content-Range']).toBeUndefined();
+        expect(source === 'stream' ? response.stream.chunks : response.sentBodies)
+          .toEqual([bytes]);
+      }
+    });
+
+    it.each(['bytes=2-4', 'bytes=9-'])('GET with handler status 403 ignores %s', async (range) => {
+      const { dispatcher } = createAssetDispatcher(undefined, 403);
+      const response = createStreamingResponse();
+
+      await dispatcher.dispatch({
+        ...createRequest({ range }),
+        path: '/assets/handler',
+        url: '/assets/handler',
+      }, response);
+
+      expect(response.statusCode).toBe(403);
+      expect(response.headers['Content-Range']).toBeUndefined();
+      expect(source === 'stream' ? response.stream.chunks : response.sentBodies).toEqual([bytes]);
+    });
+
+    it.each([204, 205, 304])('GET with bodyless status %s never opens a stream', async (status) => {
+      const { dispatcher, factoryCalls } = createAssetDispatcher(status);
+      const response = createStreamingResponse();
+
+      await dispatcher.dispatch(createRequest({ range: 'bytes=2-4' }), response);
+
+      expect(response.statusCode).toBe(status);
+      expect(response.headers['Content-Range']).toBeUndefined();
+      expect(response.headers['Content-Length']).toBeUndefined();
+      expect(response.sentBodies).toEqual([undefined]);
+      expect(factoryCalls()).toBe(0);
+    });
+
+    it.each(['bytes=999999999999999999999-', 'bytes=5-4', 'bytes=-0'])(
+      'GET with %s remains bodyless and unsatisfiable',
+      async (range) => {
+        const { dispatcher, factoryCalls } = createAssetDispatcher();
+        const response = createStreamingResponse();
+
+        await dispatcher.dispatch(createRequest({ range }), response);
+
+        expect(response.statusCode).toBe(416);
+        expect(response.headers['Content-Range']).toBe('bytes */6');
+        expect(response.headers['Content-Length']).toBe('0');
+        expect(response.sentBodies).toEqual([undefined]);
+        expect(factoryCalls()).toBe(0);
+      },
+    );
+
+    it('GET with route status 200 takes precedence over handler status 403', async () => {
+      const { dispatcher } = createAssetDispatcher(200, 403);
+      const response = createStreamingResponse();
+
+      await dispatcher.dispatch(createRequest({ range: 'bytes=2-4' }), response);
+
+      expect(response.statusCode).toBe(206);
+      expect(response.headers['Content-Range']).toBe('bytes 2-4/6');
+    });
+  });
+
   it('writes a satisfiable byte range from a byte representation', async () => {
     @Controller('/assets')
     class AssetController {
@@ -470,7 +629,7 @@ describe('single byte range response', () => {
     expect(response.headers['Content-Length']).toBeUndefined();
   });
 
-  it('keeps GET and HEAD range metadata identical without opening the body stream for HEAD', async () => {
+  it('keeps full HEAD metadata without opening the body stream while GET selects a range', async () => {
     let streamPulls = 0;
 
     function createStream() {
@@ -521,11 +680,94 @@ describe('single byte range response', () => {
       Uint8Array.from([2]),
       Uint8Array.from([3, 4]),
     ]);
-    expect(headResponse.statusCode).toBe(getResponse.statusCode);
-    expect(headResponse.headers).toEqual(getResponse.headers);
+    expect(headResponse.statusCode).toBe(200);
+    expect(headResponse.headers['Content-Length']).toBe('6');
+    expect(headResponse.headers['Content-Range']).toBeUndefined();
     expect(headResponse.sentBodies).toEqual([undefined]);
     expect(headResponse.stream.chunks).toEqual([]);
     expect(streamPulls).toBe(pullsAfterGet);
+  });
+
+  it('does not advertise the raw byte length on HEAD when a formatter changes the representation', async () => {
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([1, 2]);
+      }
+
+      @Head('/logo')
+      headLogo() {
+        return Uint8Array.from([1, 2]);
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const getResponse = createResponse();
+    const headResponse = createResponse();
+
+    await dispatcher.dispatch(createRequest({ accept: 'application/json' }), getResponse);
+    await dispatcher.dispatch(createRequest({ accept: 'application/json' }, 'HEAD'), headResponse);
+
+    expect(getResponse.sentBodies).toEqual(['{"0":1,"1":2}']);
+    expect(headResponse.statusCode).toBe(200);
+    expect(headResponse.headers['Content-Type']).toBe(getResponse.headers['Content-Type']);
+    expect(headResponse.headers['Content-Length']).toBe(getResponse.headers['Content-Length']);
+    expect(headResponse.headers['Content-Length']).not.toBe('2');
+    expect(headResponse.sentBodies).toEqual([undefined]);
+  });
+
+  it('keeps the full byte Content-Length on HEAD when the selected formatter passes bytes through', async () => {
+    @Controller('/assets')
+    class AssetController {
+      @Produces('application/octet-stream')
+      @Head('/logo')
+      headLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }, {
+          format(body) {
+            if (!(body instanceof Uint8Array)) {
+              throw new Error('Expected the passthrough formatter to receive a Uint8Array.');
+            }
+
+            return body;
+          },
+          mediaType: 'application/octet-stream',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest({ range: 'bytes=2-4' }, 'HEAD'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/octet-stream');
+    expect(response.headers['Content-Length']).toBe('6');
+    expect(response.headers['Content-Range']).toBeUndefined();
+    expect(response.sentBodies).toEqual([undefined]);
   });
 
   it('does not write a canonical error after incremental range streaming starts', async () => {
