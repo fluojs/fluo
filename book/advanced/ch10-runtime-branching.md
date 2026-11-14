@@ -47,7 +47,7 @@ Instead of detecting the host name, that center assembles already prepared adapt
     };
     const runtimeCleanup: RuntimeCleanupCallback[] = [];
     if (studioDevtools) {
-      runtimeCleanup.push(() => studioDevtools.close());
+      createRuntimeCleanupRegistration(runtimeCleanup)(() => studioDevtools.close());
     }
     const bootstrapReadySignal = createBootstrapReadySignal();
     const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);

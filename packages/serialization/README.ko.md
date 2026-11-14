@@ -105,7 +105,10 @@ class ProductDto {
 
 ### HTTP 인터셉터와 함께 사용
 
+`@UseInterceptors(...)`에 `SerializerInterceptor`를 class token으로 전달하면 request container에서 resolve합니다. 컨트롤러의 module에 provider로 등록하세요.
+
 ```ts
+import { Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
 
@@ -123,6 +126,12 @@ class UsersController {
     await context.response.send('id,username\n1,fluo');
   }
 }
+
+@Module({
+  controllers: [UsersController],
+  providers: [SerializerInterceptor],
+})
+class UsersModule {}
 ```
 
 두 route는 서로 다른 응답 소유자를 사용합니다.
