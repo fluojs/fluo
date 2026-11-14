@@ -57,14 +57,116 @@ describe('cache-manager direct Redis client documentation guard', () => {
     expect(() => enforceCacheManagerNestjsMigrationDocs()).not.toThrow();
   });
 
-  const documents = [
-    'packages/cache-manager/README.md',
-    'packages/cache-manager/README.ko.md',
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-    'book/beginner/ch17-cache.md',
-    'book/beginner/ch17-cache.ko.md',
+  const contractSections = [
+    ['packages/cache-manager/README.md', '### Redis Storage'],
+    ['packages/cache-manager/README.ko.md', '### Redis 저장소 사용'],
+    [
+      'docs/getting-started/migrate-from-nestjs.md',
+      '### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration',
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      '### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션',
+    ],
+    [
+      'book/beginner/ch17-cache.md',
+      '### 17.3.2 Injected Async Configuration and Secret Management: Best Practices',
+    ],
+    [
+      'book/beginner/ch17-cache.ko.md',
+      '### 17.3.2 Injected Async Configuration and Secret Management: Best Practices',
+    ],
   ];
+  const documents = contractSections.map(([document]) => document);
+
+  it.each(documents)('rejects an inverted compatibility guarantee in %s', (document) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document
+        ? content.replace('instance satisfies the public', 'instance does not satisfy the public')
+          .replace('계약을 직접 만족합니다.', '계약을 직접 만족하지 않습니다.')
+        : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must describe direct ioredis RedisCompatibleClient compatibility`,
+    );
+  });
+
+  it.each(documents)('rejects an HTML-commented compatibility paragraph in %s', (document) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document
+        ? content.replace(/^(?:An )?ioredis `Redis`[^\n]+$/gmu, (paragraph) => `<!--\n${paragraph}\n-->`)
+        : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must describe direct ioredis RedisCompatibleClient compatibility`,
+    );
+  });
+
+  it.each(contractSections)('rejects a duplicated contract section in %s', (document, heading) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document ? `${content}\n${heading}\n` : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must contain exactly one direct ioredis contract section`,
+    );
+  });
+
+  it.each(contractSections)('rejects a missing line-anchored contract section in %s', (document, heading) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document ? content.replace(heading, `Quoted heading: ${heading}`) : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must contain exactly one direct ioredis contract section`,
+    );
+  });
+
+  it.each(contractSections)('rejects an HTML-commented contract heading in %s', (document, heading) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document ? content.replace(heading, `<!--\n${heading}\n-->`) : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must contain exactly one direct ioredis contract section`,
+    );
+  });
+
+  it.each(documents)('rejects a compatibility guarantee moved outside its section in %s', (document) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      if (path !== document) {
+        return content;
+      }
+      const paragraph = content.match(/^(?:An )?ioredis `Redis`[^\n]+$/mu)?.[0];
+      expect(paragraph).toBeDefined();
+      return `${content.replace(paragraph ?? '', '')}\n## Unrelated section\n\n${paragraph}\n`;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).toThrow(
+      `${document} must describe direct ioredis RedisCompatibleClient compatibility`,
+    );
+  });
+
+  it.each(contractSections)('accepts reflow and unrelated prose changes in %s', (document, heading) => {
+    const readText = (path: string): string => {
+      const content = readFileSync(join(repoRoot, path), 'utf8');
+      return path === document
+        ? content.replace(heading, `${heading}\n\nAdditional guidance.\n<!-- ${heading} -->`)
+          .replace('instance satisfies', 'instance\nsatisfies')
+          .replace('계약을 직접', '계약을\n직접')
+        : content;
+    };
+
+    expect(() => enforceCacheManagerNestjsMigrationDocs(readText)).not.toThrow();
+  });
 
   it.each(documents)('rejects a removed assertion-free compatibility guarantee in %s', (document) => {
     const readText = (path: string): string => {

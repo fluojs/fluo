@@ -1028,17 +1028,35 @@ function read(relativePath) {
 export function enforceCacheManagerNestjsMigrationDocs(readText = read) {
   enforceCacheManagerMigrationOptionsDocs(readText);
   for (const locale of ['', '.ko']) {
-    for (const document of [
-      `packages/cache-manager/README${locale}.md`,
-      `docs/getting-started/migrate-from-nestjs${locale}.md`,
-      `book/beginner/ch17-cache${locale}.md`,
+    const compatibilityGuarantee = locale === ''
+      ? 'An ioredis `Redis` instance satisfies the public `RedisCompatibleClient` contract directly, without an adapter or type assertion.'
+      : 'ioredis `Redis` 인스턴스는 adapter나 type assertion 없이 공개 `RedisCompatibleClient` 계약을 직접 만족합니다.';
+    for (const [document, heading] of [
+      [`packages/cache-manager/README${locale}.md`, locale === '' ? '### Redis Storage' : '### Redis 저장소 사용'],
+      [
+        `docs/getting-started/migrate-from-nestjs${locale}.md`,
+        locale === ''
+          ? '### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration'
+          : '### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션',
+      ],
+      [
+        `book/beginner/ch17-cache${locale}.md`,
+        '### 17.3.2 Injected Async Configuration and Secret Management: Best Practices',
+      ],
     ]) {
-      const markdown = readText(document);
-      const directClientParagraph = markdown.split(/\n\s*\n/u).find((paragraph) =>
-        paragraph.includes('ioredis `Redis`') && paragraph.includes('`RedisCompatibleClient`') &&
-        /without an adapter or type assertion|adapter나 type assertion 없이/u.test(paragraph));
+      const markdown = readText(document).replace(/<!--[\s\S]*?(?:-->|$)/gu, '');
+      const lines = markdown.split(/\r?\n/u);
+      assert(
+        lines.filter((line) => line === heading).length === 1,
+        `${document} must contain exactly one direct ioredis contract section: ${heading}.`,
+      );
+      const remainder = lines.slice(lines.indexOf(heading) + 1);
+      const nextHeading = remainder.findIndex((line) => /^#{1,3}\s/u.test(line));
+      const section = (nextHeading === -1 ? remainder : remainder.slice(0, nextHeading)).join('\n');
+      const directClientParagraph = section.split(/\n\s*\n/u).find((paragraph) =>
+        paragraph.replace(/\s+/gu, ' ').trim().startsWith(compatibilityGuarantee));
       assert(directClientParagraph, `${document} must describe direct ioredis RedisCompatibleClient compatibility without assertions.`);
-      const examples = [...markdown.matchAll(/```(?:typescript|ts)\n([\s\S]*?)```/gu)]
+      const examples = [...section.matchAll(/```(?:typescript|ts)\n([\s\S]*?)```/gu)]
         .map((match) => match[1])
         .filter((source) => source.includes("import Redis from 'ioredis'"));
       assert(
