@@ -161,7 +161,7 @@ Decorated metadata가 없는 class instance도 재귀적으로 순회하므로, 
 
 ### 비JSON leaf 값
 
-`serialize()`는 데코레이터 메타데이터를 적용하고 배열/일반 객체를 재귀적으로 순회하지만, 모든 leaf 값을 엄격한 JSON 타입으로 강제 변환하지는 않습니다. `Date`, `Map`, `Set`, `URL`, `URLSearchParams`, `RegExp`, `Error`, `ArrayBuffer`, typed array, `WeakMap`, `WeakSet`, `Promise` 같은 opaque built-in은 DTO 같은 클래스 인스턴스로 펼치지 않고 그대로 통과합니다. `bigint`, 함수, `symbol` 같은 값도 `@Transform(...)`이나 최종 HTTP 응답 작성 전에 직접 정규화하지 않으면 그대로 통과할 수 있습니다.
+`serialize()`는 데코레이터 메타데이터를 적용하고 배열/일반 객체를 재귀적으로 순회하지만, 모든 leaf 값을 엄격한 JSON 타입으로 강제 변환하지는 않습니다. `Date`, `Map`, `Set`, `URL`, `URLSearchParams`, `RegExp`, `Error`, `ArrayBuffer`, typed array, `WeakMap`, `WeakSet`, `Promise`, `ReadableStream`, `Blob` 같은 opaque built-in은 DTO 같은 클래스 인스턴스로 펼치지 않고 그대로 통과합니다. Built-in은 내부 brand check로 realm에 관계없이 판별하므로 다른 realm(예: `node:vm`, iframe, 격리된 test runner)에서 만든 값도 참조 동일성을 유지한 채 통과하며, built-in과 비슷해 보이기만 하는 일반 DTO는 계속 레코드로 순회합니다. 호출 가능한 `toJSON()`을 정의한 undecorated class instance도 그대로 통과하므로 최종 JSON writer가 해당 값 자체의 표현을 적용합니다(예: private state를 가진 money, decimal, id value object). Serialization metadata(`@Expose()`, `@Exclude()`, `@Transform()`, `excludeExtraneous`)를 가진 클래스는 `toJSON()`을 정의해도 metadata 기반 shaping을 유지합니다. `bigint`, 함수, `symbol` 같은 값도 `@Transform(...)`이나 최종 HTTP 응답 작성 전에 직접 정규화하지 않으면 그대로 통과할 수 있습니다.
 
 ## 공개 API 개요
 
