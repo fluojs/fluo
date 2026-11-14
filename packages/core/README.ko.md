@@ -151,7 +151,8 @@ prototype을 유지하며 subclass constructor를 호출하지 않고 복사하�
 `DEP0005` deprecation warning이 발생하지 않습니다. Class 또는 상위 class가 ECMAScript
 private member(`#field`, `#method()`, decorator가 붙은 `accessor`)를 선언한 instance는
 분리된 복사본 대신 reference로 반환합니다. Private state는 복사할 수 없으며, 복사본은
-나중에 그 state를 읽을 때 `TypeError`를 던지기 때문입니다. Primitive는 그대로 반환하며
+나중에 그 state를 읽을 때 `TypeError`를 던지기 때문입니다. 이 규칙은 위의 형태별 복사보다
+우선하므로 private member를 선언한 typed array subclass도 reference로 반환합니다. Primitive는 그대로 반환하며
 function은 reference로 반환합니다. 이 계약은 process 내부 복제에 해당하며 wire
 serialization 형식이 아닙니다.
 

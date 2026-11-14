@@ -153,7 +153,8 @@ and are copied without calling the subclass constructor, so cloning a `Buffer` d
 `DEP0005` deprecation warning. Instances whose class or an ancestor class declares ECMAScript
 private members (`#field`, `#method()`, or a decorated `accessor`) are returned by reference instead
 of as a detached copy, because private state cannot be copied and a copy would throw a `TypeError`
-when that state is read later. Primitives are unchanged and functions are returned by reference.
+when that state is read later. This rule takes precedence over the shape-specific copies above, so
+a typed array subclass that declares private members is also returned by reference. Primitives are unchanged and functions are returned by reference.
 This is an in-process copy contract, not a wire serialization format.
 
 ### AsyncModuleOptions for dynamic configuration

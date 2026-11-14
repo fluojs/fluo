@@ -133,6 +133,54 @@ describe('fallbackClone', () => {
     expect(cloned.derived.secret).toBe(1)
     expect(cloned.method.read()).toBe('method')
   })
+
+  it('detaches classes whose regular expression literals contain a hash character', () => {
+    class PublicValue {
+      pattern = /#tag/
+      options = { retries: 1 }
+    }
+
+    const source = new PublicValue()
+    const cloned = fallbackClone(source)
+
+    expect(cloned).not.toBe(source)
+    expect(cloned).toBeInstanceOf(PublicValue)
+    cloned.options.retries = 2
+    expect(source.options.retries).toBe(1)
+  })
+
+  it('detects private members declared after a regular expression literal containing a quote', () => {
+    class Secret {
+      pattern = /'/
+      #secret = 1
+
+      get secret() {
+        return this.#secret
+      }
+    }
+
+    const source = new Secret()
+    const cloned = fallbackClone(source)
+
+    expect(cloned).toBe(source)
+    expect(cloned.secret).toBe(1)
+  })
+
+  it('returns typed array subclasses that declare private members by reference', () => {
+    class SecretBytes extends Uint8Array {
+      #secret = 1
+
+      get secret() {
+        return this.#secret
+      }
+    }
+
+    const source = new SecretBytes([1, 2])
+    const cloned = fallbackClone({ bytes: source })
+
+    expect(cloned.bytes).toBe(source)
+    expect(cloned.bytes.secret).toBe(1)
+  })
 })
 
 describe('cloneWithFallback', () => {

@@ -36,29 +36,140 @@ function cloneTypedArray(value: ArrayBufferView): ArrayBufferView {
   return cloned;
 }
 
-function sourceDeclaresPrivateMember(source: string): boolean {
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
+const identifierStart = /[\p{ID_Start}$_\\]/u;
+const identifierPart = /[\p{ID_Continue}$\u200c\u200d\\]/u;
+// Keywords after which a `/` starts a regular expression literal instead of a division.
+const regexPrecedingKeywords = new Set([
+  'await', 'case', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'of', 'return', 'throw', 'typeof', 'void', 'yield',
+]);
 
-    if (char === '"' || char === "'" || char === '`') {
+/**
+ * Tokenizes engine-produced class source and reports whether it contains a `#name` private-name
+ * token. Strings, template literal text, comments, and regular expression literals are skipped as
+ * whole tokens; a `/` is a regular expression only where the previous token cannot end an operand.
+ */
+function sourceDeclaresPrivateMember(source: string): boolean {
+  const templateBraceDepths: number[] = [];
+  let braceDepth = 0;
+  let regexAllowed = true;
+  let afterDot = false;
+  let index = 0;
+
+  // Scans template text from `index` until its closing backtick or the next `${` substitution.
+  const scanTemplate = (): void => {
+    for (; index < source.length; index += 1) {
+      const char = source[index];
+
+      if (char === '\\') {
+        index += 1;
+      } else if (char === '`') {
+        index += 1;
+        regexAllowed = false;
+        return;
+      } else if (char === '$' && source[index + 1] === '{') {
+        index += 2;
+        braceDepth += 1;
+        templateBraceDepths.push(braceDepth);
+        regexAllowed = true;
+        return;
+      }
+    }
+  };
+
+  while (index < source.length) {
+    const char = source[index];
+    const next = source[index + 1];
+
+    if (/\s/u.test(char)) {
+      index += 1;
+      continue;
+    }
+
+    const wasAfterDot: boolean = afterDot;
+    afterDot = false;
+
+    if (char === '/' && next === '/') {
+      const end = source.indexOf('\n', index);
+      index = end === -1 ? source.length : end + 1;
+      afterDot = wasAfterDot;
+    } else if (char === '/' && next === '*') {
+      const end = source.indexOf('*/', index + 2);
+      index = end === -1 ? source.length : end + 2;
+      afterDot = wasAfterDot;
+    } else if (char === '/' && regexAllowed) {
+      let inClass = false;
+
+      for (index += 1; index < source.length; index += 1) {
+        const regexChar = source[index];
+
+        if (regexChar === '\\') {
+          index += 1;
+        } else if (regexChar === '[') {
+          inClass = true;
+        } else if (regexChar === ']') {
+          inClass = false;
+        } else if ((regexChar === '/' && !inClass) || regexChar === '\n') {
+          break;
+        }
+      }
+
+      index += 1;
+      regexAllowed = false;
+    } else if (char === '"' || char === "'") {
       for (index += 1; index < source.length && source[index] !== char; index += 1) {
         if (source[index] === '\\') {
           index += 1;
         }
       }
-    } else if (char === '/' && source[index + 1] === '/') {
-      index = source.indexOf('\n', index);
-      if (index === -1) {
-        return false;
-      }
-    } else if (char === '/' && source[index + 1] === '*') {
-      index = source.indexOf('*/', index + 2);
-      if (index === -1) {
-        return false;
-      }
+
       index += 1;
-    } else if (char === '#' && /[\p{ID_Start}$_\\]/u.test(source[index + 1] ?? '')) {
-      return true;
+      regexAllowed = false;
+    } else if (char === '`') {
+      index += 1;
+      scanTemplate();
+    } else if (char === '#') {
+      if (identifierStart.test(next ?? '')) {
+        return true;
+      }
+
+      index += 1;
+      regexAllowed = true;
+    } else if (identifierStart.test(char)) {
+      const start = index;
+
+      for (index += 1; index < source.length && identifierPart.test(source[index]); index += 1) {
+        // Consume the identifier or keyword.
+      }
+
+      regexAllowed = !wasAfterDot && regexPrecedingKeywords.has(source.slice(start, index));
+    } else if (/[0-9]/.test(char) || (char === '.' && /[0-9]/.test(next ?? ''))) {
+      for (index += 1; index < source.length && /[\w.]/u.test(source[index]); index += 1) {
+        // Consume the numeric literal body; exponent signs are separate punctuators.
+      }
+
+      regexAllowed = false;
+    } else if (char === '}' && templateBraceDepths.at(-1) === braceDepth) {
+      templateBraceDepths.pop();
+      braceDepth -= 1;
+      index += 1;
+      scanTemplate();
+    } else {
+      if (char === '{') {
+        braceDepth += 1;
+      } else if (char === '}') {
+        braceDepth -= 1;
+      }
+
+      if ((char === '+' || char === '-') && next === char) {
+        // Postfix increment/decrement ends an operand, so a following `/` is a division.
+        index += 2;
+        regexAllowed = false;
+        continue;
+      }
+
+      afterDot = char === '.' || (char === '?' && next === '.');
+      index += afterDot && char === '?' ? 2 : 1;
+      regexAllowed = char !== ')' && char !== ']';
     }
   }
 
@@ -97,6 +208,14 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
 
   if (existing) {
     return existing as T;
+  }
+
+  // Private slots cannot be copied onto a new object, so keep these instances intact by reference.
+  // This runs before every shape-specific path so built-in subclasses (for example typed arrays)
+  // that declare private members are never rebuilt without their private state.
+  if (declaresPrivateMembers(Object.getPrototypeOf(value) as object | null)) {
+    seen.set(value, value);
+    return value;
   }
 
   if (Array.isArray(value)) {
@@ -172,13 +291,6 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
   }
 
   const prototype = Object.getPrototypeOf(value) as object | null;
-
-  // Private slots cannot be copied onto a new object, so keep these instances intact by reference.
-  if (declaresPrivateMembers(prototype)) {
-    seen.set(value, value);
-    return value;
-  }
-
   const cloned = Object.create(prototype) as Record<PropertyKey, unknown>;
   seen.set(value, cloned);
 
@@ -218,7 +330,8 @@ export function cloneWithFallback<T>(value: T): T {
  * subclasses, keep their prototype and receive detached contents without invoking the subclass
  * constructor. Functions are returned by reference. Instances whose class or ancestor class declares
  * ECMAScript private members (`#field` or `#method()`) are returned by reference instead of as a
- * detached copy that would fail later when private state is read.
+ * detached copy that would fail later when private state is read; this takes precedence over every
+ * shape-specific copy, including typed array subclasses.
  *
  * @param value Value to clone through the fallback path.
  * @returns A deep clone for supported runtime shapes, or the original value for primitives/functions.
