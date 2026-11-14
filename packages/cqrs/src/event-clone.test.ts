@@ -100,4 +100,29 @@ describe('createIsolatedEvent', () => {
     expect(isolated[marker]).toEqual({ nested: true })
     expect(isolated[marker]).not.toBe(payload[marker])
   })
+
+  it('copies Buffer payloads and shares nested private-member value objects by reference', () => {
+    class Secret {
+      #value = 's1'
+
+      get value() {
+        return this.#value
+      }
+    }
+    class DomainEvent {
+      constructor(
+        public readonly bytes: Buffer,
+        public readonly secret: Secret,
+      ) {}
+    }
+    const payload = new DomainEvent(Buffer.from('ab'), new Secret())
+
+    const isolated = createIsolatedEvent(DomainEvent, payload)
+
+    expect(Buffer.isBuffer(isolated.bytes)).toBe(true)
+    expect(isolated.bytes).not.toBe(payload.bytes)
+    expect(isolated.bytes.toString()).toBe('ab')
+    expect(isolated.secret).toBe(payload.secret)
+    expect(isolated.secret.value).toBe('s1')
+  })
 })
