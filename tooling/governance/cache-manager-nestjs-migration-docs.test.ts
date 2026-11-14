@@ -27,11 +27,39 @@ describe('NestJS cache-manager migration documentation', () => {
   });
 
   describe.each([
-    'packages/cache-manager/README.md',
-    'packages/cache-manager/README.ko.md',
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-  ])('unsupported migration boundaries in %s', (driftedPath) => {
+    ['packages/cache-manager/README.md', '### NestJS Cache Migration'],
+    ['packages/cache-manager/README.ko.md', '### NestJS 캐시 마이그레이션'],
+    ['docs/getting-started/migrate-from-nestjs.md', '### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration'],
+    ['docs/getting-started/migrate-from-nestjs.ko.md', '### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션'],
+  ])('unsupported migration boundaries in %s', (driftedPath, heading) => {
+    it('rejects a migration heading at the wrong depth', () => {
+      const readWithWrongHeadingDepth = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(`${heading}\n`, `#${heading}\n`)
+          : read(relativePath);
+
+      const runGovernanceGuard = () => enforceCacheManagerNestjsMigrationDocs(readWithWrongHeadingDepth);
+
+      expect(runGovernanceGuard).toThrow(driftedPath);
+      expect(runGovernanceGuard).toThrow(heading);
+    });
+
+    it('rejects a duplicate migration heading after a complete section', () => {
+      const readWithDuplicateHeading = (relativePath: string): string => {
+        const content = read(relativePath);
+        if (relativePath !== driftedPath) {
+          return content;
+        }
+        const section = content.split(`${heading}\n`)[1].split(/\n#{1,3} /u)[0];
+        return content.replace(`${heading}\n${section}`, `${heading}\n${section}\n${heading}\n`);
+      };
+
+      const runGovernanceGuard = () => enforceCacheManagerNestjsMigrationDocs(readWithDuplicateHeading);
+
+      expect(runGovernanceGuard).toThrow(driftedPath);
+      expect(runGovernanceGuard).toThrow(heading);
+    });
+
     it.each([
       ['decorator-placement', ['`@CacheTTL(...)`', '`@CacheKey(...)`']],
       ['store-configuration', ['`stores`', 'Keyv']],

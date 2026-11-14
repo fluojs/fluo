@@ -1066,7 +1066,12 @@ export function enforceCacheManagerNestjsMigrationDocs(readText = read) {
   ];
 
   for (const [relativePath, heading] of documents) {
-    const section = readText(relativePath).split(`${heading}\n`)[1]?.split(/\n#{1,3} /u)[0] ?? '';
+    const lines = readText(relativePath).split('\n');
+    assert(
+      lines.filter((line) => line === heading).length === 1,
+      `${relativePath} must contain exactly one migration heading on its own line: ${heading}.`,
+    );
+    const section = lines.slice(lines.indexOf(heading) + 1).join('\n').split(/\n#{1,3} /u)[0];
     const statements = section.split('\n').filter((line) => line.startsWith('|') || line.startsWith('- '));
     for (const [boundary, terms] of boundaries) {
       assert(
