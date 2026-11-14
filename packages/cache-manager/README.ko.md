@@ -64,6 +64,8 @@ npm install @fluojs/cache-manager @fluojs/redis ioredis
 
 내장 메모리 경로는 기본적으로 안전한 상한을 갖습니다. `ttl`을 생략하면 fluo는 기본 TTL 300초를 적용하고, 메모리 저장소의 live 엔트리가 1,000개를 넘으면 가장 오래된 키부터 제거합니다.
 
+`store` 옵션은 `'memory'`, `'redis'` 또는 custom `CacheStore` 객체를 받습니다. `store`를 생략하거나 `undefined`로 설정하면 기본 메모리 저장소를 유지합니다. `CacheModule.forRoot(...)`는 등록 중 store를 동기적으로 검증합니다. `'mongo'`처럼 지원하지 않는 문자열은 조용히 메모리로 fallback하지 않고 지원하는 내장 저장소 이름을 안내하는 구성 오류를 던집니다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
@@ -353,6 +355,8 @@ Redis cache prefix를 cache가 아닌 데이터와 공유하지 마세요. `del(
 
 `CacheStore` 계약을 구현한 custom store는 `store` 옵션에 직접 전달할 수 있습니다. in-process LRU store, Redis 외 원격 캐시, 또는 cache operation을 관찰해야 하는 테스트 더블에 적합합니다.
 
+검증은 `get`, `set`, `del`, `reset`이 호출 가능한지 확인하고, 누락되거나 함수가 아닌 메서드 이름을 구성 오류에 표시합니다. Store 작업을 직접 호출하지 않으며 일반 객체와 prototype 메서드를 가진 class instance를 모두 허용합니다. `close`, `dispose`, `atomicUpdate` capability는 계속 선택적이며 등록 시 검증하지 않습니다.
+
 ### 캐시 작업 관찰
 
 플랫폼 status helper는 캐시 가용성만 보고합니다. hit rate, latency, error outcome을 측정하려면 `CacheModule.forRoot(...)`에 opt-in `observer`를 전달하세요. 이 observer는 `@fluojs/metrics`와 독립적이므로, 애플리케이션이 이미 사용하는 metrics backend에 자유롭게 연결할 수 있습니다.
@@ -431,6 +435,8 @@ CacheModule.forRootAsync({
 ```
 
 비동기 경로도 `forRoot(...)`와 동일한 store 선택을 지원합니다. `'memory'`, DI로 해석하거나 직접 전달한 client를 사용하는 `'redis'`, 그리고 모든 custom `CacheStore` instance를 사용할 수 있습니다.
+
+`useFactory`가 옵션을 직접 반환하든 Promise로 반환하든, factory 결과가 resolve될 때 동일한 store 검증을 수행합니다. 잘못된 store 설정은 해당 store를 사용하는 cache service가 사용 가능해지기 전에 옵션 해석/bootstrap을 실패시킵니다. `forRootAsync(...)` 등록 호출은 factory를 실행하지 않으므로 아직 반환되지 않은 store 값을 동기적으로 거부할 수 없습니다.
 
 ### 수동 모듈 조합
 

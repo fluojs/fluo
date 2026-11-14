@@ -2,7 +2,7 @@ import { Inject, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { REDIS_CLIENT } from '@fluojs/redis';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CacheInterceptor } from './interceptor.js';
 import { CacheModule } from './module.js';
@@ -10,6 +10,7 @@ import { CacheService } from './service.js';
 import { CACHE_OPTIONS } from './tokens.js';
 import type {
   CacheAsyncModuleOptions,
+  CacheModuleOptions,
   CacheObservation,
   CacheObserver,
   CacheStore,
@@ -83,6 +84,106 @@ class CacheConsumer {
 }
 
 describe('CacheModule.forRootAsync', () => {
+  describe.each(['sync', 'async'])('%s factory store validation', (kind) => {
+    it.each([
+      { label: 'unknown string', store: 'mongo', error: /store.*"memory".*"redis"/ },
+      { label: 'empty string', store: '', error: /store.*"memory".*"redis"/ },
+      { label: 'empty object', store: {}, error: /store.*get.*set.*del.*reset/ },
+      ...(['get', 'set', 'del', 'reset'] as const).flatMap((method) =>
+        ['missing', 'non-callable'].map((shape) => {
+          const store = {
+            get: async () => undefined,
+            set: async () => undefined,
+            del: async () => undefined,
+            reset: async () => undefined,
+          };
+          if (shape === 'missing') {
+            Reflect.deleteProperty(store, method);
+          } else {
+            Object.defineProperty(store, method, { value: 42 });
+          }
+          return { label: `${shape} ${method}`, store, error: new RegExp(`store.*${method}`) };
+        }),
+      ),
+    ])('rejects $label at bootstrap before constructing a cache consumer', async ({ store, error }) => {
+      const options: CacheModuleOptions = {};
+      Object.defineProperty(options, 'store', { enumerable: true, value: store });
+      const useFactory = vi.fn(() => kind === 'async' ? Promise.resolve(options) : options);
+      const consumerCreated = vi.fn();
+      @Inject(CacheService)
+      class Consumer {
+        constructor(readonly cache: CacheService) {
+          consumerCreated();
+        }
+      }
+
+      const cacheModule = CacheModule.forRootAsync({ useFactory });
+
+      expect(useFactory).not.toHaveBeenCalled();
+      class AppModule {}
+      defineModule(AppModule, { imports: [cacheModule], providers: [Consumer] });
+      const bootstrap = FluoFactory.create(AppModule);
+      // Close a mistakenly accepted app as well, so RED does not leak resources.
+      await expect(bootstrap.then(async (app) => {
+        await app.close();
+      })).rejects.toThrow(error);
+      expect(useFactory).toHaveBeenCalledTimes(1);
+      expect(consumerCreated).not.toHaveBeenCalled();
+    });
+  });
+
+  it('validates a deferred factory result only after it resolves', async () => {
+    let signalStarted!: () => void;
+    let resolveOptions!: (options: CacheModuleOptions) => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const result = new Promise<CacheModuleOptions>((resolve) => {
+      resolveOptions = resolve;
+    });
+    const options: CacheModuleOptions = {};
+    Object.defineProperty(options, 'store', { enumerable: true, value: 'mongo' });
+    const useFactory = vi.fn(() => {
+      signalStarted();
+      return result;
+    });
+    const cacheModule = CacheModule.forRootAsync({ useFactory });
+    expect(useFactory).not.toHaveBeenCalled();
+    class AppModule {}
+    defineModule(AppModule, { imports: [cacheModule], providers: [CacheConsumer] });
+    const bootstrap = FluoFactory.create(AppModule);
+    const rejected = expect(bootstrap.then(async (app) => {
+      await app.close();
+    })).rejects.toThrow(/store.*"memory".*"redis"/);
+    await started;
+
+    resolveOptions(options);
+
+    await rejected;
+  });
+
+  it.each([{}, { store: undefined }, { store: 'memory' }] satisfies CacheModuleOptions[])(
+    'keeps memory defaults and usable cache operations for factory result %j',
+    async (options) => {
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [CacheModule.forRootAsync({ useFactory: async () => options })],
+        providers: [CacheConsumer],
+      });
+
+      const app = await FluoFactory.create(AppModule);
+
+      try {
+        expect(await app.container.resolve(CACHE_OPTIONS)).toMatchObject({ store: 'memory', ttl: 300 });
+        const consumer = await app.container.resolve(CacheConsumer);
+        await consumer.cache.set('default', 'value');
+        await expect(consumer.cache.get('default')).resolves.toBe('value');
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('resolves injected dependencies and normalizes factory options once', async () => {
     const factoryCalls: CacheSettingsService[] = [];
 
