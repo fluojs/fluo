@@ -152,6 +152,8 @@ CacheModule.forRoot({
 
 `redis.client` is the highest-precedence override and bypasses DI-based client selection entirely. It accepts any client that satisfies the exported `RedisCompatibleClient` contract; `@fluojs/redis` is not loaded or required on this path. The application owns connection startup and shutdown for a directly supplied client.
 
+An ioredis `Redis` instance satisfies the public `RedisCompatibleClient` contract directly, without an adapter or type assertion. The same client can be passed to `CacheModule.forRootAsync(...)` or the `RedisStore` constructor.
+
 ```typescript
 import Redis from 'ioredis';
 import { Module } from '@fluojs/core';
@@ -249,7 +251,7 @@ CacheModule.forRoot({
 
 Direct `RedisStore` composition uses `RedisStoreOptions.atomicUpdates: true`. A compatible client must support `duplicate({ lazyConnect: false, retryStrategy: () => null, reconnectOnError: () => false })`, returning the exported structural `RedisAtomicClient` seam (`watch`, `get`, `multi`, `disconnect`); `multi()` returns `RedisAtomicTransaction` (`set`, `del`, `exec`). These optional types belong to `@fluojs/cache-manager`. The full raw ioredis client already exposed by [`@fluojs/redis`](../redis/README.md#raw-client-access) supplies this seam; no RedisService runtime API is added. Each atomic operation owns its isolated duplicate and disconnects it in `finally`, releasing WATCH even on failure. The injected/shared client remains owned by its Redis module or application and is not closed by the cache. Operation-owned connections disable reconnection: connection loss propagates the client error instead of committing on a replacement connection without WATCH. The shared client retains its reconnection policy.
 
-The new `RedisAtomicClient` seam is compatible with actual ioredis, but that is not a claim that a raw ioredis instance is structurally assignable to the older, full `RedisCompatibleClient` type. Its existing `scan(cursor, ...args: Array<string | number>)` signature differs from ioredis's overloads. That public contract is unchanged; use the canonical RedisModule DI path for the example and native fixture rather than casting away this mismatch.
+An ioredis `Redis` instance satisfies both `RedisCompatibleClient` and the optional `RedisAtomicClient` seam. The public `scan` contract describes the `scan(cursor, 'MATCH', pattern, 'COUNT', count)` call used by reset, with a string-or-number cursor tuple returned synchronously or asynchronously; custom clients with broader string/number rest parameters remain compatible. Direct registration through `redis.client` supports atomic updates when explicitly enabled and leaves the original client's lifecycle with the application.
 
 Use Redis **6.2 or newer** for `PXAT`, standalone/single-primary transactions, and a nonempty application-specific prefix. An empty prefix rejects with `RangeError`; a client without `duplicate` rejects as `unsupported`. Redis Cluster support is not claimed: data, epoch, and marker keys would cross slots unless the entire namespace prefix used the same hash tag, and that condition alone is not a Cluster support guarantee.
 

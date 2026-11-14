@@ -71,6 +71,60 @@ function createChunkedMultipartRequest(
 }
 
 describe('parseMultipart', () => {
+  describe.each(['web', 'request-like'])('%s reserved fields', (inputKind) => {
+    it.each(Object.getOwnPropertyNames(Object.prototype).flatMap((name) => [
+      { name, values: ['first'] },
+      { name, values: ['first', '', '홍길동'] },
+    ]))('preserves $name with $values as own field data', async ({ name, values }) => {
+      const prototypeDescriptors = Object.getOwnPropertyDescriptors(Object.prototype);
+      const otherForm = new FormData();
+      otherForm.append('ordinary', 'independent');
+      const other = await parseMultipart(new Request('http://localhost/uploads', {
+        body: otherForm,
+        method: 'POST',
+      }));
+      const prototype = Object.getPrototypeOf(other.fields);
+      const form = new FormData();
+      form.append('ordinary', 'before');
+      for (const value of values) {
+        form.append(name, value);
+      }
+      form.append('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+      form.append('ordinary', 'after');
+      const request = new Request('http://localhost/uploads', { body: form, method: 'POST' });
+
+      const result = await parseMultipart(inputKind === 'web' ? request : {
+        body: request.body,
+        headers: request.headers,
+        method: request.method,
+      });
+
+      const expected = values.length === 1 ? values[0] : values;
+      expect(Object.hasOwn(result.fields, name)).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(result.fields, name)).toEqual({
+        configurable: true,
+        enumerable: true,
+        value: expected,
+        writable: true,
+      });
+      expect(Object.keys(result.fields)).toEqual(['ordinary', name]);
+      expect(result.fields[name]).toEqual(expected);
+      expect(result.fields.ordinary).toEqual(['before', 'after']);
+      expect(result.files).toEqual([{
+        buffer: TEXT_ENCODER.encode('hello'),
+        fieldname: 'payload',
+        mimetype: 'text/plain',
+        originalname: 'payload.txt',
+        size: 5,
+      }]);
+      expect(Object.getPrototypeOf(result.fields)).toBe(prototype);
+      expect(Object.getOwnPropertyDescriptors(Object.prototype)).toEqual(prototypeDescriptors);
+      expect(Object.hasOwn(other.fields, name)).toBe(false);
+      expect(Object.getPrototypeOf(other.fields)).toBe(prototype);
+      expect(other.fields.ordinary).toBe('independent');
+    });
+  });
+
   it('keeps valid token-form Content-Disposition parameters compatible', async () => {
     // Given
     const boundary = 'fluo-token-disposition';

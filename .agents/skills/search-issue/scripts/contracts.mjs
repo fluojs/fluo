@@ -24,8 +24,7 @@ const readStringArray = (record, key) => {
 
 const unique = (values) => [...new Set(values)];
 
-export const prepareScenario = (scenarioPath) => {
-  const scenario = readJsonRecord(scenarioPath);
+export const prepareRun = (scenario) => {
   const domain = readJsonRecord(domainPath);
   const intake = scenario.intake;
   if (!isRecord(intake)) {
@@ -112,3 +111,7 @@ export const prepareScenario = (scenarioPath) => {
     invocations,
   };
 };
+
+// Only the explicit fixture runner accepts synthetic reviewer results and receipts.
+export const prepareScenario = (scenarioPath) =>
+  prepareRun(readJsonRecord(scenarioPath));
