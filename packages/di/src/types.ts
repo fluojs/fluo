@@ -51,6 +51,8 @@ export interface ValueProvider<T = unknown> {
 export interface ExistingProvider<T = unknown> {
   provide: Token<T>;
   useExisting: Token;
+  /** Contributes the target's resolved value in registration order, preserving its scope. */
+  multi?: boolean;
 }
 
 /**

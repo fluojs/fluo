@@ -1,5 +1,7 @@
 # fluo — AI Context Document
 
+For `rememberCacheErrors: 'throw' | 'bypass'` (default `'throw'`), follow the [cache-manager API owner](../packages/cache-manager/README.md#remember-store-error-policy) and [caching architecture](./architecture/caching.md). Bypass contains only `remember` store reads/writes while preserving loader failure identity, same-instance coalescing/invalidation, and once-per-caller privacy-safe error observations.
+
 Direct ioredis cache clients satisfy `RedisCompatibleClient` without adapters or type assertions; the application owns their connection lifecycle. The [Redis client API contract](../packages/cache-manager/README.md#redis-storage) and [NestJS migration example](./getting-started/migrate-from-nestjs.md#cache-manager-ttl-key-visibility-and-store-ownership-migration) are checked with the actual installed ioredis types and all six EN/KO snippets by [consumer regression tests](../packages/cache-manager/src/redis-client.consumer.test.ts). The public scan seam follows reset's MATCH/COUNT call while preserving legacy custom clients.
 
 > **Deno: Removed.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, and the CLI Deno targets are removed from the active workspace ([#3938](https://github.com/fluojs/fluo/issues/3938)). Every published `@fluojs/platform-deno` version (all 18, final `2.0.2`) is deprecated on npm (observed 2026-11-03). Deno material below is archived history, not maintained API; follow the [Deno migration guide](./getting-started/migrate-from-deno.md).

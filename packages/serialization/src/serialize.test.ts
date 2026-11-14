@@ -1,3 +1,5 @@
+import { runInNewContext } from 'node:vm';
+
 import { describe, expect, it } from 'vitest';
 
 import { Exclude } from './decorators/exclude.js';
@@ -51,6 +53,31 @@ describe('serialize', () => {
     }
 
     expect(serialize(new UserView('fluo'))).toEqual({ displayName: 'FLUO' });
+  });
+
+  it('recursively serializes a decorated DTO returned by a transform so its excluded fields are stripped', () => {
+    class CredentialView {
+      id: string;
+
+      @Exclude()
+      secret: string;
+
+      constructor(id: string, secret: string) {
+        this.id = id;
+        this.secret = secret;
+      }
+    }
+
+    class AccountView {
+      @Transform((value) => new CredentialView(String(value), 'hidden'))
+      credential: unknown;
+
+      constructor(credentialId: string) {
+        this.credential = credentialId;
+      }
+    }
+
+    expect(serialize(new AccountView('c-1'))).toEqual({ credential: { id: 'c-1' } });
   });
 
   it('supports the documented public DTO population and value-only transform pattern', () => {
@@ -734,6 +761,258 @@ describe('serialize', () => {
     expect(serialized.weakRoles).toBe(weakRoles);
     expect(serialized.weakTags).toBe(weakTags);
     expect(serialized.pendingProfile).toBe(pendingProfile);
+  });
+
+  it('preserves cross-realm built-ins directly and nested with reference identity', () => {
+    const foreign = runInNewContext(`({
+      date: new Date(0),
+      map: new Map([['admin', true]]),
+      set: new Set(['framework']),
+      error: new Error('foreign failure'),
+      regexp: /^foreign$/u,
+      buffer: new ArrayBuffer(4),
+      promise: Promise.resolve(1),
+    })`) as Record<string, object>;
+
+    for (const value of Object.values(foreign)) {
+      expect(value instanceof Object).toBe(false);
+      expect(serialize(value)).toBe(value);
+    }
+
+    const serialized = serialize({ nested: foreign, list: Object.values(foreign) }) as {
+      list: object[];
+      nested: Record<string, object>;
+    };
+
+    for (const [key, value] of Object.entries(foreign)) {
+      expect(serialized.nested[key]).toBe(value);
+    }
+    expect(serialized.list).toEqual(Object.values(foreign));
+    serialized.list.forEach((value, index) => {
+      expect(value).toBe(Object.values(foreign)[index]);
+    });
+  });
+
+  it('preserves foreign-realm URL and URLSearchParams through internal brand checks while walking spoofed tags', () => {
+    // node:vm contexts expose no URL globals, so a host URL re-parented onto a foreign-realm prototype models a
+    // cross-realm instance: its toString tag survives and `instanceof` fails, while its internal state is intact.
+    const foreignUrlPrototype = runInNewContext('({ [Symbol.toStringTag]: "URL" })') as object;
+    const foreignParamsPrototype = runInNewContext('({ [Symbol.toStringTag]: "URLSearchParams" })') as object;
+    const url = Object.setPrototypeOf(new URL('https://fluo.test/users?id=1'), foreignUrlPrototype) as object;
+    const params = Object.setPrototypeOf(new URLSearchParams('page=2'), foreignParamsPrototype) as object;
+
+    for (const value of [url, params]) {
+      expect(value instanceof URL || value instanceof URLSearchParams).toBe(false);
+      expect(serialize(value)).toBe(value);
+    }
+
+    const serialized = serialize({ nested: { url, params }, list: [url, params] }) as {
+      list: object[];
+      nested: { params: object; url: object };
+    };
+
+    expect(serialized.nested.url).toBe(url);
+    expect(serialized.nested.params).toBe(params);
+    expect(serialized.list[0]).toBe(url);
+    expect(serialized.list[1]).toBe(params);
+
+    const spoofedUrl = Object.assign(Object.create(foreignUrlPrototype) as object, { href: 'https://spoof.test' });
+    const spoofedParams = Object.assign(Object.create(foreignParamsPrototype) as object, { page: '2' });
+
+    expect(serialize(spoofedUrl)).toEqual({ href: 'https://spoof.test' });
+    expect(serialize(spoofedUrl)).not.toBe(spoofedUrl);
+    expect(serialize(spoofedParams)).toEqual({ page: '2' });
+    expect(serialize(spoofedParams)).not.toBe(spoofedParams);
+  });
+
+  it('passes undecorated toJSON value objects through so the JSON writer applies their own representation', () => {
+    class Money {
+      constructor(public cents: number) {}
+
+      toJSON(): string {
+        return (this.cents / 100).toFixed(2);
+      }
+    }
+
+    class Id {
+      #hex = 'abc';
+
+      toJSON(): string {
+        return this.#hex;
+      }
+    }
+
+    const money = new Money(1234);
+    const id = new Id();
+    const serialized = serialize({ m: money, id, items: [money, id] }) as {
+      id: Id;
+      items: unknown[];
+      m: Money;
+    };
+
+    expect(serialize(money)).toBe(money);
+    expect(serialized.m).toBe(money);
+    expect(serialized.id).toBe(id);
+    expect(serialized.items[0]).toBe(money);
+    expect(serialized.items[1]).toBe(id);
+    expect(JSON.stringify(serialized)).toBe('{"m":"12.34","id":"abc","items":["12.34","abc"]}');
+  });
+
+  it('passes plain and null-prototype records with a callable toJSON through unchanged', () => {
+    const price = { cents: 1234 };
+    Object.defineProperty(price, 'toJSON', { value: () => '12.34' });
+    const tag = Object.assign(Object.create(null) as Record<string, unknown>, {
+      label: 'raw',
+      toJSON: () => 'tag',
+    });
+    const serialized = serialize({ items: [price, tag], price, tag }) as {
+      items: unknown[];
+      price: unknown;
+      tag: unknown;
+    };
+
+    expect(serialize(price)).toBe(price);
+    expect(serialize(tag)).toBe(tag);
+    expect(serialized.price).toBe(price);
+    expect(serialized.tag).toBe(tag);
+    expect(serialized.items[0]).toBe(price);
+    expect(serialized.items[1]).toBe(tag);
+    expect(JSON.stringify(serialized)).toBe('{"items":["12.34","tag"],"price":"12.34","tag":"tag"}');
+  });
+
+  it('still walks plain records whose toJSON is not callable', () => {
+    const record = { id: 'r-1', toJSON: 'not-callable' };
+    const serialized = serialize(record);
+
+    expect(serialized).not.toBe(record);
+    expect(serialized).toEqual({ id: 'r-1', toJSON: 'not-callable' });
+  });
+
+  it('keeps metadata-driven shaping for decorated classes that define toJSON', () => {
+    class AccountView {
+      id: string;
+
+      @Exclude()
+      password: string;
+
+      constructor(id: string, password: string) {
+        this.id = id;
+        this.password = password;
+      }
+
+      toJSON(): string {
+        return `account:${this.id}:${this.password}`;
+      }
+    }
+
+    const account = new AccountView('a-1', 'secret');
+
+    expect(serialize(account)).toEqual({ id: 'a-1' });
+    expect(JSON.stringify(serialize({ accounts: [account] }))).toBe('{"accounts":[{"id":"a-1"}]}');
+  });
+
+  it('preserves ReadableStream and Blob values as opaque pass-through values', () => {
+    const stream = new ReadableStream<Uint8Array>();
+    const blob = new Blob(['x']);
+    const serialized = serialize({ blob, stream }) as { blob: Blob; stream: ReadableStream<Uint8Array> };
+
+    expect(serialize(stream)).toBe(stream);
+    expect(serialize(blob)).toBe(blob);
+    expect(serialized.stream).toBe(stream);
+    expect(serialized.blob).toBe(blob);
+  });
+
+  it('still walks ordinary DTOs and records that only resemble opaque values', () => {
+    class Nested {
+      visible = 'yes';
+
+      @Exclude()
+      hidden = 'no';
+    }
+
+    class PlainHolder {
+      size = 1;
+      nested = new Nested();
+    }
+
+    // Thenable lookalike: the key is computed so lint/suspicious/noThenProperty does not flag the fixture.
+    const thenKey = 'then';
+    const record = Object.assign(Object.create(null) as Record<string, unknown>, { size: 2, [thenKey]: 'not-a-promise' });
+
+    expect(serialize(new PlainHolder())).toEqual({ nested: { visible: 'yes' }, size: 1 });
+    expect(serialize(record)).toEqual({ size: 2, [thenKey]: 'not-a-promise' });
+    class MapLookalike {
+      size = 3;
+
+      get [Symbol.toStringTag](): string {
+        return 'Map';
+      }
+    }
+
+    const lookalike = new MapLookalike();
+    const serializedLookalike = serialize(lookalike);
+
+    expect(serializedLookalike).not.toBe(lookalike);
+    expect(serializedLookalike).toEqual({ size: 3 });
+  });
+
+  it.each(['Error', 'Promise', 'Blob', 'File', 'ReadableStream'])(
+    'still walks DTOs that spoof the %s tag and strips excluded fields on them and their descendants',
+    (tag: string) => {
+      class Nested {
+        visible = 'yes';
+
+        @Exclude()
+        hidden = 'no';
+      }
+
+      class UndecoratedSpoof {
+        id = 'u-1';
+        nested = new Nested();
+
+        get [Symbol.toStringTag](): string {
+          return tag;
+        }
+      }
+
+      class DecoratedSpoof {
+        id = 'd-1';
+
+        @Exclude()
+        secret = 'hidden';
+
+        nested = new Nested();
+
+        get [Symbol.toStringTag](): string {
+          return tag;
+        }
+      }
+
+      const undecorated = new UndecoratedSpoof();
+      const decorated = new DecoratedSpoof();
+
+      expect(Object.prototype.toString.call(undecorated)).toBe(`[object ${tag}]`);
+      expect(serialize(undecorated)).not.toBe(undecorated);
+      expect(serialize(undecorated)).toEqual({ id: 'u-1', nested: { visible: 'yes' } });
+      expect(serialize({ items: [decorated] })).toEqual({ items: [{ id: 'd-1', nested: { visible: 'yes' } }] });
+    },
+  );
+
+  it('keeps metadata-driven shaping over toJSON for classes with explicit excludeExtraneous: false', () => {
+    @Expose({ excludeExtraneous: false })
+    class ExplicitView {
+      id = 'a';
+
+      toJSON(): string {
+        return 'custom';
+      }
+    }
+
+    const view = new ExplicitView();
+
+    expect(serialize(view)).not.toBe(view);
+    expect(serialize(view)).toEqual({ id: 'a' });
+    expect(JSON.stringify(serialize({ view }))).toBe('{"view":{"id":"a"}}');
   });
 
   it('serializes exposed own constructor keys on decorated instances without prototype mutation', () => {
