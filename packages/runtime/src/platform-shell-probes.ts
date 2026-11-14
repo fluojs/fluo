@@ -1,4 +1,5 @@
 import type { RegisteredPlatformComponent } from './platform-component-registry.js';
+import { normalizeProbeTimeout, runProbeWithTimeout } from './probe-timeout.js';
 import type {
   PlatformDiagnosticIssue,
   PlatformHealthReport,
@@ -46,6 +47,7 @@ interface PlatformHealthResult {
   readonly health: PlatformHealthReport;
 }
 
+/** Collect bounded component probes while preserving aggregate and diagnostic contracts. */
 export class PlatformShellProbeCollector {
   constructor(
     private readonly registeredComponents: readonly RegisteredPlatformComponent[],
@@ -63,16 +65,10 @@ export class PlatformShellProbeCollector {
     const reports: PlatformReadinessReport[] = [];
 
     for (const component of this.registeredComponents) {
-      try {
-        reports.push(await component.component.ready());
-      } catch (error) {
-        const issue = createPlatformFailureIssue(component.component.id, 'ready', error);
-        this.diagnostics.retainProbe('ready', issue);
-        reports.push({
-          critical: true,
-          reason: issue.cause,
-          status: 'not-ready',
-        });
+      const result = await this.collectComponentReadiness(component);
+      reports.push(result.readiness);
+      for (const diagnostic of result.diagnostics) {
+        this.diagnostics.retainProbe(diagnostic.phase, diagnostic.issue);
       }
     }
 
@@ -89,15 +85,10 @@ export class PlatformShellProbeCollector {
     const reports: PlatformHealthReport[] = [];
 
     for (const component of this.registeredComponents) {
-      try {
-        reports.push(await component.component.health());
-      } catch (error) {
-        const issue = createPlatformFailureIssue(component.component.id, 'health', error);
-        this.diagnostics.retainProbe('health', issue);
-        reports.push({
-          reason: issue.cause,
-          status: 'unhealthy',
-        });
+      const result = await this.collectComponentHealth(component);
+      reports.push(result.health);
+      for (const diagnostic of result.diagnostics) {
+        this.diagnostics.retainProbe(diagnostic.phase, diagnostic.issue);
       }
     }
 
@@ -166,17 +157,24 @@ export class PlatformShellProbeCollector {
   private async collectComponentReadiness(
     registration: RegisteredPlatformComponent,
   ): Promise<PlatformReadinessResult> {
+    let timedOut = false;
     try {
+      const timeoutMs = registration.readiness?.timeoutMs ?? normalizeProbeTimeout(undefined);
+      const result = await runProbeWithTimeout(() => registration.component.ready(), timeoutMs);
+      if (result.timedOut) {
+        timedOut = true;
+        throw new Error(`Platform component "${registration.component.id}" ready probe timed out after ${timeoutMs} ms.`);
+      }
       return {
         diagnostics: [],
-        readiness: await registration.component.ready(),
+        readiness: result.value,
       };
     } catch (error) {
       const issue = createPlatformFailureIssue(registration.component.id, 'ready', error);
       return {
         diagnostics: [{ issue, phase: 'ready' }],
         readiness: {
-          critical: true,
+          critical: timedOut ? registration.readiness?.critical !== false : true,
           reason: issue.cause,
           status: 'not-ready',
         },
@@ -186,9 +184,14 @@ export class PlatformShellProbeCollector {
 
   private async collectComponentHealth(registration: RegisteredPlatformComponent): Promise<PlatformHealthResult> {
     try {
+      const timeoutMs = registration.readiness?.timeoutMs ?? normalizeProbeTimeout(undefined);
+      const result = await runProbeWithTimeout(() => registration.component.health(), timeoutMs);
+      if (result.timedOut) {
+        throw new Error(`Platform component "${registration.component.id}" health probe timed out after ${timeoutMs} ms.`);
+      }
       return {
         diagnostics: [],
-        health: await registration.component.health(),
+        health: result.value,
       };
     } catch (error) {
       const issue = createPlatformFailureIssue(registration.component.id, 'health', error);

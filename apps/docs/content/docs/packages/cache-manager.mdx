@@ -336,8 +336,19 @@ The contract is intentionally narrow: observations carry only `operation`
 operation kind (reads: `hit`/`miss`/`error`; writes and lifecycle:
 `success`/`error`), and `durationMs`. Keys, values, loader results, and error
 objects are never exposed. Observer failures are swallowed and never affect
-callers. `update` emits no observations; a `remember` that joined an in-flight
-load reports `miss`.
+callers. `update` emits no observations; an error-free `remember` that joined an
+in-flight load reports `miss`. With opt-in `rememberCacheErrors: 'bypass'`, a caller
+whose read or shared write was bypassed reports exactly one `error`, even when
+its value resolves. Keys, values, and errors remain private, and internal
+`get`/`set` events are not emitted.
+
+`CacheModule.forRoot` and synchronous/asynchronous `forRootAsync` factories accept
+`rememberCacheErrors: 'throw' | 'bypass'`; omission/`undefined` selects `'throw'`.
+Bypass isolates only store reads/writes in `remember`, retaining same-instance
+coalescing and invalidation. Loader and TTL preparation errors still propagate
+unchanged without retry, and direct operations keep their existing contracts.
+The [README API owner](https://github.com/fluojs/fluo/blob/main/packages/cache-manager/README.md#remember-store-error-policy)
+defines the full option, observation, and lifecycle boundaries.
 
 ### Custom stores
 

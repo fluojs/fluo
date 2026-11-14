@@ -1,7 +1,7 @@
-import type { MiddlewareContext, Middleware } from '../types.js';
-import { TooManyRequestsException, createErrorResponse } from '../exceptions.js';
 import { resolveClientIdentity } from '../client-identity.js';
 import type { TrustProxyPolicy } from '../connection.js';
+import { createErrorResponse, TooManyRequestsException } from '../exceptions.js';
+import type { Middleware, MiddlewareContext } from '../types.js';
 
 /** Snapshot of one key's current rate-limit window state. */
 export interface RateLimitStoreEntry {
@@ -11,6 +11,17 @@ export interface RateLimitStoreEntry {
 
 /** Store contract used by `createRateLimitMiddleware(...)` request windows. */
 export interface RateLimitStore {
+  /**
+   * Atomically initialize or reset a window and count the current request.
+   *
+   * @param key Request budget identity.
+   * @param options Current epoch milliseconds and window duration in milliseconds.
+   * @returns Independent snapshot including this request, even when over the limit.
+   * @remarks Reset when `now >= resetAt`; otherwise keep the deadline unchanged.
+   * Distributed stores must implement this as one backend atomic operation.
+   * Without this capability middleware uses the legacy non-atomic get/set/increment path.
+   */
+  consume?(key: string, options: { now: number; windowMs: number }): RateLimitStoreEntry | Promise<RateLimitStoreEntry>;
   get(key: string): RateLimitStoreEntry | undefined | Promise<RateLimitStoreEntry | undefined>;
   set(key: string, entry: RateLimitStoreEntry): void | Promise<void>;
   increment(key: string): number | Promise<number>;
@@ -57,6 +68,15 @@ export function createMemoryRateLimitStore(): RateLimitStore {
   let nextSweepAt = 0;
 
   return {
+    consume(key, { now, windowMs }) {
+      const entry = map.get(key);
+      const current = !entry || now >= entry.resetAt
+        ? { count: 1, resetAt: now + windowMs }
+        : { count: entry.count + 1, resetAt: entry.resetAt };
+
+      map.set(key, current);
+      return { ...current };
+    },
     get(key) {
       return map.get(key);
     },
@@ -111,32 +131,21 @@ export function createRateLimitMiddleware(options: RateLimitOptions): Middleware
 
       await store.evict(now);
 
-      const entry = await store.get(key);
-
-      if (!entry || now >= entry.resetAt) {
-        const resetAt = now + options.windowMs;
-
-        await store.set(key, { count: 1, resetAt });
-
-        if (1 > options.limit) {
-          const retryAfter = Math.ceil(options.windowMs / 1000);
-          const error = new TooManyRequestsException('Too Many Requests', {
-            meta: { retryAfter },
-          });
-
-          context.response.setHeader('Retry-After', String(retryAfter));
-          context.response.setStatus(429);
-          await context.response.send(createErrorResponse(error, context.requestContext.requestId));
-          return;
+      let current: RateLimitStoreEntry;
+      if (store.consume) {
+        current = await store.consume(key, { now, windowMs: options.windowMs });
+      } else {
+        const entry = await store.get(key);
+        if (!entry || now >= entry.resetAt) {
+          current = { count: 1, resetAt: now + options.windowMs };
+          await store.set(key, current);
+        } else {
+          current = { count: await store.increment(key), resetAt: entry.resetAt };
         }
-
-        return next();
       }
 
-      const count = await store.increment(key);
-
-      if (count > options.limit) {
-        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+      if (current.count > options.limit) {
+        const retryAfter = Math.ceil((current.resetAt - now) / 1000);
         const error = new TooManyRequestsException('Too Many Requests', {
           meta: { retryAfter },
         });

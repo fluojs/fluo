@@ -1,5 +1,7 @@
 # fluo — AI Context Document
 
+`rememberCacheErrors: 'throw' | 'bypass'`(기본 `'throw'`)는 [cache-manager API 원본](../packages/cache-manager/README.ko.md#remember-저장소-오류-정책)과 [캐시 아키텍처](./architecture/caching.ko.md)를 따릅니다. Bypass는 `remember`의 store 읽기·쓰기만 격리하며 loader 오류 identity, 같은 인스턴스의 병합·무효화, 호출당 한 번의 privacy-safe error 관측을 보존합니다.
+
 직접 전달한 ioredis cache client는 adapter나 type assertion 없이 `RedisCompatibleClient`를 만족하며 연결 lifecycle은 애플리케이션이 소유합니다. [Redis client API 계약](../packages/cache-manager/README.ko.md#redis-저장소-사용)과 [NestJS 마이그레이션 예제](./getting-started/migrate-from-nestjs.ko.md#cache-manager-ttl-key-visibility-store-ownership-마이그레이션)는 [consumer 회귀 테스트](../packages/cache-manager/src/redis-client.consumer.test.ts)가 실제 설치된 ioredis 타입 및 여섯 EN/KO snippet으로 검증합니다. 공개 scan seam은 reset의 MATCH/COUNT 호출을 따르며 기존 custom client 호환성을 유지합니다.
 
 > **Deno: 제거됨.** `@fluojs/platform-deno`, `@fluojs/websockets/deno`, CLI Deno 대상을 활성 워크스페이스에서 제거했습니다([#3938](https://github.com/fluojs/fluo/issues/3938)). 공개된 `@fluojs/platform-deno` 18개 버전 전체(최종 `2.0.2`)가 deprecated입니다(2026-11-03 관측). 아래 Deno 자료는 아카이브 기록이며 유지보수되는 API가 아닙니다. [Deno 이전 가이드](./getting-started/migrate-from-deno.ko.md)를 따르세요.

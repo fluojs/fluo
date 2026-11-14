@@ -25,6 +25,7 @@ function deferred() {
 }
 
 const options: NormalizedCacheModuleOptions = {
+  rememberCacheErrors: 'throw',
   global: false,
   httpKeyStrategy: 'route',
   keyPrefix: 'fluo:cache:',
