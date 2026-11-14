@@ -81,9 +81,20 @@ const parseRegistration = (source) => {
   return JSON.parse(characters.join(''));
 };
 
+const isPlainObject = (value) => {
+  if (typeof value !== 'object' || value === null) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
 export const readRegisteredAgents = (root) => {
   try {
-    return parseRegistration(readFileSync(resolve(root, '.omo/omo.jsonc'), 'utf8'))?.agents;
+    const registration = parseRegistration(readFileSync(resolve(root, '.omo/omo.jsonc'), 'utf8'));
+    if (!isPlainObject(registration) || !Object.hasOwn(registration, 'agents')
+      || !isPlainObject(registration.agents)) {
+      throw new TypeError('Registration and its own agents map must be plain objects');
+    }
+    return registration.agents;
   } catch (cause) {
     const failure = new DispatchPreparationError(undefined, 'dispatch-registration-unreadable');
     failure.cause = cause;
@@ -103,7 +114,8 @@ export const assertAgentIdentity = (expected, actual) => {
 
 export const validateDispatchTarget = (dispatch, agents, unavailable = []) => {
   const name = dispatch.subagent_type;
-  if (!agents || !Object.hasOwn(agents, name) || unavailable.includes(name)) {
+  if (!isPlainObject(agents) || !Object.hasOwn(agents, name)
+    || !isPlainObject(agents[name]) || unavailable.includes(name)) {
     throw new DispatchPreparationError(name);
   }
 };

@@ -977,7 +977,7 @@ const main = async () => {
 				await sleep(intervalSec * 1000);
 			}
 		};
-		loop();
+		await loop();
 		return;
 	}
 

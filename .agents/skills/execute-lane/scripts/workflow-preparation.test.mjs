@@ -8,7 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { prepareReviewInput, prepareSourceFootprint, sourceFootprintCategories } from './workflow-preparation.mjs';
-import { readRegisteredAgents } from './dispatch-targets.mjs';
+import { readRegisteredAgents, validateDispatchTarget } from './dispatch-targets.mjs';
 import { createCommandRunner } from '../../../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -171,10 +171,32 @@ test('#4091 registration JSONC: escaped strings and comment markers -> unchanged
   assert.deepEqual(registered, agents);
 });
 
+test('#4091 registration entries: own plain objects -> registered; invalid values and inherited names -> unavailable', () => {
+  const dispatch = { subagent_type: 'fluo-issue-preflight' };
+  const nullPrototype = Object.create(null);
+  nullPrototype[dispatch.subagent_type] = {};
+
+  assert.doesNotThrow(() => validateDispatchTarget(dispatch, { [dispatch.subagent_type]: {} }));
+  assert.doesNotThrow(() => validateDispatchTarget(dispatch, nullPrototype));
+  for (const entry of [null, [], true, 1, 'agent', () => {}, new Date(0), Object.create({ inherited: true })]) {
+    assert.throws(() => validateDispatchTarget(dispatch, { [dispatch.subagent_type]: entry }),
+      (error) => error.code === 'dispatch-target-unavailable' && error.subagent_type === dispatch.subagent_type);
+  }
+  for (const subagent_type of ['constructor', '__proto__', 'toString']) {
+    assert.throws(() => validateDispatchTarget({ subagent_type }, {}),
+      (error) => error.code === 'dispatch-target-unavailable' && error.subagent_type === subagent_type);
+  }
+  assert.throws(() => validateDispatchTarget(dispatch, Object.create({ [dispatch.subagent_type]: {} })),
+    (error) => error.code === 'dispatch-target-unavailable');
+});
+
 for (const [defect, content] of [
   ['missing', null], ['truncated', '{"agents":'], ['unterminated-comment', '{"agents":{}} /*'],
   ['leading-comma', '{,}'], ['missing-value', '{"agents":,}'],
   ['split-token', '{"agents": 1/* comment */2}'], ['double-comma', '{"agents":{},,}'],
+  ['root-null', 'null'], ['root-array', '[]'], ['root-number', '1'], ['root-string', '"registration"'],
+  ['agents-missing', '{}'], ['agents-array', '{"agents":[]}'], ['agents-null', '{"agents":null}'],
+  ['agents-number', '{"agents":1}'], ['agents-string', '{"agents":"registration"}'],
 ]) {
   test(`#4091 registration unreadable: ${defect} -> typed preparation block`, (t) => {
     const value = fixture(t);
@@ -191,6 +213,9 @@ for (const [defect, content] of [
     assert.equal(block.kind, 'input-preparation');
     assert.equal(block.code, 'dispatch-registration-unreadable');
     assert.equal(block.fix_back_eligible, false);
+    assert.throws(() => readRegisteredAgents(value.root),
+      (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+        && error.code === 'dispatch-registration-unreadable');
     assert.throws(() => prepareReviewInput(value.input),
       (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
         && error.code === 'dispatch-registration-unreadable');

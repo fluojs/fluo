@@ -94,7 +94,22 @@ decision maps each effective axis to `fluo-contract-reviewer`,
 the same route on `reviewers[i].dispatch`, leaving `common` identical.
 Retrospective analysis selects `fluo-retrospective`. These six agents are
 registered in `.omo/omo.jsonc` and read their own role reference first.
-`scripts/dispatch-targets.mjs` supplies routing values and validators only.
+`scripts/dispatch-targets.mjs` supplies routing values, shared registration
+reading and validation. The JSONC configuration and its own `agents` map must
+be plain objects. A registered name is an own key with a plain-object definition
+(including null-prototype maps); inherited keys never count. Missing, unreadable
+or structurally invalid registration produces `dispatch-registration-unreadable`.
+A missing or invalid agent entry produces `dispatch-target-unavailable`. Both
+are typed input-preparation blocks with `fix_back_eligible: false`.
+
+Observation stays independent of registration: `plan`, `plan-all` without
+`--with-retro`, and `watch` while work remains keep working with unreadable
+configuration. Their intended `dispatch` metadata is not an availability check.
+Preparation, success admission and a new retrospective analysis request validate
+registration. When every issue is done, `watch` can therefore exit nonzero with
+the typed JSON block while preparing `RETRO-READY`; readable registration retains
+the existing output and exit behavior. Existing retrospective reports remain
+reusable without reading registration again.
 
 The lead binds actual child routing to the new `record` success wrapper:
 `{ok:true, agent:"fluo-issue-preflight", ...}` or

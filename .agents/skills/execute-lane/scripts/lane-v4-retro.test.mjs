@@ -608,11 +608,11 @@ console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON
 	assert.equal(pendingHandoff.issues[0].decision.action, "done");
 	assert.equal(pendingHandoff.retrospective.action, "retro");
 	assert.equal(pendingHandoff.settled, false);
-	assert.ok(
-		execute("watch", ["--once"]).split("\n").some((line) =>
-			line.startsWith("RETRO-READY ")
-		),
-	);
+	const watchLines = execute("watch", ["--once"]).split("\n");
+	assert.ok(watchLines.some((line) => line.startsWith("RETRO-READY ")));
+	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("RETRO-READY ")).slice("RETRO-READY ".length)), request);
+	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("LANE-SETTLED ")).slice("LANE-SETTLED ".length)),
+		[{ issue: 1, action: "done" }]);
 	assert.equal(invoke("retro-evidence").events.length, 3);
 	const analysis = resolve(root, "analysis.json");
 	writeFileSync(analysis, JSON.stringify(report(request, event.eventId)));

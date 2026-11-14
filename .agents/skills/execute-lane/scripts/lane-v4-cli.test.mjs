@@ -152,6 +152,55 @@ for (const defect of ['missing', 'broken']) {
   });
 }
 
+for (const [defect, content, code] of [
+  ['missing', null, 'dispatch-registration-unreadable'],
+  ['broken', '{"agents":', 'dispatch-registration-unreadable'],
+  ['invalid-shape', '[]', 'dispatch-registration-unreadable'],
+  ['unregistered', '{"agents":{}}', 'dispatch-target-unavailable'],
+]) {
+  test(`#4091 terminal observation: ${defect} registration -> typed block for retrospective outputs`, (t) => {
+    const f = fixture(t);
+    f.state.issue.state = 'CLOSED';
+    f.update();
+    const path = join(f.root, '.omo/omo.jsonc');
+    if (content === null) rmSync(path);
+    else writeFileSync(path, content);
+    const before = readFileSync(f.lanePath);
+    const commands = [
+      ['watch', ['--once']], ['plan-all', ['--with-retro']], ['retro-plan', []], ['retro-evidence', []],
+    ];
+
+    for (const [command, extra] of commands) {
+      const result = f.cli(command, [...f.common, ...extra], false);
+
+      const block = JSON.parse(result.stderr);
+      assert.equal(result.status, 1);
+      assert.equal(block.status, 'blocked');
+      assert.equal(block.kind, 'input-preparation');
+      assert.equal(block.code, code);
+      assert.equal(block.fix_back_eligible, false);
+      assert.deepEqual(readFileSync(f.lanePath), before);
+    }
+  });
+}
+
+test('#4091 observations: unreadable registration during active work -> plan, plan-all and watch remain usable', (t) => {
+  const f = fixture(t);
+  writeFileSync(join(f.root, '.omo/omo.jsonc'), '{"agents":');
+  const before = readFileSync(f.lanePath);
+
+  const planned = f.plan();
+  const all = JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout);
+  const watched = f.cli('watch', ['--lane', f.lanePath, '--once']);
+
+  assert.equal(planned.decision.action, 'preflight');
+  assert.deepEqual(planned.decision.dispatch, { subagent_type: 'fluo-issue-preflight' });
+  assert.deepEqual(all, [{ issue: 42, decision: planned.decision }]);
+  assert.equal(watched.status, 0);
+  assert.equal(watched.stderr, '');
+  assert.deepEqual(readFileSync(f.lanePath), before);
+});
+
 test('gh pager: readiness and actual observation close -> final run attempt collection without key input', async (t) => {
   const value = fixture(t);
   value.implement();
