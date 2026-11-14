@@ -489,8 +489,10 @@ export class FluoApplication implements Application {
 Runtime-owned cleanup callback은 `void` 또는 `Promise<void>`를 받을 수 있습니다. close와
 bootstrap-failure cleanup은 lifecycle hook, adapter, container disposal로 넘어가기 전에 registration을
 순서대로 await합니다. callback failure가 나도 이후 registration은 건너뛰지 않습니다. close는 failure를
-aggregate하여 완료되지 않은 phase를 명시적으로 retry하게 하고, bootstrap은 원래 error를 보존하며
-cleanup failure를 `ApplicationLogger`로 보고합니다.
+aggregate하여 실패한 registration만 원래 순서대로 명시적으로 retry하게 합니다. 같은 함수를 두 번
+등록해도 해당 application 또는 context의 성공한 registration은 다시 실행하지 않습니다. Lifecycle
+hook retry는 phase 전체를 다시 실행합니다. Bootstrap은 원래 error를 보존하며 cleanup failure를
+`ApplicationLogger`로 보고합니다.
 
 가장 먼저 볼 계약은 `path:packages/runtime/src/internal/application.ts:86-92`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
 
@@ -699,7 +701,7 @@ Executable evidence는 shell과 race별로 의도적으로 분리되어 있습�
 
 Failure-path cleanup은 `runBootstrapFailureCleanup()`이 소유합니다. Bootstrap이 lifecycle instance나 runtime resource를 만든 뒤 실패하더라도, runtime은 readiness를 reset하고 모든 cleanup phase를 시도하면서 원래 bootstrap error를 보존합니다.
 
-`path:packages/runtime/src/internal/runtime-resources.ts:151-178`
+`path:packages/runtime/src/internal/runtime-resources.ts:158-185`
 
 ```typescript
 export async function runBootstrapFailureCleanup(options: {
@@ -734,7 +736,7 @@ export async function runBootstrapFailureCleanup(options: {
 
 이 첫 failure-cleanup 발췌는 bootstrap 실패 후에도 lifecycle shutdown hook을 호출하려고 시도한다는 점을 보여 줍니다. 이어지는 발췌는 container disposal과 cleanup failure logging을 분리해서 보여 줍니다.
 
-`path:packages/runtime/src/internal/runtime-resources.ts:180-195`
+`path:packages/runtime/src/internal/runtime-resources.ts:187-202`
 
 ```typescript
   if (options.container) {
