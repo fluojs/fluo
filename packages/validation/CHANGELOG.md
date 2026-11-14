@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## 2.1.3
+
+### Patch Changes
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- [#4073](https://github.com/fluojs/fluo/pull/4073) [`2afd87f`](https://github.com/fluojs/fluo/commit/2afd87f67501281fac933d1b3264858a807b3494) Thanks [@ayden94](https://github.com/ayden94)! - Correct validation quick-start and NestJS migration guidance for installing TC39 decorator metadata before DTO modules evaluate, binding successful schema output from requests to HTTP handler input arguments, and restoring mapped DTO defaults explicitly in subclasses while preserving PartialType patch semantics.
+
+- [#4069](https://github.com/fluojs/fluo/pull/4069) [`685cdc6`](https://github.com/fluojs/fluo/commit/685cdc6a1e9356e1004268be915405372bcc2e1d) Thanks [@ayden94](https://github.com/ayden94)! - Fix `isDtoValidationError` to reject malformed optional issue `field` and `source` values. Valid issues, including all supported metadata sources and omitted optional fields, remain accepted across compatible duplicate package copies.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93)]:
+  - @fluojs/core@2.2.0
+
 ## 2.1.2
 
 ### Patch Changes

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## 3.1.1
+
+### Patch Changes
+
+- Updated dependencies [[`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`1fe212d`](https://github.com/fluojs/fluo/commit/1fe212d4b49e6e2d1ef577d6ee62962e6da5bafb), [`93f2213`](https://github.com/fluojs/fluo/commit/93f22136266b93238c8db6a11160949867ce97ba), [`559fd2d`](https://github.com/fluojs/fluo/commit/559fd2df4c7a230a6bbdb4b89a23f1a5f8991f32), [`8817120`](https://github.com/fluojs/fluo/commit/8817120f21180ced38dda95b9fbbfb1133bb2a82), [`c0e0cb7`](https://github.com/fluojs/fluo/commit/c0e0cb7e67f07752c554a811a1d04e9e0e8f4337), [`7c3ded4`](https://github.com/fluojs/fluo/commit/7c3ded4f98f96ff702d3cf6466ef2e158045883e), [`31082f9`](https://github.com/fluojs/fluo/commit/31082f9e405d90edfea1646c60536316614bf7d1), [`d642f02`](https://github.com/fluojs/fluo/commit/d642f0281c34206b9684fe2bd116a9b230c29f0e), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/runtime@4.0.0
+  - @fluojs/http@3.3.0
+
 ## 3.1.0
 
 ### Minor Changes

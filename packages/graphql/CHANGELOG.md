@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## 2.1.1
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`1fe212d`](https://github.com/fluojs/fluo/commit/1fe212d4b49e6e2d1ef577d6ee62962e6da5bafb), [`93f2213`](https://github.com/fluojs/fluo/commit/93f22136266b93238c8db6a11160949867ce97ba), [`559fd2d`](https://github.com/fluojs/fluo/commit/559fd2df4c7a230a6bbdb4b89a23f1a5f8991f32), [`8817120`](https://github.com/fluojs/fluo/commit/8817120f21180ced38dda95b9fbbfb1133bb2a82), [`c0e0cb7`](https://github.com/fluojs/fluo/commit/c0e0cb7e67f07752c554a811a1d04e9e0e8f4337), [`7c3ded4`](https://github.com/fluojs/fluo/commit/7c3ded4f98f96ff702d3cf6466ef2e158045883e), [`31082f9`](https://github.com/fluojs/fluo/commit/31082f9e405d90edfea1646c60536316614bf7d1), [`d642f02`](https://github.com/fluojs/fluo/commit/d642f0281c34206b9684fe2bd116a9b230c29f0e), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e), [`2afd87f`](https://github.com/fluojs/fluo/commit/2afd87f67501281fac933d1b3264858a807b3494), [`685cdc6`](https://github.com/fluojs/fluo/commit/685cdc6a1e9356e1004268be915405372bcc2e1d)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/di@3.2.0
+  - @fluojs/http@3.3.0
+  - @fluojs/validation@2.1.3
+
 ## 2.1.0
 
 ### Minor Changes

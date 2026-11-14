@@ -2,6 +2,51 @@
 
 ## [Unreleased]
 
+## 4.0.0
+
+### Major Changes
+
+- [#4058](https://github.com/fluojs/fluo/pull/4058) [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4) Thanks [@ayden94](https://github.com/ayden94)! - Bound platform ready/health probes and runtime HTTP readiness callbacks with independent 5000 ms default deadlines. Platform registrations now accept readiness timeout/criticality options, and direct HealthModule registrations accept readinessCheckTimeoutMs. Timeouts retain bounded component/phase diagnostics and report not-ready/unhealthy or HTTP 503 unavailable without cancelling underlying operations.
+
+  Release Cron alongside the mandatory Runtime major dependency, as required by the stable release lane compatibility policy. This companion major does not change scheduling APIs.
+
+  Migration: previously unbounded asynchronous probes now fail after their deadline, which changes readiness behavior for existing applications and requires a major release. If a platform probe legitimately needs more than 5000 ms, pass `{ component, readiness: { timeoutMs } }` in the platform registration. Direct HealthModule users can raise `HealthModule.forRoot({ readinessCheckTimeoutMs })`. TerminusModuleOptions currently cannot raise its runtime callback's 5000 ms budget; longer indicator/platform budgets alone do not extend Terminus `/ready` waiting. Keep Terminus readiness work within that limit until a separate option is supported. Ordinary callback errors still propagate, callback order and false short-circuit behavior remain unchanged, and timed-out work is not cancelled.
+
+### Minor Changes
+
+- [#4057](https://github.com/fluojs/fluo/pull/4057) [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505) Thanks [@ayden94](https://github.com/ayden94)! - Track runtime cleanup completion per registration on each application or context. Explicit close retries now run only failed registrations in their original order and no longer replay successful registrations, including when the same callback function is registered multiple times.
+
+  Consumer note: successful cleanup registrations no longer replay on close retry. No code or configuration changes are required. Lifecycle hook retries remain phase-wide, so lifecycle hooks must still tolerate re-entry.
+
+- [#4054](https://github.com/fluojs/fluo/pull/4054) [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e) Thanks [@ayden94](https://github.com/ayden94)! - Bound retained platform lifecycle and validation diagnostics to the latest diagnostic per component, phase, and code. Repeated failures now replace earlier message, cause, severity, and fix-hint details instead of accumulating an unbounded event history in snapshots. Distinct keys keep their first-seen order, probe retention remains separate, and public diagnostic payload fields and lifecycle behavior are unchanged.
+
+  Snapshots expose the latest diagnostic for each key rather than a complete history of repeated occurrences. No consumer code or configuration changes are required.
+
+  Document the diagnostic retention phases and failure helpers with source-level TSDoc.
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4050](https://github.com/fluojs/fluo/pull/4050) [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde) Thanks [@ayden94](https://github.com/ayden94)! - Honor `multi: true` on `useExisting` providers instead of silently treating them as single aliases. Alias contributions preserve registration order, target identity and scope, scope validation, full-set overrides, and indexed internal resolution.
+
+  Keep single and multi aliases distinct in runtime module graph cache keys, and preserve target lifetimes when testing modules resolve multi aliases through synchronous `get()`.
+
+- [#4053](https://github.com/fluojs/fluo/pull/4053) [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d) Thanks [@ayden94](https://github.com/ayden94)! - Preserve reserved multipart field names such as `__proto__`, `constructor`, and `toString` as own enumerable data properties. Buffered parsing now retains only submitted values in arrival order without changing the fields object's prototype.
+
+- [#4108](https://github.com/fluojs/fluo/pull/4108) [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8) Thanks [@ayden94](https://github.com/ayden94)! - Classify malformed Web multipart requests as HTTP 400 `BadRequestException` instead of 500, including a missing boundary parameter, body, closing boundary, valid part header, form-data Content-Disposition header, or name parameter; multipart size-limit failures keep returning HTTP 413. Web request body handling now selects multipart and JSON parsing from the exact, case-insensitive primary media type, so parameter-embedded values such as `text/plain; x=multipart/form-data` are no longer treated as multipart.
+
+- [#4056](https://github.com/fluojs/fluo/pull/4056) [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416) Thanks [@ayden94](https://github.com/ayden94)! - Continue microservice teardown when the synchronous shutdown-start notification throws. Wait for active startup, attempt transport and owned-context cleanup once, and preserve notification and cleanup failures in the cached terminal close result.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`1fe212d`](https://github.com/fluojs/fluo/commit/1fe212d4b49e6e2d1ef577d6ee62962e6da5bafb), [`93f2213`](https://github.com/fluojs/fluo/commit/93f22136266b93238c8db6a11160949867ce97ba), [`559fd2d`](https://github.com/fluojs/fluo/commit/559fd2df4c7a230a6bbdb4b89a23f1a5f8991f32), [`8817120`](https://github.com/fluojs/fluo/commit/8817120f21180ced38dda95b9fbbfb1133bb2a82), [`c0e0cb7`](https://github.com/fluojs/fluo/commit/c0e0cb7e67f07752c554a811a1d04e9e0e8f4337), [`7c3ded4`](https://github.com/fluojs/fluo/commit/7c3ded4f98f96ff702d3cf6466ef2e158045883e), [`31082f9`](https://github.com/fluojs/fluo/commit/31082f9e405d90edfea1646c60536316614bf7d1), [`d642f02`](https://github.com/fluojs/fluo/commit/d642f0281c34206b9684fe2bd116a9b230c29f0e), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/di@3.2.0
+  - @fluojs/http@3.3.0
+
 ## 3.1.3
 
 ### Patch Changes
