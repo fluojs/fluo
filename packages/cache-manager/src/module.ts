@@ -76,6 +76,11 @@ async function resolveRedisPeerModule(): Promise<RedisPeerModule> {
 
 function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): NormalizedCacheModuleOptions {
   const store = options.store ?? 'memory';
+  const rememberCacheErrors = options.rememberCacheErrors;
+
+  if (rememberCacheErrors !== undefined && rememberCacheErrors !== 'throw' && rememberCacheErrors !== 'bypass') {
+    throw new Error('rememberCacheErrors must be "throw" or "bypass".');
+  }
 
   if (store !== 'memory' && store !== 'redis') {
     if (typeof store !== 'object') {
@@ -98,6 +103,7 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     store,
     ttl: options.ttl ?? (store === 'memory' ? DEFAULT_MEMORY_STORE_TTL_SECONDS : 0),
     ttlJitter: normalizeCacheTtlJitterOptions(options.ttlJitter),
+    rememberCacheErrors: rememberCacheErrors ?? 'throw',
     httpKeyStrategy: normalizeHttpKeyStrategy(options.httpKeyStrategy),
     principalScopeResolver: options.principalScopeResolver,
     observer: options.observer,
@@ -243,7 +249,8 @@ export class CacheModule {
    *
    * @param options Cache module options.
    * @returns A runtime module exporting `CacheService` and `CacheInterceptor`.
-   * @throws When a store name is unsupported or a custom store lacks callable `get`, `set`, `del`, or `reset`.
+   * @throws When a store name is unsupported, a custom store lacks callable required methods,
+   * or `rememberCacheErrors` is neither `'throw'` nor `'bypass'`.
    *
    * @example
    * ```ts
@@ -277,6 +284,7 @@ export class CacheModule {
    * call because module metadata is fixed before the factory runs; a `global` value in the
    * factory result is ignored. Store validation runs when the factory result resolves;
    * invalid store configuration or a rejected factory fails option resolution/bootstrap.
+   * `rememberCacheErrors` is validated at the same boundary; omission defaults to `'throw'`.
    *
    * @param options Injected factory registration options.
    * @returns A runtime module exporting `CacheService` and `CacheInterceptor`.
