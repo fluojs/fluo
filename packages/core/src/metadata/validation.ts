@@ -111,11 +111,13 @@ function getStandardClassValidationRules(target: Function): ClassValidationRule[
 }
 
 /**
- * Get dto field binding metadata.
+ * Resolve one field's binding from inherited stored maps and standard metadata.
+ * Stored maps are collected base-to-leaf, with each leaf entry replacing the base entry.
+ * Non-nullish stored fields override standard fields. An undefined converter is omitted.
  *
- * @param target The target.
- * @param propertyKey The property key.
- * @returns The get dto field binding metadata result.
+ * @param target Object whose prototype chain supplies stored binding maps.
+ * @param propertyKey DTO field whose binding is resolved.
+ * @returns A fresh mutable binding record, or undefined when no source is resolved.
  */
 export function getDtoFieldBindingMetadata(target: object, propertyKey: MetadataPropertyKey): DtoFieldBindingMetadata | undefined {
   const stored = getInheritedStoredDtoBindingMap(target).get(propertyKey);
@@ -137,11 +139,11 @@ export function getDtoFieldBindingMetadata(target: object, propertyKey: Metadata
 }
 
 /**
- * Define dto field binding metadata.
+ * Shallow-copy and replace one field binding in the target's own stored map.
  *
- * @param target The target.
- * @param propertyKey The property key.
- * @param metadata The metadata.
+ * @param target Object whose own binding map receives the entry.
+ * @param propertyKey DTO field whose previous stored binding is replaced.
+ * @param metadata Binding record to shallow-copy into the store.
  */
 export function defineDtoFieldBindingMetadata(
   target: object,
@@ -152,11 +154,15 @@ export function defineDtoFieldBindingMetadata(
 }
 
 /**
- * Append dto field validation rule.
+ * Clone and append a field validation rule to the target's own list.
+ * Existing rules are retained in order, without deduplication. Rules are cloned through
+ * cloneMutableValue, which keeps by reference any object with an own getter or setter or an own
+ * function whose source mentions `this` or a private name, and any class instance whose class or
+ * prototype-chain methods reference a private name, so caller mutations of such rules stay visible.
  *
- * @param target The target.
- * @param propertyKey The property key.
- * @param rule The rule.
+ * @param target Object whose own field-rule map receives the rule.
+ * @param propertyKey DTO field whose stored rule list is extended.
+ * @param rule Validation rule to clone before appending.
  */
 export function appendDtoFieldValidationRule(
   target: object,
@@ -167,10 +173,13 @@ export function appendDtoFieldValidationRule(
 }
 
 /**
- * Append class validation rule.
+ * Clone and append a class validation rule to the target's own list.
+ * Existing rules are retained in order, without inheriting or deduplicating them on write.
+ * Rules are cloned on write and read with the reference-preserving exceptions described in
+ * appendDtoFieldValidationRule.
  *
- * @param target The target.
- * @param rule The rule.
+ * @param target DTO constructor whose own stored rule list is extended.
+ * @param rule Class validation rule to clone before appending.
  */
 export function appendClassValidationRule(target: Function, rule: ClassValidationRule): void {
   const rules = classValidationStore.read(target) ?? [];
@@ -179,10 +188,13 @@ export function appendClassValidationRule(target: Function, rule: ClassValidatio
 }
 
 /**
- * Get dto binding schema.
+ * Resolve DTO bindings in stored-key-first order, followed by standard-only keys.
+ * Stored maps are collected along the prototype chain base-to-leaf, with leaf entries
+ * replacing base entries. Non-nullish stored fields override standard fields.
+ * Entries without a source are skipped, and undefined converters are omitted.
  *
- * @param dto The dto.
- * @returns The get dto binding schema result.
+ * @param dto DTO constructor whose prototype supplies inherited stored bindings.
+ * @returns A fresh mutable schema with newly created binding entries.
  */
 export function getDtoBindingSchema(dto: Constructor): DtoBindingSchemaEntry[] {
   const stored = getInheritedStoredDtoBindingMap(dto.prototype);
@@ -217,11 +229,13 @@ export function getDtoBindingSchema(dto: Constructor): DtoBindingSchemaEntry[] {
 }
 
 /**
- * Get dto field validation rules.
+ * Collect cloned field rules standard-first, then inherited stored rules base-to-leaf.
+ * Stored maps are read along the target's prototype chain; rules are not deduplicated.
+ * Cloning keeps the reference-preserving exceptions described in appendDtoFieldValidationRule.
  *
- * @param target The target.
- * @param propertyKey The property key.
- * @returns The get dto field validation rules result.
+ * @param target Object whose prototype chain supplies stored validation maps.
+ * @param propertyKey DTO field whose validation rules are collected.
+ * @returns A fresh array of cloned rules, empty when neither source provides rules.
  */
 export function getDtoFieldValidationRules(target: object, propertyKey: MetadataPropertyKey): readonly DtoFieldValidationRule[] {
   const stored = getInheritedStoredDtoValidationMap(target).get(propertyKey) ?? [];
@@ -234,10 +248,13 @@ export function getDtoFieldValidationRules(target: object, propertyKey: Metadata
 }
 
 /**
- * Get dto validation schema.
+ * Collect field-rule entries in stored-key-first order, followed by standard-only keys.
+ * For each field, cloned standard rules precede inherited stored rules collected
+ * along the prototype chain base-to-leaf, without deduplication. Empty rule lists are skipped.
+ * Cloning keeps the reference-preserving exceptions described in appendDtoFieldValidationRule.
  *
- * @param dto The dto.
- * @returns The get dto validation schema result.
+ * @param dto DTO constructor whose prototype supplies stored and standard field rules.
+ * @returns A fresh mutable schema containing cloned validation rules.
  */
 export function getDtoValidationSchema(dto: Constructor): DtoValidationSchemaEntry[] {
   const stored = getInheritedStoredDtoValidationMap(dto.prototype);
@@ -259,10 +276,12 @@ export function getDtoValidationSchema(dto: Constructor): DtoValidationSchemaEnt
 }
 
 /**
- * Get class validation rules.
+ * Collect cloned class rules standard-first, then inherited stored rules base-to-leaf.
+ * Stored lists are read along the constructor prototype chain, without deduplication.
+ * Cloning keeps the reference-preserving exceptions described in appendDtoFieldValidationRule.
  *
- * @param target The target.
- * @returns The get class validation rules result.
+ * @param target DTO constructor whose class validation rules are collected.
+ * @returns A fresh array of cloned rules, empty when neither source provides rules.
  */
 export function getClassValidationRules(target: Function): readonly ClassValidationRule[] {
   return [...(getStandardClassValidationRules(target) ?? []), ...getInheritedStoredClassValidationRules(target)];

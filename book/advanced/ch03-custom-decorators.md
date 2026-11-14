@@ -88,7 +88,7 @@ Metadata-driven logic also improves testability. Instead of mocking complex inte
 ## 3.3 Implementation: @CurrentUser()
 The `@CurrentUser()` Decorator is a classic example of a parameter Decorator used to simplify Controller logic. In an HTTP request context, it identifies which parameter should receive the authenticated user object.
 
-Inside fluo's HTTP package, a decorator like this is implemented with a package-owned metadata writer that records how a specific parameter should be satisfied by the request runtime. The low-level `defineInjectionMetadata` primitive at `path:packages/core/src/metadata/injection.ts:27-33` is part of the internal metadata model and is not an application extension API.
+Inside fluo's HTTP package, a decorator like this is implemented with a package-owned metadata writer that records how a specific parameter should be satisfied by the request runtime. The low-level `defineInjectionMetadata` primitive at `path:packages/core/src/metadata/injection.ts:28-34` is part of the internal metadata model and is not an application extension API.
 
 The key point in this chapter is not the name `@CurrentUser()` itself, but the structure from Decorator factory to metadata writer. The public `@Inject()` Decorator demonstrates the same record-now/read-later principle for one specific public contract: class-level constructor dependency metadata.
 

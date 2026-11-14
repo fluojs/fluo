@@ -16,13 +16,14 @@ function getStandardInjectionMap(target: object): Map<MetadataPropertyKey, Stand
 }
 
 /**
- * Define injection metadata.
+ * Store a shallow copy of injection metadata for one property on the exact target.
+ * Replaces the previous entry rather than merging it.
  *
  * @deprecated Will be removed in the next @fluojs/core major release.
  *
- * @param target The target.
- * @param propertyKey The property key.
- * @param metadata The metadata.
+ * @param target Object whose own injection map receives the entry.
+ * @param propertyKey Injection property whose previous entry is replaced.
+ * @param metadata Injection record to shallow-copy into the store.
  */
 export function defineInjectionMetadata(
   target: object,
@@ -33,12 +34,15 @@ export function defineInjectionMetadata(
 }
 
 /**
- * Get injection schema.
+ * Reconcile stored and standard injection entries in stored-key-first order.
+ * Standard-only keys follow in their original order. Non-nullish stored fields override
+ * standard fields, and standard-only entries with a nullish token are skipped.
+ * Only the exact target's stored map is read, without prototype inheritance.
  *
  * @deprecated Will be removed in the next @fluojs/core major release.
  *
- * @param target The target.
- * @returns The get injection schema result.
+ * @param target Object whose stored and standard injection metadata is inspected.
+ * @returns A fresh mutable schema with newly created entries and metadata records.
  */
 export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
   const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
