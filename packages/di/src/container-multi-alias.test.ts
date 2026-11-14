@@ -93,6 +93,31 @@ describe('multi alias providers (#4017)', () => {
     expect(constructions).toBe(0);
   });
 
+  it('resolve: singleton injection rejects an empty-string request alias target before any construction', async () => {
+    const token = Symbol('plugins');
+    let constructions = 0;
+    class Plugin {
+      constructor() {
+        constructions += 1;
+      }
+    }
+    class Consumer {
+      constructor() {
+        constructions += 1;
+      }
+    }
+    const container = new Container().register(
+      { provide: '', useClass: Plugin, scope: 'request' },
+      { provide: token, useFactory: () => { constructions += 1; return 'first'; }, multi: true },
+      { provide: token, useExisting: '', multi: true },
+      { provide: Consumer, useClass: Consumer, inject: [token] },
+    );
+
+    await expect(container.createRequestScope().resolve(Consumer)).rejects.toThrow(ScopeMismatchError);
+
+    expect(constructions).toBe(0);
+  });
+
   it('hasRequestScopedDependency: multi alias follows the request target', () => {
     const token = Symbol('plugins');
     class Plugin {}
