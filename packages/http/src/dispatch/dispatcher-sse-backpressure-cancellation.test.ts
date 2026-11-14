@@ -1,3 +1,4 @@
+import { Scope as ScopeDecorator } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -24,9 +25,9 @@ interface CancellationCase {
 
 interface BackpressureResponseOptions {
   readonly afterFailure?: () => void;
-  readonly drainFailure?: Error;
+  readonly drainFailure?: unknown;
   readonly onDrainStart?: () => void;
-  readonly writeFailure?: Error;
+  readonly writeFailure?: unknown;
 }
 
 interface FailureCase {
@@ -179,6 +180,222 @@ function createBackpressureResponse(options: BackpressureResponseOptions = {}): 
 }
 
 describe('managed SSE backpressure cancellation', () => {
+  it.each(['write', 'encode', 'drain'] as const)(
+    'managed SSE: %s failure -> awaits generator finally before observers and scope disposal',
+    async (operation) => {
+      // Given
+      const failure = { operation };
+      const abortController = new AbortController();
+      let startCleanup: () => void = () => undefined;
+      const cleanupStarted = new Promise<void>((resolve) => {
+        startCleanup = resolve;
+      });
+      let finishCleanup: () => void = () => undefined;
+      const cleanupGate = new Promise<void>((resolve) => {
+        finishCleanup = resolve;
+      });
+      const onRequestError = vi.fn();
+      const onRequestFinish = vi.fn();
+      const onError = vi.fn();
+      const root = new CountingContainer();
+      let cleanupFinished = false;
+      let resourceActive = true;
+      async function* source() {
+        try {
+          yield operation === 'encode' ? { toJSON() { throw failure; } } : 'first';
+        } finally {
+          startCleanup();
+          await cleanupGate;
+          expect(root.requestScopeDisposeCount).toBe(0);
+          expect(resourceActive).toBe(true);
+          cleanupFinished = true;
+        }
+      }
+      const iterator = source();
+      const iteratorReturn = vi.spyOn(iterator, 'return');
+
+      @ScopeDecorator('request')
+      @Controller('/managed-failure-cleanup')
+      class ManagedFailureCleanupController {
+        onDestroy() {
+          resourceActive = false;
+        }
+
+        @Sse('/')
+        stream() {
+          return iterator;
+        }
+      }
+
+      root.register(ManagedFailureCleanupController);
+      const dispatcher = createDispatcher({
+        handlerMapping: createHandlerMapping([{ controllerToken: ManagedFailureCleanupController }]),
+        observers: [{ onRequestError, onRequestFinish }],
+        onError,
+        rootContainer: root,
+      });
+      const request = createRequest('/managed-failure-cleanup');
+      request.signal = abortController.signal;
+      const response = createBackpressureResponse({
+        drainFailure: operation === 'drain' ? failure : undefined,
+        writeFailure: operation === 'write' ? failure : undefined,
+      });
+      const send = vi.spyOn(response, 'send');
+
+      // When
+      const dispatch = dispatcher.dispatch(request, response);
+      const cleanupBegan = await Promise.race([
+        cleanupStarted.then(() => true),
+        dispatch.then(() => false),
+      ]);
+      try {
+        // Then
+        expect(cleanupBegan).toBe(true);
+        expect(response.stream.closeCalls).toBe(1);
+        expect(iteratorReturn).toHaveBeenCalledTimes(1);
+        expect(root.requestScopeDisposeCount).toBe(0);
+        expect(onRequestFinish).not.toHaveBeenCalled();
+        expect(onRequestError).not.toHaveBeenCalled();
+        abortController.abort();
+      } finally {
+        finishCleanup();
+        await dispatch;
+      }
+      expect(cleanupFinished).toBe(true);
+      expect(onRequestError).toHaveBeenCalledWith(expect.any(Object), failure);
+      expect(onError.mock.calls[0]?.[0]).toBe(failure);
+      expect(onRequestFinish).toHaveBeenCalledTimes(1);
+      expect(root.requestScopeDisposeCount).toBe(1);
+      expect(resourceActive).toBe(false);
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['write', 'encode', 'drain'] as const)(
+    'managed SSE: %s failure and rejecting return -> reports the original failure exactly once',
+    async (operation) => {
+      // Given
+      const failure = new Error(`${operation} failed`);
+      const cleanupFailure = new Error('cleanup failed');
+      async function* source() {
+        try {
+          yield operation === 'encode' ? { toJSON() { throw failure; } } : 'first';
+        } finally {
+          await Promise.reject(cleanupFailure);
+        }
+      }
+      const iterator = source();
+      const iteratorReturn = vi.spyOn(iterator, 'return');
+      const onRequestError = vi.fn();
+      const onError = vi.fn();
+
+      @Controller('/managed-rejecting-cleanup')
+      class ManagedRejectingCleanupController {
+        @Sse('/')
+        stream() {
+          return iterator;
+        }
+      }
+
+      const dispatcher = createDispatcher({
+        handlerMapping: createHandlerMapping([{ controllerToken: ManagedRejectingCleanupController }]),
+        observers: [{ onRequestError }],
+        onError,
+        rootContainer: new Container().register(ManagedRejectingCleanupController),
+      });
+      const response = createBackpressureResponse({
+        drainFailure: operation === 'drain' ? failure : undefined,
+        writeFailure: operation === 'write' ? failure : undefined,
+      });
+      const send = vi.spyOn(response, 'send');
+
+      // When
+      await dispatcher.dispatch(createRequest('/managed-rejecting-cleanup'), response);
+
+      // Then
+      expect(iteratorReturn).toHaveBeenCalledTimes(1);
+      expect(onRequestError).toHaveBeenCalledExactlyOnceWith(expect.any(Object), failure);
+      expect(onError.mock.calls[0]?.[0]).toBe(failure);
+      expect(response.stream.closeCalls).toBe(1);
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
+  it('managed SSE: source read rejects undefined and cleanup rejects -> retains the original thrown value', async () => {
+    // Given
+    const iteratorReturn = vi.fn(async () => {
+      throw new Error('cleanup failed');
+    });
+    const source: AsyncIterable<unknown> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => Promise.reject(undefined),
+          return: iteratorReturn,
+        };
+      },
+    };
+    const onRequestError = vi.fn();
+    const onError = vi.fn();
+
+    @Controller('/managed-read-failure')
+    class ManagedReadFailureController {
+      @Sse('/')
+      stream() {
+        return source;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedReadFailureController }]),
+      observers: [{ onRequestError }],
+      onError,
+      rootContainer: new Container().register(ManagedReadFailureController),
+    });
+    const response = createBackpressureResponse();
+    const send = vi.spyOn(response, 'send');
+
+    // When
+    await dispatcher.dispatch(createRequest('/managed-read-failure'), response);
+
+    // Then
+    expect(iteratorReturn).toHaveBeenCalledTimes(1);
+    expect(onRequestError).toHaveBeenCalledExactlyOnceWith(expect.any(Object), undefined);
+    expect(onError.mock.calls[0]?.[0]).toBeUndefined();
+    expect(response.stream.closeCalls).toBe(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('managed SSE: source reports done -> does not call return redundantly', async () => {
+    // Given
+    async function* source() {
+      yield 'first';
+    }
+    const iterator = source();
+    const iteratorReturn = vi.spyOn(iterator, 'return');
+
+    @Controller('/managed-completed')
+    class ManagedCompletedController {
+      @Sse('/')
+      stream() {
+        return iterator;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedCompletedController }]),
+      rootContainer: new Container().register(ManagedCompletedController),
+    });
+    const response = createBackpressureResponse();
+    response.stream.write = () => true;
+
+    // When
+    await dispatcher.dispatch(createRequest('/managed-completed'), response);
+
+    // Then
+    expect(iteratorReturn).not.toHaveBeenCalled();
+    expect(response.stream.closeCalls).toBe(1);
+  });
+
   it.each(CANCELLATION_CASES)(
     'does not let a blocked drain delay iterator cleanup or request-scope disposal when $label',
     async ({ prepare }) => {

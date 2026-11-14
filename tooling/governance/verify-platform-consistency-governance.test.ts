@@ -2992,7 +2992,7 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 
     // When: the implementation and path-anchored documentation examples are extracted.
     const implementationMatch = /export function mergeMetadataPropertyKeys[\s\S]*?\n\}\n/u.exec(source);
-    const documentedExamplePattern = /`path:packages\/core\/src\/metadata\/shared\.ts:369-397`\n```typescript\n([\s\S]*?)\n```/u;
+    const documentedExamplePattern = /`path:packages\/core\/src\/metadata\/shared\.ts:396-417`\n```typescript\n([\s\S]*?)\n```/u;
     const englishMatch = documentedExamplePattern.exec(english);
     const koreanMatch = documentedExamplePattern.exec(korean);
 

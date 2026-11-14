@@ -42,6 +42,8 @@ export interface FactoryProvider<T = unknown> {
 export interface ValueProvider<T = unknown> {
   provide: Token<T>;
   useValue: T;
+  /** Lifetime of the bound value; defaults to `'singleton'`. The container never copies the value. */
+  scope?: Scope;
   multi?: boolean;
 }
 
@@ -51,6 +53,11 @@ export interface ValueProvider<T = unknown> {
 export interface ExistingProvider<T = unknown> {
   provide: Token<T>;
   useExisting: Token;
+  /**
+   * Placement and validation scope of the alias token; defaults to `'singleton'`. The alias never owns an
+   * instance, so the target's own scope still decides the instance lifetime.
+   */
+  scope?: Scope;
   /** Contributes the target's resolved value in registration order, preserving its scope. */
   multi?: boolean;
 }

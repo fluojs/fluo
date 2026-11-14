@@ -629,6 +629,7 @@ async function writeManagedSseIterable(
   const sse = new SseResponse(requestContext);
 
   const iterator = source[Symbol.asyncIterator]();
+  let iteratorDone = false;
   let iteratorCleanup: Promise<void> | undefined;
   let iteratorCleanupFailure: ManagedSseCleanupError | undefined;
 
@@ -647,6 +648,7 @@ async function writeManagedSseIterable(
       }
 
       if (next.done === true) {
+        iteratorDone = true;
         break;
       }
 
@@ -666,6 +668,10 @@ async function writeManagedSseIterable(
     throw new ManagedSseOperationError(error);
   } finally {
     sse.close();
+
+    if (!iteratorDone) {
+      iteratorCleanup ??= closeAsyncIterator(iterator);
+    }
 
     if (iteratorCleanup) {
       try {
