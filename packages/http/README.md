@@ -291,6 +291,17 @@ policy. `null` and absent bodies retain existing missing-field behavior.
 `FromBody` still reports `MISSING_FIELD` unless `Optional` permits omission.
 Field initializers do not satisfy required transport fields.
 
+Class DTO bindings read only own properties of body, query, path, and cookie
+sources, including aliases and objects with a null prototype. Inherited values
+(such as `toString`, `constructor`, `__proto__`, or `hasOwnProperty`) do not count
+as supplied input. Absent, inherited, and explicitly `undefined` values produce
+HTTP 400 / `MISSING_FIELD` for required fields, with the logical DTO field and
+source in the error details. With `Optional`, those values are omitted and the
+constructor-initialized field stays unchanged. Present own values, including
+explicit `null`, continue through global converters before field converters;
+omitted values never reach converters. Existing body key guards still apply.
+Header bindings retain their case-insensitive header lookup.
+
 ```ts
 import {
   Controller, FromBody, InputPolicy, Post, RequestDto,

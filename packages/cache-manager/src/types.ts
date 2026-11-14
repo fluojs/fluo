@@ -41,8 +41,18 @@ export interface RedisCompatibleClient {
   }): RedisAtomicClient;
   del(key: string, ...keys: string[]): Promise<number> | number;
   get(key: string): Promise<string | null> | string | null;
-  scan(cursor: string, ...args: Array<string | number>): Promise<[string | number, string[]]> | [string | number, string[]];
-  set(key: string, value: string, ...args: Array<string | number>): Promise<unknown> | unknown;
+  /** Scan the literal cache namespace during reset using the ioredis-compatible MATCH/COUNT form. */
+  scan(
+    cursor: string,
+    matchToken: 'MATCH',
+    pattern: string,
+    countToken: 'COUNT',
+    count: number,
+  ): Promise<[string | number, string[]]> | [string | number, string[]];
+  /** Write a persistent cache entry or atomic invalidation identity. */
+  set(key: string, value: string): Promise<unknown> | unknown;
+  /** Write a cache entry with the seconds-based expiry used by ordinary RedisStore writes. */
+  set(key: string, value: string, expiryMode: 'EX', ttlSeconds: number): Promise<unknown> | unknown;
 }
 
 /** Isolated WATCH connection owned and disconnected by the atomic cache operation. */
