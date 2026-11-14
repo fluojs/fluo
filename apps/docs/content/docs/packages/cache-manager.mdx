@@ -40,7 +40,11 @@ pnpm add @fluojs/cache-manager @fluojs/redis ioredis
   resolved only when `store: 'redis'` is selected. Alternatively pass an
   application-owned compatible client through `redis.client` and install
   whichever package provides it.
-- Runtime: Node.js `>=24.0.0 <27`, declared through `engines.node`.
+- Runtime: Node.js `>=24.0.0 <27` remains supported. The package intentionally
+  omits `engines.node` so the shared memory/custom-store root does not impose
+  a Node installation gate. Redis mode follows the selected client's runtime
+  requirements. This omission neither broadens Node support nor certifies
+  every store on Workers.
 
 ## A small working example
 
@@ -179,7 +183,7 @@ them globally (see
 | --- | --- |
 | `get<T>(key)` | The cached value, or `undefined` when missing/expired. |
 | `set(key, value, ttlSeconds?)` | Per-call TTL overrides the module default. Invalid TTLs skip the write; `0` persists. |
-| `remember(key, loader, ttlSeconds?)` | Read-through: the loader runs only on a miss. Concurrent misses for the same key are coalesced into one load. |
+| `remember(key, loader, ttlSeconds?)` | Read-through: the loader runs only on a miss. Concurrent misses for the same key coalesce into one load only within one `CacheService` instance in one process. Separate instances and processes do not share this guarantee, even with Redis. `CacheInterceptor` does not coalesce concurrent GET misses. |
 | `del(key)` | Deletes the entry and cancels in-flight loaders/updates for it. |
 | `reset()` | Clears every entry **owned by the store**, serializes reads/writes across the boundary, and invalidates in-flight `remember` loaders so stale entries cannot repopulate. |
 | `close()` | Stops new operations, waits for started work, and calls the store's `close()` (or legacy `dispose()`) hook. Shared and idempotent. |
