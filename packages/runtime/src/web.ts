@@ -465,9 +465,9 @@ function createDeferredWebFrameworkRequest(
   const cookies = createMemoizedValue(() => parseCookieHeader(requestHeaders.get('cookie') ?? undefined));
   const query = createMemoizedValue(() => parseQueryString(url.search));
   const contentType = requestHeaders.get('content-type') ?? undefined;
-  const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
+  const isMultipart = readPrimaryMediaType(contentType) === 'multipart/form-data';
   const hasRequestBody = request.body !== null;
-  const materializeBody = hasRequestBody ? createMemoizedAsyncValue(async () => {
+  const materializeBody = hasRequestBody || isMultipart ? createMemoizedAsyncValue(async () => {
     if (isMultipart) {
       const resolvedMultipartOptions = {
         ...multipartOptions,
@@ -949,7 +949,11 @@ function serializeWebResponseBody(
 }
 
 function isJsonContentType(contentType: string | undefined): boolean {
-  return typeof contentType === 'string' && contentType.toLowerCase().includes('application/json');
+  return readPrimaryMediaType(contentType) === 'application/json';
+}
+
+function readPrimaryMediaType(contentType: string | undefined): string | undefined {
+  return contentType?.split(';', 1)[0]?.trim().toLowerCase();
 }
 
 function toHttpException(error: unknown): HttpException {
