@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { relative, resolve } from "node:path";
 import { summarizeIntegrationMeasurements } from "../../execute-lane/scripts/generated-integration.mjs";
+import { dispatchFor, readRegisteredAgents, validateDispatchTarget } from "../../execute-lane/scripts/dispatch-targets.mjs";
 
 const kinds = new Set([
 	"stage",
@@ -274,8 +275,11 @@ export const retrospectiveRequest = (root, laneId, snapshots) => {
 		}
 		return { action: "done", scope: "lane", subjectKey, report: path };
 	}
+	const dispatch = dispatchFor("retro");
+	validateDispatchTarget(dispatch, readRegisteredAgents(root));
 	return {
 		action: "retro",
+		dispatch,
 		scope: "lane",
 		laneId,
 		subjectKey,

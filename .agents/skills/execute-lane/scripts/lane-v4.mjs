@@ -14,6 +14,7 @@
 
 import { contractDigest, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { validateReviewFact } from '../../review-head/scripts/contracts.mjs';
+import { dispatchFor } from './dispatch-targets.mjs';
 
 export const ATTEMPT_CEILING = 3;
 
@@ -257,24 +258,24 @@ export const decideNext = (lane, obs) => {
 	// The lead's observed diff may expand the policy, never shrink it.
 	const preflight = evaluatePreflight(obs.preflight, { ...obs, issue: lane.issue });
 	if (!preflight.valid) {
-		return { action: 'preflight', reason: preflight.reason, ...(preflight.files ? { files: preflight.files } : {}) };
+		return { action: 'preflight', dispatch: dispatchFor('preflight'), reason: preflight.reason, ...(preflight.files ? { files: preflight.files } : {}) };
 	}
 
 	// 3. Nothing implemented yet (or implementation retry).
 	if (!obs.branch || !obs.worktree || !obs.hasNewCommits) {
-		return { action: 'implement' };
+		return { action: 'implement', dispatch: dispatchFor('implement') };
 	}
 
 	// 4. Release governance: public package changes ship a changeset
 	//    before review, so reviewers see the final head.
 	if (obs.publicPackagesTouched === true && obs.changesetPresent !== true) {
-		return { action: 'fix-back', reason: 'changeset-missing', head: obs.headSha };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'changeset-missing', head: obs.headSha };
 	}
 
 	// Integration evidence is distinct from full local CI. Upstream movement
 	// alone does not request it; the CLI observes incorporated generated inputs.
 	if (obs.generatedIntegrationRequired?.length && !obs.generatedIntegration) {
-		return { action: 'fix-back', reason: 'generated-integration-evidence-missing', head: obs.headSha };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'generated-integration-evidence-missing', head: obs.headSha };
 	}
 
 	// 5. Recompute the selective gate from exact-head, exact-policy evidence.
@@ -283,10 +284,10 @@ export const decideNext = (lane, obs) => {
 	try {
 		review = validateReviewFact(obs.review, obs.headSha, preflight.policy);
 	} catch {
-		return { action: 'review', head: obs.headSha, policy: preflight.policy };
+		return { action: 'review', dispatch: dispatchFor('review', preflight.policy.active_axes), head: obs.headSha, policy: preflight.policy };
 	}
 	if (review.verdict === 'block') {
-		return { action: 'fix-back', reason: 'review-block', head: obs.headSha };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'review-block', head: obs.headSha };
 	}
 	if (review.verdict === 'needs-human-check') {
 		return { action: 'blocked', reason: 'needs-human-check' };
@@ -298,10 +299,10 @@ export const decideNext = (lane, obs) => {
 	try {
 		binding = localCheckBinding(review, obs.reviewAcceptedAt);
 	} catch {
-		return { action: 'review', head: obs.headSha, policy: preflight.policy };
+		return { action: 'review', dispatch: dispatchFor('review', preflight.policy.active_axes), head: obs.headSha, policy: preflight.policy };
 	}
 	if (obs.localChecks?.status === 'failed' && isCurrentLocalCheck(obs.localChecks, obs.headSha, binding)) {
-		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'local-checks-failed', head: obs.headSha };
 	}
 	// Only publication preparation consumes lead-confirmed sibling failures.
 	// A byte comparison is not a new PASS and never runs or integrates code.
@@ -315,7 +316,7 @@ export const decideNext = (lane, obs) => {
 		}
 		const failing = baselines.filter(record => record.status === 'still-failing');
 		if (failing.length) {
-			return { action: 'fix-back', reason: 'known-baseline-still-failing',
+			return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'known-baseline-still-failing',
 				head: obs.headSha, baselines: failing };
 		}
 	}
@@ -333,7 +334,7 @@ export const decideNext = (lane, obs) => {
 		return { action: 'resolve-conflict', pr: obs.pr.number };
 	}
 	if (obs.pr.ciStatus === 'failing') {
-		return { action: 'fix-back', reason: 'ci-failing', pr: obs.pr.number };
+		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'ci-failing', pr: obs.pr.number };
 	}
 	if (obs.pr.ciStatus !== 'passing') {
 		return { action: 'wait-ci', pr: obs.pr.number };

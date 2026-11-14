@@ -626,14 +626,17 @@ async function writeManagedSseIterable(
     throw new Error('Managed SSE requires adapter-provided response.stream support.');
   }
 
-  const sse = new SseResponse(requestContext);
-
+  // Acquire the iterator before SseResponse commits the transport so an acquisition failure
+  // still reaches the standard dispatch error path with a writable response.
   const iterator = source[Symbol.asyncIterator]();
+  let sse: SseResponse | undefined;
   let iteratorDone = false;
   let iteratorCleanup: Promise<void> | undefined;
   let iteratorCleanupFailure: ManagedSseCleanupError | undefined;
 
   try {
+    sse = new SseResponse(requestContext);
+
     while (true) {
       if (isRequestAborted(requestContext.request)) {
         iteratorCleanup ??= closeAsyncIterator(iterator);
@@ -667,7 +670,7 @@ async function writeManagedSseIterable(
   } catch (error) {
     throw new ManagedSseOperationError(error);
   } finally {
-    sse.close();
+    sse?.close();
 
     if (!iteratorDone) {
       iteratorCleanup ??= closeAsyncIterator(iterator);

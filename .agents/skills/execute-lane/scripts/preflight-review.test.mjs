@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { classifyReviewAxes, createPreflight, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
-import { buildReviewFact } from '../../review-head/scripts/contracts.mjs';
+import { buildReviewFact, validateReviewFact } from '../../review-head/scripts/contracts.mjs';
 import { applyChildResult, decideNext, localCheckBinding } from './lane-v4.mjs';
 
 const all = ['contract', 'code', 'verification'];
@@ -29,7 +29,7 @@ const reviewed = (obs, signal = 'PASS') => {
   return buildReviewFact({
     head_sha: obs.headSha, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
     reviews: policy.active_axes.map((reviewer) => ({
-      reviewer, reviewed_head_sha: obs.headSha, preflight_sha256: policy.sha256,
+      reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha, preflight_sha256: policy.sha256,
       verdict_signal: signal, blockers: [],
     })),
   }, obs.headSha, policy);
@@ -38,6 +38,59 @@ const passedCheck = (obs = observation()) => ({
   ...localCheckBinding(reviewed(obs), obs.reviewAcceptedAt),
   receiptStartedAt: '2026-01-01T00:00:01.000Z', head: obs.headSha, status: 'passed', valid: true,
   receiptPath: '.omo/verification/pass.json', receiptSha256: 'd'.repeat(64),
+});
+
+test('#4091 review admission: assigned identities -> accepted; missing or substituted identities -> rejected', () => {
+  const obs = ciObservation();
+  const { policy } = evaluatePreflight(obs.preflight, obs);
+  const input = { head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
+    reviews: policy.active_axes.map((reviewer) => ({ reviewer, agent: `fluo-${reviewer}-reviewer`,
+      reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [] })) };
+
+  assert.equal(buildReviewFact(input, head, policy).verdict, 'pass');
+  for (const agent of [undefined, 'fluo-code-reviewer', 'unregistered', 'deep-high']) {
+    const invalid = structuredClone(input);
+    if (agent === undefined) delete invalid.reviews[0].agent;
+    else invalid.reviews[0].agent = agent;
+    assert.throws(() => buildReviewFact(invalid, head, policy), TypeError);
+  }
+});
+
+test('#4091 stored legacy review: preserved bytes and bindings -> same gates; forged evidence -> review', () => {
+  const obs = ciObservation();
+  const { policy } = evaluatePreflight(obs.preflight, obs);
+  const legacy = { head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
+    reviews: policy.active_axes.map((reviewer) => ({ reviewer, reviewed_head_sha: head,
+      preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [] })),
+    verdict: 'pass', blockers: [], head };
+  const bytes = JSON.stringify(legacy);
+  const binding = localCheckBinding(legacy, obs.reviewAcceptedAt);
+  obs.review = legacy;
+
+  assert.deepEqual(validateReviewFact(legacy, head, policy), legacy);
+  assert.equal(decideNext(lane, obs).action, 'create-pr');
+  for (const [verdict_signal, verdict, action] of [
+    ['BLOCK', 'block', 'fix-back'], ['NEEDS-HUMAN-CHECK', 'needs-human-check', 'blocked'],
+  ]) {
+    const blockers = verdict === 'block' ? [{ reviewer: 'contract', signature: 'legacy:regression',
+      evidence: 'src/a.ts:1', fix_back_eligible: true, status: 'unresolved' }] : [];
+    const stored = { ...legacy, verdict, blockers, reviews: legacy.reviews.map((review, i) =>
+      i === 0 ? { ...review, verdict_signal, blockers } : review) };
+    assert.equal(decideNext(lane, { ...obs, review: stored }).action, action);
+  }
+  obs.localChecks = { ...binding, head, status: 'failed' };
+  assert.equal(decideNext(lane, obs).reason, 'local-checks-failed');
+  assert.equal(JSON.stringify(legacy), bytes);
+  assert.deepEqual(localCheckBinding(validateReviewFact(legacy, head, policy), obs.reviewAcceptedAt), binding);
+  for (const patch of [
+    { verdict: 'merge' }, { blockers: [{ signature: 'forged' }] }, { head: base },
+    { preflight_sha256: 'e'.repeat(64) }, { reviews: [] },
+    { reviews: [...legacy.reviews, legacy.reviews[0]] },
+    { reviews: [{ ...legacy.reviews[0], reviewed_head_sha: base }, ...legacy.reviews.slice(1)] },
+    { reviews: [{ ...legacy.reviews[0], agent: 'fluo-code-reviewer' }, ...legacy.reviews.slice(1)] },
+  ]) assert.equal(decideNext(lane, { ...obs, review: { ...legacy, ...patch } }).action, 'review');
+  assert.throws(() => buildReviewFact({ head_sha: head, preflight_sha256: policy.sha256,
+    active_axes: policy.active_axes, reviews: legacy.reviews }, head, policy), TypeError);
 });
 
 test('publication: confirmed same baseline at reviewed head -> canonical fix-back', () => {

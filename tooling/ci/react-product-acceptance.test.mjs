@@ -582,7 +582,7 @@ function externalFixture(t) {
   const review = buildReviewFact({
     head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
     reviews: policy.active_axes.map((reviewer) => ({
-      reviewer, reviewed_head_sha: head, preflight_sha256: policy.sha256,
+      reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head, preflight_sha256: policy.sha256,
       verdict_signal: 'PASS', blockers: [],
     })),
   }, head, policy);

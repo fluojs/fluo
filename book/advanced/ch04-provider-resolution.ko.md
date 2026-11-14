@@ -358,7 +358,7 @@ for each incoming provider:
 
 이 코드는 provider가 map에 들어가기 전에 그래프 상태와 scope 위치를 먼저 확인합니다. 그래서 잘못된 등록은 cache나 인스턴스 생성 단계까지 내려가지 않습니다.
 
-왜 이것이 중요한가? 컨테이너는 `cacheFor()` 쪽에 이미 문서화된 footgun을 가지고 있기 때문입니다. `path:packages/di/src/container.ts:1274-1306`은 request scope에 locally overridden singleton이 들어오면, 실제로는 root singleton cache가 아니라 request cache에 저장되어 request-scoped처럼 동작하게 됨을 설명합니다. Fluo는 이 동작을 조용히 허용하기보다, 가장 흔한 실수 경로를 등록 단계에서 차단합니다.
+왜 이것이 중요한가? `cacheFor()`는 request scope에 local로 존재하는 singleton-scope provider를 root singleton cache가 아니라 해당 request cache에 저장하기 때문입니다. `path:packages/di/src/container.ts:1274-1306`은 이 등록 거부 덕분에 이미 보이는 token을 `container.override()`로 교체하는 경우만 그런 local singleton을 만들 수 있고, 그 replacement는 해당 request scope와 함께 살고 dispose된다고 설명합니다. Fluo는 singleton 표기가 조용히 request 수명처럼 동작하도록 두지 않고, 실수로 들어오는 `register()` 경로를 등록 단계에서 거부합니다.
 
 중복 검사는 single-provider와 multi-provider 경로로 나뉩니다. `path:packages/di/src/container.ts:827-847`의 `assertNoRegistrationConflict()`는 token이 로컬 또는 ancestor에 이미 호환되지 않는 형태로 존재하는지 검사합니다. 단순한 `Map.has()`보다 훨씬 강한 정책입니다. 부모-자식 계층 간 충돌도 실제 충돌로 취급합니다.
 
@@ -684,7 +684,7 @@ chain과 active set은 같은 helper에서 함께 갱신되고, 예외가 나도
 
 배열은 에러 메시지의 경로를 만들고, set은 현재 recursion 안에 있는 token인지 빠르게 판단합니다. `finally`가 있어 실패한 생성 시도 뒤에도 다음 resolve가 오염되지 않습니다.
 
-실제 객체 생성은 `path:packages/di/src/container.ts:1677-1708`의 `instantiate()`에서 일어납니다. 이 메서드는 먼저 `assertSingletonDependencyScopes()` 호출합니다. 그다음 provider type별로 분기합니다. value provider는 값을 그대로 반환합니다. factory provider는 dependency를 resolve하고 `useFactory`를 호출한 뒤 결과가 synchronous인지 promise-like인지 기록합니다. class provider는 dependency를 resolve한 뒤 `new useClass(...deps)`를 수행합니다.
+실제 객체 생성은 `path:packages/di/src/container.ts:1677-1708`의 `instantiate()`에서 일어납니다. 이 메서드는 먼저 `assertSingletonDependencyScopes()` 호출합니다. 그다음 provider type별로 분기합니다. value provider는 값을 그대로 반환합니다. alias(`existing`) provider는 모든 호출자가 `useExisting` target을 먼저 resolve하므로 이 switch에 도달하지 않습니다. 이 분기는 현재 chain과 cycle-detection 상태를 버리는 새 resolution을 시작하는 대신 `InvariantError`를 던집니다. factory provider는 dependency를 resolve하고 `useFactory`를 호출한 뒤 결과가 synchronous인지 promise-like인지 기록합니다. class provider는 dependency를 resolve한 뒤 `new useClass(...deps)`를 수행합니다.
 
 객체 생성 단계는 normalized provider의 `type`만 보고 실행됩니다.
 
@@ -697,7 +697,7 @@ chain과 active set은 같은 helper에서 함께 갱신되고, 예외가 나도
       case 'value':
         return provider.useValue as T;
       case 'existing':
-        return await this.resolveWithChain(provider.useExisting as Token<T>, [], new Set());
+        throw new InvariantError('Alias provider must resolve its useExisting target before instantiate().');
       case 'factory': {
         if (!provider.useFactory) {
           throw new InvariantError('Factory provider is missing useFactory.');
