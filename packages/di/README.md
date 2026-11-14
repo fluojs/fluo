@@ -340,6 +340,33 @@ have no compatibility aliases. Follow the
 
 Resolving a multi-provider token returns an array of resolved values in registration order.
 
+Alias providers also accept `multi: true`. Each alias contributes its target's
+resolved value at its registration position alongside class, factory, or value
+contributions:
+
+```typescript
+class Plugin {}
+const PLUGINS = Symbol('plugins');
+const container = new Container().register(
+  Plugin,
+  { provide: PLUGINS, useValue: 'first', multi: true },
+  { provide: PLUGINS, useExisting: Plugin, multi: true },
+);
+const plugins = await container.resolve<unknown[]>(PLUGINS);
+// ['first', the same instance returned by container.resolve(Plugin)]
+await container.dispose();
+```
+
+The alias follows the target's scope: singleton identity is shared, request
+targets use the resolving request scope, and transient targets are resolved
+afresh. A singleton consumer cannot inject a multi token with a request-scoped
+alias target; it fails with `ScopeMismatchError` before any factory or constructor
+runs. `hasRequestScopedDependency(...)` follows those targets too.
+`override(...)` replaces the entire multi set, including alias contributions;
+single and multi replacements for one token cannot be mixed in the same call.
+Omitting `multi` or setting it to `false` keeps ordinary single-alias resolution.
+Executable evidence: `packages/di/src/container-multi-alias.test.ts`.
+
 ## Related Packages
 
 - **`@fluojs/core`**: Defines the `@Inject()` and `@Scope()` decorators used to annotate classes.

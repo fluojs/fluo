@@ -135,6 +135,22 @@ const metadata = getModuleMetadata(AppModule);
 console.log(metadata.providers);
 ```
 
+### Deterministic internal cloning
+
+`@fluojs/core/internal`의 `cloneWithFallback`과 `fallbackClone`은 prototype을 보존하는
+동일한 deep-clone 계약을 사용합니다. 결과는 런타임의 `structuredClone` 유무나 성공·실패,
+형제 필드에 function이 있는지에 영향받지 않습니다. 사용자 class instance는 object field,
+array item, Map key/value, Set entry를 포함한 모든 지원 중첩 위치에서 원래 prototype을
+유지하는 분리된 instance가 됩니다. Prototype method와 getter도 유지됩니다. Plain object와
+사용자 instance의 own string/symbol property 및 circular reference를 보존하며,
+plain object는 `null`을 포함한 원래 prototype을 유지합니다.
+
+Date, RegExp (`lastIndex` 포함), Map, Set, ArrayBuffer, typed array, DataView는
+내용을 복사하고 원본과 분리합니다. Primitive는 그대로 반환하며 function은 reference로
+반환합니다. 이 계약은 process 내부 복제에 해당하며 wire serialization 형식이 아닙니다.
+Buffer와 private-field instance 동작은 아직 명세하지 않으며
+[issue #4015](https://github.com/fluojs/fluo/issues/4015)에서 다룹니다.
+
 ### 동적 설정을 위한 AsyncModuleOptions
 
 `AsyncModuleOptions<T>`는 외부 `ConfigService` 등에 의존하여 비동기적으로 초기화가 필요한 모듈을 위한 표준 계약입니다.

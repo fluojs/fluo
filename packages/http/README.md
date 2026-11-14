@@ -184,6 +184,24 @@ Adapter wire support is an explicit portability contract. Supported Node listene
 
 Custom runtime methods do not become OpenAPI Path Item operations automatically. `@fluojs/openapi` continues to accept only its documented standard operation methods, so exclude custom-method descriptors from OpenAPI input or document those endpoints through an application-owned extension.
 
+### CORS origin variance
+
+`createCorsMiddleware({ allowOrigin })` emits `Vary: Origin` for array and function policies
+on every request, including rejected or missing `Origin` values and functions returning
+`undefined` or `"*"`. This also applies before recognized `OPTIONS` preflight responses are
+sent as bodyless `204` responses without calling `next`. Other requests, including rejected
+origins and non-preflight `OPTIONS`, continue through `next`; variance does not grant access.
+Rejected array origins and function results of `undefined` do not emit
+`Access-Control-Allow-Origin`. Functions receive the request origin, including `undefined`
+when it is absent, and their result still selects the allow-origin header.
+
+Static non-wildcard string policies also emit `Vary: Origin`; explicit `"*"` and omitted
+`allowOrigin` retain wildcard allow-origin behavior without adding Origin variance.
+Existing `Vary` fields and lowercase header names are preserved, `Origin` is deduplicated
+case-insensitively, and an existing `Vary: *` remains a wildcard. Credentials with wildcard
+origins remain invalid. Regression evidence lives in `src/middleware/cors.test.ts` and the
+real-listener CORS cases in `../runtime/src/application.test.ts`.
+
 ### Portable header helpers
 
 Use `getRequestHeader(request, name)` when middleware, versioning, DTO binding, or controller code
@@ -731,6 +749,12 @@ message. Applications remain responsible for the messages they author. See the
 submission, negotiation and safe disclosure.
 
 ### Rate limiting behind proxies
+
+`createRateLimitMiddleware({ limit, windowMs })` owns a separate process-local memory store by default. Its optional `RateLimitStore.consume(key, { now, windowMs })` capability atomically initializes, resets, and increments one window, returning an independent `{ count, resetAt }` snapshot that includes the current request. `now` and `resetAt` are epoch milliseconds; `windowMs` is a duration in milliseconds. The first request starts the window at `now + windowMs`; requests at `now >= resetAt` start a new window. Every request counts, including rejected requests, without extending an active deadline. Counts above `limit` produce 429 with `Retry-After` rounded up to seconds and the standard `TOO_MANY_REQUESTS` body.
+
+The built-in store performs consumption synchronously within one process, so concurrent requests cannot lose initialization or increments. Separate stores, processes, and restarts do not share budgets. Custom stores may return a snapshot directly or through a promise. To migrate an existing store, retain `get`, `set`, `increment(key)`, and `evict(now)` and add `consume`; middleware prefers it after eviction. A distributed implementation must make initialization/reset/increment atomic in the backend, for example in one transaction or script, and return a coherent count and deadline in the caller's time domain. A sequence of separately awaited reads and writes is not atomic.
+
+Existing stores without `consume` remain supported through the original `evict` then `get` and `set`/`increment` fallback. That fallback does not serialize concurrent requests: even in one process, concurrent initialization can overwrite counts, and separate backend calls cannot guarantee cross-process atomicity. Add `consume` before relying on concurrent quota enforcement. Store failures propagate normally rather than becoming 429 or silently switching to memory. Expired memory entries are swept during requests; this does not impose a key-cardinality bound.
 
 `createRateLimitMiddleware(...)` resolves client identity from the adapter-snapshotted direct transport address by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, configure `trustProxy` with an explicit hop count, address/CIDR list, or predicate. Forwarded data is ignored unless the direct peer satisfies that policy; malformed `Forwarded` data fails closed to the direct transport identity.
 

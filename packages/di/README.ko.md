@@ -339,6 +339,32 @@ Metadata와 provider 등록은 계속 wrapper record를 snapshot합니다. Core�
 
 multi-provider 토큰을 resolve하면 등록 순서대로 해석된 값의 배열이 반환됩니다.
 
+Alias provider도 `multi: true`를 받습니다. 각 alias는 class, factory, value
+contribution과 함께 자신의 등록 위치에 target의 해석된 값을 추가합니다.
+
+```typescript
+class Plugin {}
+const PLUGINS = Symbol('plugins');
+const container = new Container().register(
+  Plugin,
+  { provide: PLUGINS, useValue: 'first', multi: true },
+  { provide: PLUGINS, useExisting: Plugin, multi: true },
+);
+const plugins = await container.resolve<unknown[]>(PLUGINS);
+// ['first', the same instance returned by container.resolve(Plugin)]
+await container.dispose();
+```
+
+Alias는 target의 scope를 따릅니다. singleton identity를 공유하고, request target은
+해석하는 request scope를 사용하며, transient target은 매번 새로 해석합니다.
+singleton consumer가 request-scoped alias target을 포함한 multi token을 주입받으면
+어떤 factory나 constructor도 실행되기 전에 `ScopeMismatchError`가 발생합니다.
+`hasRequestScopedDependency(...)`도 이 target을 추적합니다.
+`override(...)`는 alias contribution을 포함한 전체 multi set을 교체하며,
+같은 token의 single replacement와 multi replacement를 한 호출에서 섞을 수 없습니다.
+`multi`를 생략하거나 `false`로 지정하면 기존 single-alias 해석을 유지합니다.
+실행 가능한 근거: `packages/di/src/container-multi-alias.test.ts`.
+
 ## 관련 패키지
 
 - `@fluojs/core`: `@Inject()`와 `@Scope()` 데코레이터를 정의합니다.

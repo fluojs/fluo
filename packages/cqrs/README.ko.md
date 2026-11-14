@@ -183,7 +183,7 @@ Saga, command handler, query handler, event handler 안에서 다시 CQRS `execu
 
 각 CQRS event handler와 saga는 매칭된 event prototype이 복원된 격리 event 복사본을 받습니다. 이 복사본을 mutate해도 변경은 현재 handler 또는 saga route 안에만 머물며, 다른 CQRS handler, saga, 원본 event 객체, 또는 위임된 `@fluojs/event-bus` subscriber에는 보이지 않습니다. 위임된 event-bus 발행은 CQRS side effect가 끝난 뒤 원본 event를 받으므로, `@OnEvent(...)` projection과 transport는 CQRS handler가 mutate한 복사본이 아니라 호출자가 소유한 payload를 관찰합니다.
 
-Event class는 payload state를 clone 가능하고 enumerable하게 유지해야 합니다. 문자열 key와 symbol key를 가진 enumerable payload field는 shared core clone fallback으로 보존되지만, 열린 socket, function, process-local handle처럼 의도적으로 clone할 수 없는 resource는 발행 전에 ID나 다른 serializable boundary로 표현해야 합니다.
+Event class는 payload state를 clone 가능하고 enumerable하게 유지해야 합니다. Shared core clone 계약은 런타임의 `structuredClone` 유무나 성공 여부에 관계없이 문자열 key와 symbol key를 가진 enumerable payload field와 중첩 class prototype을 보존합니다. 최상위 non-enumerable symbol property도 보존합니다. 중첩 value object는 prototype method와 getter를 유지하는 분리된 instance가 됩니다. Function은 reference로 반환하므로 격리되지 않습니다. 열린 socket, function, process-local handle은 발행 전에 ID나 다른 serializable boundary로 표현하세요. Buffer와 private-field instance는 아직 명세하지 않습니다(issue #4015).
 
 CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Discovery는 direct class와 `useClass` provider, class token이 CQRS metadata를 가진 `useFactory` provider, instance constructor가 CQRS metadata를 가진 `useValue` provider를 지원합니다. Non-singleton registration은 경고와 함께 건너뜁니다. Event handler와 saga fan-out은 singleton provider token으로 구분되므로 같은 decorated class를 사용해도 서로 다른 token은 별도 route로 유지됩니다.
 
@@ -245,7 +245,7 @@ CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니
 - `packages/cqrs/src/module.test.ts`: 모듈 등록 및 기본 버스 사용 예제.
 - `packages/cqrs/src/public-api.test.ts`: 루트 배럴 공개 API 계약 검증 예제.
 - `packages/cqrs/src/status.test.ts`: CQRS status snapshot 동작 테스트 예제.
-- `packages/cqrs/src/event-clone.test.ts`: event clone fallback 동작 테스트 예제.
+- `packages/cqrs/src/event-clone.test.ts`: 결정적인 event clone과 중첩 value-object 격리 테스트 예제.
 ## 호환되는 서비스 사본
 
 공개 CQRS bus lifecycle 클래스는 호환 사본 class injection을 지원하며 event handler와 option token은 기존 소유권과 순서를 유지합니다.

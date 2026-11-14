@@ -8,6 +8,7 @@ import { MemoryStore } from './stores/memory-store.js';
 import type { CacheEvictDecoratorValue, NormalizedCacheModuleOptions } from './types.js';
 
 const cacheOptions: NormalizedCacheModuleOptions = {
+  rememberCacheErrors: 'throw',
   global: false,
   httpKeyStrategy: 'route',
   keyPrefix: 'fluo:cache:',
