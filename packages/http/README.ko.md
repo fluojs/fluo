@@ -786,7 +786,7 @@ export class OrdersEventsController {
 
 Source read, frame encoding, stream write 또는 drain 실패를 포함한 모든 비정상 종료 시 dispatcher는 source가 이미 `done: true`를 보고한 경우를 제외하고 획득한 source iterator의 선택적 `return()`을 최대 한 번 호출합니다. Transport는 즉시 닫고 request observer의 finish 및 request-scoped resource의 dispose 전에 비동기 iterator cleanup을 기다립니다. Cleanup도 reject되거나 나중에 abort가 발생하더라도 operation 실패에서 던진 원래 값은 observer와 `onError`에 그대로 전달되며, 이미 commit된 SSE response는 대체되지 않습니다. Cleanup에는 여전히 source의 협조가 필요하며 dispatcher는 비협조적인 source를 강제로 settle시킬 수 없습니다.
 
-Managed SSE는 `FrameworkResponse.stream`을 노출하는 adapter가 필요합니다. 활성 adapter가 response stream을 제공하지 않으면 dispatcher는 response를 처리된 것으로 표시하기 전에 managed async iterable을 거부하고, stream이 처리된 것으로 조용히 보고하는 대신 표준 dispatch error 경로(request error observer와 구성된 error response writer)를 통해 실패를 전달합니다.
+Managed SSE는 `FrameworkResponse.stream`을 노출하는 adapter가 필요합니다. 활성 adapter가 response stream을 제공하지 않으면 dispatcher는 response를 처리된 것으로 표시하기 전에 managed async iterable을 거부하고, stream이 처리된 것으로 조용히 보고하는 대신 표준 dispatch error 경로(request error observer와 구성된 error response writer)를 통해 실패를 전달합니다. Dispatcher는 SSE header를 commit하기 전에 `[Symbol.asyncIterator]()`로 source iterator를 획득합니다. 획득이 throw하면 SSE transport, abort listener, stream close listener를 열지 않습니다. 아직 commit되지 않은 response는 같은 표준 dispatch error 경로를 따르고, 이미 commit된 response는 대체되지 않은 채 request error observer와 `onError`에 실패를 보고합니다. 획득 이후 SSE response commit이 실패하면 dispatcher는 실패를 보고하기 전에 획득한 iterator의 선택적 `return()`을 한 번 호출합니다.
 
 브라우저 쪽에서는 해당 연결을 소유하는 React effect 안에서 `EventSource`를 만들고 cleanup 함수에서 항상 닫아야 합니다. 그래야 route 변경, Strict Mode remount, component unmount가 중복 stream을 남기지 않습니다.
 

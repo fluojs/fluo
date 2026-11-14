@@ -9,6 +9,15 @@ This is one stage under `$execute-lane`, not a standalone issue-to-PR
 orchestrator. It consumes a fixed preflight contract and an assigned branch and
 worktree. One scoped implementer edits, runs focused tests, and commits locally.
 
+Use `subagent_type: "fluo-issue-implementer"` and `run_in_background: true` for
+both modes, matching the engine's `dispatch`. The registered agent first reads
+`references/implementer.md` in its assigned worktree. Preserve the exact `Result`;
+the lead adds `agent: "fluo-issue-implementer"` only to its successful `record`
+wrapper. Missing registration or runtime unavailability produces a typed
+`input-preparation` block with `fix_back_eligible: false` under `execute-lane`'s
+dispatch admission contract. Never substitute a category worker or treat this
+input block as an implementation defect.
+
 The lane order is:
 
 `preflight -> issue-implement + focused checks -> selected review -> sync-pr`

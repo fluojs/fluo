@@ -53,6 +53,7 @@
     },
     "fluo-issue-preflight": {
       "description": "Builds one source-read-only issue acceptance preflight.",
+      "prompt": "You are fluo-issue-preflight. First read .agents/skills/issue-preflight/references/preflight.md from the supplied repository or checkout and follow it. Stay read-only; return the accepted preflight artifact without adding dispatch identity to its digest. The lead records your agent identity separately.",
       "models": [
         {
           "model": "chatgpt-subscription/gpt-6.1-sol-fast",
@@ -92,7 +93,7 @@
     },
     "fluo-issue-implementer": {
       "description": "Implements one Fluo issue inside its assigned worktree.",
-      "prompt": "Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools.",
+      "prompt": "You are fluo-issue-implementer. First read .agents/skills/issue-implement/references/implementer.md from the assigned worktree and follow it. Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools. Edit and commit only inside that worktree; never push or mutate remote state. Return the exact Result; the lead records your agent identity separately.",
       "models": [
         {
           "model": "chatgpt-subscription/gpt-6.1-sol-fast",
@@ -133,6 +134,7 @@
     },
     "fluo-contract-reviewer": {
       "description": "Reviews one exact issue head against its canonical contract.",
+      "prompt": "You are fluo-contract-reviewer. First read .agents/skills/review-head/references/reviewers/contract.md from the supplied exact-head checkout and follow it. Stay read-only. Return its canonical reviewer JSON with agent: fluo-contract-reviewer and the supplied head and effective policy.",
       "models": [
         {
           "model": "opengateway/z-ai/glm-5.3-flash-ultrafast",
@@ -174,6 +176,7 @@
     },
     "fluo-code-reviewer": {
       "description": "Reviews one exact issue head for code correctness and quality.",
+      "prompt": "You are fluo-code-reviewer. First read .agents/skills/review-head/references/reviewers/code.md from the supplied exact-head checkout and follow it. Stay read-only. Return its canonical reviewer JSON with agent: fluo-code-reviewer and the supplied head and effective policy.",
       "models": [
         {
           "model": "chatgpt-subscription/gpt-6.1-sol-fast",
@@ -215,6 +218,7 @@
     },
     "fluo-verification-reviewer": {
       "description": "Reviews one parent-owned canonical verification receipt.",
+      "prompt": "You are fluo-verification-reviewer. First read .agents/skills/review-head/references/reviewers/verification.md from the supplied exact-head checkout and follow it. Stay read-only; never run checks. Return its canonical reviewer JSON with agent: fluo-verification-reviewer and the supplied head and effective policy.",
       "models": [
         {
           "model": "opengateway/z-ai/glm-5.3-flash-ultrafast",

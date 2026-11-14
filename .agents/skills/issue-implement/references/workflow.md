@@ -116,10 +116,17 @@ replacement issue/PR/worktree, change preflight, or expand authority.
 
 ## 2. Dispatch one scoped implementer
 
-Use `references/implementer.md` as the task contract. Supply `TASK`,
+Use `subagent_type: "fluo-issue-implementer"` with `run_in_background: true`
+and `references/implementer.md` as the task contract. The registered agent
+reads that reference from the assigned worktree first. Supply `TASK`,
 `DELIVERABLE`, `SCOPE`, `VERIFY`, and `STOP WHEN`, the complete validated input,
 the preflight artifact, absolute worktree, issue body, and canonical blockers.
 Do not add fields to the machine input just to carry prompt context.
+After validating `Result`, identify the actual agent in the lead's separate
+`record` success wrapper as `agent: "fluo-issue-implementer"`. Do not add that
+field to `Input`, `Result` or preflight digest input. An unavailable target is
+typed `input-preparation` with `fix_back_eligible: false`, never a category
+substitution or implementation fix-back.
 
 The implementer owns edit, focused test, and commit only. It cannot reduce
 preflight review axes or redefine acceptance scope. Review-origin and

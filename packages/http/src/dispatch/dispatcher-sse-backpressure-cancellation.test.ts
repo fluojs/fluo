@@ -8,10 +8,11 @@ import type {
   FrameworkResponseStream,
   Middleware,
 } from '../index.js';
-import { Controller, createDispatcher, createHandlerMapping, Sse } from '../index.js';
+import { assertRequestContext, Controller, createDispatcher, createHandlerMapping, Sse } from '../index.js';
 
 interface BlockingDrainStream extends FrameworkResponseStream {
   closeCalls: number;
+  readonly closeListenerCount: number;
   drainCalls: number;
   emitClose(): void;
 }
@@ -100,6 +101,37 @@ function createRequest(path: string): FrameworkRequest {
   };
 }
 
+function trackAbortListeners(signal: AbortSignal): () => number {
+  const active = new Set<unknown>();
+  const addEventListener = signal.addEventListener.bind(signal);
+  const removeEventListener = signal.removeEventListener.bind(signal);
+
+  signal.addEventListener = ((...args: Parameters<AbortSignal['addEventListener']>) => {
+    if (args[0] === 'abort') {
+      active.add(args[1]);
+    }
+    addEventListener(...args);
+  }) as AbortSignal['addEventListener'];
+  signal.removeEventListener = ((...args: Parameters<AbortSignal['removeEventListener']>) => {
+    if (args[0] === 'abort') {
+      active.delete(args[1]);
+    }
+    removeEventListener(...args);
+  }) as AbortSignal['removeEventListener'];
+
+  return () => active.size;
+}
+
+function createThrowingAcquisitionSource(failure: unknown): AsyncIterable<unknown> & { acquisitions: number } {
+  return {
+    acquisitions: 0,
+    [Symbol.asyncIterator]() {
+      this.acquisitions += 1;
+      throw failure;
+    },
+  };
+}
+
 function createBackpressureResponse(options: BackpressureResponseOptions = {}): StreamingResponse {
   const closeListeners: Array<() => void> = [];
   const blockedDrain = new Promise<void>(() => undefined);
@@ -115,6 +147,9 @@ function createBackpressureResponse(options: BackpressureResponseOptions = {}): 
       this.closeCalls += 1;
     },
     closeCalls: 0,
+    get closeListenerCount() {
+      return closeListeners.length;
+    },
     drainCalls: 0,
     emitClose() {
       for (const listener of [...closeListeners]) {
@@ -363,6 +398,185 @@ describe('managed SSE backpressure cancellation', () => {
     expect(onError.mock.calls[0]?.[0]).toBeUndefined();
     expect(response.stream.closeCalls).toBe(1);
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('managed SSE: iterator acquisition throws before commit -> standard error path writes the error and leaves no transport listeners', async () => {
+    // Given
+    const failure = new Error('iterator acquisition failed');
+    const source = createThrowingAcquisitionSource(failure);
+    const events: string[] = [];
+    const onError = vi.fn((_error: unknown) => {
+      events.push('onError');
+      return false;
+    });
+    const root = new CountingContainer();
+
+    @ScopeDecorator('request')
+    @Controller('/managed-acquisition-failure')
+    class ManagedAcquisitionFailureController {
+      onDestroy() {
+        events.push('dispose');
+      }
+
+      @Sse('/')
+      stream() {
+        return source;
+      }
+    }
+
+    root.register(ManagedAcquisitionFailureController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedAcquisitionFailureController }]),
+      observers: [{
+        onRequestError(_context, error) {
+          expect(error).toBe(failure);
+          events.push('onRequestError');
+        },
+        onRequestFinish() {
+          events.push('onRequestFinish');
+        },
+      }],
+      onError,
+      rootContainer: root,
+    });
+    const request = createRequest('/managed-acquisition-failure');
+    const abortController = new AbortController();
+    request.signal = abortController.signal;
+    const activeAbortListeners = trackAbortListeners(abortController.signal);
+    const response = createBackpressureResponse();
+    const send = vi.spyOn(response, 'send');
+
+    // When
+    await dispatcher.dispatch(request, response);
+
+    // Then
+    expect(source.acquisitions).toBe(1);
+    expect(onError.mock.calls[0]?.[0]).toBe(failure);
+    expect(events).toEqual(['onRequestError', 'onError', 'onRequestFinish', 'dispose']);
+    expect(root.requestScopeDisposeCount).toBe(1);
+    expect(response.statusCode).toBe(500);
+    expect(response.headers['Content-Type']).not.toBe('text/event-stream; charset=utf-8');
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(response.committed).toBe(true);
+    expect(response.stream.closeListenerCount).toBe(0);
+    expect(activeAbortListeners()).toBe(0);
+  });
+
+  it('managed SSE: iterator acquisition throws without observers or onError -> default error writer handles the failure', async () => {
+    // Given
+    const source = createThrowingAcquisitionSource(new Error('iterator acquisition failed'));
+
+    @Controller('/managed-acquisition-default-error')
+    class ManagedAcquisitionDefaultErrorController {
+      @Sse('/')
+      stream() {
+        return source;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedAcquisitionDefaultErrorController }]),
+      rootContainer: new Container().register(ManagedAcquisitionDefaultErrorController),
+    });
+    const response = createBackpressureResponse();
+    const send = vi.spyOn(response, 'send');
+
+    // When
+    await dispatcher.dispatch(createRequest('/managed-acquisition-default-error'), response);
+
+    // Then
+    expect(source.acquisitions).toBe(1);
+    expect(response.statusCode).toBe(500);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(response.stream.closeListenerCount).toBe(0);
+  });
+
+  it('managed SSE: iterator acquisition throws after the response was committed -> reports through observers without replacing the response', async () => {
+    // Given
+    const failure = new Error('iterator acquisition failed');
+    const source = createThrowingAcquisitionSource(failure);
+    const onRequestError = vi.fn();
+    const onRequestFinish = vi.fn();
+    const onError = vi.fn();
+
+    @Controller('/managed-acquisition-committed')
+    class ManagedAcquisitionCommittedController {
+      @Sse('/')
+      stream() {
+        assertRequestContext().response.committed = true;
+        return source;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedAcquisitionCommittedController }]),
+      observers: [{ onRequestError, onRequestFinish }],
+      onError,
+      rootContainer: new Container().register(ManagedAcquisitionCommittedController),
+    });
+    const request = createRequest('/managed-acquisition-committed');
+    const abortController = new AbortController();
+    request.signal = abortController.signal;
+    const activeAbortListeners = trackAbortListeners(abortController.signal);
+    const response = createBackpressureResponse();
+    const send = vi.spyOn(response, 'send');
+
+    // When
+    await dispatcher.dispatch(request, response);
+
+    // Then
+    expect(onRequestError).toHaveBeenCalledExactlyOnceWith(expect.any(Object), failure);
+    expect(onError.mock.calls[0]?.[0]).toBe(failure);
+    expect(onRequestFinish).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+    expect(response.statusCode).toBeUndefined();
+    expect(response.stream.closeListenerCount).toBe(0);
+    expect(activeAbortListeners()).toBe(0);
+  });
+
+  it('managed SSE: response commit fails after iterator acquisition -> releases the iterator once and reports the original failure', async () => {
+    // Given
+    const failure = new Error('header write failed');
+    const iteratorReturn = vi.fn(async () => ({ done: true as const, value: undefined }));
+    const iteratorNext = vi.fn(async () => ({ done: false as const, value: 'first' }));
+    const source: AsyncIterable<unknown> = {
+      [Symbol.asyncIterator]() {
+        return { next: iteratorNext, return: iteratorReturn };
+      },
+    };
+    const onRequestError = vi.fn();
+
+    @Controller('/managed-commit-failure')
+    class ManagedCommitFailureController {
+      @Sse('/')
+      stream() {
+        return source;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedCommitFailureController }]),
+      observers: [{ onRequestError }],
+      rootContainer: new Container().register(ManagedCommitFailureController),
+    });
+    const response = createBackpressureResponse();
+    const setHeader = response.setHeader.bind(response);
+    response.setHeader = (name, value) => {
+      if (name === 'X-Accel-Buffering') {
+        throw failure;
+      }
+      setHeader(name, value);
+    };
+
+    // When
+    await dispatcher.dispatch(createRequest('/managed-commit-failure'), response);
+
+    // Then
+    expect(iteratorNext).not.toHaveBeenCalled();
+    expect(iteratorReturn).toHaveBeenCalledTimes(1);
+    expect(onRequestError).toHaveBeenCalledExactlyOnceWith(expect.any(Object), failure);
+    expect(response.statusCode).toBe(500);
+    expect(response.stream.closeListenerCount).toBe(0);
   });
 
   it('managed SSE: source reports done -> does not call return redundantly', async () => {

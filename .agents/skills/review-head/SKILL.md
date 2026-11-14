@@ -97,7 +97,15 @@ Read only the references for selected axes:
 - `references/reviewers/code.md`
 - `references/reviewers/verification.md`
 
-Dispatch all selected axes in one background task batch. Each child stays
+Dispatch all selected axes in one background task batch using each returned
+`reviewers[i].dispatch.subagent_type`:
+`fluo-contract-reviewer`, `fluo-code-reviewer`, or
+`fluo-verification-reviewer`, with `run_in_background: true`. Each registered
+agent first reads its matching role reference from the supplied exact-head
+checkout. Missing registration or runtime unavailability is typed
+`input-preparation` with `fix_back_eligible: false`, recorded through
+`execute-lane`'s dispatch admission contract; never use a category substitute
+or turn this into implementation fix-back. Each child stays
 read-only and reports against the same head and preflight contract. Missing
 PR checks before a PR exists are not missing local evidence: the verification
 axis judges regression coverage and the implementer's focused test results.
@@ -126,9 +134,14 @@ Take the current `obs.preflightPolicy` from lane `plan`. Its `sha256` binds
 both the fixed contract and effective axes. Do not substitute the artifact's
 own `sha256` (the implementation binding) for this policy digest.
 
-Each reviewer returns exactly `reviewer`, `reviewed_head_sha`,
+Each new reviewer returns exactly `reviewer`, `agent`, `reviewed_head_sha`,
 `preflight_sha256`, `verdict_signal`, and `blockers`; `preflight_sha256` equals
-the effective policy digest. Assemble:
+the effective policy digest.
+`agent` must equal the registered target for that axis. New `record` review
+successes carry this complete aggregate input with `ok:true`. Stored legacy
+facts without `agent` retain full head/policy/verdict/blocker validation and
+their original bytes and acceptance bindings; new inputs cannot use that path.
+Assemble:
 
 ```text
 { head_sha, preflight_sha256, active_axes, reviews }
