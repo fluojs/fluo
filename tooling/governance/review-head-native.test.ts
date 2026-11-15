@@ -34,6 +34,57 @@ const blocker = {
 };
 
 describe('$review-head native exact-head selective gate', () => {
+  it('#4099 retention: canonical previous PASS -> fresh contract and preserved original reviewer heads', async () => {
+    const { buildReviewFact, validateReviewFact, aggregateReviewerGate } = await loadContracts();
+    const boundPolicy = { ...policy, contract_sha256: 'd'.repeat(64) };
+    const previous = buildReviewFact(gate(), headSha, boundPolicy);
+    const retention = { version: 1, previous_head_sha: headSha, new_head_sha: otherHeadSha,
+      contract_sha256: boundPolicy.contract_sha256, policy_sha256: policy.sha256,
+      previous_merge_base_sha: 'e'.repeat(40), new_merge_base_sha: 'e'.repeat(40),
+      previous_review: previous, previous_accepted_at: '2026-01-01T00:00:00.000Z',
+      changed_files: ['README.md'], compared_files: [{ path: 'src/router.ts', axes: ['code', 'verification'],
+        previous_sha256: 'f'.repeat(64), new_sha256: 'f'.repeat(64), previous_mode: '100644', new_mode: '100644' }] };
+    const fresh = { ...gate([review('contract', 'PASS', [], otherHeadSha)]), head_sha: otherHeadSha };
+
+    const fact = buildReviewFact(fresh, otherHeadSha, boundPolicy, retention);
+
+    expect(validateReviewFact(fact, otherHeadSha, boundPolicy)).toEqual(fact);
+    expect(aggregateReviewerGate(fresh, boundPolicy, retention)).toEqual({ verdict: 'pass', blockers: [] });
+    expect(fact.retention.previous_review).toEqual(previous);
+    expect(fact.retention.previous_review.reviews.map((envelope: { reviewed_head_sha: string }) => envelope.reviewed_head_sha))
+      .toEqual([headSha, headSha, headSha]);
+    expect(() => buildReviewFact(fresh, otherHeadSha, boundPolicy)).toThrow(TypeError);
+    expect(() => buildReviewFact({ ...fresh, retention }, otherHeadSha, boundPolicy)).toThrow(TypeError);
+    for (const patch of [
+      { previous_review: null }, { previous_review: { ...previous, verdict: 'block' } },
+      { previous_review: { ...previous, verdict: 'needs-human-check' } },
+      { previous_review: { ...previous, reviews: previous.reviews.slice(1) } },
+      { previous_review: { ...previous, reviews: [...previous.reviews, previous.reviews[1]] } },
+      { previous_review: { ...previous, reviews: [{ ...previous.reviews[0], agent: 'fluo-code-reviewer' }, ...previous.reviews.slice(1)] } },
+      { previous_head_sha: 'e'.repeat(40) }, { policy_sha256: '0'.repeat(64) }, { contract_sha256: '0'.repeat(64) },
+      { changed_files: ['docs/guides/CONTEXT.md'] }, { changed_files: ['README.md', 'README.md'] },
+      { compared_files: [{ ...retention.compared_files[0], new_sha256: '0'.repeat(64) }] },
+      { compared_files: [{ ...retention.compared_files[0], new_mode: '100755' }] },
+      { compared_files: [{ ...retention.compared_files[0], axes: ['code'] }] },
+      { compared_files: [retention.compared_files[0], retention.compared_files[0]] },
+    ]) expect(() => buildReviewFact(fresh, otherHeadSha, boundPolicy, { ...retention, ...patch })).toThrow(TypeError);
+    expect(() => buildReviewFact({ ...fresh, reviews: [] }, otherHeadSha, boundPolicy, retention)).toThrow(TypeError);
+    expect(() => buildReviewFact({ ...fresh, reviews: [...fresh.reviews, fresh.reviews[0]] },
+      otherHeadSha, boundPolicy, retention)).toThrow(TypeError);
+  });
+
+  it('#4099 contract-only policy: no retained axes are fabricated', async () => {
+    const { buildReviewFact, validateReviewFact } = await loadContracts();
+    const contractPolicy = { ...policy, active_axes: ['contract'] };
+    const input = gate([review('contract')], ['contract']);
+
+    const fact = buildReviewFact(input, headSha, contractPolicy);
+
+    expect(validateReviewFact(fact, headSha, contractPolicy)).toEqual(fact);
+    expect(fact.retention).toBeUndefined();
+    expect(fact.reviews.map((envelope: { reviewer: string }) => envelope.reviewer)).toEqual(['contract']);
+  });
+
   it('returns pass, never merge, without requiring a PR', async () => {
     const { aggregateReviewerGate } = await loadContracts();
     expect(aggregateReviewerGate(gate(), policy)).toEqual({ verdict: 'pass', blockers: [] });

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { contractDigest, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
+import { observeReviewRetention } from './lane-v4-cli.mjs';
+import { retentionFreshAxes } from '../../review-head/scripts/contracts.mjs';
 
 export class WorkflowPreparationError extends TypeError {
   constructor(reason) {
@@ -160,6 +162,19 @@ export function prepareReviewInput(input) {
   });
   requireInput(evaluation.valid, `review preparation: ${evaluation.reason}: ${evaluation.files?.join(', ') ?? ''}`);
   requireInput(isDeepStrictEqual(evaluation.policy, input.policy), 'review preparation: stale effective policy digest');
+  const proof = observation.obs.reviewRetention;
+  const retention = proof === undefined ? undefined : observeReviewRetention(root, {
+    previousReview: proof.previous_review, previousAcceptedAt: proof.previous_accepted_at,
+    headSha: input.head_sha, baseHeadSha: baseHead, policy: input.policy, worktree: checkout,
+  });
+  requireInput(isDeepStrictEqual(proof, retention), 'review preparation: unauthenticated retention');
+  const freshAxes = retentionFreshAxes(retention, input.head_sha, input.policy);
+  const dispatch = dispatchFor('review', freshAxes);
+  // Legacy observations may omit dispatch; narrowed dispatch always needs proof.
+  requireInput(observation.decision.dispatch === undefined
+    ? retention === undefined
+    : isDeepStrictEqual(observation.decision.dispatch, dispatch),
+  'review preparation: stale or narrowed dispatch');
   const actualDiff = git(root, 'diff', '--binary', '--full-index', '--no-renames', mergeBase, input.head_sha);
   const capturedDiff = readPreparationArtifact(input.artifact_root, input.diff, 'review diff');
   requireInput(actualDiff.equals(capturedDiff), 'review diff: does not match complete merge-base-to-head authored diff');
@@ -295,15 +310,22 @@ export function prepareReviewInput(input) {
     && text(checkout, 'status', '--porcelain=v1') === ''
     && isDeepStrictEqual(JSON.parse(readFileSync(input.accepted_contract_path, 'utf8')), accepted),
   'review preparation: observation changed during preparation');
+  if (retention !== undefined) {
+    requireInput(isDeepStrictEqual(retention, observeReviewRetention(root, {
+      previousReview: retention.previous_review, previousAcceptedAt: retention.previous_accepted_at,
+      headSha: input.head_sha, baseHeadSha: baseHead, policy: input.policy, worktree: checkout,
+    })), 'review preparation: retention changed during preparation');
+  }
   const common = { version: 1, stage: 'review', issue: input.issue, checkout,
     head_sha: input.head_sha, tree_sha: tree, contract: input.contract,
     contract_sha256: input.contract.sha256, policy: input.policy, preflight_sha256: input.policy.sha256,
     verification_base_sha: pinned, authored_merge_base_sha: mergeBase, base_head_sha: baseHead,
     accepted_contract_path: input.accepted_contract_path, observation: input.observation,
     changed_paths: changedPaths, diff: input.diff, artifact_root: input.artifact_root,
-    required_checks: input.required_checks, evidence: input.evidence, readable_index: readableIndex, footprint };
+    required_checks: input.required_checks, evidence: input.evidence, readable_index: readableIndex, footprint,
+    ...(retention === undefined ? {} : { retention, fresh_axes: freshAxes }) };
   return { status: 'prepared', kind: 'review-input', common,
-    reviewers: input.policy.active_axes.map((reviewer) => ({
+    reviewers: freshAxes.map((reviewer) => ({
       reviewer, dispatch: registeredDispatch(root, reviewerTargets[reviewer]), input: common,
     })) };
 }

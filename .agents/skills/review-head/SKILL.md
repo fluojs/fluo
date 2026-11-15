@@ -125,8 +125,44 @@ invent a skipped reviewer's PASS. Concrete remediation produces canonical
 blockers; unavailable intent or authority produces `needs-human-check`.
 
 Revalidate the head and preflight before accepting the aggregate. Any new
-implementation or conflict-resolution head requires a new review of every
-active axis; old-head approvals cannot be combined with new-head results.
+implementation or conflict-resolution head requires fresh review of every
+required axis. The only exception is Git-authenticated retention below;
+raw old-head envelopes never combine with new-head results.
+
+### Explanatory-document retention
+
+The CLI observes previous/current merge-bases against immutable origin/base,
+both authored path sets, and their actual head-to-head delta with
+`--no-renames -z`. The delta intersected with the union of authored paths must
+be nonempty explanatory Markdown. A closed allowlist admits root/package
+README pairs, `docs/guides`, `docs/getting-started`, `docs/architecture` Markdown,
+and numbered Book chapters. Instructions, governance, tests/fixtures,
+generated or machine-read Markdown, MDX and unknown roles are excluded.
+Every non-explanatory authored path must retain identical raw blob SHA-256
+and Git mode at both heads, including paths previously authored then removed.
+Unavailable or uncertain Git evidence requires full review.
+
+Only a canonical previous PASS under the identical contract and full effective
+policy permits retaining active code/verification axes. Contract is always
+fresh; no inactive axis gains a PASS. Preparation independently re-observes Git
+and matches the canonical fresh dispatch. Every fresh reviewer still receives
+the complete diff, source footprint and new-head focused receipts. Full policy,
+its digest and the approved axis floor remain unchanged.
+
+The current-head fact's optional `retention` has exactly:
+`version:1`, `previous_head_sha`, `new_head_sha`, `contract_sha256`,
+`policy_sha256`, `previous_merge_base_sha`, `new_merge_base_sha`,
+`previous_review`, `previous_accepted_at`, `changed_files`, `compared_files`.
+`previous_review` preserves the complete canonical PASS and original identities.
+`changed_files` is the sorted unique authored delta. Each sorted unique
+comparison is exactly `{path, axes, previous_sha256, new_sha256,
+previous_mode, new_mode}`, with sorted unique retained code/verification axes.
+Git observes absence as null; absent, changed or unreadable non-prose blobs/modes
+cannot retain PASS. Every nested hop and original envelope head is validated.
+The CLI reauthenticates complete coverage and bytes both at admission and
+observation. Changed contract/policy, missing previous PASS or tampering removes
+the exception. Local-checks, omission audits, generated-integration receipts
+and full current-head GitHub CI retain their independent exact-head gates.
 
 ## Machine interface
 
@@ -147,9 +183,16 @@ Assemble:
 { head_sha, preflight_sha256, active_axes, reviews }
 ```
 
-`aggregateReviewerGate(input, policy)` validates this payload.
-`buildReviewFact(input, headSha, policy)` derives the persisted verdict; the
+`aggregateReviewerGate(input, policy, retention?)` validates this payload.
+`buildReviewFact(input, headSha, policy, retention?)` derives the persisted verdict; the
 lead must not invent aggregate fields independently of the envelopes.
+Only the CLI supplies the optional final argument from stored facts and Git.
+The external four-key payload stays unchanged: `active_axes` is the full
+effective policy and `reviews` contains exactly the fresh required envelopes.
+Caller-supplied retention is rejected. Omitting the final argument preserves
+the original exact-head behavior. `validateReviewFact(value, headSha, policy)`
+accepts optional stored retention, validating fresh and retained coverage
+without rewriting original reviewer heads or legacy facts.
 Record the input through the CLI, which re-observes the policy and head:
 
 ```text

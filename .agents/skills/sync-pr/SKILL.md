@@ -18,7 +18,10 @@ decision bound to the same current head. Other actions return to the lane.
 
 The gate requires accepted preflight, focused local evidence, actual-diff
 review scope reconciliation, and every selected axis passing at that exact
-head and preflight contract. A review `pass` is not merge permission.
+head and preflight contract. Only CLI Git-authenticated explanatory-document
+retention may satisfy active code/verification axes with original PASS
+envelopes; contract remains fresh and full policy/digest never shrink.
+Missing, changed or uncertain proof requires full review. A review `pass` is not merge permission.
 Full canonical local verification is not automatically required for any approved
 change, including CI/configuration, manifests and lockfiles; no receipt or
 waiver is needed for publication. It remains available for explicitly requested
@@ -38,6 +41,8 @@ expansion returns to preflight. Retain the pinned base and existing identity.
 A companion changes the head, so affected focused checks and new selected
 exact-head reviews are required before publication to the same PR, followed
 by full new-head canonical GitHub CI and the existing merge gates.
+The narrow retention exception in `review-head` may preserve unchanged
+code/verification PASS, but never old local-check/waiver or remote CI evidence.
 
 ## Action
 

@@ -27,7 +27,16 @@ No test should pin prose wording or use fixed sleeps for correctness.
 Preflight binds source/base evidence and the implementation contract. Reviewer
 envelopes bind exact head and accepted contract; the aggregate includes exactly
 the effective axes. Local CI runs after review and captures individual command
-exit codes. A new head or changed contract cannot reuse earlier PASS evidence.
+exit codes. A new head requires fresh review except for the Git-authenticated
+explanatory retention exception; changed contract or policy invalidates it.
+Cover closed role exclusions, both merge-bases and authored diffs, disjoint
+upstream changes, complete raw blob SHA-256/mode comparisons,
+deletion/rename/symlink/mode changes, original canonical PASS/identity and every
+nested hop. Missing, uncertain, stale or tampered proof requires full review.
+Full policy/floor/digest remain fixed; only fresh dispatch shrinks. Preparation
+independently checks Git, complete diff/footprint and focused receipts. Legacy
+callers without optional retention keep their original exact-head behavior and
+stored bytes. Local-check/waiver and remote CI never inherit previous-head evidence.
 
 The lead validates branch/worktree/optional PR identity before mutation. Merge
 requires same-head review, local CI, remote CI, mergeability, and a grant.

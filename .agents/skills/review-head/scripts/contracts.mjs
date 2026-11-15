@@ -1,5 +1,6 @@
 import { assertContract } from '../../../workflow-contracts/contracts.mjs';
 import { assertAgentIdentity, reviewerTargets } from '../../execute-lane/scripts/dispatch-targets.mjs';
+import { isRetentionProsePath } from '../../issue-preflight/scripts/contracts.mjs';
 
 export const REVIEWERS = ['contract', 'code', 'verification'];
 export const VERDICTS = ['pass', 'block', 'needs-human-check'];
@@ -77,25 +78,69 @@ const assertReview = (review, headSha, policySha, stored) => {
   }
 };
 
-export const buildReviewFact = (input, headSha, policy) => {
+export const buildReviewFact = (input, headSha, policy, retention) => {
   if (input?.head_sha !== headSha) fail('review must bind the current head');
-  return { ...input, ...aggregateReviewerGate(input, policy), head: headSha };
+  return { ...input, ...aggregateReviewerGate(input, policy, retention), head: headSha,
+    ...(retention === undefined ? {} : { retention }) };
 };
 
 export const validateReviewFact = (value, headSha, policy) => {
   if (!isRecord(value)) fail('review fact must be an object');
-  const { head, verdict, blockers, ...input } = value;
+  const { head, verdict, blockers, retention, ...input } = value;
   if (input.head_sha !== headSha) fail('review must bind the current head');
-  const expected = { ...input, ...aggregate(input, policy, true), head: headSha };
+  if (Object.hasOwn(value, 'retention') && retention === undefined) fail('missing retention');
+  const expected = { ...input, ...aggregate(input, policy, true, retention), head: headSha,
+    ...(retention === undefined ? {} : { retention }) };
   if (head !== headSha || verdict !== expected.verdict || JSON.stringify(blockers) !== JSON.stringify(expected.blockers)) {
     fail('review fact does not match reviewer evidence');
   }
   return expected;
 };
 
-export const aggregateReviewerGate = (input, policy) => aggregate(input, policy, false);
+export const aggregateReviewerGate = (input, policy, retention) => aggregate(input, policy, false, retention);
 
-const aggregate = (input, policy, stored) => {
+const sortedUnique = (items) => Array.isArray(items)
+  && items.every((item) => typeof item === 'string')
+  && items.every((item, index) => index === 0 || items[index - 1] < item);
+const safePath = (path) => typeof path === 'string' && path.length > 0
+  && !path.includes('\\') && !/[\x00-\x1f*?]/u.test(path)
+  && path.split('/').every((part) => part && part !== '.' && part !== '..');
+const digest = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
+
+// Pure validation checks each hop; only CLI Git observation authenticates coverage.
+export const retentionFreshAxes = (retention, headSha, policy) => {
+  if (retention === undefined) return policy.active_axes;
+  const keys = ['version', 'previous_head_sha', 'new_head_sha', 'contract_sha256', 'policy_sha256',
+    'previous_merge_base_sha', 'new_merge_base_sha', 'previous_review', 'previous_accepted_at',
+    'changed_files', 'compared_files'];
+  if (!isRecord(retention) || !hasExactKeys(retention, keys) || retention.version !== 1
+    || !policy.active_axes.includes('contract')
+    || retention.new_head_sha !== headSha || retention.previous_head_sha === headSha
+    || [retention.previous_head_sha, retention.new_head_sha, retention.previous_merge_base_sha,
+      retention.new_merge_base_sha].some((sha) => typeof sha !== 'string' || !HEAD_SHA_PATTERN.test(sha))
+    || !digest(retention.contract_sha256) || retention.contract_sha256 !== policy.contract_sha256
+    || retention.policy_sha256 !== policy.sha256
+    || typeof retention.previous_accepted_at !== 'string'
+    || !Number.isFinite(Date.parse(retention.previous_accepted_at))) fail('invalid retention binding');
+  if (!sortedUnique(retention.changed_files) || retention.changed_files.length === 0
+    || !retention.changed_files.every(isRetentionProsePath)) fail('retention requires explanatory authored changes');
+  const previous = validateReviewFact(retention.previous_review, retention.previous_head_sha, policy);
+  if (previous.verdict !== 'pass') fail('retention requires canonical previous PASS');
+  const axes = policy.active_axes.filter((axis) => axis !== 'contract').sort();
+  if (!axes.length || !Array.isArray(retention.compared_files)
+    || !sortedUnique(retention.compared_files.map((file) => file?.path))) fail('invalid retention coverage');
+  for (const file of retention.compared_files) {
+    if (!isRecord(file) || !hasExactKeys(file, ['path', 'axes', 'previous_sha256', 'new_sha256', 'previous_mode', 'new_mode'])
+      || !safePath(file.path) || !sortedUnique(file.axes) || file.axes.length !== axes.length
+      || axes.some((axis, index) => file.axes[index] !== axis)
+      || !digest(file.previous_sha256) || file.previous_sha256 !== file.new_sha256
+      || file.previous_mode !== '100644' && file.previous_mode !== '100755'
+      || file.previous_mode !== file.new_mode) fail('retention comparison differs or is incomplete');
+  }
+  return policy.active_axes.filter((axis) => !axes.includes(axis));
+};
+
+const aggregate = (input, policy, stored, retention) => {
   if (!isRecord(input) || !hasExactKeys(input, ['head_sha', 'preflight_sha256', 'active_axes', 'reviews'])) {
     fail('input must contain exactly head_sha, preflight_sha256, active_axes, reviews');
   }
@@ -118,14 +163,15 @@ const aggregate = (input, policy, stored) => {
     fail('reviews must be an array');
   }
 
+  const freshAxes = retentionFreshAxes(retention, input.head_sha, policy);
   for (const review of input.reviews) {
     assertReview(review, input.head_sha, policy.sha256, stored);
   }
 
   const reviewerNames = input.reviews.map((review) => review.reviewer);
   if (
-    reviewerNames.length !== policy.active_axes.length ||
-    policy.active_axes.some((reviewer) => reviewerNames.filter((name) => name === reviewer).length !== 1)
+    reviewerNames.length !== freshAxes.length ||
+    freshAxes.some((reviewer) => reviewerNames.filter((name) => name === reviewer).length !== 1)
   ) {
     fail(`reviews must contain exactly one each of ${policy.active_axes.join(', ')}`);
   }
