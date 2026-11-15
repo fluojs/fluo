@@ -1,4 +1,4 @@
-import { assertPredictedConflicts } from '../../../workflow-contracts/contracts.mjs';
+import { assertDependencyReasons, assertPredictedConflicts } from '../../../workflow-contracts/contracts.mjs';
 
 const safeIdentifier = /^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const sha256 = /^[a-f0-9]{64}$/u;
@@ -100,6 +100,9 @@ const hasCanonicalDependencies = (graph, issues) => {
 export const planIsCanonical = (plan, artifact) => {
   try {
     assertPredictedConflicts(plan?.predicted_conflicts, plan?.confirmed_issues ?? []);
+    if (isRecord(plan) && Object.hasOwn(plan, 'dependency_reasons')) {
+      assertDependencyReasons(plan.dependency_reasons, plan.dependency_graph);
+    }
   } catch {
     return false;
   }
@@ -107,6 +110,7 @@ export const planIsCanonical = (plan, artifact) => {
   if (
     !isRecord(plan) ||
     !hasExactKeys(plan, [...planKeys,
+      ...(Object.hasOwn(plan, 'dependency_reasons') ? ['dependency_reasons'] : []),
       ...(Object.hasOwn(plan, 'predicted_conflicts') ? ['predicted_conflicts'] : []),
       ...(Object.hasOwn(plan, 'preflight_overlap') ? ['preflight_overlap'] : [])]) ||
     (Object.hasOwn(plan, 'preflight_overlap') && plan.preflight_overlap !== 1) ||
@@ -192,30 +196,15 @@ export const readyLedger = (
   pr_merge_method: plan.pr_merge_method,
   authority_scope: plan.authority_scope,
   retry_policy: plan.retry_policy,
-  execution: {
-    status: 'not-started',
-    last_command: null,
-    last_updated: null,
-  },
   confirmed_issues: plan.confirmed_issues,
-  suggested_but_excluded: plan.suggested_but_excluded,
-  backlog_candidates: plan.backlog_candidates,
   release_handoffs: plan.release_handoffs.map(
     (handoff) => handoff.issue_number,
   ),
-  completed_issues: [],
-  issue_progress: {},
   lanes: plan.lanes.map((lane) => ({
     name: lane.name,
     queue: lane.queue,
-    current_issue: lane.queue[0],
-    status: 'queued',
-    branch: null,
-    worktree: null,
-    pr: null,
-    retry_count: 0,
   })),
   dependency_graph: plan.dependency_graph,
+  ...(Object.hasOwn(plan, 'dependency_reasons') ? { dependency_reasons: plan.dependency_reasons } : {}),
   ...(Object.hasOwn(plan, 'predicted_conflicts') ? { predicted_conflicts: plan.predicted_conflicts } : {}),
-  root_main_sync: { status: 'not-started', sha: null },
 });

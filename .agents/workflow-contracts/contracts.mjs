@@ -101,6 +101,42 @@ export const searchArtifactDigest = (artifact) =>
     )
     .digest('hex');
 
+const legacyRootFields = [
+  'execution', 'completed_issues', 'issue_progress', 'root_main_sync',
+  'suggested_but_excluded', 'backlog_candidates',
+];
+const legacyLaneFields = ['current_issue', 'status', 'branch', 'worktree', 'pr', 'retry_count'];
+
+/** Planning-only v2 values carry no legacy cursor or runtime state. */
+export const isPlanningLaneLedger = (value) =>
+  value.version === 2 && value.status === 'ready' &&
+  legacyRootFields.every((key) => !Object.hasOwn(value, key)) &&
+  Array.isArray(value.lanes) && value.lanes.every((lane) =>
+    isRecord(lane) && [...legacyLaneFields, 'current_blocker'].every((key) => !Object.hasOwn(lane, key)));
+
+/** Optional edge evidence must cover the graph exactly, without changing it. */
+export const assertDependencyReasons = (reasons, graph) => {
+  const reject = () => fail('dependency_reasons', 'reasons must cover every graph edge exactly once with nonblank evidence');
+  if (!Array.isArray(reasons) || !isRecord(graph)) reject();
+  const edges = new Set(Object.entries(graph).flatMap(([issue, dependencies]) => {
+    if (!Array.isArray(dependencies)) reject();
+    return dependencies.map((dependency) => `${issue}:${dependency}`);
+  }));
+  const covered = new Set();
+  for (const entry of reasons) {
+    if (!isRecord(entry) || Object.keys(entry).length !== 3 ||
+      !['issue', 'depends_on', 'reason'].every((key) => Object.hasOwn(entry, key)) ||
+      !Number.isSafeInteger(entry.issue) || entry.issue <= 0 ||
+      !Number.isSafeInteger(entry.depends_on) || entry.depends_on <= 0 ||
+      typeof entry.reason !== 'string' || !entry.reason.trim()) reject();
+    const edge = `${entry.issue}:${entry.depends_on}`;
+    if (!edges.has(edge) || covered.has(edge) ||
+      !graph[String(entry.issue)]?.includes(entry.depends_on)) reject();
+    covered.add(edge);
+  }
+  if (covered.size !== edges.size) reject();
+};
+
 const assertSafeBranch = (branch) => {
   const safe =
     branch !== 'HEAD' &&
@@ -120,6 +156,13 @@ const assertSafeBranch = (branch) => {
 
 const assertLaneLedgerSemantics = (value) => {
   assertPredictedConflicts(value.predicted_conflicts, value.confirmed_issues);
+  if (Object.hasOwn(value, 'dependency_reasons')) {
+    assertDependencyReasons(value.dependency_reasons, value.dependency_graph);
+  }
+  const planning = isPlanningLaneLedger(value);
+  if (!planning && legacyRootFields.some((key) => !Object.hasOwn(value, key))) {
+    fail('lane-ledger-v2', 'legacy ledger requires every legacy root state field');
+  }
   if (value.run_id !== value.lane_id) {
     fail('lane-ledger-v2', 'run_id and lane_id must match');
   }
@@ -145,6 +188,10 @@ const assertLaneLedgerSemantics = (value) => {
     );
   }
   for (const lane of value.lanes) {
+    if (planning) continue;
+    if (legacyLaneFields.some((key) => !Object.hasOwn(lane, key))) {
+      fail('lane-ledger-v2.lanes', 'legacy ledger requires every legacy lane state field');
+    }
     if (lane.current_issue !== null && !lane.queue.includes(lane.current_issue)) {
       fail('lane-ledger-v2.lanes', 'current_issue must appear in its lane queue');
     }
@@ -339,7 +386,7 @@ export const assertLaneSourceBinding = (lane, artifact) => {
 export const assertSameHeadReview = (verdict, lane) => {
   assertContract('review-verdict', verdict);
   assertContract('lane-ledger-v2', lane);
-  const issueProgress = lane.issue_progress[String(verdict.issue_number)];
+  const issueProgress = lane.issue_progress?.[String(verdict.issue_number)];
   if (
     verdict.lane_id !== lane.lane_id ||
     !lane.confirmed_issues.includes(verdict.issue_number) ||

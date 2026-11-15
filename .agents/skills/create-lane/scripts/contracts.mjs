@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { lstatSync, readFileSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 
 import {
   WorkflowContractError,
@@ -27,8 +27,7 @@ const readScenario = (scenarioPath) => {
   return value;
 };
 
-export const prepareScenario = (scenarioPath) => {
-  const scenario = readScenario(scenarioPath);
+const prepareLane = (scenario, normalized) => {
   const recommendedIssueNumbers = scenario.recommended_issue_numbers;
   if (
     (scenario.recommend_issues !== undefined &&
@@ -39,7 +38,6 @@ export const prepareScenario = (scenarioPath) => {
   ) {
     return rejected('recommendations_not_requested');
   }
-  const normalized = normalizeIntake(scenario);
   if (normalized.reason !== undefined) {
     return rejected(normalized.reason);
   }
@@ -98,4 +96,46 @@ export const prepareScenario = (scenarioPath) => {
     artifactPath,
     publishArtifact,
   };
+};
+
+/** Fixture adapter retains legacy input shape and exact approval bindings. */
+export const prepareScenario = (scenarioPath) => {
+  const scenario = readScenario(scenarioPath);
+  return prepareLane(scenario, normalizeIntake(scenario));
+};
+
+/** Read only the canonical artifact selected by the trusted lead. */
+export const preparePublication = (input, repositoryRoot) => {
+  const keys = ['artifact_path', 'plan', 'approvals', 'recommend_issues', 'recommended_issue_numbers'];
+  if (!isRecord(input) || !Object.keys(input).every((key) => keys.includes(key)) ||
+    !['artifact_path', 'plan', 'approvals', 'recommended_issue_numbers'].every((key) => Object.hasOwn(input, key)) ||
+    typeof input.artifact_path !== 'string' ||
+    !/^\.omo\/search-issue\/artifacts\/(?:legacy\/)?[A-Za-z0-9][A-Za-z0-9+._-]*\.json$/u.test(input.artifact_path)) {
+    return rejected('invalid_artifact');
+  }
+  // These fields must be established before approval collection, never backfilled.
+  if (!isRecord(input.plan) || input.plan.preflight_overlap !== 1 ||
+    !Object.hasOwn(input.plan, 'dependency_reasons')) return rejected('invalid_artifact');
+  const root = resolve(repositoryRoot);
+  let artifact;
+  try {
+    const parts = [root];
+    for (const part of input.artifact_path.split('/')) parts.push(resolve(parts.at(-1), part));
+    for (const path of parts) {
+      if (lstatSync(path).isSymbolicLink()) return rejected('unsafe_output_path');
+    }
+    artifact = JSON.parse(readFileSync(resolve(root, input.artifact_path), 'utf8'));
+  } catch (error) {
+    if (error instanceof SyntaxError ||
+      (error instanceof Error && 'code' in error && ['ENOENT', 'ENOTDIR', 'EISDIR'].includes(error.code))) {
+      return rejected('invalid_artifact');
+    }
+    throw error;
+  }
+  const scenario = {
+    ...input,
+    intake: { mode: 'artifact', artifact_path: input.artifact_path },
+    artifacts: { [input.artifact_path]: artifact },
+  };
+  return prepareLane(scenario, normalizeIntake(scenario));
 };

@@ -1,4 +1,4 @@
-import { assertPredictedConflicts } from '../../.agents/workflow-contracts/contracts.mjs';
+import { assertDependencyReasons, assertPredictedConflicts, isPlanningLaneLedger } from '../../.agents/workflow-contracts/contracts.mjs';
 import {
   activeStatuses,
   allowedMergePolicies,
@@ -134,7 +134,8 @@ export function validateLedgerShape(path, ledger) {
   assert(ledger.pr_merge_method === 'squash', path, 'pr_merge_method must be squash');
   validateAuthorityScope(path, ledger.authority_scope);
   validateRetryPolicy(path, ledger.retry_policy, ledger.merge_policy);
-  validateExecution(path, ledger.execution, ledger.status);
+  const planning = isPlanningLaneLedger(ledger);
+  if (!planning) validateExecution(path, ledger.execution, ledger.status);
   assert(Array.isArray(ledger.confirmed_issues), path, 'confirmed_issues must be an array');
   assert(ledger.confirmed_issues.every(isPositiveInteger), path, 'confirmed_issues must contain positive integer issue numbers');
   assert(Array.isArray(ledger.release_handoffs), path, 'release_handoffs must be an array');
@@ -146,22 +147,30 @@ export function validateLedgerShape(path, ledger) {
       'non-empty release_handoffs require lane_plan_approval_sha256',
     );
   }
-  assert(Array.isArray(ledger.completed_issues), path, 'completed_issues must be an array');
-  assert(ledger.completed_issues.every(isPositiveInteger), path, 'completed_issues must contain positive integer issue numbers');
-  assert(Array.isArray(ledger.suggested_but_excluded), path, 'suggested_but_excluded must be an array');
-  assert(Array.isArray(ledger.backlog_candidates), path, 'backlog_candidates must be an array');
-  const issueProgressMessage =
-    ledger.status === 'ready'
-      ? 'issue_progress must be an object'
-      : `issue_progress must be an object; ${migrationGuidance}`;
-  assert(isObject(ledger.issue_progress), path, issueProgressMessage);
+  if (!planning) {
+    assert(Array.isArray(ledger.completed_issues), path, 'completed_issues must be an array');
+    assert(ledger.completed_issues.every(isPositiveInteger), path, 'completed_issues must contain positive integer issue numbers');
+    assert(Array.isArray(ledger.suggested_but_excluded), path, 'suggested_but_excluded must be an array');
+    assert(Array.isArray(ledger.backlog_candidates), path, 'backlog_candidates must be an array');
+    const issueProgressMessage =
+      ledger.status === 'ready'
+        ? 'issue_progress must be an object'
+        : `issue_progress must be an object; ${migrationGuidance}`;
+    assert(isObject(ledger.issue_progress), path, issueProgressMessage);
+  }
   assert(isObject(ledger.dependency_graph), path, 'dependency_graph must be an object');
   validateDependencyGraph(path, ledger.dependency_graph, new Set(ledger.confirmed_issues));
+  if (Object.hasOwn(ledger, 'dependency_reasons')) {
+    assertDependencyReasons(ledger.dependency_reasons, ledger.dependency_graph);
+  }
   assert(Array.isArray(ledger.lanes) && ledger.lanes.length > 0, path, 'lanes must be a non-empty array');
-  assert(isObject(ledger.root_main_sync), path, 'root_main_sync is required');
-  assert(hasExactKeys(ledger.root_main_sync, ['status', 'sha']), path, 'root_main_sync must contain exactly status/sha');
-  assert(rootMainSyncStatuses.has(ledger.root_main_sync.status), path, `invalid root_main_sync.status: ${String(ledger.root_main_sync.status)}`);
+  if (!planning) {
+    assert(isObject(ledger.root_main_sync), path, 'root_main_sync is required');
+    assert(hasExactKeys(ledger.root_main_sync, ['status', 'sha']), path, 'root_main_sync must contain exactly status/sha');
+    assert(rootMainSyncStatuses.has(ledger.root_main_sync.status), path, `invalid root_main_sync.status: ${String(ledger.root_main_sync.status)}`);
+  }
   const optionalRootKeys = [
+    ...(ledger.version === 2 && Object.hasOwn(ledger, 'dependency_reasons') ? ['dependency_reasons'] : []),
     ...(Object.hasOwn(ledger, 'preflight_overlap') ? ['preflight_overlap'] : []),
     ...(Object.hasOwn(ledger, 'predicted_conflicts') ? ['predicted_conflicts'] : []),
     ...(ledger.created_at === undefined ? [] : ['created_at']),
@@ -169,7 +178,8 @@ export function validateLedgerShape(path, ledger) {
       ? []
       : ['lane_plan_approval_sha256']),
   ];
-  const expectedRootKeys = [...rootKeys, ...optionalRootKeys];
+  const planningRemoved = ['execution', 'completed_issues', 'issue_progress', 'root_main_sync', 'suggested_but_excluded', 'backlog_candidates'];
+  const expectedRootKeys = [...rootKeys.filter((key) => !planning || !planningRemoved.includes(key)), ...optionalRootKeys];
   assert(hasExactKeys(ledger, expectedRootKeys), path, 'ledger must contain exactly the canonical root keys');
   assertPredictedConflicts(ledger.predicted_conflicts, ledger.confirmed_issues);
   assert(!Object.hasOwn(ledger, 'preflight_overlap') || ledger.preflight_overlap === 1,
@@ -184,6 +194,10 @@ export function validateLaneShape(lanePath, lane, validation) {
     lanePath,
     'lane.queue must contain at least one positive integer issue number',
   );
+  if (validation.planning === true) {
+    assert(hasExactKeys(lane, ['name', 'queue']), lanePath, 'planning lane must contain exactly name/queue');
+    return;
+  }
   const isActive = activeStatuses.has(lane.status);
   const isTerminal = terminalStatuses.has(lane.status);
   assert(isActive || isTerminal, lanePath, `invalid lane.status: ${String(lane.status)}`);
