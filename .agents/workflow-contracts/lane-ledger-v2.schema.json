@@ -16,16 +16,10 @@
     "pr_merge_method",
     "authority_scope",
     "retry_policy",
-    "execution",
     "confirmed_issues",
-    "suggested_but_excluded",
-    "backlog_candidates",
     "release_handoffs",
-    "completed_issues",
-    "issue_progress",
     "lanes",
-    "dependency_graph",
-    "root_main_sync"
+    "dependency_graph"
   ],
   "properties": {
     "version": { "const": 2 },
@@ -196,13 +190,7 @@
         "additionalProperties": false,
         "required": [
           "name",
-          "queue",
-          "current_issue",
-          "status",
-          "branch",
-          "worktree",
-          "pr",
-          "retry_count"
+          "queue"
         ],
         "properties": {
           "name": { "type": "string", "minLength": 1 },
@@ -273,6 +261,19 @@
       }
     },
     "dependency_graph": { "type": "object" },
+    "dependency_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issue", "depends_on", "reason"],
+        "properties": {
+          "issue": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "depends_on": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "reason": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
     "predicted_conflicts": {
       "type": "array",
       "items": {

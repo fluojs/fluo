@@ -58,7 +58,7 @@ Include all, none, or list the issue numbers to include.
 
 The response must partition recommendations into included and excluded issues.
 Included issues append to the initial artifact order; excluded issues become
-`suggested_but_excluded`. If recommendation was not requested or no
+`suggested_but_excluded` in the approved plan. If recommendation was not requested or no
 recommendations were found, ask nothing. Build the final grouping,
 dependencies, lane ID, merge policy, retry policy, and authority scope
 deterministically without a normal lane-plan question.
@@ -87,6 +87,11 @@ do not replace the execution-time accepted preflight comparison.
 New plans include `preflight_overlap: 1` before calculating any receipt binding.
 `readyLedger` copies its presence and value. Legacy plans and ledgers without
 the field retain their existing behavior; never backfill them on import or save.
+New production plans also include `dependency_reasons` before receipt binding,
+even `[]` for an empty graph. Each `{ issue, depends_on, reason }` identifies
+one dependent-to-prerequisite graph edge with nonblank evidence; cover every
+edge exactly once. Preserve the existing `dependency_graph` number arrays.
+Legacy plans without reasons remain valid; do not add reasons after approval.
 
 Authority scope derivation: `cleanup_command_worktrees` is ALWAYS `true`
 (schema `const` — a lane that cannot clean up its own worktrees leaves
@@ -172,6 +177,22 @@ that opt-in is rejected as `recommendations_not_requested`.
 
 ## Production
 
+After collecting the trusted lead's existing approval evidence, run:
+
+```text
+node .agents/skills/create-lane/scripts/publish.mjs \
+  --input <trusted-lead-input.json> --root <repository-root>
+```
+
+The input contains `artifact_path`, `plan`, `approvals`, `recommend_issues`
+and `recommended_issue_numbers`. Read the artifact from its canonical file
+under that root; fixture artifact maps and synthetic GitHub results are not
+production input. Prepare `preflight_overlap: 1` and complete
+`dependency_reasons` in the plan before collecting and hashing receipts.
+The entry consumes approval evidence; it never synthesizes approval responses.
+Both this entry and the fixture adapter use the same preparation/validation in
+`scripts/contracts.mjs` and atomic publisher in `scripts/publication.mjs`.
+
 For generated intake, exclusively publish the canonical artifact before
 recommendation and planning. An artifact collision preserves the existing file
 and returns its stable recovery path; never overwrite it. If planning is
@@ -187,6 +208,11 @@ stage receipts as one atomic unit. Lane queues must partition every included
 issue exactly once. A target/receipt collision is terminal, preserves existing
 files, and rolls back newly linked receipts without deleting generated
 provenance. Refuse symlinked output directories.
+
+The new ready ledger is planning evidence: it omits legacy execution state,
+lane cursors and the plan-only excluded/backlog copies. Retain full original
+approved plans and their bindings. See `references/workflow.md` for the
+per-field consumer classification and legacy validation boundary.
 
 For deterministic contract exercises, run:
 

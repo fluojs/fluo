@@ -6,6 +6,7 @@ projections of it.
 
 ## Intake
 
+`domain.json` in this reference directory is the catalog source of truth.
 Intake is a mode-first state machine. Values explicitly supplied with the
 leading invocation count as answered; begin at the first missing state. Each
 state is one structured question asked through the runtime's structured
@@ -18,13 +19,20 @@ across consecutive calls — offering every entry exactly once. When the runtime
 does not expose the tool, use the numbered plain-text fallback of each state
 instead of claiming or calling an unavailable tool.
 
+Every option shows a visible Korean name where the catalog defines one, with
+the canonical slug in its description; never ask the user to remember or enter
+an unexplained internal ID. Selected labels and slugs are accepted resolve
+tokens, so the structured path needs no selection numbers.
+Run intake commands below from the repository root.
+
 1. `target_mode`
    - Ask only whether the target is all packages, one or more package groups, or
      one or more direct packages.
    - Structured: one single-select question whose options come from
-     `node scripts/intake.mjs modes`, the Korean label as the option label and
+     `node .agents/skills/search-issue/scripts/intake.mjs modes`, the Korean label as the option label and
      the catalog description as the option description.
-   - Fallback: show numbered plain-text choices.
+   - Fallback: show `1. 전체 패키지`, `2. 특정 패키지군`, `3. 특정 패키지`
+     as numbered plain-text choices and accept a visible name, number or slug.
 2. `package_scope`
    - `all` resolves every package and needs no follow-up.
    - `group`: present every package group as multi-select chips in one call,
@@ -38,7 +46,7 @@ instead of claiming or calling an unavailable tool.
    - On the structured path the populated option descriptions are the
      user-facing presentation; echoing the stdout table is not required. On the
      fallback, first render the complete package-group/package table from
-     `node scripts/intake.mjs packages`. Bash output may be collapsed in OMO:
+     `node .agents/skills/search-issue/scripts/intake.mjs packages`. Bash output may be collapsed in OMO:
      copy every table row into the user-facing response immediately before
      asking; an ID-only list is not a valid substitute. Ask for one or more
      visible names, selection numbers, or canonical slugs as comma-separated
@@ -46,7 +54,7 @@ instead of claiming or calling an unavailable tool.
      names both a group and package is ambiguous and must be clarified, not
      guessed.
    - Resolve the immutable package list through
-     `node scripts/intake.mjs resolve <mode> [selection...]`, passing the
+     `node .agents/skills/search-issue/scripts/intake.mjs resolve <mode> [selection...]`, passing the
      selected labels or slugs — the union across that state's questions — as
      the selections.
 3. `purposes`
@@ -55,13 +63,13 @@ instead of claiming or calling an unavailable tool.
      the label and the purpose description plus its reviewer slugs form the
      description.
    - Fallback: render the complete purpose/description/reviewer table from
-     `node scripts/intake.mjs purposes`, copy every rendered row into the
+     `node .agents/skills/search-issue/scripts/intake.mjs purposes`, copy every rendered row into the
      user-facing response immediately before asking, and never rely on
      collapsed tool output or omit the descriptions. Ask for one or more
      visible purpose names, selection numbers, or canonical slugs as
      comma-separated text.
    - Resolve the response through
-     `node scripts/intake.mjs resolve-purposes [selection...]`.
+     `node .agents/skills/search-issue/scripts/intake.mjs resolve-purposes [selection...]`.
 
 Never open with a free-form request for package names or purpose memory. Empty,
 cancelled, or unsupported answers stop before repository discovery, goal

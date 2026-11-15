@@ -24,31 +24,10 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs init --from-lane-v2 .om
 node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs plan --root . --lane <lane.json> --issue <n>
 ```
 
-The v2 ledger supplies the lane id, base, confirmed issues, dependencies,
-merge grant and approved `retry_policy`. Its source path and byte digest remain
-provenance. External issue dependencies are rejected. Read predicted conflicts before dispatch.
-Hand-initialized lanes need an explicit merge grant; importing a ledger does
-not authorize expanding its issue set.
-
-An imported `retry_policy` must contain exactly `retry_count_is_terminal`,
-`max_same_failure_repeats`, `max_wall_clock_minutes` and
-`stop_on_child_contract_error`. The terminal flag is boolean and the stop flag
-is exactly true. Both limits must be positive integers, or both null with the
-terminal flag false. Invalid policies raise `TypeError` before any lane is
-created. The pure engine applies the same validation before handling any result;
-a missing or nonnumeric bounded limit never becomes unlimited retries.
-
-`init` rejects an existing lane file, for both explicit issue specs and v2
-intake, preserving its bytes. It never resets an active lane. State writers
-(`record`, `set-fact`, `approve-merge`, `clear-blocker`) serialize the entire
-read/validate/update operation with a per-file exclusive lock and publish complete
-JSON atomically. Readers can continue during a write. Node's built-in SQLite
-holds an OS-owned write transaction on the persistent `.lock` file, with a
-60 second contention timeout that fails without changing lane state. The OS
-releases a killed writer's ownership, so subsequent writers recover without
-deleting the lock file or stealing ownership from a live process. Concurrent
-recovery contenders serialize through that same OS lock; no PID reuse or
-elapsed-time guess determines ownership. Lane data remains JSON, not SQL.
+Before initialization read [operations.md](references/operations.md#files-and-intake)
+for v2 intake and retry validation. Before recording state read that section's
+exclusive SQLite write-lock and atomic publication rules. Existing lanes are never
+reset. V2 source bytes remain provenance; import does not expand authority.
 
 ## Canonical order
 
@@ -86,53 +65,15 @@ Implementers stay in their assigned worktree; reviewers are read-only.
 
 ### Registered dispatch and admission
 
-Use the returned `dispatch` as the native task route (`subagent_type`), with
-`run_in_background: true`. `preflight` selects `fluo-issue-preflight`;
-`implement` and every `fix-back` select `fluo-issue-implementer`. A `review`
-decision maps each effective axis to `fluo-contract-reviewer`,
-`fluo-code-reviewer`, or `fluo-verification-reviewer`. Review preparation puts
-the same route on `reviewers[i].dispatch`, leaving `common` identical.
-Retrospective analysis selects `fluo-retrospective`. These six agents are
-registered in `.omo/omo.jsonc` and read their own role reference first.
-`scripts/dispatch-targets.mjs` supplies routing values, shared registration
-reading and validation. The JSONC configuration and its own `agents` map must
-be plain objects. A registered name is an own key with a plain-object definition
-(including null-prototype maps); inherited keys never count. Missing, unreadable
-or structurally invalid registration produces `dispatch-registration-unreadable`.
-A missing or invalid agent entry produces `dispatch-target-unavailable`. Both
-are typed input-preparation blocks with `fix_back_eligible: false`.
-
-Observation stays independent of registration: `plan`, `plan-all` without
-`--with-retro`, and `watch` while work remains keep working with unreadable
-configuration. Their intended `dispatch` metadata is not an availability check.
-Preparation, success admission and a new retrospective analysis request validate
-registration. When every issue is done, `watch` can therefore exit nonzero with
-the typed JSON block while preparing `RETRO-READY`; readable registration retains
-the existing output and exit behavior. Existing retrospective reports remain
-reusable without reading registration again.
-
-The lead binds actual child routing to the new `record` success wrapper:
-`{ok:true, agent:"fluo-issue-preflight", ...}` or
-`{ok:true, agent:"fluo-issue-implementer", ...}`. Keep the preflight artifact,
-implementer `Result`, and effective policy digest unchanged. Review `record`
-successes include `{ok:true, head_sha, preflight_sha256, active_axes, reviews}`;
-every envelope includes the assigned `agent`. `set-fact --kind review` applies
-the same strict new-input admission. Missing, wrong-axis, unregistered, or
-category substitute identity cannot record success. Keep raw failures as
-retrospective evidence under the existing retry contract.
-
-If a target is unregistered or cannot run, do not use a category worker.
-Record the lead's observation as
-`{ok:false,error:{kind:"input-preparation",code:"dispatch-target-unavailable",
-subagent_type:"<assigned target>",fix_back_eligible:false}}` for that phase.
-This parks it as `input-preparation` without an implementation retry; restore
-the route and clear that phase's blocker before planning again. It is never a
-reviewer product BLOCK or an implementation fix-back.
-
-Stored canonical review facts without `agent` retain their original validation,
-content, `accepted_at` and local-check/waiver bindings. Only stored-fact reading
-allows this legacy shape; new `record` and `set-fact` inputs require identity.
-Dispatch metadata never enters accepted preflight or effective policy digests.
+Use the returned `dispatch` as `subagent_type` with `run_in_background: true`.
+Only registered stage agents may supply success. A missing/unavailable route or
+invalid agent identity fails closed as typed `input-preparation` with
+`fix_back_eligible: false`; never substitute a category worker or dispatch a
+product fix-back for an input block. The lead records the actual agent identity.
+Stored legacy facts retain their original admission rules and bindings.
+Read [operations.md](references/operations.md#registered-dispatch-and-admission)
+before stage dispatch or success admission for the full registration and identity
+contract.
 
 ## Preflight and review policy
 
@@ -168,44 +109,13 @@ an omitted axis or mix heads/contracts. Record complete reviewer envelopes.
 
 ### Workflow input preparation
 
-`scripts/workflow-preparation.mjs` is the runnable preparation entry, not
-another orchestrator. Before the preflight child, run its `preflight` mode and
-pass the authenticated source-footprint sidecar into that stage. After the
-existing engine returns `review`, materialize the exact-head checkout and run
-its `review` mode with fresh observations, complete authored diff and the
-accepted focused-evidence inventory. The schemas and artifact references live
-in `../issue-preflight/SKILL.md` and `../review-head/SKILL.md`; executable
-validation lives in the preparation source. Reuse the accepted contract and
-canonical `obs.preflightPolicy`; do not alter engine actions or ledgers.
-
-Only `status:"prepared"` supplies a dispatch payload. Pass its identical
-`common` input to all returned reviewer axes in one background wave.
-`kind:"input-preparation"` is an input block, not a reviewer BLOCK or an
-implementation fix-back. Correct missing/stale evidence or re-open preflight
-for real scope expansion. Independent issue worktrees and their review waves
-remain parallel.
-
-For browser reproduction use the existing
-`node tooling/ci/react-product-acceptance.mjs capture tooling <absolute-new-output>`
-entry. CI and local capture consume the same `productDomainPlan`, package-local
-runner/config and prepared normal/form entries. Preserve seed/actions, evidence
-paths, original suite coverage, assertions, retries and timeouts. Subscribe
-through the host monitor with `persistent:true` until command close, descendant
-cleanup and normal deployment restoration. Repository code declares this host
-observer requirement; it does not modify workstation monitor defaults.
-Observer timeout is missing observation, never a test verdict. Retain failed
-and cancelled receipts and restoration results as well as successful ones.
-
-Canonical captures and isolated diagnostics must claim a fresh evidence root
-before any affected command spawns. A root with artifacts or an existing owner
-marker is rejected without changing its bytes. Child directories inside the
-owning canonical run are permitted; an isolated diagnosis never reuses that run.
-The existing owned runners retain separate complete stdout/stderr, the combined
-log, command metadata and actual close/cancellation state. Their terminal output
-is a bounded reference to the retained command receipt, not the raw stream.
-Do not rerun a completed command merely to recover clipped terminal output.
-The prepared reviewer input includes one identical readable, authenticated index
-of actual focused results and packed command/report metadata for every axis.
+Before preparing preflight or review input, read
+[operations.md](references/operations.md#workflow-input-preparation).
+Only `status: "prepared"` authorizes dispatch. Pass identical authenticated
+`common` evidence to all selected axes in one background wave; preparation
+failures are input blocks. Browser captures and diagnostics must claim a fresh
+evidence root and retain actual command-close and restoration receipts. Missing
+observation or watcher timeout never proves PASS or failure.
 
 ## Decision loop and recovery
 
@@ -217,284 +127,43 @@ of actual focused results and packed command/report metadata for every axis.
 4. Run `plan` again until every issue is observably done or has a typed
    blocker requiring a decision.
 
-Failed children requeue under the imported retry policy. Adaptive policies
-(`retry_count_is_terminal: false`) retain attempt counts, repeated failure counts
-and elapsed milliseconds as telemetry, without stopping fixable work at either
-limit. Bounded policies enforce `max_same_failure_repeats` for consecutive equal
-failure payloads and `max_wall_clock_minutes` from the phase's first failure.
-Failure identity uses `result.error`, then `result.failed_command`, then the
-result itself. `stop_on_child_contract_error` parks malformed results (no boolean
-`ok`) and explicit `error: {type: "child-contract-error"}` (even with `ok: true`) as
-`child-contract-error`. A success resets only that phase's attempts and telemetry.
-Existing v4 files with absent or null `retry_policy` retain the legacy ceiling
-of 3, including retrying malformed results. Stored null remains null; no migration
-is needed. Every non-null policy retains strict validation.
+Before retrying a failed child, clearing a blocker, or recovering observations,
+read [operations.md](references/operations.md#decision-loop-and-recovery).
+Apply the imported retry policy and preserve issue/branch/worktree/PR identity.
+Required failed GitHub observations authorize no stage action. Dependencies
+release only from fresh closed-issue observations. Subscribe through a host
+monitor to `watch` and to `gh pr checks --watch` for CI; do not poll or create
+a waiting child. Use `GH_PAGER=cat` in monitor commands.
 
-`record` persists a child-contract-error policy outcome and its raw stage event
-without admitting phase evidence, including for `resolve-conflict` and
-`verify-local`. Ordinary stage results still require their existing head and
-evidence bindings, even when a prior contract-error blocker is already present.
+## Integration coordination
 
-An exhausted attempt budget is resumable; never hide failure as success. Preserve
-the same issue/branch/worktree/optional PR during fix-back. Use a fresh implementation
-child for remediation, carrying canonical blockers and accepted preflight.
-
-To explicitly resume a parked phase, use:
-
-```text
-node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs clear-blocker --root . --lane <lane.json> --issue <n> --phase <blocked-phase>
-```
-
-The phase must match the current blocker's phase. This clears that blocker and
-resets only that phase's attempts and retry telemetry, preserving all other
-issues, facts, approvals and counters. It appends an `incident` with
-`action: "clear-blocker"`, a fresh `operation_id` and the removed blocker to the
-existing retrospective store, retaining every clear even after identical repeated
-exhaustion. Run a fresh `plan` afterward; clearing a blocker supplies no passing
-evidence or additional authority.
-
-Required PR, issue and dependency GitHub observations fail closed.
-`plan` and `plan-all` return the `observation-failed` action with
-`failures: [{source, subject, code}]`, where source is `pr`, `issue` or
-`dependency`, and code is `command-failed` or `invalid-response`. `watch`
-uses the same decisions and emits the matching action transition.
-The explicit `gh pr view` no-pull-request outcome remains a successful absence;
-authentication, network and other errors cannot become absence or changed issue
-content. Failed observations authorize no stage action, including preflight,
-implementation or PR creation. Restore observation access and plan again;
-watch reports the transition and continues observing rather than settling it
-as a policy blocker.
-
-Dependencies release from fresh GitHub issue-closed observations, not task
-completion. Use the CLI `watch` through a monitor to receive transitions and
-stall notices. For `wait-ci` subscribe once to `gh pr checks --watch`.
-Disable the GitHub pager in monitor commands (`GH_PAGER=cat`) so an earlier
-identity query cannot block the watch inside the terminal pager.
-Do not poll from the coordinator or create a child merely to wait.
+Before handling overlap, conflict or generated inputs, read
+[integration.md](references/integration.md). It owns marker opt-in, readiness
+grants and occupancy, merged-sibling ancestry, and generated integration
+evidence. Legacy lanes without `preflight_overlap` retain their old decisions,
+observation and save behavior; never backfill them. Unrelated base movement does
+not require integration. Every integration head needs fresh focused checks,
+selected exact-head reviews and full exact-head remote CI.
 
 ## Retrospective capture and lane completion
 
-### Generated consumer integration coordination
-
-New create-lane plans opt into preflight overlap coordination with
-`preflight_overlap: 1`. Direct `init --issue` also serves lane recovery and
-omits the marker by default. Activate a new manual lane explicitly with
-`init --lane-id <id> --issue <n> --preflight-overlap`; this boolean flag records 1
-and grants no merge authority. Combining it with `--from-lane-v2` is rejected:
-import preserves the plan's own marker presence or absence. Conflicting init
-preserves the existing file byte for byte. Legacy lanes without the marker
-retain the exact old decisions and observation path, including on recovery
-and save. Never backfill existing lane files.
-
-For opted-in lanes, `plan`, `plan-all` and `watch` expose `overlaps` with
-the sibling issue, observed head, PR, state and sorted intersecting files.
-Only two currently valid accepted preflights' explicit `predicted_files`
-intersect; scope prefixes and file kinds do not alter that rule. Ready
-preflights and implementations remain parallel.
-
-`wait-preflight-overlap` replaces only a new `review` action. Before dispatching
-background reviewers, wait until `plan` actually returns `review`. On marker
-lanes that return, `plan-all` and each `watch` tick save a head-bound
-`facts["review-readiness"] = { head, value: { policy_sha256, sequence, active } }`
-before exposing a first review grant. `plan` grants only its requested issue;
-`plan-all` and `watch` grant only review rows they output, never internal or
-waiting rows. Replanning a current grant does not rewrite it.
-
-The shared snapshot takes the existing SQLite write transaction around fresh
-lane reading, observation, invalidation, coordination and saving. `watch`
-releases it every tick, before reviewer work, CI or waiting for another tick.
-This transaction protects the fact write; the fact stores neither a lock nor
-a selected sibling, owner, session or lease. Legacy snapshots stay read-only.
-
-GRANTABLE means the final coordinated decision is `review`, with a valid
-accepted preflight, implementation head and successful own observation. Every
-returned GRANTABLE row receives its head/policy-bound fact before output,
-including rows with no overlap and a CLOSED PR or CLOSED issue.
-
-OCCUPANT is the separate sibling selection predicate: a valid accepted
-preflight, implementation head, successful own observation and an action of `review`,
-`create-pr`, `push`, `wait-ci`, `wait-mergeability`, `request-merge-approval` or
-`merge`, excluding CLOSED issues and CLOSED/MERGED PRs. Select occupants
-greedily by valid active readiness sequence, then issue number; ungranted
-occupants follow by issue number. OPEN PRs and current PASS give no priority.
-A GRANTABLE row that is not an OCCUPANT reserves no place against siblings.
-Existing publication and CI keep their grant. A waiting review names
-only directly overlapping selected candidates, which never wait on each other.
-
-Head or effective-policy changes and observing fix-back, conflict resolution,
-blockers, failed observation, dependencies, preflight, implementation or
-non-review termination deactivate the grant. A GRANTABLE non-occupant still at
-`review` keeps its valid fact: unchanged re-plans neither rewrite nor renumber it,
-and same-head re-observation does not deactivate it.
-`record`, `set-fact` and `clear-blocker`
-invalidate directly established changes in their own write transaction.
-Keep inactive facts: a new grant uses the lane-wide maximum preserved sequence
-plus one. Independent reviews first returned in one snapshot share a sequence.
-Neither timestamps nor clock movement affect ordering. New heads and recovered
-issues receive new grants rather than inheriting their former place.
-
-Failed observations remove only that issue from occupancy and preserve its
-`observation-failed`; they do not block another sibling's review. The merged
-sibling ancestry gate below remains mandatory. Recompute targets on each
-snapshot; `overlaps[].state` shows each sibling's pre-coordination action.
-`watch` prints selected siblings and reports same-action changes to siblings,
-files or overlaps, including a blocker that changes which sibling is selected.
-
-Resolve each overlapping row's eligibility before selecting occupants. An
-integration `observation-failed` or `resolve-conflict` row cannot reserve a
-place or become another review's wait target. A terminated overlapping row
-cannot expose an ungranted `review`: an unmerged CLOSED PR uses the existing
-`pr-closed-externally` blocker, while a CLOSED issue with an OPEN PR is blocked
-as `issue-closed-externally` rather than authorizing review, merge or cleanup.
-Rows with no overlap retain their base decisions exactly. If an overlapping
-accepted sibling preflight appears later, the terminated row takes the blocked
-outcome above and its fact becomes inactive while preserving its sequence.
-It holds no place against the sibling. The coordinator uses OCCUPANT for
-overlap admission and shares GRANTABLE with the grant writer for returned reviews.
-
-On marker lanes, loading validates the exact readiness fact fields before
-observation or mutation: `head` and `policy_sha256` have their SHA formats,
-`sequence` is a positive safe integer, and `active` is boolean. Missing,
-unknown or malformed fields produce `invalid-review-readiness` with the
-issue and field, leaving the ledger unchanged. A well-formed stale binding
-still deactivates normally. Legacy lanes skip this validation entirely,
-including when they happen to contain a malformed readiness key.
-
-When an overlapping sibling merges, verify its actual PR `mergeCommit` is in
-observed origin/base and the review head. Missing or unreadable base ancestry
-fails closed. If the head lacks that commit, resolve its integration eligibility
-before selecting occupants: handle `resolve-conflict` with reason
-`preflight-overlap-base-integration` through the existing lead integration path,
-including when the issue has no PR (the decision then omits `pr`). Merge the
-specified `base` in the assigned issue worktree, run focused checks and record
-`resolve-conflict` with the new `head_sha`. Existing generated-integration
-receipts still apply when required. Reuse workflow-preparation's focused
-receipt and exact-head review gates: old-head review, local evidence and
-remote CI never validate the new head. Reviewers remain read-only.
-Unrelated base movement alone does not request integration.
-
-`plan`, `plan-all` and `watch` share fresh lane-wide observations. For an actual
-`CONFLICTING` PR at the local head, a generated-consumer hint can defer integration
-with `wait-generated-integration` while a related sibling is independently ready
-to merge. The decision lists exact sibling heads and PRs. Finish those merges,
-then observe again before resolving the conflict once. A missing/stale review,
-pending/failing CI, unknown mergeability or missing merge authority does not make
-a sibling ready. Readiness loss, a completed merge or restart releases/recomputes
-the wait; no persisted dependency or waiting lock is created. Implementation
-remains parallel. Hints and unrelated main advancement never force integration.
-An already reviewed mergeable head with CI running remains `wait-ci`.
-
-The accepted base stays pinned and must remain an ancestor of both current issue
-head and observed base; scope remains current merge-base-to-head. Incorporating
-changed generated inputs for tracked consumers or hints retained in existing ledgers
-requires new-head integration evidence, not base-SHA freshness. Record `resolve-conflict` with current `head_sha` and
-`generated_integration: { head, outputs, checks }`. Each output binds its surface,
-canonical read-only generation command, exit code, expected-path and artifact
-digests, and explicit `normalizeSourceFingerprint` choice. Expected files and
-focused/browser raw-log receipts live in the issue worktree's disposable
-`.omo/generated-integration/` harness. Admission executes authoritative
-generation checking and verifies whole-file byte equality, normalizing only
-sourceFingerprint values when required. Every focused/browser receipt binds the
-new head and raw log digest. Missing, stale or tampered evidence fails closed.
-All selected exact-head reviews and full exact-head GitHub CI must then run again;
-old-head PASS, CI or patch-equivalence claims do not carry forward.
-
-For measurements, `record --result-json` accepts optional `measurements` work
-units with `{ runId, attempt, stage, head, clock, elapsedMs, scope }`. Stages are
-`integration`, `focused`, `browser`, `review:contract`, `review:code`,
-`review:verification`, or `ci`; scope is `stage-execution`. Measure actual work
-with a monotonic clock, retain unique run/attempt identities, and use
-`clock: simulation` only for event fixtures. Unknown durations are null, not zero.
-Planning/watch observations separately retain process identity and monotonic
-observation times. The retrospective reader computes head-specific stage counts,
-superseded validation heads and separate dependency/coordination observed waits;
-a restart without an observed wait end remains unknown. Neither `recordedAt`
-nor simulation timing proves elapsed execution or a CI budget. Compare identical
-initial state, changes, merge/CI schedule, final source and gate coverage, and
-report worse or inconclusive outcomes without reducing checks, retries or timeouts.
-
-Read `../retrospective-lane/SKILL.md` when starting or resuming execution. The lead
-retains individual reviewer responses before aggregation/adjudication and
-unsuccessful implementer returns before retry using `retro-record`. Keep task,
-head, model, failed command and actual receipt/log references when available.
-Record reproduction/adjudication separately: a reported BLOCK is not proof of
-an implementation defect. Success must not overwrite the original incident.
-
-The CLI retains `record` outcomes and review `set-fact` inputs outside the lane
-ledger. CI failures are captured by actual run/attempt/job identity. Call
-`retro-ci` on a failure notification before fix-back; merge/fix-back recording
-and CI watch transitions also capture history. Missing API evidence becomes an
-explicit collection gap, never a passing gate or an absent-failure claim.
-
-All CLI `gh` observations run with `GH_PAGER=cat`. Before retrospective dispatch,
-fresh PR observations include final-head applicable run/attempt identities.
-`collect-ci` / `input-preparation` means retain/recollect the missing final CI
-events and refresh observations; it is not product failure or implementation
-fix-back. Earlier-head success, earlier attempts and incomplete job collection
-cannot unblock dispatch. Older failures remain immutable after recollection.
-
-Use `plan-all --with-retro` for the completion handoff. It preserves the issue
-decisions but reports `settled: false` and a `retrospective.action: retro`
-until the completed merge set has its report. The legacy `plan-all` array
-remains an execution-only interface, not a retrospective completion verdict.
-When fresh issue decisions are all `done`, execution is finished but the
-completion handoff still includes the one aggregate retrospective. `watch`
-emits `RETRO-READY` at that boundary. Follow the retrospective skill's
-`retro-plan -> retro-evidence -> fluo-retrospective -> retro-report` flow, then
-return the report and strongest evidence-backed improvement proposals.
-Repeated observations of the same completed merge set reuse the report.
-Legacy execution ledgers remain unchanged and completed issues never reopen
-for analysis; missing older history is reported as partial coverage.
-
-Recommendations do not automatically change workflow, tests, skills, rules,
-models, or remote state. Applying them is separate scoped work. All incident
-data and reports live in `.omo/retros/`, outside disposable issue worktrees
-and separate from `.omo/lanes/` and `.omo/lanes-v4/`.
+Read [retrospective.md](references/retrospective.md) when starting or resuming
+execution, recording measurements or incidents, and completing the lane.
+Retain original reviewer and unsuccessful implementer returns before retry or
+adjudication. Use `plan-all --with-retro` for completion: all issues done ends
+execution, but the handoff includes one aggregate retrospective. Incident data
+stays outside execution ledgers and supplies no passing gate or authority.
+Applying recommendations requires separate scoped work.
 
 ## Local and remote gates
 
-### Authenticated known baseline before publication
-
-The lead may register a confirmed common baseline only for explicitly related
-lane issues with `set-fact --kind known-baseline --issue <related-issue> --value
-'<record-json>'`. `scripts/known-baseline.mjs` authenticates version 1 records:
-`{version,id,issues,failure,companion,adjudication}`. Both checks bind
-`{head,command,sources,conditions,test_source,log,receipt}`; file references are
-`{path,sha256}`. Sources, immutable conditions and test source name committed
-bytes at each exact head. Logs and receipts name nonempty artifacts under the
-observation root. Receipts bind
-`{version,head,command,completed,signal,status,exit_code,log_sha256,source_sha256}`.
-`source_sha256` hashes `JSON.stringify({sources,conditions,test_source})`.
-The completed failure has a positive exit code; the companion has exit code 0.
-Both use the same command, conditions and unchanged test source. A companion
-changes related source, not assertions, scope, retries or timeouts.
-
-Adjudication is `{authority:"lead",cause:"confirmed-common-baseline",
-failure_head,companion_head,reason}` bound to both checks. Reviewer claims,
-UNKNOWN causes, watcher timeouts and historical retrospective event labels
-are not admission evidence. Invalid admission leaves the lane file unchanged.
-The README companion example requires actually running
-`pnpm vitest run tooling/governance/runtime-matrix-docs-contract.test.ts`
-at the companion checkout and retaining all 17 PASS results with command,
-head, test-source and raw-log digest binding.
-
-Fresh publication observation reauthenticates admitted artifacts and compares
-current committed source, conditions and test bytes. It returns `still-failing`,
-`fixed`, `different-source-or-conditions` or `insufficient-evidence` with exact
-comparison evidence. Missing or altered admitted proof blocks preparation;
-it is never silently treated as no record. An applicable identical failure
-returns canonical `fix-back` in the existing branch/worktree/PR. Different or
-insufficient evidence blocks publication for lead adjudication. No record,
-unconfirmed siblings and unrelated main advances add no integration requirement.
-This observation neither executes tests nor automatically integrates a companion.
-
-Companion application stays inside the accepted preflight and ownership boundary;
-scope expansion returns to preflight. The approved base stays pinned. A changed
-head requires affected focused checks and new selected exact-head reviews before
-creating or pushing the same PR; earlier review, local evidence and remote CI PASS
-do not transfer. Merge still requires full exact-head canonical GitHub CI,
-mergeability and authority. Independent implementation, review and CI stay
-parallel; this gate does not serialize branches or impose automatic full local CI.
+Before registering or judging a common baseline, read
+[known-baseline.md](references/known-baseline.md). Admission and fresh
+applicability checks authenticate exact-head committed source, conditions,
+test bytes, failure/companion receipts and lead adjudication. Applicable
+failures require fix-back; insufficient or different evidence blocks publication.
+A baseline does not authorize scope expansion, automatic integration or reuse of
+old-head checks.
 
 Public consumer-visible package changes require a Changeset before review.
 Package-root README/LICENSE files ship too; unrelated root docs do not imply
@@ -523,62 +192,12 @@ merge and cleanup, never a stage reviewer.
 
 ### Optional full-local-CI omission audit
 
-When the operator has explicitly instructed the lane not to run full local CI,
-the lead may retain that existing instruction through `local-ci-waiver` after
-every selected review passes at the current head. Do not infer authority from
-preflight prose, automatically create a waiver, or run a prohibited verifier to
-produce a receipt. This is optional audit evidence, not a publication gate:
-no change requires a waiver to omit full local CI. The fact never proves execution;
-focused checks, preflight, scope, dependencies, Changesets, review, remote
-head equality, full remote CI, mergeability and merge authority still apply.
-An applicable local failure, including failed receipt revalidation, still
-requires fix-back. Registration neither clears failures nor resets attempts or
-blockers.
-
-Use fresh `plan` observations and `localCheckBinding(obs.review,
-obs.reviewAcceptedAt)` from `scripts/lane-v4.mjs`. Supply exactly:
-
-```text
-{
-  laneId, issue, status: "waived", scope: "full-local-ci",
-  preflightSha256, reviewSha256, reviewAcceptedAt,
-  authority: "explicit-operator-instruction",
-  evidence: {
-    kind: "accepted-preflight",
-    contractSha256,
-    criteria: ["A12", "V12", "SE-V05"]
-  }
-}
-```
-
-The three binding fields come from `localCheckBinding`: `preflightSha256` is
-the effective review policy digest, not the accepted contract digest.
-`evidence.contractSha256` is `obs.preflight.sha256`, the canonical accepted
-artifact digest. `criteria` contains nonempty, distinct criterion references
-for the already accepted instruction; the identifiers above illustrate such
-references, not automatic authorization or a prose-matching rule.
-
-```text
-node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs set-fact --root . --lane <lane.json> --issue <n> --kind local-ci-waiver --head <current-head> --value '<waiver-json>'
-```
-
-The CLI re-observes head, contract, effective policy and selected review PASS,
-then rejects stale caller bindings instead of rebinding them. It stores
-`{ head, accepted_at, value }` in `facts["local-ci-waiver"]` and exposes that
-wrapper as `obs.localCiWaiver`, separately from `obs.localChecks`.
-`accepted_at` records the assertion time only. Receipt fields, `status:
-"passed"`, `valid: true`, execution timestamps and unknown keys are rejected.
-A waived gate must be reported as waived, never as passed or executed.
-
-Head, lane/issue, contract, policy, review content or review acceptance changes
-invalidate the waiver. Replacing preflight or review clears it alongside local
-checks; identical accepted preflight re-registration preserves those facts.
-An unrelated main advance preserves the pinned valid ancestor and binding.
-A new head needs all selected reviews; retaining the optional audit fact on that
-head requires explicit registration under the still-applicable operator
-instruction. The audit binding is never carried forward automatically.
-Remote rollup handling is unchanged: this audit fact does not
-prove a required check count or replace the lead's complete remote-CI evidence.
+When retaining an explicitly instructed omission audit, read
+[local-ci-waiver.md](references/local-ci-waiver.md) before registration.
+It is optional assertion evidence after selected review PASS, never proof of
+execution or a publication prerequisite. Do not infer instruction, create a
+passing receipt for omission, or clear applicable local failures. All other
+focused, review, remote CI, mergeability and authority gates remain required.
 
 For conflicts, preserve both intended behaviors and return the resolved new
 head through focused checks, review and the applicable CI gates. Do not reuse old approvals by claiming the

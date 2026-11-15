@@ -1,3 +1,4 @@
+import { isPlanningLaneLedger } from '../../.agents/workflow-contracts/contracts.mjs';
 import {
   activeStatuses,
   assert,
@@ -239,6 +240,7 @@ function validateReleaseHandoffs(path, ledger, progressByIssue) {
 
 export function validateLedger(path, ledger) {
   validateLedgerShape(path, ledger);
+  const planning = isPlanningLaneLedger(ledger);
   const confirmedIssues = new Set(ledger.confirmed_issues);
   const releaseHandoffs = new Set(ledger.release_handoffs);
   assert(
@@ -251,8 +253,8 @@ export function validateLedger(path, ledger) {
 
   const completedIssues = new Set(ledger.completed_issues);
   const prAssignments = new Map();
-  const laneValidation = { completedIssues, prAssignments };
-  validateRootRelationship(path, ledger);
+  const laneValidation = { completedIssues, prAssignments, planning };
+  if (!planning) validateRootRelationship(path, ledger);
   for (const [index, lane] of ledger.lanes.entries()) {
     validateLaneShape(`${path}:lanes[${index}]`, lane, laneValidation);
     if (lane.status === 'merged') {
@@ -263,7 +265,7 @@ export function validateLedger(path, ledger) {
       }
     }
   }
-  validateRootMainSync(path, ledger);
+  if (!planning) validateRootMainSync(path, ledger);
 
   const queuedIssueList = ledger.lanes.flatMap((lane) => lane.queue);
   const queuedIssues = new Set(queuedIssueList);
@@ -274,6 +276,13 @@ export function validateLedger(path, ledger) {
     [...confirmedIssues].every((issue) => queuedIssues.has(issue));
   assert(sameConfirmedQueueIssues, path, 'confirmed_issues and lane queues must contain the same unique positive issue numbers');
 
+  if (planning) {
+    for (const issue of releaseHandoffs) {
+      assert(ledger.lanes.some((lane) => lane.queue.length === 1 && lane.queue[0] === issue),
+        path, 'release handoff must occupy a dedicated single-issue lane');
+    }
+    return;
+  }
   const progressByIssue = validateIssueProgress(path, ledger, prAssignments);
   assert(isObject(ledger.issue_progress), path, 'issue_progress must be an object');
   const relationshipValidation = {
