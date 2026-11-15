@@ -118,6 +118,47 @@ test('#4099 retention classifier: closed explanatory roles -> eligibility withou
   assert.deepEqual(classifyReviewAxes(['docs/guides/generated.md']), ['contract']);
 });
 
+test('#4099 fix-back: governance role case variants -> excluded while explanatory guides remain eligible', () => {
+  const matrix = [
+    ['docs/guides/routing.md', true],
+    ['docs/guides/governance.md', false],
+    ['docs/guides/GOVERNANCE.md', false],
+    ['docs/guides/Governance.md', false],
+    ['docs/architecture/Review-GOVERNANCE/routing.md', false],
+    ['book/advanced/ch01-Governance.md', false],
+    ['docs/guides/release.md', false],
+    ['docs/guides/RELEASE.md', false],
+    ['docs/guides/Release/checks.md', false],
+    ['docs/guides/ci.md', false],
+    ['docs/guides/CI.md', false],
+    ['docs/guides/Ci/checks.md', false],
+    ['docs/guides/policy.md', false],
+    ['docs/guides/POLICY.md', false],
+    ['docs/guides/Review-Policy.md', false],
+    ['docs/guides/Policies/checks.md', false],
+    ['docs/guides/routing.mdx', false],
+    ['docs/guides/routing.MDX', false],
+    ['docs/guides/routing.Mdx', false],
+    ['docs/guides/agents.md', false],
+    ['docs/guides/sKiLl.md', false],
+    ['docs/guides/routing.INSTRUCTIONS.md', false],
+    ['docs/guides/TESTS/routing.md', false],
+    ['docs/guides/FIXTURES/routing.md', false],
+    ['docs/guides/EXAMPLES/routing.md', false],
+    ['docs/guides/GENERATED/routing.md', false],
+    ['docs/guides/BUILD/routing.md', false],
+    ['docs/guides/DIST/routing.md', false],
+    ['docs/guides/SNAPSHOT.md', false],
+    ['docs/guides/MANIFEST.md', false],
+    ['docs/guides/LOCKFILE.md', false],
+  ];
+
+  for (const [path, eligible] of matrix) {
+    assert.equal(isRetentionProsePath(path), eligible, path);
+  }
+  assert.deepEqual(classifyReviewAxes(['docs/guides/GOVERNANCE.md']), ['contract']);
+});
+
 test('#4091 review admission: assigned identities -> accepted; missing or substituted identities -> rejected', () => {
   const obs = ciObservation();
   const { policy } = evaluatePreflight(obs.preflight, obs);

@@ -43,6 +43,7 @@ const omissionsFor = (axes) => Object.fromEntries(REVIEW_AXES.filter((a) => !axe
 // Git observation must additionally rule out machine consumption and generation.
 export const isRetentionProsePath = (path) =>
   classifyReviewAxes([path]).join(',') === 'contract'
+  && !/(?:^|[/-])(?:governance|release|ci|policy|policies)(?:[/.\-]|$)/iu.test(path)
   && !/(?:^|\/)(?:AGENTS|CLAUDE|SKILL|CONTEXT|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|copilot-instructions)(?:\.[^/]*)?\.md$|\.instructions\.md$/iu.test(path)
   && !/(?:^|[/.])(?:test|spec|test-fixture)(?:[/.]|$)/iu.test(path)
   && !/(?:^|\/)(?:tests?|specs?|__tests__|fixtures|__fixtures__|test-fixtures|test-types|examples?|generated|dist|build|snapshots?)(?:\/|[.-])/iu.test(path)

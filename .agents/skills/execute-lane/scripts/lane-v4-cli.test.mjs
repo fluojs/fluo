@@ -73,6 +73,20 @@ test('#4099 CLI: disjoint upstream merge plus prose -> contract dispatch, retain
   assert.equal(f.plan().decision.action, 'push');
 });
 
+test('#4099 fix-back CLI: only uppercase governance authored delta -> full policy dispatch without retention', (t) => {
+  const f = retentionFixture(t);
+  f.commit('docs/guides/GOVERNANCE.md', '# Review requirements\n');
+
+  const row = f.plan();
+
+  assert.deepEqual(row.obs.changedFiles, ['docs/guide.md', 'docs/guides/GOVERNANCE.md', 'docs/guides/routing.md', 'src/router.ts']);
+  assert.deepEqual(f.git(f.worktree, 'diff', '--name-only', '--no-renames', f.previous.head, row.obs.headSha),
+    'docs/guides/GOVERNANCE.md');
+  assert.deepEqual(row.decision.policy.active_axes, ['contract', 'code', 'verification']);
+  assert.deepEqual(Object.keys(row.decision.dispatch), ['contract', 'code', 'verification']);
+  assert.equal(row.obs.reviewRetention, undefined);
+});
+
 for (const [role, path, bytes] of [
   ['runtime', 'src/router.ts', 'export const value = 2;\n'],
   ['test', 'tests/router.test.ts', 'test input\n'],
