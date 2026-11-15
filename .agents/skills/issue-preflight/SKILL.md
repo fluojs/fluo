@@ -93,6 +93,16 @@ Newly implicated axes are added; a child cannot shrink the policy. Scope or
 contract changes return to preflight, not an implementer-authored exception.
 A changed contract invalidates evidence bound to its earlier digest.
 
+The explanatory-document retention exception does not change this classifier,
+accepted axes, policy floor or digest. `isRetentionProsePath` is a narrower
+closed classification used only with CLI Git observation: root/package README
+pairs, selected explanatory docs directories and numbered Book chapters.
+Generated, executable, instruction, governance and machine-read Markdown are
+excluded. Uncertainty requires full review. The CLI must authenticate both
+authored path sets, their head delta and unchanged non-prose blobs/modes before
+retaining an active code/verification PASS; contract always receives fresh
+review. See `review-head` for proof shape, nested validation and invalidation.
+
 ## Machine interface
 
 Read `scripts/contracts.mjs`. `createPreflight(input)` returns a validated

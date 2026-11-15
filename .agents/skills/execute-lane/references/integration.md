@@ -97,8 +97,11 @@ including when the issue has no PR (the decision then omits `pr`). Merge the
 specified `base` in the assigned issue worktree, run focused checks and record
 `resolve-conflict` with the new `head_sha`. Existing generated-integration
 receipts still apply when required. Reuse workflow-preparation's focused
-receipt and exact-head review gates: old-head review, local evidence and
-remote CI never validate the new head. Reviewers remain read-only.
+receipt and exact-head review gates: raw old-head review, local evidence and
+remote CI never validate the new head. Only the Git-authenticated explanatory
+retention exception in `review-head` can preserve code/verification PASS;
+contract is fresh, policy remains full, and every nested proof is rechecked.
+Reviewers remain read-only.
 Unrelated base movement alone does not request integration.
 
 `plan`, `plan-all` and `watch` share fresh lane-wide observations. For an actual
@@ -124,5 +127,11 @@ focused/browser raw-log receipts live in the issue worktree's disposable
 generation checking and verifies whole-file byte equality, normalizing only
 sourceFingerprint values when required. Every focused/browser receipt binds the
 new head and raw log digest. Missing, stale or tampered evidence fails closed.
-All selected exact-head reviews and full exact-head GitHub CI must then run again;
-old-head PASS, CI or patch-equivalence claims do not carry forward.
+All fresh required reviews and full exact-head GitHub CI must then run again.
+CLI-authenticated explanatory-document retention may preserve original
+code/verification PASS only when both authored path sets and their delta prove
+unchanged non-prose raw blobs and modes. Changed generated output, missing or
+uncertain observation requires full review. Full policy/floor/digest remain
+unchanged; new focused checks, readiness invalidation, sibling ancestry,
+whole generated-output validation and browser receipts remain required.
+Old local-check/waiver, CI or patch-equivalence claims do not carry forward.

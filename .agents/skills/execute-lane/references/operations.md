@@ -92,6 +92,21 @@ content, `accepted_at` and local-check/waiver bindings. Only stored-fact reading
 allows this legacy shape; new `record` and `set-fact` inputs require identity.
 Dispatch metadata never enters accepted preflight or effective policy digests.
 
+`obs.reviewRetention` is derived solely from canonical stored PASS plus Git:
+both merge-bases against immutable origin/base, both `--no-renames -z` authored
+diffs, their union intersected with the head delta, and raw non-prose blob
+SHA-256/mode comparisons. The full policy/floor/digest remain unchanged;
+`freshReviewAxes` and review dispatch describe only fresh work. Contract is
+always fresh. Closed explanatory-role classification excludes instruction,
+governance, generated and machine-read Markdown. Unreadable or uncertain
+observation means no reduction. `record --phase review` and
+`set-fact --kind review` use the same derived proof and reject caller claims.
+Stored optional `retention` follows the exact shape in `review-head/SKILL.md`,
+preserving original PASS, identities, acceptance time, comparison coverage and
+every nested hop. Observation reauthenticates it against Git. Preparation
+independently checks fresh dispatch and complete evidence. New-head local
+checks/waivers and full remote CI are never inherited through retention.
+
 
 ### Workflow input preparation
 

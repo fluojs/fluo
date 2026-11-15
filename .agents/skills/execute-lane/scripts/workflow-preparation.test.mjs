@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { buildReviewFact } from '../../review-head/scripts/contracts.mjs';
+import { observeReviewRetention } from './lane-v4-cli.mjs';
 import { prepareReviewInput, prepareSourceFootprint, sourceFootprintCategories } from './workflow-preparation.mjs';
 import { readRegisteredAgents, validateDispatchTarget } from './dispatch-targets.mjs';
 import { createCommandRunner } from '../../../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
@@ -88,6 +90,69 @@ function fixture(t) {
     diff, changed_paths: ['source.mjs'], required_checks: ['node focused check'],
     evidence: [{ command: 'node focused check', receipt: store('focused.json', receipt) }], footprint };
   return { root, input, store, receipt, footprintInput, base, baseHead, head, tree };
+}
+
+function retainedPreparation(t) {
+  const value = fixture(t);
+  const { input } = value;
+  input.contract = createPreflight({ ...input.contract, scope: ['source.mjs', 'docs/'] });
+  input.policy = evaluatePreflight(input.contract, { issue: 42, issueSha256: input.issue_sha256,
+    baseSha: value.base, changedFiles: ['source.mjs'] }).policy;
+  const previous = buildReviewFact({ head_sha: value.head, preflight_sha256: input.policy.sha256,
+    active_axes: input.policy.active_axes, reviews: input.policy.active_axes.map((reviewer) => ({
+      reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: value.head,
+      preflight_sha256: input.policy.sha256, verdict_signal: 'PASS', blockers: [],
+    })) }, value.head, input.policy);
+  mkdirSync(join(value.root, 'docs/guides'), { recursive: true });
+  writeFileSync(join(value.root, 'docs/guides/routing.md'), '# Routing\n');
+  git(value.root, 'add', 'docs/guides/routing.md');
+  git(value.root, 'commit', '-qm', 'explanation');
+  input.head_sha = git(value.root, 'rev-parse', 'HEAD');
+  git(input.checkout, 'checkout', '--detach', '-q', input.head_sha);
+  input.changed_paths = ['docs/guides/routing.md', 'source.mjs'];
+  input.diff = value.store('retained.diff', execFileSync('git',
+    ['diff', '--binary', '--full-index', '--no-renames', value.baseHead, input.head_sha], { cwd: value.root, encoding: 'utf8' }));
+  writeFileSync(input.accepted_contract_path, JSON.stringify(input.contract));
+  input.evidence[0].receipt = value.store('retained-receipt.json', { ...value.receipt,
+    head_sha: input.head_sha, tree_sha: git(input.checkout, 'rev-parse', 'HEAD^{tree}'),
+    contract_sha256: input.contract.sha256 });
+  const proof = observeReviewRetention(value.root, { previousReview: previous,
+    previousAcceptedAt: '2026-01-01T00:00:00.000Z', headSha: input.head_sha,
+    baseHeadSha: value.baseHead, policy: input.policy, worktree: input.checkout });
+  assert.ok(proof);
+  const observation = { issue: 42, decision: { action: 'review',
+    dispatch: { contract: { subagent_type: 'fluo-contract-reviewer' } } }, obs: {
+    preflight: input.contract, preflightPolicy: input.policy, issueSha256: input.issue_sha256,
+    baseSha: value.base, headSha: input.head_sha, changedFiles: input.changed_paths, reviewRetention: proof,
+  } };
+  input.observation = value.store('retained-plan.json', observation);
+  return { ...value, observation };
+}
+
+test('#4099 preparation: independently authenticated retention -> only fresh reviewers with complete common evidence', (t) => {
+  const value = retainedPreparation(t);
+
+  const result = prepareReviewInput(value.input);
+
+  assert.deepEqual(result.reviewers.map((reviewer) => reviewer.reviewer), ['contract']);
+  assert.equal(result.reviewers[0].input, result.common);
+  assert.deepEqual(result.common.policy.active_axes, ['contract', 'code', 'verification']);
+  assert.deepEqual(result.common.retention, value.observation.obs.reviewRetention);
+  assert.deepEqual(result.common.changed_paths, ['docs/guides/routing.md', 'source.mjs']);
+  assert.deepEqual(result.common.required_checks, ['node focused check']);
+});
+
+for (const mutation of ['narrowed-without-proof', 'manifest-omission', 'digest-tampering', 'missing-receipt']) {
+  test(`#4099 preparation: ${mutation} -> input-preparation`, (t) => {
+    const value = retainedPreparation(t);
+    if (mutation === 'narrowed-without-proof') delete value.observation.obs.reviewRetention;
+    if (mutation === 'manifest-omission') value.observation.obs.reviewRetention.compared_files = [];
+    if (mutation === 'digest-tampering') value.observation.obs.reviewRetention.compared_files[0].new_sha256 = '0'.repeat(64);
+    if (mutation === 'missing-receipt') value.input.evidence = [];
+    value.input.observation = value.store('altered-plan.json', value.observation);
+
+    assert.throws(() => prepareReviewInput(value.input), (error) => error.kind === 'input-preparation');
+  });
 }
 
 test('review preparation: real merged graph -> one identical authenticated input for every axis', (t) => {

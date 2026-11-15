@@ -25,10 +25,11 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import {
 	buildVerificationPlan,
 	manifestPath,
@@ -41,6 +42,7 @@ import { collectIdentity } from "../../../../tooling/ci/verify-local.mjs";
 import { assertPredictedConflicts } from "../../../workflow-contracts/contracts.mjs";
 import {
 	evaluatePreflight,
+	isRetentionProsePath,
 	issueDigest,
 	validatePreflight,
 } from "../../issue-preflight/scripts/contracts.mjs";
@@ -54,6 +56,7 @@ import {
 } from "../../retrospective-lane/scripts/retro.mjs";
 import {
 	buildReviewFact,
+	retentionFreshAxes,
 	validateReviewFact,
 } from "../../review-head/scripts/contracts.mjs";
 import { coordinateGeneratedIntegration, coordinatePreflightOverlap, reviewReadinessState, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
@@ -496,6 +499,104 @@ export const laneV2ToInitSpecs = (laneV2) => {
 	};
 };
 
+// Returns no exception to exact-head review when any Git observation is uncertain.
+// Callers supply canonical stored evidence, never claims from a review submission.
+export const observeReviewRetention = (root, { previousReview, previousAcceptedAt, headSha, baseHeadSha, policy, worktree, checkoutHeadSha = headSha }) => {
+	try {
+		if (!previousReview || !policy || !worktree || previousReview.head === headSha) return undefined;
+		const git = (...args) => execFileSync("git", args, {
+			cwd: root, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"],
+		});
+		const text = (...args) => git(...args).toString().trim();
+		const previousHead = previousReview.head;
+		if (validateReviewFact(previousReview, previousHead, policy).verdict !== "pass") return undefined;
+		if (text("-C", worktree, "rev-parse", "HEAD") !== checkoutHeadSha
+			|| text("-C", worktree, "status", "--porcelain=v1") !== ""
+			|| realpathSync(text("-C", worktree, "rev-parse", "--show-toplevel")) !== realpathSync(worktree)) return undefined;
+		for (const sha of [previousHead, headSha, baseHeadSha]) {
+			if (typeof sha !== "string" || !/^[a-f0-9]{40}$/u.test(sha)
+				|| text("rev-parse", "--verify", `${sha}^{commit}`) !== sha) return undefined;
+		}
+		// Conflict integration appends a head; rewritten/unrelated history has no retention proof.
+		git("merge-base", "--is-ancestor", previousHead, headSha);
+		git("merge-base", "--is-ancestor", headSha, checkoutHeadSha);
+		const previousBase = text("merge-base", previousHead, baseHeadSha);
+		const newBase = text("merge-base", headSha, baseHeadSha);
+		const paths = (from, to) => {
+			const bytes = git("diff", "--name-only", "--no-renames", "-z", from, to);
+			if (!Buffer.from(bytes.toString()).equals(bytes)) throw new TypeError("Unreadable Git paths");
+			const result = bytes.toString().split("\0").filter(Boolean);
+			if (result.some((path) => !path || path.includes("\\") || /[\x00-\x1f*?]/u.test(path)
+				|| path.split("/").some((part) => !part || part === "." || part === ".."))) {
+				throw new TypeError("Ambiguous Git path");
+			}
+			return result;
+		};
+		const authored = [...new Set([...paths(previousBase, previousHead), ...paths(newBase, headSha)])].sort();
+		const changed = paths(previousHead, headSha).filter((path) => authored.includes(path)).sort();
+		if (!changed.length || !changed.every(isRetentionProsePath)) return undefined;
+		const entry = (head, path) => {
+			const bytes = git("ls-tree", "-z", head, "--", path).toString();
+			if (!bytes) return { sha256: null, mode: null };
+			const match = /^([0-7]{6}) blob ([a-f0-9]{40})\t([^\0]+)\0$/u.exec(bytes);
+			if (!match || match[3] !== path) throw new TypeError("Unreadable Git entry");
+			const blob = git("cat-file", "blob", match[2]);
+			return { sha256: sha256(blob), mode: match[1], blob };
+		};
+		const prose = (path) => {
+			if (!isRetentionProsePath(path)) return false;
+			for (const head of [previousHead, headSha]) {
+				const file = entry(head, path);
+				if (file.mode === null) continue;
+				if (file.mode !== "100644" || !Buffer.from(file.blob.toString()).equals(file.blob)
+					|| /(?:^---\s*$|@generated|auto[- ]generated|do not edit|<!--[^>]*(?:sentinel|machine|generated|source|fixture)|sourceFingerprint)/imu.test(file.blob.toString())) return false;
+				// Source consumers (including guards and generators) disqualify Markdown.
+				// Search both immutable trees, including the former authored paths.
+				try {
+					git("grep", "-I", "-l", "-F", "-e", path, "-e", path.split("/").at(-1),
+						head, "--", ":!*.md", ":!*.mdx", ":!pnpm-lock.yaml");
+					return false;
+				} catch (error) {
+					if (error.status !== 1) throw error;
+				}
+			}
+			return true;
+		};
+		if (!changed.every(prose)) return undefined;
+		const axes = policy.active_axes.filter((axis) => axis !== "contract").sort();
+		const compared = authored.filter((path) => !prose(path)).map((path) => {
+			const previous = entry(previousHead, path);
+			const current = entry(headSha, path);
+			return { path, axes, previous_sha256: previous.sha256, new_sha256: current.sha256,
+				previous_mode: previous.mode, new_mode: current.mode };
+		});
+		const retention = { version: 1, previous_head_sha: previousHead, new_head_sha: headSha,
+			contract_sha256: policy.contract_sha256, policy_sha256: policy.sha256,
+			previous_merge_base_sha: previousBase, new_merge_base_sha: newBase,
+			previous_review: previousReview, previous_accepted_at: previousAcceptedAt,
+			changed_files: changed, compared_files: compared };
+		retentionFreshAxes(retention, headSha, policy);
+		// Every nested hop must still match Git, not merely its stored digest syntax.
+		if (previousReview.retention && !authenticateReviewRetention(root, previousReview.retention, policy, worktree, baseHeadSha)) return undefined;
+		if (text("-C", worktree, "rev-parse", "HEAD") !== checkoutHeadSha
+			|| text("-C", worktree, "status", "--porcelain=v1") !== "") return undefined;
+		return retention;
+	} catch {
+		return undefined;
+	}
+};
+
+export const authenticateReviewRetention = (root, retention, policy, worktree, baseHeadSha) => {
+	// Old hops have their own immutable head; the live checkout is checked at
+	// the outer boundary, so authenticate each hop in the object database.
+	const observed = observeReviewRetention(root, {
+		previousReview: retention.previous_review, previousAcceptedAt: retention.previous_accepted_at,
+		headSha: retention.new_head_sha, baseHeadSha, policy, worktree,
+		checkoutHeadSha: run(worktree, "git", ["rev-parse", "HEAD"]),
+	});
+	return observed !== undefined && isDeepStrictEqual(observed, retention);
+};
+
 export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	const entry = issueEntry(lane, issue);
 	const branch = branchFor(entry);
@@ -705,7 +806,20 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		changedFiles,
 		reviewAxisFloor,
 	});
-	const review = headSha ? factIfCurrent(entry, "review", headSha) : null;
+	let review = headSha ? factIfCurrent(entry, "review", headSha) : null;
+	const previous = entry.facts?.review;
+	const retentionCheckout = worktreeExists
+		&& run(worktreePath, "git", ["branch", "--show-current"]) === branch;
+	let reviewRetention = preflightStatus.valid && retentionCheckout ? observeReviewRetention(root, {
+		previousReview: previous?.value, previousAcceptedAt: previous?.accepted_at,
+		headSha, baseHeadSha: sourceSha, policy: preflightStatus.policy, worktree: worktreeExists ? worktreePath : null,
+	}) : undefined;
+	if (run(root, "git", ["rev-parse", branch]) !== headSha
+		|| run(root, "git", ["rev-parse", `refs/remotes/origin/${lane.base_branch}`]) !== sourceSha) reviewRetention = undefined;
+	if (review?.retention && (!preflightStatus.valid || !retentionCheckout
+		|| !authenticateReviewRetention(root, review.retention, preflightStatus.policy, worktreePath, sourceSha))) review = null;
+	const freshReviewAxes = preflightStatus.valid
+		? retentionFreshAxes(reviewRetention, headSha, preflightStatus.policy) : null;
 	const reviewAcceptedAt = review
 		? entry.facts?.review?.accepted_at ?? null
 		: null;
@@ -783,6 +897,7 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		changesetPresent,
 		review,
 		reviewAcceptedAt,
+		...(reviewRetention ? { reviewRetention, freshReviewAxes } : {}),
 		pr,
 		unmetDependencies,
 		generatedIntegrationRequired,
@@ -1175,14 +1290,17 @@ const main = async () => {
 				throw new TypeError("Category workers cannot supply registered stage successes");
 			}
 			const targets = phase === "review"
-				? Object.values(dispatchFor(phase, observed.preflightPolicy?.active_axes))
+				? Object.values(dispatchFor(phase, observed.freshReviewAxes ?? observed.preflightPolicy?.active_axes))
 				: dispatchFor(phase) ? [dispatchFor(phase)] : [];
 			for (const target of targets) {
 				registeredDispatch(root, target);
 			}
 			if (phase === "review") {
+				if (["retention", "changed_files", "docs_only", "equivalent"].some((key) => Object.hasOwn(result, key))) {
+					throw new TypeError("Review claims cannot supply retention");
+				}
 				const { head_sha, preflight_sha256, active_axes, reviews } = result;
-				buildReviewFact({ head_sha, preflight_sha256, active_axes, reviews }, observed.headSha, observed.preflightPolicy);
+				buildReviewFact({ head_sha, preflight_sha256, active_axes, reviews }, observed.headSha, observed.preflightPolicy, observed.reviewRetention);
 			} else if (["preflight", "implement", "fix-back"].includes(phase)) {
 				assertAgentIdentity(dispatchFor(phase), result.agent);
 			}
@@ -1369,10 +1487,10 @@ const main = async () => {
 				}
 				storedValue = value;
 			} else {
-				for (const target of Object.values(dispatchFor("review", obs.preflightPolicy.active_axes))) {
+				for (const target of Object.values(dispatchFor("review", obs.freshReviewAxes ?? obs.preflightPolicy.active_axes))) {
 					registeredDispatch(root, target);
 				}
-				storedValue = buildReviewFact(value, head, obs.preflightPolicy);
+				storedValue = buildReviewFact(value, head, obs.preflightPolicy, obs.reviewRetention);
 				delete entry.facts["local-checks"];
 				delete entry.facts["local-ci-waiver"];
 			}

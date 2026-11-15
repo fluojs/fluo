@@ -13,7 +13,7 @@
 //   polling ceremony.
 
 import { contractDigest, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
-import { validateReviewFact } from '../../review-head/scripts/contracts.mjs';
+import { retentionFreshAxes, validateReviewFact } from '../../review-head/scripts/contracts.mjs';
 import { dispatchFor } from './dispatch-targets.mjs';
 
 export const ATTEMPT_CEILING = 3;
@@ -287,7 +287,9 @@ export const decideNext = (lane, obs) => {
 	try {
 		review = validateReviewFact(obs.review, obs.headSha, preflight.policy);
 	} catch {
-		return { action: 'review', dispatch: dispatchFor('review', preflight.policy.active_axes), head: obs.headSha, policy: preflight.policy };
+		let axes = preflight.policy.active_axes;
+		try { axes = retentionFreshAxes(obs.reviewRetention, obs.headSha, preflight.policy); } catch { /* Invalid proof retains the full policy. */ }
+		return { action: 'review', dispatch: dispatchFor('review', axes), head: obs.headSha, policy: preflight.policy };
 	}
 	if (review.verdict === 'block') {
 		return { action: 'fix-back', dispatch: dispatchFor('fix-back'), reason: 'review-block', head: obs.headSha };

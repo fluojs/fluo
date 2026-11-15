@@ -39,6 +39,17 @@ export const classifyReviewAxes = (files) => {
 const omissionsFor = (axes) => Object.fromEntries(REVIEW_AXES.filter((a) => !axes.includes(a))
   .map((a) => [a, 'No changed files in this review scope.']));
 
+// This closed set is narrower than general documentation/CI classification.
+// Git observation must additionally rule out machine consumption and generation.
+export const isRetentionProsePath = (path) =>
+  classifyReviewAxes([path]).join(',') === 'contract'
+  && !/(?:^|[/-])(?:governance|release|ci|policy|policies)(?:[/.\-]|$)/iu.test(path)
+  && !/(?:^|\/)(?:AGENTS|CLAUDE|SKILL|CONTEXT|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|copilot-instructions)(?:\.[^/]*)?\.md$|\.instructions\.md$/iu.test(path)
+  && !/(?:^|[/.])(?:test|spec|test-fixture)(?:[/.]|$)/iu.test(path)
+  && !/(?:^|\/)(?:tests?|specs?|__tests__|fixtures|__fixtures__|test-fixtures|test-types|examples?|generated|dist|build|snapshots?)(?:\/|[.-])/iu.test(path)
+  && !/(?:^|[/._-])(?:generated|machine|manifest|lockfile|snapshot)(?:[/._-]|$)/iu.test(path)
+  && /^(?:README(?:\.ko)?\.md|packages\/[^/]+\/README(?:\.ko)?\.md|docs\/(?:guides|getting-started|architecture)\/.+\.md|book\/(?:beginner|intermediate|advanced)\/ch[0-9][^/]*\.md)$/u.test(path);
+
 export const createPreflight = (input) => {
   const active_axes = input.active_axes ?? classifyReviewAxes(input.predicted_files);
   const value = { ...input, version: 1, active_axes, omitted_axes: input.omitted_axes ?? omissionsFor(active_axes) };

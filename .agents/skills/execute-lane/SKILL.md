@@ -40,8 +40,10 @@ preflight -> implement + focused tests -> selected exact-head reviews
           -> merge authority + mergeability gate -> merge -> cleanup -> done
 ```
 
-Every new implementation or conflict-resolution head repeats the selected
-reviews after focused checks. All approved changes, including CI execution,
+Every new implementation or conflict-resolution head repeats fresh required
+reviews after focused checks. Only the Git-authenticated explanatory-document
+exception below can retain prior code/verification PASS.
+All approved changes, including CI execution,
 configuration, manifests and lockfiles, proceed to publication without an
 automatic full local CI gate, receipt or waiver requirement. Unknown or expanded
 scope still requires preflight reconciliation.
@@ -88,7 +90,7 @@ an ancestor of both the issue head (when present) and the observed
 invalidate the approved base, review, or local receipt. Scope and review axes
 use the current merge-base-to-head issue diff, excluding upstream changes
 incorporated by a merge or rebase; local verification retains the pinned
-base. An integration head still requires focused checks and new reviews; full
+base. An integration head still requires focused checks and fresh required reviews; full
 local CI runs only for explicitly requested reproduction or diagnosis.
 Re-registering the same
 preflight digest keeps existing head-bound facts and timestamps; changing
@@ -105,7 +107,21 @@ review, reconciles all paths against approved scope, and expands axes as
 needed. File extensions are insufficient: skills, agent instructions, and
 machine-consumed Markdown can govern execution. Implementers cannot reduce
 review scope. Aggregate exactly the effective axes; never fabricate PASS for
-an omitted axis or mix heads/contracts. Record complete reviewer envelopes.
+an omitted axis or mix heads/contracts without authenticated retention.
+Record complete reviewer envelopes.
+
+The effective policy, approved axis floor and policy digest never shrink for
+retention. The CLI alone may select fresh `contract` review while retaining
+previous canonical code/verification PASS from the same contract and policy.
+It observes each head's merge-base with immutable origin/base, both authored
+path sets and the head-to-head diff using `--no-renames -z`. Only their authored
+intersection determines the change role. That nonempty delta must be
+explanatory Markdown in the closed retention allowlist; instructions,
+governance, generated or machine-read Markdown, tests, fixtures and unknown
+roles are excluded. All non-explanatory paths in the union of authored paths
+must have identical raw blob SHA-256 and Git modes at both heads. Missing or
+uncertain observation means full review. See `review-head` for the stored proof
+shape and validation. User-supplied retention or equivalence claims grant nothing.
 
 ### Workflow input preparation
 
@@ -143,7 +159,7 @@ grants and occupancy, merged-sibling ancestry, and generated integration
 evidence. Legacy lanes without `preflight_overlap` retain their old decisions,
 observation and save behavior; never backfill them. Unrelated base movement does
 not require integration. Every integration head needs fresh focused checks,
-selected exact-head reviews and full exact-head remote CI.
+fresh required reviews (with any authenticated retention) and full exact-head remote CI.
 
 ## Retrospective capture and lane completion
 
@@ -201,7 +217,10 @@ focused, review, remote CI, mergeability and authority gates remain required.
 
 For conflicts, preserve both intended behaviors and return the resolved new
 head through focused checks, review and the applicable CI gates. Do not reuse old approvals by claiming the
-patch is equivalent. Keep conflict resolution inside the existing identity.
+patch is equivalent. The sole exception is CLI-authenticated retention, which
+keeps original reviewer heads and requires a fresh contract review. It never
+carries local-check/waiver or remote CI evidence to the new head. Keep conflict
+resolution inside the existing identity.
 
 After observed merge, clean the issue and review worktrees and branches under
 the existing grant, record cleanup, and cancel issue children. Keep reviewer

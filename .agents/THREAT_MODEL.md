@@ -26,12 +26,24 @@ before review. Unknown, mixed, or enforcement changes require all axes.
 Missing, duplicate, malformed, unexpected, or stale reviewer envelopes cannot
 produce PASS. Selected-axis PASS is not a merge grant.
 
+The sole cross-head review exception is CLI-authenticated explanatory-document
+retention. Full policy/floor/digest stay fixed; contract is fresh. Both authored
+path sets and merge-bases, the authored head delta, all non-prose raw blob
+SHA-256/modes and original canonical PASS must match. Instructions, governance,
+generated and machine-read Markdown are excluded. Caller claims, incomplete
+coverage or uncertain Git cannot reduce review. Optional stored retention
+preserves original identities, heads and acceptance time; each nested hop is
+validated and Git-reauthenticated. Preparation independently verifies fresh
+dispatch and complete current-head evidence. Local-check/waiver and remote CI
+never carry forward; generated integration and merge authority gates remain.
+
 ## Resume and observations
 
 The v4 engine derives decisions from a small lane file plus fresh git/GitHub
 observations. It does not use DAG records, task/session ownership, or a native
 run identity as execution authority. A changed head invalidates checks and
-review; a changed contract invalidates evidence tied to its former digest.
+requires fresh review except for authenticated retention above; a changed
+contract invalidates evidence tied to its former digest.
 The lead re-observes identity before remote writes and reconciles partial remote
 success before retrying. No child report alone proves a completed side effect.
 

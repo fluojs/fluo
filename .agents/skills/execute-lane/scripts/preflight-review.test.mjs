@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyReviewAxes, createPreflight, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { classifyReviewAxes, createPreflight, evaluatePreflight, isRetentionProsePath, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { buildReviewFact, validateReviewFact } from '../../review-head/scripts/contracts.mjs';
 import { applyChildResult, decideNext, localCheckBinding } from './lane-v4.mjs';
 
@@ -38,6 +38,125 @@ const passedCheck = (obs = observation()) => ({
   ...localCheckBinding(reviewed(obs), obs.reviewAcceptedAt),
   receiptStartedAt: '2026-01-01T00:00:01.000Z', head: obs.headSha, status: 'passed', valid: true,
   receiptPath: '.omo/verification/pass.json', receiptSha256: 'd'.repeat(64),
+});
+
+test('#4099 review retention: authenticated prose hop -> fresh contract and original retained envelopes', () => {
+  const obs = observation({ changedFiles: ['src/a.ts'], preflight: createPreflight(input({ active_axes: all })) });
+  const { policy } = evaluatePreflight(obs.preflight, obs);
+  const previous = reviewed(obs);
+  const nextHead = 'e'.repeat(40);
+  const retention = {
+    version: 1, previous_head_sha: head, new_head_sha: nextHead,
+    contract_sha256: policy.contract_sha256, policy_sha256: policy.sha256,
+    previous_merge_base_sha: base, new_merge_base_sha: base,
+    previous_review: previous, previous_accepted_at: obs.reviewAcceptedAt,
+    changed_files: ['docs/guides/routing.md'],
+    compared_files: [{ path: 'src/a.ts', axes: ['code', 'verification'],
+      previous_sha256: 'f'.repeat(64), new_sha256: 'f'.repeat(64),
+      previous_mode: '100644', new_mode: '100644' }],
+  };
+  const fresh = { head_sha: nextHead, preflight_sha256: policy.sha256, active_axes: all,
+    reviews: [{ ...previous.reviews[0], reviewed_head_sha: nextHead }] };
+
+  const fact = buildReviewFact(fresh, nextHead, policy, retention);
+
+  assert.equal(fact.verdict, 'pass');
+  assert.deepEqual(fact.retention.previous_review, previous);
+  assert.deepEqual(fact.reviews, fresh.reviews);
+  assert.deepEqual(validateReviewFact(fact, nextHead, policy), fact);
+  const legacy = structuredClone(previous);
+  for (const envelope of legacy.reviews) delete envelope.agent;
+  const legacyBytes = JSON.stringify(legacy);
+  const legacyFact = buildReviewFact(fresh, nextHead, policy, { ...retention, previous_review: legacy });
+  assert.deepEqual(validateReviewFact(legacyFact, nextHead, policy), legacyFact);
+  assert.equal(JSON.stringify(legacyFact.retention.previous_review), legacyBytes);
+  assert.equal(decideNext(lane, { ...obs, headSha: nextHead, review: fact }).action, 'create-pr');
+  assert.throws(() => buildReviewFact(fresh, nextHead, policy), TypeError);
+  assert.throws(() => buildReviewFact({ ...fresh, retention }, nextHead, policy), TypeError);
+  for (const mutate of [
+    (r) => { r.previous_review.verdict = 'block'; },
+    (r) => { r.previous_review.reviews[1].agent = 'fluo-contract-reviewer'; },
+    (r) => { r.previous_review.reviews.pop(); },
+    (r) => { r.previous_review.reviews.push(r.previous_review.reviews[1]); },
+    (r) => { r.contract_sha256 = '0'.repeat(64); },
+    (r) => { r.policy_sha256 = '0'.repeat(64); },
+    (r) => { r.new_head_sha = head; },
+    (r) => { r.changed_files.push(r.changed_files[0]); },
+    (r) => { r.changed_files = ['docs/CONTEXT.md']; },
+    (r) => { r.compared_files[0].new_sha256 = '0'.repeat(64); },
+    (r) => { r.compared_files[0].new_mode = '100755'; },
+    (r) => { r.compared_files.push(r.compared_files[0]); },
+    (r) => { r.compared_files[0].axes = ['code', 'code']; },
+  ]) {
+    const invalid = structuredClone(retention);
+    mutate(invalid);
+    assert.throws(() => buildReviewFact(fresh, nextHead, policy, invalid), TypeError);
+  }
+});
+
+test('#4099 retention classifier: closed explanatory roles -> eligibility without changing existing classification', () => {
+  for (const path of ['README.md', 'README.ko.md', 'packages/http/README.md',
+    'docs/guides/routing.md', 'docs/getting-started/install.ko.md', 'docs/architecture/http.md',
+    'book/beginner/ch01-start.md', 'book/intermediate/ch12-routing.ko.md', 'book/advanced/ch25-final.md']) {
+    assert.equal(isRetentionProsePath(path), true, path);
+    assert.deepEqual(classifyReviewAxes([path]), ['contract']);
+  }
+  for (const path of ['docs/guide.md', 'docs/contracts/runtime.md', 'docs/guides/input.mdx',
+    '.agents/guide.md', '.github/guide.md', '.claude/guide.md', '.changeset/guide.md',
+    'docs/guides/AGENTS.md', 'docs/guides/CLAUDE.md', 'docs/guides/SKILL.md',
+    'docs/guides/CONTEXT.ko.md', 'docs/guides/CONTRIBUTING.md', 'docs/guides/SECURITY.md',
+    'docs/guides/copilot-instructions.md', 'docs/guides/test.instructions.md',
+    'docs/guides/context.md', 'docs/guides/routing.test.md',
+    'docs/guides/test-types/value.md', 'docs/guides/__tests__/value.md',
+    'docs/guides/__fixtures__/value.md', 'docs/guides/examples/input.md',
+    'docs/guides/dist/routes.md', 'docs/guides/build/routes.md',
+    'docs/guides/generated.md', 'docs/guides/machine-input.md', 'docs/guides/snapshot.md',
+    'docs/guides/governance.md', 'tooling/ci/README.md', 'book/beginner/toc.md', 'other/README.md',
+    '../README.md', 'docs/guides/../runtime.md']) {
+    assert.equal(isRetentionProsePath(path), false, path);
+  }
+  assert.deepEqual(classifyReviewAxes(['docs/guides/generated.md']), ['contract']);
+});
+
+test('#4099 fix-back: governance role case variants -> excluded while explanatory guides remain eligible', () => {
+  const matrix = [
+    ['docs/guides/routing.md', true],
+    ['docs/guides/governance.md', false],
+    ['docs/guides/GOVERNANCE.md', false],
+    ['docs/guides/Governance.md', false],
+    ['docs/architecture/Review-GOVERNANCE/routing.md', false],
+    ['book/advanced/ch01-Governance.md', false],
+    ['docs/guides/release.md', false],
+    ['docs/guides/RELEASE.md', false],
+    ['docs/guides/Release/checks.md', false],
+    ['docs/guides/ci.md', false],
+    ['docs/guides/CI.md', false],
+    ['docs/guides/Ci/checks.md', false],
+    ['docs/guides/policy.md', false],
+    ['docs/guides/POLICY.md', false],
+    ['docs/guides/Review-Policy.md', false],
+    ['docs/guides/Policies/checks.md', false],
+    ['docs/guides/routing.mdx', false],
+    ['docs/guides/routing.MDX', false],
+    ['docs/guides/routing.Mdx', false],
+    ['docs/guides/agents.md', false],
+    ['docs/guides/sKiLl.md', false],
+    ['docs/guides/routing.INSTRUCTIONS.md', false],
+    ['docs/guides/TESTS/routing.md', false],
+    ['docs/guides/FIXTURES/routing.md', false],
+    ['docs/guides/EXAMPLES/routing.md', false],
+    ['docs/guides/GENERATED/routing.md', false],
+    ['docs/guides/BUILD/routing.md', false],
+    ['docs/guides/DIST/routing.md', false],
+    ['docs/guides/SNAPSHOT.md', false],
+    ['docs/guides/MANIFEST.md', false],
+    ['docs/guides/LOCKFILE.md', false],
+  ];
+
+  for (const [path, eligible] of matrix) {
+    assert.equal(isRetentionProsePath(path), eligible, path);
+  }
+  assert.deepEqual(classifyReviewAxes(['docs/guides/GOVERNANCE.md']), ['contract']);
 });
 
 test('#4091 review admission: assigned identities -> accepted; missing or substituted identities -> rejected', () => {

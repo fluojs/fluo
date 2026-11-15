@@ -3,7 +3,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
@@ -16,6 +16,250 @@ import { summarizeIntegrationMeasurements } from './generated-integration.mjs';
 import { localCheckBinding } from './lane-v4.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
+
+function retentionFixture(t) {
+  const f = fixture(t);
+  f.set('preflight', f.preflight({ active_axes: ['contract', 'code', 'verification'] }));
+  f.implement();
+  f.commit('src/router.ts', 'export const value = 1;\n');
+  f.commit('docs/guides/routing.md', '# Routing\n');
+  const input = f.review();
+  f.set('review', input, input.head_sha);
+  const previous = JSON.parse(readFileSync(f.lanePath)).issues['42'].facts.review;
+  return { ...f, previous };
+}
+
+test('#4099 CLI: disjoint upstream merge plus prose -> contract dispatch, retained bytes and new-head CI', (t) => {
+  const f = retentionFixture(t);
+  mkdirSync(join(f.root, 'src'), { recursive: true });
+  writeFileSync(join(f.root, 'src/upstream.ts'), 'export const upstream = true;\n');
+  f.git(f.root, 'add', 'src/upstream.ts');
+  f.git(f.root, 'commit', '-m', 'upstream only');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  f.git(f.worktree, 'merge', '--no-edit', 'main');
+  f.commit('docs/guides/routing.md', '# Routing\n\nNew explanation.\n');
+  const row = f.plan();
+  const head = row.obs.headSha;
+  const proof = row.obs.reviewRetention;
+
+  assert.deepEqual(Object.keys(row.decision.dispatch), ['contract']);
+  assert.deepEqual(row.decision.policy.active_axes, ['contract', 'code', 'verification']);
+  assert.deepEqual(proof.changed_files, ['docs/guides/routing.md']);
+  assert.deepEqual(proof.previous_review, f.previous.value);
+  assert.equal(proof.previous_accepted_at, f.previous.accepted_at);
+  assert.notEqual(proof.previous_merge_base_sha, proof.new_merge_base_sha);
+  assert.deepEqual(proof.compared_files.map((file) => file.path), ['docs/guide.md', 'src/router.ts']);
+  assert.equal(row.obs.localChecks, null);
+  f.cli('record', [...f.common, '--phase', 'resolve-conflict', '--result-json', JSON.stringify({ ok: true, head_sha: head })]);
+  const fresh = { head_sha: head, preflight_sha256: row.decision.policy.sha256,
+    active_axes: row.decision.policy.active_axes, reviews: [{ ...f.previous.value.reviews[0], reviewed_head_sha: head }] };
+  f.cli('record', [...f.common, '--phase', 'review', '--result-json', JSON.stringify({ ok: true, ...fresh })]);
+  f.set('review', fresh, head);
+  const stored = JSON.parse(readFileSync(f.lanePath)).issues['42'].facts.review;
+  assert.deepEqual(stored.value.retention, proof);
+  assert.equal(stored.value.reviews.length, 1);
+  assert.equal(f.plan().decision.action, 'create-pr');
+  f.state.pr = { number: 77, state: 'OPEN', headRefOid: head, mergeable: 'MERGEABLE', statusCheckRollup: [] };
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-ci');
+  f.commit('docs/guides/routing.md', '# Routing\n\nThird explanation.\n');
+  const next = f.plan();
+  assert.deepEqual(Object.keys(next.decision.dispatch), ['contract']);
+  assert.deepEqual(next.obs.reviewRetention.previous_review, stored.value);
+  assert.equal(next.obs.localChecks, null);
+  const third = { ...fresh, head_sha: next.obs.headSha,
+    reviews: [{ ...fresh.reviews[0], reviewed_head_sha: next.obs.headSha }] };
+  f.set('review', third, next.obs.headSha);
+  assert.equal(f.plan().decision.action, 'push');
+});
+
+test('#4099 fix-back CLI: only uppercase governance authored delta -> full policy dispatch without retention', (t) => {
+  const f = retentionFixture(t);
+  f.commit('docs/guides/GOVERNANCE.md', '# Review requirements\n');
+
+  const row = f.plan();
+
+  assert.deepEqual(row.obs.changedFiles, ['docs/guide.md', 'docs/guides/GOVERNANCE.md', 'docs/guides/routing.md', 'src/router.ts']);
+  assert.deepEqual(f.git(f.worktree, 'diff', '--name-only', '--no-renames', f.previous.head, row.obs.headSha),
+    'docs/guides/GOVERNANCE.md');
+  assert.deepEqual(row.decision.policy.active_axes, ['contract', 'code', 'verification']);
+  assert.deepEqual(Object.keys(row.decision.dispatch), ['contract', 'code', 'verification']);
+  assert.equal(row.obs.reviewRetention, undefined);
+});
+
+for (const [role, path, bytes] of [
+  ['runtime', 'src/router.ts', 'export const value = 2;\n'],
+  ['test', 'tests/router.test.ts', 'test input\n'],
+  ['fixture Markdown', 'docs/guides/fixtures/input.md', '# Fixture\n'],
+  ['generated Markdown', 'docs/guides/generated/routes.md', '# Routes\n'],
+  ['manifest', 'src/package.json', '{}\n'],
+  ['instruction', 'docs/guides/AGENTS.md', '# Instructions\n'],
+  ['context', 'docs/guides/CONTEXT.md', '# Context\n'],
+  ['skill', 'docs/guides/SKILL.md', '# Skill\n'],
+  ['governance', 'docs/guides/governance.md', '# Governance\n'],
+  ['MDX', 'docs/guides/routes.mdx', '# Routes\n'],
+  ['unknown', 'docs/unknown.md', '# Unknown\n'],
+  ['machine sentinel', 'docs/guides/routing.md', '<!-- machine:routes -->\n'],
+  ['generated header', 'docs/guides/routing.md', '<!-- auto-generated; do not edit -->\n'],
+]) {
+  test(`#4099 CLI: ${role} delta -> full review`, (t) => {
+    const f = retentionFixture(t);
+    f.commit(path, bytes);
+
+    const row = f.plan();
+
+    assert.deepEqual(Object.keys(row.decision.dispatch), ['contract', 'code', 'verification']);
+    assert.equal(row.obs.reviewRetention, undefined);
+  });
+}
+
+for (const mutation of ['delete', 'rename', 'mode', 'symlink', 'dirty', 'moved-checkout', 'missing-object', 'source-consumer']) {
+  test(`#4099 CLI: ${mutation} observation -> no retention`, (t) => {
+    const f = retentionFixture(t);
+    f.commit('docs/guides/routing.md', '# New routing\n');
+    if (mutation === 'dirty') writeFileSync(join(f.worktree, 'src/router.ts'), 'dirty\n');
+    else if (mutation === 'moved-checkout') f.git(f.worktree, 'checkout', '--detach', f.previous.head);
+    else if (mutation === 'missing-object') {
+      const lane = JSON.parse(readFileSync(f.lanePath));
+      const old = lane.issues['42'].facts.review;
+      old.head = 'f'.repeat(40);
+      old.value.head = old.head;
+      old.value.head_sha = old.head;
+      for (const review of old.value.reviews) review.reviewed_head_sha = old.head;
+      writeFileSync(f.lanePath, JSON.stringify(lane));
+    } else {
+      if (mutation === 'delete') rmSync(join(f.worktree, 'src/router.ts'));
+      if (mutation === 'rename') f.git(f.worktree, 'mv', 'src/router.ts', 'src/moved.ts');
+      if (mutation === 'mode') chmodSync(join(f.worktree, 'src/router.ts'), 0o755);
+      if (mutation === 'symlink') {
+        rmSync(join(f.worktree, 'src/router.ts'));
+        symlinkSync('other.ts', join(f.worktree, 'src/router.ts'));
+      }
+      if (mutation === 'source-consumer') writeFileSync(join(f.worktree, 'src/read.mjs'), "readFileSync('docs/guides/routing.md');\n");
+      f.git(f.worktree, 'add', '-A');
+      f.git(f.worktree, 'commit', '-m', mutation);
+    }
+
+    const row = f.plan();
+
+    assert.deepEqual(Object.keys(row.decision.dispatch), ['contract', 'code', 'verification']);
+    assert.equal(row.obs.reviewRetention, undefined);
+  });
+}
+
+test('#4099 CLI: source consumer already reviewed -> prose update still requires full axes', (t) => {
+  const f = retentionFixture(t);
+  f.commit('src/read.mjs', "readFileSync('docs/guides/routing.md');\n");
+  const input = f.review();
+  f.set('review', input, input.head_sha);
+  f.commit('docs/guides/routing.md', '# Changed machine input\n');
+
+  assert.deepEqual(Object.keys(f.plan().decision.dispatch), ['contract', 'code', 'verification']);
+});
+
+for (const mutation of ['missing-PASS', 'BLOCK', 'NEEDS-HUMAN-CHECK', 'policy-change', 'contract-change', 'unrelated-history']) {
+  test(`#4099 CLI: ${mutation} -> full review without fabricated retained approval`, (t) => {
+    const f = retentionFixture(t);
+    f.commit('docs/guides/routing.md', '# New routing\n');
+    const lane = JSON.parse(readFileSync(f.lanePath));
+    const fact = lane.issues['42'].facts.review;
+    if (mutation === 'missing-PASS') delete lane.issues['42'].facts.review;
+    if (mutation === 'BLOCK') {
+      const blocker = { reviewer: 'code', signature: 'route:order', evidence: 'src/router.ts:1',
+        fix_back_eligible: true, status: 'unresolved' };
+      fact.value.verdict = 'block';
+      fact.value.blockers = [blocker];
+      fact.value.reviews[1].verdict_signal = 'BLOCK';
+      fact.value.reviews[1].blockers = [blocker];
+    }
+    if (mutation === 'NEEDS-HUMAN-CHECK') {
+      fact.value.verdict = 'needs-human-check';
+      fact.value.reviews[1].verdict_signal = 'NEEDS-HUMAN-CHECK';
+    }
+    if (mutation === 'policy-change') fact.value.preflight_sha256 = '0'.repeat(64);
+    if (mutation === 'contract-change') {
+      const previous = lane.issues['42'].facts.preflight.value;
+      lane.issues['42'].facts.preflight.value = createPreflight({ ...previous, acceptance: ['Updated route contract'] });
+    }
+    if (mutation === 'unrelated-history') {
+      const commit = f.git(f.root, 'commit-tree', `${f.previous.head}^{tree}`, '-m', 'unrelated review source');
+      fact.head = commit;
+      fact.value.head = commit;
+      fact.value.head_sha = commit;
+      for (const review of fact.value.reviews) review.reviewed_head_sha = commit;
+    }
+    writeFileSync(f.lanePath, JSON.stringify(lane));
+
+    const row = f.plan();
+
+    assert.deepEqual(Object.keys(row.decision.dispatch), ['contract', 'code', 'verification']);
+    assert.equal(row.obs.reviewRetention, undefined);
+  });
+}
+
+test('#4099 CLI: upstream modifies issue-authored runtime -> comparison cannot exclude it as upstream-only', (t) => {
+  const f = retentionFixture(t);
+  mkdirSync(join(f.root, 'src'), { recursive: true });
+  writeFileSync(join(f.root, 'src/router.ts'), 'export const value = 2;\n');
+  f.git(f.root, 'add', 'src/router.ts');
+  f.git(f.root, 'commit', '-m', 'upstream runtime');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  assert.throws(() => f.git(f.worktree, 'merge', '--no-edit', 'main'));
+  f.commit('src/router.ts', 'export const value = 2;\n');
+  f.commit('docs/guides/routing.md', '# New routing\n');
+
+  const row = f.plan();
+
+  assert.deepEqual(Object.keys(row.decision.dispatch), ['contract', 'code', 'verification']);
+  assert.equal(row.obs.reviewRetention, undefined);
+});
+
+test('#4099 CLI: retained manifest tampering and caller claims -> rejection without lane write', (t) => {
+  const f = retentionFixture(t);
+  f.commit('docs/guides/routing.md', '# New routing\n');
+  const row = f.plan();
+  const fresh = { head_sha: row.obs.headSha, preflight_sha256: row.obs.preflightPolicy.sha256,
+    active_axes: row.obs.preflightPolicy.active_axes,
+    reviews: [{ ...f.previous.value.reviews[0], reviewed_head_sha: row.obs.headSha }] };
+  for (const claim of [{ retention: row.obs.reviewRetention }, { changed_files: [] }, { docs_only: true }]) {
+    const before = readFileSync(f.lanePath);
+    f.set('review', { ...fresh, ...claim }, row.obs.headSha, false);
+    f.cli('record', [...f.common, '--phase', 'review', '--result-json', JSON.stringify({ ok: true, ...fresh, ...claim })], false);
+    assert.deepEqual(readFileSync(f.lanePath), before);
+  }
+  f.set('review', fresh, row.obs.headSha);
+  const good = JSON.parse(readFileSync(f.lanePath));
+  for (const mutate of [
+    (proof) => { proof.compared_files = []; },
+    (proof) => { proof.compared_files.push(proof.compared_files[0]); },
+    (proof) => { proof.compared_files[0].previous_sha256 = '0'.repeat(64); },
+    (proof) => { proof.compared_files[0].previous_mode = '100755'; },
+    (proof) => { proof.changed_files = ['docs/guides/forged.md']; },
+    (proof) => { proof.previous_review.reviews[1].verdict_signal = 'NEEDS-HUMAN-CHECK'; },
+  ]) {
+    const invalid = structuredClone(good);
+    mutate(invalid.issues['42'].facts.review.value.retention);
+    writeFileSync(f.lanePath, JSON.stringify(invalid));
+    assert.deepEqual(Object.keys(f.plan().decision.dispatch), ['contract', 'code', 'verification']);
+  }
+});
+
+test('#4099 CLI: head movement after reduced plan -> stale admission rejected', (t) => {
+  const f = retentionFixture(t);
+  f.commit('docs/guides/routing.md', '# New routing\n');
+  const row = f.plan();
+  const fresh = { head_sha: row.obs.headSha, preflight_sha256: row.obs.preflightPolicy.sha256,
+    active_axes: row.obs.preflightPolicy.active_axes,
+    reviews: [{ ...f.previous.value.reviews[0], reviewed_head_sha: row.obs.headSha }] };
+  f.commit('src/router.ts', 'export const value = 3;\n');
+  const before = readFileSync(f.lanePath);
+
+  f.set('review', fresh, row.obs.headSha, false);
+  f.cli('record', [...f.common, '--phase', 'review', '--result-json', JSON.stringify({ ok: true, ...fresh })], false);
+
+  assert.deepEqual(readFileSync(f.lanePath), before);
+  assert.deepEqual(Object.keys(f.plan().decision.dispatch), ['contract', 'code', 'verification']);
+});
 
 test('#4091 set-fact review: wrong or absent identity -> byte-identical lane', (t) => {
   const f = fixture(t);

@@ -71,6 +71,34 @@ const makeObs = (overrides = {}) => ({
 	...overrides,
 });
 
+test('#4099 engine: Git-derived retention -> fresh contract without shrinking policy or reusing local checks', () => {
+	const old = makeReview();
+	const nextHead = 'e'.repeat(40);
+	const retention = { version: 1, previous_head_sha: old.head, new_head_sha: nextHead,
+		contract_sha256: policy.contract_sha256, policy_sha256: policy.sha256,
+		previous_merge_base_sha: preflight.base_sha, new_merge_base_sha: preflight.base_sha,
+		previous_review: old, previous_accepted_at: acceptedAt, changed_files: ['packages/http/README.md'],
+		compared_files: [{ path: 'packages/http/src/router.ts', axes: ['code', 'verification'],
+			previous_sha256: 'f'.repeat(64), new_sha256: 'f'.repeat(64), previous_mode: '100644', new_mode: '100644' }] };
+	const obs = makeObs({ headSha: nextHead, review: null, reviewRetention: retention });
+
+	const decision = decideNext(makeLane(), obs);
+
+	assert.deepEqual(decision.dispatch, { contract: { subagent_type: 'fluo-contract-reviewer' } });
+	assert.deepEqual(decision.policy, policy);
+	const fresh = { head_sha: nextHead, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
+		reviews: [{ ...old.reviews[0], reviewed_head_sha: nextHead }] };
+	const review = buildReviewFact(fresh, nextHead, policy, retention);
+	assert.equal(decideNext(makeLane(), { ...obs, review }).action, 'create-pr');
+	assert.equal(decideNext(makeLane(), { ...obs, review, pr: { number: 1, state: 'OPEN', headSha: old.head } }).action, 'push');
+	assert.notDeepEqual(localCheckBinding(review, acceptedAt), localCheckBinding(old, acceptedAt));
+	for (const patch of [{ previous_review: null }, { policy_sha256: '0'.repeat(64) },
+		{ changed_files: ['packages/http/src/router.ts'] }, { changed_files: [] }]) {
+		assert.deepEqual(Object.keys(decideNext(makeLane(), { ...obs,
+			reviewRetention: { ...retention, ...patch } }).dispatch), ['contract', 'code', 'verification']);
+	}
+});
+
 test('#4091 decisions: child stages -> registered dispatch targets without policy changes', () => {
 	const cases = [
 		[{ preflight: null }, 'preflight', { subagent_type: 'fluo-issue-preflight' }],
