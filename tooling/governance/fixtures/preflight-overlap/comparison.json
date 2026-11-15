@@ -1,0 +1,2267 @@
+{
+  "version": 1,
+  "inputs": {
+    "base": "f519ef779a26cfd53e7f9ab194fdd260744c5a47",
+    "source": {
+      "first": 0,
+      "second": 0,
+      "independent": 0
+    },
+    "changes": [
+      {
+        "issue": 42,
+        "key": "first",
+        "value": 1,
+        "predicted_files": [
+          "src/shared.ts"
+        ]
+      },
+      {
+        "issue": 43,
+        "key": "second",
+        "value": 1,
+        "predicted_files": [
+          "src/shared.ts"
+        ]
+      },
+      {
+        "issue": 44,
+        "key": "independent",
+        "value": 1,
+        "predicted_files": [
+          "src/independent.ts"
+        ]
+      }
+    ],
+    "mergeOrder": [
+      42,
+      43,
+      44
+    ]
+  },
+  "before": {
+    "initialStateSha256": "838aed42de35c86ae3b9102234246666a88f2aaf78c7c751206847919242fdf5",
+    "trace": [
+      {
+        "label": "initial",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "34395f503de65bf614aea4899454278c515d61f5",
+          "policy": {
+            "contract_sha256": "45b34c85226469ab4ad3ce96bb653cf2f4a42fd4b71b24c406fae8e3f594347e",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "345795a43151976347482f0c4bf5d4b8ec22a01298dbe146e8bc727c671b2ec9"
+          }
+        }
+      },
+      {
+        "label": "initial",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "policy": {
+            "contract_sha256": "d06b29ea171e8a118647914513fe69a9b8bfc02c678efa663f8da861219233e7",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "f780bb26bcab827203371c04b6c771580a69bdb753e5d3556328f43566cbf51f"
+          }
+        }
+      },
+      {
+        "label": "initial",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+          "policy": {
+            "contract_sha256": "bf86ba2ce945da42f58fa69e5639202dba42659e622385bb954d0ec43156c9a2",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "c5d08787cba5d3ee491653b79cf91e84c4ea9f8d2b3911177e8682f9df9013af"
+          }
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "create-pr",
+          "head": "34395f503de65bf614aea4899454278c515d61f5"
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "policy": {
+            "contract_sha256": "d06b29ea171e8a118647914513fe69a9b8bfc02c678efa663f8da861219233e7",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "f780bb26bcab827203371c04b6c771580a69bdb753e5d3556328f43566cbf51f"
+          }
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+          "policy": {
+            "contract_sha256": "bf86ba2ce945da42f58fa69e5639202dba42659e622385bb954d0ec43156c9a2",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "c5d08787cba5d3ee491653b79cf91e84c4ea9f8d2b3911177e8682f9df9013af"
+          }
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-ci",
+          "pr": 142
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "policy": {
+            "contract_sha256": "d06b29ea171e8a118647914513fe69a9b8bfc02c678efa663f8da861219233e7",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "f780bb26bcab827203371c04b6c771580a69bdb753e5d3556328f43566cbf51f"
+          }
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+          "policy": {
+            "contract_sha256": "bf86ba2ce945da42f58fa69e5639202dba42659e622385bb954d0ec43156c9a2",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "c5d08787cba5d3ee491653b79cf91e84c4ea9f8d2b3911177e8682f9df9013af"
+          }
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 142,
+          "head": "34395f503de65bf614aea4899454278c515d61f5"
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "create-pr",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d"
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+          "policy": {
+            "contract_sha256": "bf86ba2ce945da42f58fa69e5639202dba42659e622385bb954d0ec43156c9a2",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "c5d08787cba5d3ee491653b79cf91e84c4ea9f8d2b3911177e8682f9df9013af"
+          }
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 142,
+          "head": "34395f503de65bf614aea4899454278c515d61f5"
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-ci",
+          "pr": 143
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+          "policy": {
+            "contract_sha256": "bf86ba2ce945da42f58fa69e5639202dba42659e622385bb954d0ec43156c9a2",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "c5d08787cba5d3ee491653b79cf91e84c4ea9f8d2b3911177e8682f9df9013af"
+          }
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 142,
+          "head": "34395f503de65bf614aea4899454278c515d61f5"
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 143,
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d"
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "create-pr",
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 142,
+          "head": "34395f503de65bf614aea4899454278c515d61f5"
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 143,
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d"
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-ci",
+          "pr": 144
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 142,
+          "head": "34395f503de65bf614aea4899454278c515d61f5"
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 143,
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d"
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "resolve-conflict",
+          "pr": 143
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "resolve-conflict",
+          "pr": 143
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "integrated-head",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "integrated-head",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+          "policy": {
+            "contract_sha256": "d06b29ea171e8a118647914513fe69a9b8bfc02c678efa663f8da861219233e7",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "f780bb26bcab827203371c04b6c771580a69bdb753e5d3556328f43566cbf51f"
+          }
+        }
+      },
+      {
+        "label": "integrated-head",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "push",
+          "pr": 143,
+          "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1"
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-ci",
+          "pr": 143
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "validated-integration",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "validated-integration",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 143,
+          "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1"
+        }
+      },
+      {
+        "label": "validated-integration",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 143
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 143
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 143
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 144
+        }
+      }
+    ],
+    "executions": [
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "focused",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:focused",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "review:contract",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:review:contract",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "review:code",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:review:code",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "review:verification",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:review:verification",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "ci",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:ci",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "stage": "focused",
+        "runId": "43:58cd21bbd54a525bd09713572b6437b0143af81d:focused",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "stage": "review:contract",
+        "runId": "43:58cd21bbd54a525bd09713572b6437b0143af81d:review:contract",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "stage": "review:code",
+        "runId": "43:58cd21bbd54a525bd09713572b6437b0143af81d:review:code",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "stage": "review:verification",
+        "runId": "43:58cd21bbd54a525bd09713572b6437b0143af81d:review:verification",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "stage": "ci",
+        "runId": "43:58cd21bbd54a525bd09713572b6437b0143af81d:ci",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "focused",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:focused",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "review:contract",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:review:contract",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "review:code",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:review:code",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "review:verification",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:review:verification",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "ci",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:ci",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "focused",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:focused",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "review:contract",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:review:contract",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "review:code",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:review:code",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "review:verification",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:review:verification",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "ci",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:ci",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      }
+    ],
+    "perIssue": {
+      "42": {
+        "reviewedHeads": [
+          "34395f503de65bf614aea4899454278c515d61f5"
+        ],
+        "reviewedHeadCount": 1,
+        "ciRuns": [
+          {
+            "runId": "42:34395f503de65bf614aea4899454278c515d61f5:ci",
+            "attempt": 1,
+            "head": "34395f503de65bf614aea4899454278c515d61f5"
+          }
+        ],
+        "ciRunCount": 1
+      },
+      "43": {
+        "reviewedHeads": [
+          "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1"
+        ],
+        "reviewedHeadCount": 2,
+        "ciRuns": [
+          {
+            "runId": "43:58cd21bbd54a525bd09713572b6437b0143af81d:ci",
+            "attempt": 1,
+            "head": "58cd21bbd54a525bd09713572b6437b0143af81d"
+          },
+          {
+            "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:ci",
+            "attempt": 1,
+            "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1"
+          }
+        ],
+        "ciRunCount": 2
+      },
+      "44": {
+        "reviewedHeads": [
+          "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        ],
+        "reviewedHeadCount": 1,
+        "ciRuns": [
+          {
+            "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:ci",
+            "attempt": 1,
+            "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+          }
+        ],
+        "ciRunCount": 1
+      }
+    },
+    "finalSourceSha256": "80f241e576c65a803b87d8c6af0838bc2610237f901d8959a8ee0477997b99da",
+    "finalGateCoverage": {
+      "42": [
+        "ci",
+        "focused",
+        "review:code",
+        "review:contract",
+        "review:verification"
+      ],
+      "43": [
+        "ci",
+        "focused",
+        "review:code",
+        "review:contract",
+        "review:verification"
+      ],
+      "44": [
+        "ci",
+        "focused",
+        "review:code",
+        "review:contract",
+        "review:verification"
+      ]
+    },
+    "clock": "simulation",
+    "duration": null
+  },
+  "after": {
+    "initialStateSha256": "838aed42de35c86ae3b9102234246666a88f2aaf78c7c751206847919242fdf5",
+    "trace": [
+      {
+        "label": "initial",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "34395f503de65bf614aea4899454278c515d61f5",
+          "policy": {
+            "contract_sha256": "45b34c85226469ab4ad3ce96bb653cf2f4a42fd4b71b24c406fae8e3f594347e",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "345795a43151976347482f0c4bf5d4b8ec22a01298dbe146e8bc727c671b2ec9"
+          },
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "initial",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-preflight-overlap",
+          "reason": "selected-overlapping-sibling",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "siblings": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ],
+          "files": [
+            "src/shared.ts"
+          ],
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "initial",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+          "policy": {
+            "contract_sha256": "bf86ba2ce945da42f58fa69e5639202dba42659e622385bb954d0ec43156c9a2",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "c5d08787cba5d3ee491653b79cf91e84c4ea9f8d2b3911177e8682f9df9013af"
+          }
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "create-pr",
+          "head": "34395f503de65bf614aea4899454278c515d61f5",
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-preflight-overlap",
+          "reason": "selected-overlapping-sibling",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "siblings": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "create-pr"
+            }
+          ],
+          "files": [
+            "src/shared.ts"
+          ],
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "create-pr"
+            }
+          ]
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+          "policy": {
+            "contract_sha256": "bf86ba2ce945da42f58fa69e5639202dba42659e622385bb954d0ec43156c9a2",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "c5d08787cba5d3ee491653b79cf91e84c4ea9f8d2b3911177e8682f9df9013af"
+          }
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-ci",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-preflight-overlap",
+          "reason": "selected-overlapping-sibling",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "siblings": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "wait-ci"
+            }
+          ],
+          "files": [
+            "src/shared.ts"
+          ],
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "wait-ci"
+            }
+          ]
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+          "policy": {
+            "contract_sha256": "bf86ba2ce945da42f58fa69e5639202dba42659e622385bb954d0ec43156c9a2",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "c5d08787cba5d3ee491653b79cf91e84c4ea9f8d2b3911177e8682f9df9013af"
+          }
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 142,
+          "head": "34395f503de65bf614aea4899454278c515d61f5",
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-preflight-overlap",
+          "reason": "selected-overlapping-sibling",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "siblings": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "merge"
+            }
+          ],
+          "files": [
+            "src/shared.ts"
+          ],
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "merge"
+            }
+          ]
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "create-pr",
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 142,
+          "head": "34395f503de65bf614aea4899454278c515d61f5",
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-preflight-overlap",
+          "reason": "selected-overlapping-sibling",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "siblings": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "merge"
+            }
+          ],
+          "files": [
+            "src/shared.ts"
+          ],
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "merge"
+            }
+          ]
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-ci",
+          "pr": 144
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 142,
+          "head": "34395f503de65bf614aea4899454278c515d61f5",
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-preflight-overlap",
+          "reason": "selected-overlapping-sibling",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "siblings": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "merge"
+            }
+          ],
+          "files": [
+            "src/shared.ts"
+          ],
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "merge"
+            }
+          ]
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "resolve-conflict",
+          "reason": "preflight-overlap-base-integration",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "base": "cb269ed81355e0463d88b91c593aa00c851925f8",
+          "siblings": [
+            {
+              "issue": 42,
+              "commit": "cb269ed81355e0463d88b91c593aa00c851925f8"
+            }
+          ],
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 43,
+        "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+        "clock": "simulation",
+        "decision": {
+          "action": "resolve-conflict",
+          "reason": "preflight-overlap-base-integration",
+          "head": "58cd21bbd54a525bd09713572b6437b0143af81d",
+          "base": "cb269ed81355e0463d88b91c593aa00c851925f8",
+          "siblings": [
+            {
+              "issue": 42,
+              "commit": "cb269ed81355e0463d88b91c593aa00c851925f8"
+            }
+          ],
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "integrated-head",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "review"
+            }
+          ]
+        }
+      },
+      {
+        "label": "integrated-head",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "review",
+          "dispatch": {
+            "contract": {
+              "subagent_type": "fluo-contract-reviewer"
+            },
+            "code": {
+              "subagent_type": "fluo-code-reviewer"
+            },
+            "verification": {
+              "subagent_type": "fluo-verification-reviewer"
+            }
+          },
+          "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+          "policy": {
+            "contract_sha256": "d06b29ea171e8a118647914513fe69a9b8bfc02c678efa663f8da861219233e7",
+            "active_axes": [
+              "contract",
+              "code",
+              "verification"
+            ],
+            "omitted_axes": {},
+            "sha256": "f780bb26bcab827203371c04b6c771580a69bdb753e5d3556328f43566cbf51f"
+          },
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "integrated-head",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+              "pr": null,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "create-pr"
+            }
+          ]
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "create-pr",
+          "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "publication",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+              "pr": 143,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "wait-ci"
+            }
+          ]
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "wait-ci",
+          "pr": 143,
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "ci-pending",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "validated-integration",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+              "pr": 143,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "merge"
+            }
+          ]
+        }
+      },
+      {
+        "label": "validated-integration",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 143,
+          "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "validated-integration",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+              "pr": 143,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 143,
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+              "pr": 143,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 143,
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "before-merge",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "merge",
+          "pr": 144,
+          "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 142,
+          "overlaps": [
+            {
+              "issue": 43,
+              "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+              "pr": 143,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 143,
+          "overlaps": [
+            {
+              "issue": 42,
+              "head": "34395f503de65bf614aea4899454278c515d61f5",
+              "pr": 142,
+              "files": [
+                "src/shared.ts"
+              ],
+              "state": "cleanup"
+            }
+          ]
+        }
+      },
+      {
+        "label": "sibling-merged",
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "clock": "simulation",
+        "decision": {
+          "action": "cleanup",
+          "pr": 144
+        }
+      }
+    ],
+    "executions": [
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "focused",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:focused",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "review:contract",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:review:contract",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "review:code",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:review:code",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "review:verification",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:review:verification",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 42,
+        "head": "34395f503de65bf614aea4899454278c515d61f5",
+        "stage": "ci",
+        "runId": "42:34395f503de65bf614aea4899454278c515d61f5:ci",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "focused",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:focused",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "review:contract",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:review:contract",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "review:code",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:review:code",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "review:verification",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:review:verification",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 44,
+        "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e",
+        "stage": "ci",
+        "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:ci",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "focused",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:focused",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "review:contract",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:review:contract",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "review:code",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:review:code",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "review:verification",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:review:verification",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      },
+      {
+        "issue": 43,
+        "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1",
+        "stage": "ci",
+        "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:ci",
+        "attempt": 1,
+        "clock": "simulation",
+        "duration": null
+      }
+    ],
+    "perIssue": {
+      "42": {
+        "reviewedHeads": [
+          "34395f503de65bf614aea4899454278c515d61f5"
+        ],
+        "reviewedHeadCount": 1,
+        "ciRuns": [
+          {
+            "runId": "42:34395f503de65bf614aea4899454278c515d61f5:ci",
+            "attempt": 1,
+            "head": "34395f503de65bf614aea4899454278c515d61f5"
+          }
+        ],
+        "ciRunCount": 1
+      },
+      "43": {
+        "reviewedHeads": [
+          "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1"
+        ],
+        "reviewedHeadCount": 1,
+        "ciRuns": [
+          {
+            "runId": "43:fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1:ci",
+            "attempt": 1,
+            "head": "fd55fbe486b1faaf7b1f3be03a6c1d50a0e515f1"
+          }
+        ],
+        "ciRunCount": 1
+      },
+      "44": {
+        "reviewedHeads": [
+          "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+        ],
+        "reviewedHeadCount": 1,
+        "ciRuns": [
+          {
+            "runId": "44:900fb98add41ccde7f9afe407a66169dc5c1cd4e:ci",
+            "attempt": 1,
+            "head": "900fb98add41ccde7f9afe407a66169dc5c1cd4e"
+          }
+        ],
+        "ciRunCount": 1
+      }
+    },
+    "finalSourceSha256": "80f241e576c65a803b87d8c6af0838bc2610237f901d8959a8ee0477997b99da",
+    "finalGateCoverage": {
+      "42": [
+        "ci",
+        "focused",
+        "review:code",
+        "review:contract",
+        "review:verification"
+      ],
+      "43": [
+        "ci",
+        "focused",
+        "review:code",
+        "review:contract",
+        "review:verification"
+      ],
+      "44": [
+        "ci",
+        "focused",
+        "review:code",
+        "review:contract",
+        "review:verification"
+      ]
+    },
+    "clock": "simulation",
+    "duration": null
+  },
+  "comparable": true,
+  "clock": "simulation",
+  "duration": null,
+  "baseline": "decideNext -> coordinateGeneratedIntegration",
+  "candidate": "decideNext -> coordinateGeneratedIntegration -> coordinatePreflightOverlap",
+  "verdict": "INCONCLUSIVE",
+  "reason": "Unknown execution durations; simulation proves work counts, not time savings."
+}

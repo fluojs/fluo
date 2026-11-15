@@ -34,6 +34,31 @@ const withHint = { ...plan, predicted_conflicts: [hint] };
 const ledger = () => readyLedger(withHint, artifact, '.omo/search-issue/artifacts/generated-fixture.json');
 
 describe('create-lane generated conflicts', () => {
+  it('preflight overlap: opt-in plan -> bound receipt and lossless ledger/import', () => {
+    const opted = { ...plan, preflight_overlap: 1 };
+    const approval = { gate: 'lane-plan', approval_id: 'overlap', approved: true, release_handoff_attestations: [] };
+
+    expect(planIsCanonical(opted, artifact)).toBe(true);
+    expect(approvalBinding(approval, artifact, opted)).not.toBe(approvalBinding(approval, artifact, plan));
+    const value = readyLedger(opted, artifact, '.omo/search-issue/artifacts/generated-fixture.json');
+    expect(value.preflight_overlap).toBe(1);
+    expect(() => assertLaneSourceBinding(value, artifact)).not.toThrow();
+    expect(() => validateLedger('fixture', value)).not.toThrow();
+    expect(laneV2ToInitSpecs(value).preflightOverlap).toBe(1);
+    expect(Object.hasOwn(readyLedger(plan, artifact, 'legacy'), 'preflight_overlap')).toBe(false);
+    expect(Object.hasOwn(laneV2ToInitSpecs(ledger()), 'preflightOverlap')).toBe(false);
+  });
+
+  it.each([null, true, '1', 0, 2])('preflight overlap: invalid marker %j -> rejected at every boundary', (marker) => {
+    const invalid = { ...plan, preflight_overlap: marker };
+    const value = { ...ledger(), preflight_overlap: marker };
+
+    expect(planIsCanonical(invalid, artifact)).toBe(false);
+    expect(() => assertLaneSourceBinding(value, artifact)).toThrow();
+    expect(() => validateLedger('fixture', value)).toThrow();
+    expect(() => laneV2ToInitSpecs(value)).toThrow();
+  });
+
   it.each([0, 1])(
     'producer: valid old hint and %i current consumers -> stale hint removed through digest ledger and init',
     (consumerCount) => {

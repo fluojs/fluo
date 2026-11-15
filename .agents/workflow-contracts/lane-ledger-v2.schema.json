@@ -29,6 +29,7 @@
   ],
   "properties": {
     "version": { "const": 2 },
+    "preflight_overlap": { "type": "integer", "const": 1 },
     "run_id": {
       "type": "string",
       "pattern": "^(?!.*(?:\\.|\\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$"

@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
+import { evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) &&
@@ -24,6 +25,99 @@ export const coordinateGeneratedIntegration = (lane, snapshots) => snapshots.map
     siblings: ready.map((sibling) => ({ issue: sibling.issue, head: sibling.obs.headSha, pr: sibling.obs.pr.number })),
     surfaces: hints.filter((hint) => ready.some((sibling) => hint.issues.includes(sibling.issue))).map((hint) => hint.surface) } };
 });
+
+const readinessActions = new Set(['review', 'create-pr', 'push', 'wait-ci',
+  'wait-mergeability', 'request-merge-approval', 'merge']);
+
+/** Grant validity and sibling occupancy are distinct head/policy-bound states. */
+export const reviewReadinessState = (row) => {
+  const preflight = evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue });
+  const implemented = preflight.valid && sha(row.obs.headSha) && row.obs.hasNewCommits === true &&
+    !row.obs.observationFailures?.length;
+  const grantable = implemented && row.decision.action === 'review';
+  const occupant = implemented && readinessActions.has(row.decision.action) &&
+    row.obs.issueState !== 'CLOSED' && !['CLOSED', 'MERGED'].includes(row.obs.pr?.state);
+  const fact = row.obs.facts?.['review-readiness'];
+  const current = (grantable || occupant) && fact?.head === row.obs.headSha && fact.value?.active === true &&
+    fact.value.policy_sha256 === preflight.policy.sha256 &&
+    Number.isSafeInteger(fact.value.sequence) && fact.value.sequence > 0;
+  return { grantable, occupant, current: Boolean(current), policy: preflight.valid ? preflight.policy : null,
+    sequence: current ? fact.value.sequence : null };
+};
+
+/** Accepted predictions coordinate review entry using already returned grants. */
+export const coordinatePreflightOverlap = (lane, snapshots) => {
+  if (lane.preflight_overlap !== 1) return snapshots;
+  const policies = new Map(snapshots.map((row) => [row.issue,
+    evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue })]));
+  const overlaps = (left, right) => policies.get(left.issue).valid && policies.get(right.issue).valid
+    ? [...new Set(left.obs.preflight.predicted_files.filter(file =>
+      right.obs.preflight.predicted_files.includes(file)))].sort() : [];
+  const eligible = snapshots.map(row => {
+    const related = snapshots.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length)
+      .sort((a, b) => a.issue - b.issue);
+    if (!related.length) return row;
+    const targets = related.map(sibling => ({
+      issue: sibling.issue, head: sibling.obs.headSha, pr: sibling.obs.pr?.number ?? null,
+      files: overlaps(row, sibling), state: sibling.decision.action,
+    }));
+    const decision = { ...row.decision, overlaps: targets };
+    if (row.decision.action !== 'review') return { ...row, decision };
+    if (!reviewReadinessState(row).occupant) {
+      const pr = row.obs.pr;
+      if (pr?.state === 'MERGED') return { ...row, decision: {
+        action: row.obs.branch || row.obs.worktree ? 'cleanup' : 'done', pr: pr.number, overlaps: targets,
+      } };
+      if (row.obs.issueState === 'CLOSED' && !pr) return { ...row, decision: {
+        action: 'done', reason: 'issue-closed-externally', overlaps: targets,
+      } };
+      if (row.obs.observationFailures?.length) return { ...row, decision: {
+        action: 'observation-failed', failures: row.obs.observationFailures, overlaps: targets,
+      } };
+      return { ...row, decision: { action: 'blocked',
+        reason: pr?.state === 'CLOSED' ? 'pr-closed-externally'
+          : row.obs.issueState === 'CLOSED' ? 'issue-closed-externally' : 'preflight-overlap-review-ineligible',
+        ...(pr ? { pr: pr.number } : {}), overlaps: targets } };
+    }
+    const merged = related.filter(sibling => sibling.obs.pr?.state === 'MERGED');
+    const integrations = merged.map(sibling => ({
+      sibling, evidence: row.obs.overlapIntegrations?.find(item => item.issue === sibling.issue),
+    }));
+    const unreadable = integrations.filter(({ sibling, evidence }) =>
+      !sha(sibling.obs.pr.mergeCommit) || evidence?.commit !== sibling.obs.pr.mergeCommit ||
+      !sha(evidence?.base) || evidence.inBase !== true || typeof evidence.inHead !== 'boolean');
+    if (unreadable.length) return { ...row, decision: { action: 'observation-failed', overlaps: targets,
+      failures: unreadable.map(({ sibling }) => ({
+        source: 'preflight-overlap', subject: sibling.issue, code: 'merge-ancestry-unavailable',
+      })) } };
+    const missing = integrations.filter(({ evidence }) => !evidence.inHead);
+    if (missing.length) return { ...row, decision: { action: 'resolve-conflict',
+      reason: 'preflight-overlap-base-integration', head: row.obs.headSha,
+      base: missing[0].evidence.base, ...(row.obs.pr ? { pr: row.obs.pr.number } : {}),
+      siblings: missing.map(({ sibling, evidence }) => ({ issue: sibling.issue, commit: evidence.commit })),
+      overlaps: targets } };
+    return { ...row, decision };
+  });
+  // Integration failures and pending integration are ineligible before greedy
+  // selection, so a row which cannot review never reserves a sibling's place.
+  const readiness = new Map(eligible.map(row => [row.issue, reviewReadinessState(row)]));
+  const occupants = eligible.filter(row => readiness.get(row.issue).occupant)
+    .sort((a, b) => Number(readiness.get(b.issue).current) - Number(readiness.get(a.issue).current) ||
+      (readiness.get(a.issue).sequence ?? 0) - (readiness.get(b.issue).sequence ?? 0) || a.issue - b.issue);
+  const selected = [];
+  for (const occupant of occupants) {
+    if (!selected.some(other => overlaps(occupant, other).length)) selected.push(occupant);
+  }
+  return eligible.map(row => {
+    if (!reviewReadinessState(row).grantable || !row.decision.overlaps) return row;
+    const waiting = selected.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length);
+    if (selected.some(sibling => sibling.issue === row.issue) || !waiting.length) return row;
+    const siblings = row.decision.overlaps.filter(target => waiting.some(sibling => sibling.issue === target.issue));
+    return { ...row, decision: { action: 'wait-preflight-overlap', reason: 'selected-overlapping-sibling',
+      head: row.obs.headSha, siblings, files: [...new Set(siblings.flatMap(sibling => sibling.files))].sort(),
+      overlaps: row.decision.overlaps } };
+  });
+};
 
 const normalizeFingerprint = (bytes) => bytes.replace(/("sourceFingerprint"\s*:\s*")[a-f0-9]{64}(")/gu, '$1<FINGERPRINT>$2');
 const evidenceFile = (root, path) => {

@@ -73,24 +73,20 @@ edge inside either chain could not have prevented it); and two chains in
 the SAME package (platform-fastify source-tests vs website-docs) ran in
 parallel cleanly because their file sets were disjoint.
 
-Add an edge A -> B only for one of these reasons, and record which:
+Add an edge A -> B only for a semantic dependency and record its evidence:
+B's body or acceptance criteria require A's outcome (B documents what A
+implements, extends A's API, or tests behavior A introduces).
+The same file or package alone never justifies an edge. Execution compares
+accepted preflights' explicit `predicted_files` and coordinates overlapping
+reviews after parallel preflight and implementation.
 
-1. **Semantic dependency**: B's body or acceptance criteria reference
-   A's outcome (B documents what A implements, B extends A's API, B
-   tests behavior A introduces).
-2. **Same-file overlap in shipped source**: both issues name the same
-   production file(s). Docs-only overlap does not qualify — EN/KO and
-   CONTEXT collisions resolved keep-both cheaply in the live run.
-3. **Same-package shipped-source overlap that cannot be shown disjoint**
-   from the issue texts. When the surfaces ARE demonstrably disjoint
-   (different modules, source vs website docs), emit NO edge.
+Within a justified semantic chain, order production fixes first, then tests,
+then docs. Preserve `predicted_conflicts` as compatible planning hints; they
+do not replace the execution-time accepted preflight comparison.
 
-Within a justified chain, order production fixes first, then tests, then
-docs. Shared NON-package surfaces never justify an edge — they become
-`predicted_conflicts` hints (below). When in doubt between an edge and a
-hint, choose the hint: a wrong edge silently costs a parallel slot for
-the whole run, while a missing edge costs at most one visible
-`resolve-conflict` round that the executor already knows how to run.
+New plans include `preflight_overlap: 1` before calculating any receipt binding.
+`readyLedger` copies its presence and value. Legacy plans and ledgers without
+the field retain their existing behavior; never backfill them on import or save.
 
 Authority scope derivation: `cleanup_command_worktrees` is ALWAYS `true`
 (schema `const` — a lane that cannot clean up its own worktrees leaves
@@ -108,10 +104,9 @@ two issues in DIFFERENT chains (different packages) that each added a guard
 to the same `tooling/governance/verify-platform-consistency-governance.mjs`.
 When two or more issues reference the same such surface, record an optional
 `predicted_conflicts` entry in the ledger (`{ surface, issues, note? }`, see
-the v2 schema). This is a HINT, not a serialization order: keep-both
-resolution handled the live conflict cleanly, so the value is in the executor
-expecting `resolve-conflict` rather than being surprised by it. Do not
-restructure chains around a hint.
+the v2 schema). This is a compatibility hint, not a dependency edge. Actual
+file overlap order is decided during execution from accepted preflights.
+Do not restructure chains around a hint.
 
 For generated consumers, construct hints before calculating plan and receipt
 bindings using `scripts/generated-conflicts.mjs`: call

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -8,6 +8,224 @@ import { runComparison } from '../../../../tooling/governance/fixtures/create-la
 import { readRetroEvents, recordCiSnapshot } from '../../retrospective-lane/scripts/retro.mjs';
 import { coordinateGeneratedIntegration, summarizeIntegrationMeasurements, validateGeneratedIntegration, validateStageMeasurements } from './generated-integration.mjs';
 import { summarizeTransitions } from './lane-v4.mjs';
+import * as integration from './generated-integration.mjs';
+import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { buildReviewFact } from '../../review-head/scripts/contracts.mjs';
+
+const overlapRow = (issue, files = ['README.md'], action = 'review', patch = {}) => {
+  const preflight = createPreflight({ issue, issue_sha256: 'b'.repeat(64), base_sha: 'c'.repeat(40),
+    scope: ['README.md', 'docs/', 'src/', 'package.json', 'pnpm-lock.yaml', 'CONTEXT.md'],
+    non_scope: [], acceptance: ['Preserve behavior'], validation: ['node --test'], predicted_files: files });
+  return { issue, decision: { action, head }, obs: { issueSha256: preflight.issue_sha256,
+    baseSha: preflight.base_sha, changedFiles: [], preflight, issueState: 'OPEN', branch: `issue-${issue}`,
+    worktree: `worktree-${issue}`, headSha: head, hasNewCommits: true, pr: null, ...patch } };
+};
+const coordinate = (rows, lane = { preflight_overlap: 1 }) => {
+  assert.equal(typeof integration.coordinatePreflightOverlap, 'function', 'production overlap coordinator is required');
+  return integration.coordinatePreflightOverlap(lane, rows);
+};
+
+const grant = (row, sequence) => {
+  const policy = evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue }).policy;
+  row.obs.facts = { 'review-readiness': { head: row.obs.headSha,
+    value: { policy_sha256: policy.sha256, sequence, active: true } } };
+};
+
+test('readiness ordering: valid grants survive lower numbers and late OPEN PRs in every permutation', () => {
+  const rows = [overlapRow(42), overlapRow(43), overlapRow(44)];
+  grant(rows[1], 1);
+  rows[0].obs.pr = { state: 'OPEN', number: 142, headSha: head };
+
+  for (const order of [[0, 1, 2], [2, 0, 1], [1, 2, 0]]) {
+    const result = coordinate(order.map(index => rows[index])).sort((a, b) => a.issue - b.issue);
+    assert.deepEqual(result.map(row => row.decision.action), ['wait-preflight-overlap', 'review', 'wait-preflight-overlap']);
+    assert.deepEqual(result[2].decision.siblings.map(row => row.issue), [43]);
+  }
+  rows[1].obs.facts['review-readiness'].value.active = false;
+  assert.equal(coordinate(rows)[0].decision.action, 'review');
+  grant(rows[1], 1);
+  rows[1].obs.facts['review-readiness'].value.policy_sha256 = 'f'.repeat(64);
+  assert.equal(coordinate(rows)[0].decision.action, 'review');
+});
+
+test('readiness ordering: fix-back, conflict and failed observation do not occupy or propagate', () => {
+  for (const action of ['fix-back', 'resolve-conflict', 'observation-failed']) {
+    const failure = { source: 'pr', subject: 'issue-42', code: 'command-failed' };
+    const rows = [overlapRow(42, ['README.md'], action,
+      { pr: { state: 'OPEN', number: 142 }, ...(action === 'observation-failed' ? { observationFailures: [failure] } : {}) }),
+    overlapRow(43)];
+    grant(rows[0], 1);
+
+    const result = coordinate(rows);
+
+    assert.equal(result[0].decision.action, action);
+    assert.equal(result[1].decision.action, 'review');
+    assert.equal(result[1].decision.overlaps[0].state, action);
+  }
+});
+
+test('review eligibility: terminated overlapping row -> typed blocker while disjoint rows retain base decisions', () => {
+  for (const [patch, reason] of [
+    [{ pr: { state: 'CLOSED', number: 143 } }, 'pr-closed-externally'],
+    [{ issueState: 'CLOSED', pr: { state: 'OPEN', number: 143 } }, 'issue-closed-externally'],
+  ]) {
+    const rows = [overlapRow(42, ['README.md'], 'implement'), overlapRow(43, ['README.md'], 'review', patch)];
+
+    const result = coordinate(rows);
+
+    assert.equal(result[1].decision.action, 'blocked');
+    assert.equal(result[1].decision.reason, reason);
+    const disjoint = [overlapRow(42, ['src/other.ts']), rows[1]];
+    assert.deepEqual(coordinate(disjoint), disjoint);
+  }
+});
+
+test('review eligibility: merged x, failed or integrating x/y, independent y -> failed integration never occupies', () => {
+  for (const mode of ['unreadable', 'integrate']) {
+    const merged = overlapRow(41, ['docs/x.md'], 'cleanup',
+      { pr: { state: 'MERGED', number: 141, mergeCommit: mode === 'unreadable' ? null : 'd'.repeat(40) } });
+    const target = overlapRow(42, ['docs/x.md', 'docs/y.md']);
+    grant(target, 1);
+    if (mode === 'integrate') target.obs.overlapIntegrations = [{
+      issue: 41, commit: 'd'.repeat(40), base: 'e'.repeat(40), inBase: true, inHead: false,
+    }];
+    const independent = overlapRow(43, ['docs/y.md']);
+
+    const result = coordinate([merged, target, independent]);
+
+    assert.equal(result[1].decision.action, mode === 'unreadable' ? 'observation-failed' : 'resolve-conflict');
+    assert.equal(result[2].decision.action, 'review');
+    assert.equal(result[2].decision.siblings, undefined);
+  }
+});
+
+test('preflight overlap measurement: identical source and gates -> per-issue distinct review heads and CI runs', async () => {
+  const path = new URL('../../../../tooling/governance/fixtures/preflight-overlap/measure.mjs', import.meta.url);
+  assert.equal(existsSync(path), true, 'comparison fixture must be executable');
+  const { runComparison: compare } = await import(path);
+
+  const report = compare();
+  assert.equal(report.comparable, true);
+  assert.equal(report.before.initialStateSha256, report.after.initialStateSha256);
+  assert.equal(report.before.finalSourceSha256, report.after.finalSourceSha256);
+  assert.deepEqual(report.before.finalGateCoverage, report.after.finalGateCoverage);
+  assert.deepEqual(Object.values(report.before.perIssue).map(row => [row.reviewedHeadCount, row.ciRunCount]),
+    [[1, 1], [2, 2], [1, 1]]);
+  assert.deepEqual(Object.values(report.after.perIssue).map(row => [row.reviewedHeadCount, row.ciRunCount]),
+    [[1, 1], [1, 1], [1, 1]]);
+  assert.equal(report.clock, 'simulation');
+  assert.equal(report.duration, null);
+  assert.equal(report.verdict, 'INCONCLUSIVE');
+  assert.equal(report.after.trace.some(event => event.decision.action === 'wait-preflight-overlap'), true);
+  assert.equal(report.before.trace.some(event => event.decision.action === 'resolve-conflict'), true);
+  assert.equal(report.after.trace.some(event => event.decision.reason === 'preflight-overlap-base-integration'), true);
+});
+
+test('preflight overlap: legacy generated all-pairs and disjoint predictions -> exact old decisions', () => {
+  const rows = Array.from({ length: 10 }, (_, i) => overlapRow(4030 + i, ['src/generated.ts']));
+
+  assert.deepEqual(coordinate(rows, {}), rows);
+  const disjoint = [overlapRow(42, ['docs/a.md']), overlapRow(43, ['docs/b.md'])];
+  assert.deepEqual(coordinate(disjoint), disjoint);
+});
+
+test('preflight overlap: full overlap and every permutation -> one selected review without cyclic waits', () => {
+  const rows = [overlapRow(42), overlapRow(43), overlapRow(44)];
+
+  for (const order of [[0, 1, 2], [2, 1, 0], [1, 0, 2], [0, 2, 1], [1, 2, 0], [2, 0, 1]]) {
+    const result = coordinate(order.map(i => rows[i])).sort((a, b) => a.issue - b.issue);
+    assert.deepEqual(result.map(r => r.decision.action), ['review', 'wait-preflight-overlap', 'wait-preflight-overlap']);
+    assert.deepEqual(result[1].decision.siblings.map(r => r.issue), [42]);
+    assert.deepEqual(result[2].decision.siblings.map(r => r.issue), [42]);
+    assert.deepEqual(result[0].decision.overlaps, [43, 44].map(issue => ({
+      issue, head, pr: null, files: ['README.md'], state: 'review',
+    })));
+  }
+  assert.deepEqual(rows.map(r => r.decision.action), ['review', 'review', 'review']);
+});
+
+test('preflight overlap: A-B B-C chain -> a returned grant survives OPEN PR and valid PASS transitions', () => {
+  const rows = [overlapRow(42, ['docs/a.md']), overlapRow(43, ['docs/a.md', 'docs/c.md']), overlapRow(44, ['docs/c.md'])];
+
+  assert.deepEqual(coordinate(rows).map(r => r.decision.action), ['review', 'wait-preflight-overlap', 'review']);
+  grant(rows[1], 1);
+  rows[1].obs.pr = { state: 'OPEN', number: 143, headSha: head };
+  assert.deepEqual(coordinate(rows).map(r => r.decision.action), ['wait-preflight-overlap', 'review', 'wait-preflight-overlap']);
+  rows[1].obs.pr = null;
+  const policy = evaluatePreflight(rows[1].obs.preflight, { ...rows[1].obs, issue: 43 }).policy;
+  rows[1].obs.review = buildReviewFact({ head_sha: head, preflight_sha256: policy.sha256,
+    active_axes: policy.active_axes, reviews: policy.active_axes.map(reviewer => ({
+      reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head,
+      preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [],
+    })) }, head, policy);
+  rows[1].decision.action = 'create-pr';
+  assert.deepEqual(coordinate(rows).map(r => r.decision.action), ['wait-preflight-overlap', 'create-pr', 'wait-preflight-overlap']);
+  rows[1].obs.review.head = 'f'.repeat(40);
+  rows[1].obs.facts['review-readiness'].value.active = false;
+  assert.equal(coordinate(rows)[0].decision.action, 'review');
+});
+
+test('preflight overlap: explicit files of every kind -> sorted metadata, scope prefixes alone never overlap', () => {
+  const files = ['src/generated.ts', 'pnpm-lock.yaml', 'package.json', 'README.md', 'CONTEXT.md'];
+  const result = coordinate([overlapRow(42, files), overlapRow(43, [...files].reverse())]);
+
+  assert.deepEqual(result[1].decision.files, [...files].sort());
+  for (const patch of [{ baseSha: 'f'.repeat(40) }, { issueSha256: 'f'.repeat(64) }, { changedFiles: ['outside.ts'] }, { preflight: null }]) {
+    const rows = [overlapRow(42), overlapRow(43, ['README.md'], 'review', patch)];
+    assert.deepEqual(coordinate(rows), rows);
+  }
+});
+
+test('preflight overlap: all non-review actions -> never replaced with the new wait', () => {
+  for (const action of ['preflight', 'implement', 'fix-back', 'create-pr', 'push', 'wait-ci', 'wait-mergeability',
+    'request-merge-approval', 'merge', 'cleanup', 'done', 'blocked', 'observation-failed', 'wait-dependencies', 'resolve-conflict']) {
+    assert.equal(coordinate([overlapRow(42), overlapRow(43, ['README.md'], action)])[1].decision.action, action);
+  }
+  for (const [action, patch] of [['blocked', {}], ['done', {}], ['cleanup', {}],
+    ['review', { issueState: 'CLOSED' }], ['review', { pr: { state: 'CLOSED', number: 143 } }]]) {
+    assert.equal(coordinate([overlapRow(42, ['README.md'], action, patch), overlapRow(43)])[1].decision.action, 'review');
+  }
+});
+
+test('preflight overlap: relevant sibling observation failure -> failed issue alone loses eligibility', () => {
+  const failure = { source: 'pr', subject: 'issue-42', code: 'command-failed' };
+  const rows = [overlapRow(42, ['README.md'], 'observation-failed', { observationFailures: [failure] }), overlapRow(43)];
+  rows[0].decision.failures = [failure];
+
+  assert.equal(coordinate(rows)[0].decision.action, 'observation-failed');
+  assert.deepEqual(coordinate(rows)[0].decision.failures, [failure]);
+  assert.equal(coordinate(rows)[1].decision.action, 'review');
+  assert.equal(coordinate([rows[0], overlapRow(43, ['src/other.ts'])])[1].decision.action, 'review');
+});
+
+test('preflight overlap: failed issue observation loses current digest -> sibling review remains eligible', () => {
+  const failure = { source: 'issue', subject: 42, code: 'command-failed' };
+  const rows = [overlapRow(42, ['README.md'], 'observation-failed',
+    { issueSha256: null, observationFailures: [failure] }), overlapRow(43)];
+  rows[0].decision.failures = [failure];
+
+  assert.equal(coordinate(rows)[0].decision.action, 'observation-failed');
+  assert.deepEqual(coordinate(rows)[0].decision.failures, [failure]);
+  assert.equal(coordinate(rows)[1].decision.action, 'review');
+});
+
+test('preflight overlap: merged sibling -> base integration only without occupants and verified ancestry', () => {
+  const merged = overlapRow(42, ['README.md'], 'cleanup', { pr: { state: 'MERGED', number: 142, mergeCommit: 'd'.repeat(40) } });
+  const reviewing = overlapRow(43);
+  const evidence = { issue: 42, commit: 'd'.repeat(40), base: 'e'.repeat(40), inBase: true, inHead: false };
+  reviewing.obs.overlapIntegrations = [evidence];
+
+  const decision = coordinate([merged, reviewing])[1].decision;
+  assert.equal(decision.action, 'resolve-conflict');
+  assert.equal(decision.reason, 'preflight-overlap-base-integration');
+  assert.equal(decision.base, evidence.base);
+  assert.deepEqual(decision.siblings.map(s => s.commit), [evidence.commit]);
+  assert.equal(Object.hasOwn(decision, 'pr'), false);
+  reviewing.obs.overlapIntegrations[0].inHead = true;
+  assert.equal(coordinate([merged, reviewing])[1].decision.action, 'review');
+  reviewing.obs.overlapIntegrations[0].inBase = false;
+  assert.equal(coordinate([merged, reviewing])[1].decision.action, 'observation-failed');
+});
 
 const digest = (text) => createHash('sha256').update(text).digest('hex');
 const head = 'a'.repeat(40);

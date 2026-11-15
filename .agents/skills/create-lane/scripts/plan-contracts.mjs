@@ -106,7 +106,10 @@ export const planIsCanonical = (plan, artifact) => {
   const handoffIssues = releaseHandoffIssues(plan?.release_handoffs);
   if (
     !isRecord(plan) ||
-    !hasExactKeys(plan, [...planKeys, ...(Object.hasOwn(plan, 'predicted_conflicts') ? ['predicted_conflicts'] : [])]) ||
+    !hasExactKeys(plan, [...planKeys,
+      ...(Object.hasOwn(plan, 'predicted_conflicts') ? ['predicted_conflicts'] : []),
+      ...(Object.hasOwn(plan, 'preflight_overlap') ? ['preflight_overlap'] : [])]) ||
+    (Object.hasOwn(plan, 'preflight_overlap') && plan.preflight_overlap !== 1) ||
     plan.version !== 2 ||
     typeof plan.lane_id !== 'string' ||
     !safeIdentifier.test(plan.lane_id) ||
@@ -169,6 +172,7 @@ export const readyLedger = (
   lanePlanApprovalSha256,
 ) => ({
   version: 2,
+  ...(Object.hasOwn(plan, 'preflight_overlap') ? { preflight_overlap: plan.preflight_overlap } : {}),
   run_id: plan.lane_id,
   lane_id: plan.lane_id,
   ...(lanePlanApprovalSha256 === undefined
