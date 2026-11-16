@@ -17,6 +17,154 @@ const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const git = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 const modulePath = fileURLToPath(new URL('./workflow-preparation.mjs', import.meta.url));
 
+function redFixture(t, scenario = 'assertion') {
+  const value = fixture(t);
+  const { input } = value;
+  const previous = value.head;
+  const testFile = 'regression.test.mjs';
+  const source = scenario === 'setup'
+    ? "import './missing.mjs';\n"
+    : `import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { value } from './source.mjs';\ntest('value regression', () => {\n  assert.equal(value, ${scenario === 'green' ? 2 : 3});\n});\n`;
+  writeFileSync(join(value.root, testFile), source);
+  writeFileSync(join(value.root, 'source.mjs'), 'export const value = 3;\n');
+  git(value.root, 'add', testFile, 'source.mjs');
+  git(value.root, 'commit', '-qm', 'fix-back');
+  const head = git(value.root, 'rev-parse', 'HEAD');
+  git(input.checkout, 'checkout', '--detach', '-q', head);
+  input.head_sha = head;
+  input.implementation = { mode: 'fix-back', previous_head_sha: previous, head_sha: head,
+    contract_sha256: '' };
+  const argv = [process.execPath, '--test', '--test-reporter=tap', testFile];
+  const command = `node --test --test-reporter=tap ${testFile}`;
+  input.contract = createPreflight({ ...input.contract, scope: ['source.mjs', testFile], validation: [command] });
+  input.implementation.contract_sha256 = input.contract.sha256;
+  input.policy = evaluatePreflight(input.contract, { issue: 42, issueSha256: input.issue_sha256,
+    baseSha: value.base, changedFiles: [testFile, 'source.mjs'] }).policy;
+  input.changed_paths = [testFile, 'source.mjs'];
+  input.diff = value.store('fix.diff', execFileSync('git',
+    ['diff', '--binary', '--full-index', '--no-renames', value.baseHead, head], { cwd: value.root, encoding: 'utf8' }));
+  input.required_checks = [command];
+  const { NODE_TEST_CONTEXT: _context, ...environment } = process.env;
+  const passing = scenario === 'assertion'
+    ? spawnSync(argv[0], argv.slice(1), { cwd: input.checkout, env: environment, encoding: 'utf8' }) : null;
+  if (passing) assert.equal(passing.status, 0, passing.stderr);
+  input.evidence = [{ command, receipt: value.store('fix-focused.json', { ...value.receipt,
+    command, argv, head_sha: head, tree_sha: git(input.checkout, 'rev-parse', 'HEAD^{tree}'),
+    ...(passing ? { stdout: value.store('fix-green.stdout', passing.stdout),
+      stderr: value.store('fix-green.stderr', passing.stderr) } : {}),
+    contract_sha256: input.contract.sha256 }) }];
+  writeFileSync(input.accepted_contract_path, JSON.stringify(input.contract));
+  input.observation = value.store('fix-plan.json', { issue: 42, decision: { action: 'review' }, obs: {
+    preflight: input.contract, preflightPolicy: input.policy, issueSha256: input.issue_sha256,
+    baseSha: value.base, headSha: head, changedFiles: input.changed_paths,
+  } });
+  const patch = value.store('regression.patch', execFileSync('git',
+    ['diff', '--binary', '--full-index', '--no-renames', previous, head, '--', testFile], { cwd: value.root, encoding: 'utf8' }));
+  const checkout = join(value.root, 'reproduction');
+  git(value.root, 'worktree', 'add', '--quiet', '--detach', checkout, previous);
+  const capture = { version: 1, stage: 'fix-back-red', root: value.root, checkout,
+    artifact_root: join(input.artifact_root, 'red'), issue: 42, contract: input.contract,
+    implementation: input.implementation, command, argv,
+    regression_patch: { ...patch, path: `evidence/${patch.path}` },
+    failure: { file: testFile, line: 5, test: 'value regression' } };
+  const capturePath = join(input.artifact_root, 'capture.json');
+  const run = () => {
+    writeFileSync(capturePath, JSON.stringify(capture));
+    return spawnSync(process.execPath, [modulePath, 'fix-back-red', capturePath], { encoding: 'utf8' });
+  };
+  const attach = () => {
+    const result = run();
+    assert.equal(result.status, 0, result.stderr);
+    const receipt = readFileSync(join(capture.artifact_root, 'receipt.json'));
+    input.fix_back_red = { path: 'red/receipt.json', sha256: hash(receipt), bytes: receipt.length };
+    return JSON.parse(receipt);
+  };
+  return { ...value, capture, run, attach };
+}
+
+test('#4128 fix-back RED: actual previous-head assertion -> authenticated common evidence', (t) => {
+  const value = redFixture(t);
+  const receipt = value.attach();
+
+  const prepared = prepareReviewInput(value.input);
+
+  assert.equal(receipt.previous_head_sha, value.head);
+  assert.notEqual(receipt.previous_head_sha, value.base);
+  assert.equal(receipt.exit_code, 1);
+  assert.equal(receipt.producer, 'lead');
+  assert.equal(prepared.common.fix_back_red.receipt.head_sha, value.input.head_sha);
+  for (const reviewer of prepared.reviewers) assert.equal(reviewer.input.fix_back_red, prepared.common.fix_back_red);
+});
+
+for (const scenario of ['green', 'setup']) {
+  test(`#4128 fix-back RED: ${scenario} subprocess -> no accepted receipt`, (t) => {
+    const value = redFixture(t, scenario);
+
+    const result = value.run();
+
+    assert.equal(result.status, 1);
+    assert.equal(JSON.parse(result.stderr).kind, 'input-preparation');
+  });
+}
+
+for (const defect of ['missing', 'bytes', 'head', 'contract', 'previous', 'partial', 'stdout',
+  'patch', 'failure', 'argv', 'producer', 'exit', 'signal', 'duration', 'extra']) {
+  test(`#4128 fix-back preparation: ${defect} receipt -> non-fixable preparation block`, (t) => {
+    const value = redFixture(t);
+    const receipt = value.attach();
+    if (defect === 'missing') delete value.input.fix_back_red;
+    if (defect === 'bytes') value.input.fix_back_red.bytes += 1;
+    if (defect === 'head') receipt.head_sha = value.head;
+    if (defect === 'contract') receipt.contract_sha256 = '0'.repeat(64);
+    if (defect === 'previous') receipt.previous_head_sha = value.base;
+    if (defect === 'partial') receipt.complete = false;
+    if (defect === 'stdout') writeFileSync(join(value.capture.artifact_root, receipt.stdout.path), 'tampered');
+    if (defect === 'patch') receipt.regression_patch = receipt.stderr;
+    if (defect === 'failure') receipt.failure.test = 'other test';
+    if (defect === 'argv') receipt.argv = [process.execPath, '--version'];
+    if (defect === 'producer') receipt.producer = 'child';
+    if (defect === 'exit') receipt.exit_code = 0;
+    if (defect === 'signal') receipt.signal = 'SIGTERM';
+    if (defect === 'duration') receipt.duration_ms = -1;
+    if (defect === 'extra') receipt.extra = true;
+    if (!['missing', 'bytes', 'stdout'].includes(defect)) {
+      value.input.fix_back_red = value.store('red/receipt.json', receipt);
+    }
+
+    assert.throws(() => prepareReviewInput(value.input),
+      (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false);
+  });
+}
+
+for (const defect of ['product-patch', 'wrong-test', 'wrong-head', 'spawn', 'ancestry']) {
+  test(`#4128 RED capture: ${defect} -> rejected before reviewer dispatch`, (t) => {
+    const value = redFixture(t);
+    if (defect === 'product-patch') {
+      const patch = value.store('product.patch', execFileSync('git', ['diff', '--binary', '--full-index',
+        value.head, value.input.head_sha, '--', 'source.mjs'], { cwd: value.root, encoding: 'utf8' }));
+      value.capture.regression_patch = { ...patch, path: `evidence/${patch.path}` };
+    }
+    if (defect === 'wrong-test') value.capture.failure.test = 'unrelated failure';
+    if (defect === 'wrong-head') value.capture.implementation.head_sha = value.base;
+    if (defect === 'spawn') value.capture.argv[0] = `/nonexistent/${process.execPath.split('/').at(-1)}`;
+    if (defect === 'ancestry') value.capture.implementation.previous_head_sha = '0'.repeat(40);
+
+    const result = value.run();
+
+    assert.equal(result.status, 1);
+    assert.equal(JSON.parse(result.stderr).fix_back_eligible, false);
+  });
+}
+
+test('#4128 review preparation: missing implementation -> rejected; ordinary and conflict modes need no RED', (t) => {
+  const value = fixture(t);
+  const { implementation, ...missing } = value.input;
+  assert.throws(() => prepareReviewInput(missing), (error) => error.kind === 'input-preparation');
+  for (const mode of ['implement', 'resolve-conflict']) {
+    assert.equal(prepareReviewInput({ ...value.input, implementation: { ...implementation, mode } }).status, 'prepared');
+  }
+});
+
 function fixture(t) {
   const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();
   mkdirSync(directory, { recursive: true });
@@ -87,6 +235,7 @@ function fixture(t) {
     issue_sha256: contract.issue_sha256, contract, policy, base_ref: 'origin/main',
     accepted_contract_path: acceptedPath, observation,
     base_head_sha: baseHead, head_sha: head, artifact_root: artifactRoot,
+    implementation: { mode: 'implement', previous_head_sha: base, head_sha: head, contract_sha256: contract.sha256 },
     diff, changed_paths: ['source.mjs'], required_checks: ['node focused check'],
     evidence: [{ command: 'node focused check', receipt: store('focused.json', receipt) }], footprint };
   return { root, input, store, receipt, footprintInput, base, baseHead, head, tree };
@@ -102,12 +251,15 @@ function retainedPreparation(t) {
     active_axes: input.policy.active_axes, reviews: input.policy.active_axes.map((reviewer) => ({
       reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: value.head,
       preflight_sha256: input.policy.sha256, verdict_signal: 'PASS', blockers: [],
+      evidence: [{ acceptance: 'Keep executable value behavior', locations: ['source.mjs:1'] }], observations: [],
     })) }, value.head, input.policy);
   mkdirSync(join(value.root, 'docs/guides'), { recursive: true });
   writeFileSync(join(value.root, 'docs/guides/routing.md'), '# Routing\n');
   git(value.root, 'add', 'docs/guides/routing.md');
   git(value.root, 'commit', '-qm', 'explanation');
   input.head_sha = git(value.root, 'rev-parse', 'HEAD');
+  input.implementation = { mode: 'resolve-conflict', previous_head_sha: value.head,
+    head_sha: input.head_sha, contract_sha256: input.contract.sha256 };
   git(input.checkout, 'checkout', '--detach', '-q', input.head_sha);
   input.changed_paths = ['docs/guides/routing.md', 'source.mjs'];
   input.diff = value.store('retained.diff', execFileSync('git',
@@ -448,6 +600,7 @@ const defects = [
   ['scope-expansion', (v) => {
     const contract = createPreflight({ ...v.input.contract, scope: ['other/'], predicted_files: ['other/source.mjs'] });
     v.input.contract = contract;
+    v.input.implementation.contract_sha256 = contract.sha256;
     writeFileSync(v.input.accepted_contract_path, JSON.stringify(contract));
     const observation = JSON.parse(readFileSync(join(v.input.artifact_root, 'plan.json'), 'utf8'));
     observation.obs.preflight = contract;

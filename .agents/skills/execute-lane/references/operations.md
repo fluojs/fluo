@@ -74,7 +74,10 @@ The lead binds actual child routing to the new `record` success wrapper:
 `{ok:true, agent:"fluo-issue-implementer", ...}`. Keep the preflight artifact,
 implementer `Result`, and effective policy digest unchanged. Review `record`
 successes include `{ok:true, head_sha, preflight_sha256, active_axes, reviews}`;
-every envelope includes the assigned `agent`. `set-fact --kind review` applies
+every new envelope includes the assigned `agent`, `evidence` and `observations`.
+Evidence entries identify checked acceptance with repository-relative
+`file:line` locations; a PASS without evidence is rejected. Observations never
+affect the aggregate verdict. `set-fact --kind review` applies
 the same strict new-input admission. Missing, wrong-axis, unregistered, or
 category substitute identity cannot record success. Keep raw failures as
 retrospective evidence under the existing retry contract.
@@ -87,9 +90,11 @@ This parks it as `input-preparation` without an implementation retry; restore
 the route and clear that phase's blocker before planning again. It is never a
 reviewer product BLOCK or an implementation fix-back.
 
-Stored canonical review facts without `agent` retain their original validation,
+Stored canonical review facts with the old five or six envelope keys retain their original validation,
 content, `accepted_at` and local-check/waiver bindings. Only stored-fact reading
-allows this legacy shape; new `record` and `set-fact` inputs require identity.
+allows these legacy shapes; new `record` and `set-fact` inputs require identity
+and both new arrays. Legacy `previous_review` remains unchanged in every
+retention hop; partial modern fields and unknown keys are rejected.
 Dispatch metadata never enters accepted preflight or effective policy digests.
 
 `obs.reviewRetention` is derived solely from canonical stored PASS plus Git:
@@ -119,6 +124,24 @@ accepted focused-evidence inventory. The schemas and artifact references live
 in `../../issue-preflight/SKILL.md` and `../../review-head/SKILL.md`; executable
 validation lives in the preparation source. Reuse the accepted contract and
 canonical `obs.preflightPolicy`; do not alter engine actions or ledgers.
+
+Supply review preparation's required `implementation` context with mode
+`implement`, `fix-back`, or `resolve-conflict`, previous/current heads and the
+accepted contract digest. For fix-back use the actual implementer Result's
+`previous_head_sha` and `head_sha`. Before review preparation the lead runs
+`node .agents/skills/execute-lane/scripts/workflow-preparation.mjs fix-back-red <input.json>`
+in a separate clean reproduction checkout at that previous head. Supply the
+post-head regression-test/necessary-fixture patch, focused command/argv and
+assertion location; the command executes and writes full streams plus an
+authenticated RED receipt into a new artifact directory. See review-head's
+input and receipt keys. Pass its `{path,sha256,bytes}` as `fix_back_red`;
+its nested artifacts resolve beside the receipt. Matching current-head GREEN
+evidence must retain the same command and argv. Missing, altered, unrelated,
+GREEN or setup-failure evidence stops with `input-preparation`,
+`fix_back_eligible:false` before reviewers run. All axes receive identical RED
+evidence in `common`. Ordinary implementation/conflict review needs no RED.
+This limited lead reproduction authority belongs only to review preparation;
+issue-implement's `leadAuthority` and every reviewer remain unchanged.
 
 Only `status:"prepared"` supplies a dispatch payload. Pass its identical
 `common` input to all returned reviewer axes in one background wave.

@@ -31,6 +31,7 @@ const reviewed = (obs, signal = 'PASS') => {
     reviews: policy.active_axes.map((reviewer) => ({
       reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha, preflight_sha256: policy.sha256,
       verdict_signal: signal, blockers: [],
+      evidence: [{ acceptance: 'Keep public behavior', locations: ['src/a.ts:1'] }], observations: [],
     })),
   }, obs.headSha, policy);
 };
@@ -38,6 +39,97 @@ const passedCheck = (obs = observation()) => ({
   ...localCheckBinding(reviewed(obs), obs.reviewAcceptedAt),
   receiptStartedAt: '2026-01-01T00:00:01.000Z', head: obs.headSha, status: 'passed', valid: true,
   receiptPath: '.omo/verification/pass.json', receiptSha256: 'd'.repeat(64),
+});
+
+test('#4128 new review admission: unsubstantiated PASS -> rejected instead of accepted fact', () => {
+  const obs = ciObservation();
+  const { policy } = evaluatePreflight(obs.preflight, obs);
+  const reviews = policy.active_axes.map((reviewer) => ({
+    reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head,
+    preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [],
+    evidence: [], observations: [],
+  }));
+
+  assert.throws(() => buildReviewFact({ head_sha: head, preflight_sha256: policy.sha256,
+    active_axes: policy.active_axes, reviews }, head, policy), TypeError);
+  for (const review of reviews) { delete review.evidence; delete review.observations; }
+  assert.throws(() => buildReviewFact({ head_sha: head, preflight_sha256: policy.sha256,
+    active_axes: policy.active_axes, reviews }, head, policy), TypeError);
+});
+
+test('#4128 review evidence: exact structure and observations -> enforced without changing verdict', () => {
+  const obs = ciObservation();
+  const { policy } = evaluatePreflight(obs.preflight, obs);
+  const fact = reviewed(obs);
+  assert.equal(fact.verdict, 'pass');
+  const gate = { head_sha: head, preflight_sha256: policy.sha256,
+    active_axes: policy.active_axes, reviews: fact.reviews };
+  for (const patch of [
+    { evidence: undefined }, { observations: undefined }, { evidence: [] },
+    { evidence: [{ acceptance: '', locations: ['src/a.ts:1'] }] },
+    { evidence: [{ acceptance: 'behavior', locations: [] }] },
+    { evidence: [{ acceptance: 'behavior', locations: ['/src/a.ts:1'] }] },
+    { evidence: [{ acceptance: 'behavior', locations: ['../a.ts:1'] }] },
+    { evidence: [{ acceptance: 'behavior', locations: ['src/a.ts:0'] }] },
+    { evidence: [{ acceptance: 'behavior', locations: ['src/a.ts'] }] },
+    { evidence: [{ acceptance: 'behavior', locations: ['src/a.ts:1'], extra: true }] },
+    { observations: [''] }, { observations: [1] }, { observations: 'optional' },
+  ]) {
+    assert.throws(() => buildReviewFact({ ...gate,
+      reviews: [{ ...fact.reviews[0], ...patch }, ...fact.reviews.slice(1)] }, head, policy), TypeError);
+  }
+  for (const signal of ['PASS', 'NEEDS-HUMAN-CHECK', 'BLOCK']) {
+    const blockers = signal === 'BLOCK' ? [{ reviewer: 'contract', signature: 'regression',
+      evidence: 'src/a.ts:1', fix_back_eligible: true, status: 'unresolved' }] : [];
+    const reviews = [{ ...fact.reviews[0], verdict_signal: signal, blockers }, ...fact.reviews.slice(1)];
+    const plain = buildReviewFact({ ...gate, reviews }, head, policy);
+    const observed = buildReviewFact({ ...gate, reviews: reviews.map((review) => ({
+      ...review, observations: ['Unrelated baseline behavior remains unchanged'],
+    })) }, head, policy);
+    assert.equal(observed.verdict, plain.verdict);
+    assert.deepEqual(observed.blockers, plain.blockers);
+    assert.throws(() => buildReviewFact({ ...gate, reviews: [{ ...reviews[0],
+      observations: [null] }, ...reviews.slice(1)] }, head, policy), TypeError);
+  }
+});
+
+test('#4128 stored legacy: mixed five/six-key envelopes and nested retention -> preserved and validated', () => {
+  const obs = ciObservation();
+  const { policy } = evaluatePreflight(obs.preflight, obs);
+  const previous = reviewed(obs);
+  for (const [index, review] of previous.reviews.entries()) {
+    delete review.evidence;
+    delete review.observations;
+    if (index === 0) delete review.agent;
+  }
+  const bytes = JSON.stringify(previous);
+  assert.deepEqual(validateReviewFact(previous, head, policy), previous);
+  const hop = (prior, nextHead) => {
+    const retention = { version: 1, previous_head_sha: prior.head, new_head_sha: nextHead,
+      contract_sha256: policy.contract_sha256, policy_sha256: policy.sha256,
+      previous_merge_base_sha: base, new_merge_base_sha: base,
+      previous_review: prior, previous_accepted_at: obs.reviewAcceptedAt,
+      changed_files: ['README.md'], compared_files: [{ path: 'src/a.ts',
+        axes: ['code', 'verification'], previous_sha256: 'f'.repeat(64), new_sha256: 'f'.repeat(64),
+        previous_mode: '100644', new_mode: '100644' }] };
+    return buildReviewFact({ head_sha: nextHead, preflight_sha256: policy.sha256,
+      active_axes: all, reviews: [{ ...reviewed(obs).reviews[0], reviewed_head_sha: nextHead }] },
+    nextHead, policy, retention);
+  };
+  const second = hop(previous, 'e'.repeat(40));
+  delete second.reviews[0].evidence;
+  delete second.reviews[0].observations;
+  const third = hop(second, 'f'.repeat(40));
+  assert.deepEqual(validateReviewFact(third, third.head, policy), third);
+  assert.equal(JSON.stringify(third.retention.previous_review.retention.previous_review), bytes);
+  for (const patch of [
+    { evidence: [] }, { observations: [] }, { extra: true },
+    { evidence: [], observations: [] },
+  ]) {
+    const invalid = structuredClone(third);
+    Object.assign(invalid.retention.previous_review.retention.previous_review.reviews[0], patch);
+    assert.throws(() => validateReviewFact(invalid, invalid.head, policy), TypeError);
+  }
 });
 
 test('#4099 review retention: authenticated prose hop -> fresh contract and original retained envelopes', () => {
@@ -65,7 +157,11 @@ test('#4099 review retention: authenticated prose hop -> fresh contract and orig
   assert.deepEqual(fact.reviews, fresh.reviews);
   assert.deepEqual(validateReviewFact(fact, nextHead, policy), fact);
   const legacy = structuredClone(previous);
-  for (const envelope of legacy.reviews) delete envelope.agent;
+  for (const envelope of legacy.reviews) {
+    delete envelope.agent;
+    delete envelope.evidence;
+    delete envelope.observations;
+  }
   const legacyBytes = JSON.stringify(legacy);
   const legacyFact = buildReviewFact(fresh, nextHead, policy, { ...retention, previous_review: legacy });
   assert.deepEqual(validateReviewFact(legacyFact, nextHead, policy), legacyFact);
@@ -164,7 +260,8 @@ test('#4091 review admission: assigned identities -> accepted; missing or substi
   const { policy } = evaluatePreflight(obs.preflight, obs);
   const input = { head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
     reviews: policy.active_axes.map((reviewer) => ({ reviewer, agent: `fluo-${reviewer}-reviewer`,
-      reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [] })) };
+      reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [],
+      evidence: [{ acceptance: 'Keep public behavior', locations: ['src/a.ts:1'] }], observations: [] })) };
 
   assert.equal(buildReviewFact(input, head, policy).verdict, 'pass');
   for (const agent of [undefined, 'fluo-code-reviewer', 'unregistered', 'deep-high']) {

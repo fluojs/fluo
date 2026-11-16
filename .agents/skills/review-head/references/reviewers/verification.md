@@ -30,6 +30,14 @@ evidence for the behavior and scope it changes.
 
 ## Verification rules
 
+Block only a regression introduced by the change, an acceptance violation for
+supported realistic input, or state corruption, proved with a concrete path
+and evidence. An existing defect is a violation when this acceptance explicitly
+requires its correction. Unreachable or out-of-contract inputs, unrelated
+pre-existing behavior, preferences and optional improvements belong in
+`observations`. Missing input, authority or intent is `NEEDS-HUMAN-CHECK` or
+`input-preparation`, never a product blocker.
+
 - A relevant failed focused check is `BLOCK`; known remote failures need
   remediation, not concealment.
 - Missing regression evidence for a behavioral change is `BLOCK`.
@@ -117,7 +125,9 @@ Return JSON only with exactly these keys:
   "reviewed_head_sha": "<the supplied 40-character head SHA>",
   "preflight_sha256": "<the supplied effective review policy SHA-256>",
   "verdict_signal": "<PASS | BLOCK | NEEDS-HUMAN-CHECK>",
-  "blockers": []
+  "blockers": [],
+  "evidence": [{"acceptance": "<checked acceptance criterion>", "locations": ["<repository-relative file>:<positive line>"]}],
+  "observations": []
 }
 ```
 
@@ -125,3 +135,10 @@ Every BLOCK entry has exactly `reviewer`, `signature`, `evidence`,
 `fix_back_eligible`, and `status`. Set `reviewer` to `verification`, `status`
 to `unresolved`, and use a stable signature shaped as
 `<file-or-contract>:<reason>:<required-remediation>`.
+
+Every verdict includes both arrays. Each evidence entry has exactly
+`acceptance` (a non-empty criterion identifier) and `locations` (one or more
+repository-relative `file:line` strings). PASS needs at least one evidence
+entry. Observations are non-empty strings, or an empty array, and never affect
+aggregation. In fix-back mode inspect the identical authenticated
+`common.fix_back_red` and its previous-head assertion before judging the fix.
