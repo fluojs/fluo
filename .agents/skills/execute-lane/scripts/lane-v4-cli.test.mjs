@@ -542,7 +542,8 @@ const fixture = (t, isolatedOrchestrator = false, parent = process.env.FLUO_PROD
   cpSync(new URL('../../../../.omo/omo.jsonc', import.meta.url), join(root, '.omo/omo.jsonc'));
   const ghState = join(root, 'gh.json');
   const ghLog = join(root, 'gh.log');
-  const state = { issue: { state: 'OPEN', title: 'Document route precedence', body: 'Keep route precedence stable.' }, pr: null };
+  const state = { issue: { state: 'OPEN', title: 'Document route precedence', body: 'Keep route precedence stable.' }, pr: null,
+    run: { id: 101, run_attempt: 1, path: '.github/workflows/ci.yml', status: 'completed', conclusion: 'success' } };
   const update = () => writeFileSync(ghState, JSON.stringify(state));
   update();
   writeFileSync(join(bin, 'gh'), `#!${process.execPath}\nimport { appendFileSync, readFileSync } from 'node:fs';
@@ -569,6 +570,15 @@ if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) 
 } else if (args[0] === 'issue' && args[1] === 'view') {
   const issue = state.issues?.[args[2]] ?? state.issue;
   process.stdout.write(args.includes('--jq') ? issue.state : JSON.stringify(issue));
+} else if (args[0] === 'api' && args[1] === '--paginate' && args[2] === '--slurp'
+  && /^repos\\/\\{owner\\}\\/\\{repo\\}\\/actions\\/runs\\?branch=[^&]+&event=pull_request&per_page=100$/.test(args[3])
+  && args.length === 4) {
+  if (Object.hasOwn(state, 'actionsRaw')) { process.stdout.write(state.actionsRaw); process.exit(0); }
+  const branch = new URLSearchParams(args[3].split('?')[1]).get('branch');
+  const pr = Object.hasOwn(state.prs ?? {}, branch) ? state.prs[branch] : state.pr;
+  process.stdout.write(JSON.stringify(Object.hasOwn(state, 'actionsPages') ? state.actionsPages : [
+    { total_count: 1, workflow_runs: [{ head_sha: pr.headRefOid, ...state.run }] },
+  ]));
 } else { process.stderr.write('unexpected gh invocation'); process.exit(2); }
 `);
   chmodSync(join(bin, 'gh'), 0o755);
@@ -1689,7 +1699,124 @@ test('CLI: durable preflight and selected review publish ordinary docs without f
   f.update();
   assert.equal(f.plan().decision.action, 'request-merge-approval');
   const calls = readFileSync(f.ghLog, 'utf8').trim().split('\n').map(JSON.parse);
-  assert.ok(calls.every((args) => ['issue', 'pr'].includes(args[0]) && args[1] === 'view'));
+  assert.ok(calls.every((args) => (['issue', 'pr'].includes(args[0]) && args[1] === 'view')
+    || (args.length === 4 && args[0] === 'api' && args[1] === '--paginate' && args[2] === '--slurp'
+      && args[3] === 'repos/{owner}/{repo}/actions/runs?branch=issue-42&event=pull_request&per_page=100')));
+});
+
+for (const approved of [false, true]) {
+  test(`CLI canonical CI: partial rollup and unfinished run -> wait until success (grant=${approved})`, (t) => {
+    const f = fixture(t);
+    f.set('preflight', f.preflight());
+    f.implement();
+    const review = f.review();
+    f.set('review', review, review.head_sha);
+    if (approved) f.cli('approve-merge', f.common);
+    f.state.pr = { number: 42, state: 'OPEN', headRefOid: review.head_sha,
+      mergeable: 'MERGEABLE', statusCheckRollup: [{ name: 'Resolve verification plan', conclusion: 'SUCCESS' }] };
+    f.state.run = { ...f.state.run, status: 'in_progress', conclusion: null };
+    f.update();
+
+    let planned = f.plan();
+
+    assert.equal(planned.decision.action, 'wait-ci');
+    assert.equal(planned.obs.pr.ciStatus, 'pending');
+    assert.equal(planned.obs.pr.ciRuns, null);
+    f.state.pr.statusCheckRollup.push({ name: 'Verify', status: 'IN_PROGRESS', conclusion: null });
+    f.update();
+    assert.equal(f.plan().decision.action, 'wait-ci');
+    f.state.pr.statusCheckRollup[1] = { name: 'Verify', conclusion: 'SUCCESS' };
+    f.update();
+    assert.equal(f.plan().decision.action, 'wait-ci');
+    f.state.run = { ...f.state.run, status: 'completed', conclusion: 'success' };
+    f.update();
+    planned = f.plan();
+    assert.equal(planned.obs.pr.ciStatus, 'passing');
+    assert.equal(planned.decision.action, approved ? 'merge' : 'request-merge-approval');
+    assert.equal(planned.obs.pr.ciRuns, null);
+  });
+}
+
+test('CLI canonical CI: latest exact-head run and attempt -> preserve failure and rerun recovery', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  f.cli('approve-merge', f.common);
+  f.state.pr = { number: 42, state: 'OPEN', headRefOid: review.head_sha,
+    mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }] };
+  const success = { ...f.state.run, head_sha: review.head_sha };
+  const latest = { ...success, id: 102, status: 'queued', conclusion: null };
+  f.state.actionsPages = [{ total_count: 4, workflow_runs: [
+    latest, { ...success, id: 104, head_sha: 'f'.repeat(40) },
+  ] }, { total_count: 4, workflow_runs: [
+    { ...success, id: 103, path: '.github/workflows/extended-verification.yml', conclusion: 'failure' }, success,
+  ] }];
+  f.update();
+
+  assert.equal(f.plan().decision.action, 'wait-ci');
+
+  for (const conclusion of ['failure', 'timed_out', 'cancelled', 'action_required']) {
+    Object.assign(latest, { status: 'completed', conclusion });
+    f.update();
+    const planned = f.plan();
+    assert.equal(planned.obs.pr.ciStatus, 'failing', conclusion);
+    assert.equal(planned.decision.reason, 'ci-failing', conclusion);
+  }
+  Object.assign(latest, { run_attempt: 2, status: 'in_progress', conclusion: null });
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-ci');
+  Object.assign(latest, { status: 'completed', conclusion: 'success' });
+  f.update();
+  assert.equal(f.plan().decision.action, 'merge');
+  f.state.pr.statusCheckRollup = [{ conclusion: 'FAILURE' }];
+  f.update();
+  assert.equal(f.plan().decision.reason, 'ci-failing');
+});
+
+test('CLI canonical CI: unavailable or incomplete run evidence -> wait without losing PR or rollup failure', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  f.state.pr = { number: 42, state: 'OPEN', headRefOid: review.head_sha,
+    mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }] };
+  const success = { ...f.state.run, head_sha: review.head_sha };
+  const page = (runs, total = runs.length) => [{ total_count: total, workflow_runs: runs }];
+  const cases = [
+    { fail: 'api' }, { actionsRaw: '{' }, { actionsRaw: '{}' }, { actionsRaw: 'null' },
+    { actionsPages: null }, { actionsPages: [] }, { actionsPages: [null] }, { actionsPages: [{ total_count: 1 }] },
+    { actionsPages: page([]) }, { actionsPages: page([success], 2) },
+    { actionsPages: page([{ ...success, path: '.github/workflows/node-verification.yml' }]) },
+    { actionsPages: page([{ ...success, head_sha: 'f'.repeat(40) }]) },
+    ...[0, -1, '101', 1.5, null].map(id => ({ actionsPages: page([{ ...success, id }]) })),
+    ...[0, -1, '2', 1.5, null].map(run_attempt => ({ actionsPages: page([{ ...success, run_attempt }]) })),
+    ...['neutral', 'skipped', null].map(conclusion => ({ actionsPages: page([{ ...success, conclusion }]) })),
+    { actionsPages: page([{ ...success, status: 'waiting', conclusion: null }]) },
+    { actionsPages: page([{ ...success, status: null }]) },
+    { actionsPages: page([success, success]) },
+    { actionsPages: [{ total_count: 2, workflow_runs: [success] }, { total_count: 1, workflow_runs: [{ ...success, id: 102 }] }] },
+  ];
+  for (const patch of cases) {
+    delete f.state.fail;
+    delete f.state.actionsRaw;
+    delete f.state.actionsPages;
+    Object.assign(f.state, patch);
+    f.state.pr.statusCheckRollup = [{ conclusion: 'SUCCESS' }];
+    f.update();
+
+    const planned = f.plan();
+
+    assert.equal(planned.decision.action, 'wait-ci', JSON.stringify(patch));
+    assert.equal(planned.obs.pr.number, 42);
+    assert.notEqual(planned.obs.pr.ciStatus, 'passing');
+    assert.equal(planned.obs.pr.ciRuns, null);
+    f.state.pr.statusCheckRollup = [{ conclusion: 'ERROR' }];
+    f.update();
+    assert.equal(f.plan().decision.reason, 'ci-failing', JSON.stringify(patch));
+  }
 });
 
 test('CLI: recording an actual local CI failure enters fix-back without forging a passed receipt', (t) => {

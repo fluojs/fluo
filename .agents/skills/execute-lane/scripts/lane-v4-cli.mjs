@@ -936,10 +936,47 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 			mergeCommit: parsed.mergeCommit?.oid ?? null,
 			mergedAt: parsed.mergedAt ?? null,
 		};
-		const runJson = parsed.state === "MERGED" ? run(root, "gh", ["api", "--paginate", "--slurp",
+		const runJson = ["OPEN", "MERGED"].includes(parsed.state) ? run(root, "gh", ["api", "--paginate", "--slurp",
 			`repos/{owner}/{repo}/actions/runs?branch=${encodeURIComponent(branch)}&event=pull_request&per_page=100`]) : null;
 		pr.ciRuns = null;
-		if (runJson !== null) {
+		if (parsed.state === "OPEN") {
+			let pages = null;
+			if (runJson !== null) {
+				try {
+					pages = JSON.parse(runJson);
+				} catch (error) {
+					if (!(error instanceof SyntaxError)) throw error;
+				}
+			}
+			let canonical = null;
+			if (Array.isArray(pages) && pages.length > 0
+				&& pages.every((page) => page !== null && typeof page === "object"
+					&& Number.isSafeInteger(page.total_count) && page.total_count >= 0
+					&& page.total_count === pages[0].total_count && Array.isArray(page.workflow_runs))) {
+				const runs = pages.flatMap((page) => page.workflow_runs);
+				if (pages[0].total_count === runs.length
+					&& runs.every((observed) => observed !== null && typeof observed === "object"
+						&& Number.isSafeInteger(observed.id) && observed.id > 0
+						&& Number.isSafeInteger(observed.run_attempt) && observed.run_attempt > 0
+						&& typeof observed.head_sha === "string" && /^[a-f0-9]{40}$/u.test(observed.head_sha)
+						&& typeof observed.path === "string" && observed.path.length > 0
+						&& typeof observed.status === "string"
+						&& (observed.conclusion === null || typeof observed.conclusion === "string"))
+					&& new Set(runs.map((observed) => observed.id)).size === runs.length) {
+					for (const observed of runs) {
+						if (observed.head_sha === pr.headSha && observed.path === ".github/workflows/ci.yml"
+							&& (!canonical || observed.id > canonical.id)) canonical = observed;
+					}
+				}
+			}
+			if (canonical?.status === "completed"
+				&& ["failure", "timed_out", "cancelled", "action_required", "stale", "startup_failure"].includes(canonical.conclusion)) {
+				pr.ciStatus = "failing";
+			} else if (ciStatus === "passing"
+				&& !(canonical?.status === "completed" && canonical.conclusion === "success")) {
+				pr.ciStatus = "pending";
+			}
+		} else if (runJson !== null) {
 			const pages = JSON.parse(runJson);
 			if (Array.isArray(pages) && pages.every((page) => Array.isArray(page.workflow_runs))
 				&& pages[0]?.total_count === pages.flatMap((page) => page.workflow_runs).length) {
