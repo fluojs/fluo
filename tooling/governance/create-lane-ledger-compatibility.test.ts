@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 const root = process.cwd();
 const { planIsCanonical, readyLedger } = await import(resolve(root, '.agents/skills/create-lane/scripts/plan-contracts.mjs'));
 const { approvalBinding } = await import(resolve(root, '.agents/skills/create-lane/scripts/approval-contracts.mjs'));
-const { assertContract, assertSameHeadReview } = await import(resolve(root, '.agents/workflow-contracts/contracts.mjs'));
+const { assertContract, assertLaneSourceBinding, assertSameHeadReview } = await import(resolve(root, '.agents/workflow-contracts/contracts.mjs'));
 const { validateLedger } = await import(resolve(root, 'tooling/governance/lane-ledger-state.mjs'));
 const { laneV2ToInitSpecs, sourceLedgerRef } = await import(resolve(root, '.agents/skills/execute-lane/scripts/lane-v4-cli.mjs'));
 const fixture = () => JSON.parse(readFileSync(resolve(root,
@@ -35,6 +35,65 @@ const validators = [
 ];
 
 describe('create-lane planning storage compatibility', () => {
+  for (const shape of ['planning', 'legacy']) {
+    for (const [boundary, validate] of [
+      ['assertContract', validators[0]],
+      ['validateLedger', validators[1]],
+      ['assertLaneSourceBinding', (ledger: unknown) => {
+        const value = fixture();
+        assertLaneSourceBinding(ledger, value.artifacts[value.intake.artifact_path]);
+      }],
+    ] as const) {
+      const policies = [
+        { merge_policy: 'supervisor-auto', retry_count_is_terminal: true, max_same_failure_repeats: 1, max_wall_clock_minutes: Number.MAX_SAFE_INTEGER },
+        { merge_policy: 'supervisor-full-auto', retry_count_is_terminal: false, max_same_failure_repeats: 3, max_wall_clock_minutes: 180 },
+        { merge_policy: 'supervisor-auto', retry_count_is_terminal: false, max_same_failure_repeats: null, max_wall_clock_minutes: null },
+      ];
+      it.each(policies)(`${boundary}: ${shape} valid retry policy %# -> accepted without mutation`, (policy) => {
+        const value = fixture();
+        const { merge_policy, ...limits } = policy;
+        const retry_policy = { ...limits, stop_on_child_contract_error: true };
+        const ledger = shape === 'legacy'
+          ? { ...legacy(), merge_policy, retry_policy }
+          : readyLedger({ ...value.plan, merge_policy, retry_policy },
+            value.artifacts[value.intake.artifact_path], value.intake.artifact_path);
+        const before = structuredClone(ledger);
+
+        expect(() => validate(ledger)).not.toThrow();
+        expect(ledger).toEqual(before);
+      });
+
+      const bounded = { retry_count_is_terminal: true, max_same_failure_repeats: 3,
+        max_wall_clock_minutes: 180, stop_on_child_contract_error: true };
+      const invalid: Record<string, unknown>[] = [
+        { retry_count_is_terminal: true, stop_on_child_contract_error: true },
+        { ...bounded, unknown: true },
+        { ...bounded, stop_on_child_contract_error: false },
+        { ...bounded, retry_count_is_terminal: 'true' },
+        { ...bounded, max_same_failure_repeats: 0 },
+        { ...bounded, max_wall_clock_minutes: Number.MAX_SAFE_INTEGER + 1 },
+        { ...bounded, max_same_failure_repeats: null },
+        { ...bounded, max_same_failure_repeats: null, max_wall_clock_minutes: null },
+      ];
+      for (const key of Object.keys(bounded)) {
+        const missing: Record<string, unknown> = { ...bounded };
+        delete missing[key];
+        invalid.push(missing);
+      }
+      it.each(invalid)(`${boundary}: ${shape} malformed retry policy %# -> rejected without mutation`, (retry_policy) => {
+        const value = fixture();
+        const ledger = shape === 'legacy'
+          ? { ...legacy(), merge_policy: 'supervisor-auto', retry_policy }
+          : readyLedger({ ...value.plan, merge_policy: 'supervisor-auto', retry_policy },
+            value.artifacts[value.intake.artifact_path], value.intake.artifact_path);
+        const before = structuredClone(ledger);
+
+        expect(() => validate(ledger)).toThrow();
+        expect(ledger).toEqual(before);
+      });
+    }
+  }
+
   it('readyLedger: new planning value -> validates without legacy state or input mutation', () => {
     const value = fixture();
     const before = JSON.stringify(value);
