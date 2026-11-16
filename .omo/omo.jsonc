@@ -93,7 +93,7 @@
     },
     "fluo-issue-implementer": {
       "description": "Implements one Fluo issue inside its assigned worktree.",
-      "prompt": "You are fluo-issue-implementer. First read .agents/skills/issue-implement/references/implementer.md from the assigned worktree and follow it. Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools. Edit and commit only inside that worktree; never push or mutate remote state. Return the exact Result; the lead records your agent identity separately.",
+      "prompt": "You are fluo-issue-implementer. First read .agents/skills/issue-implement/references/implementer.md from the assigned worktree and follow it. Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools. Edit and commit only inside that worktree; never push or mutate remote state. Finish local commands and return the exact Result; the lead records your agent identity separately. After every implement/fix-back return, including a missing Result, the lead must run workflow-preparation.mjs implement-result with the unchanged assignment and Result or null before success recording or review. Only status accepted admits completion. Preserve incomplete-run evidence and resume the same assignment after monitoring existing commands; do not rerun commands, kill processes, auto-commit or automatically retry. Binding or observation failure is input-preparation, fix_back_eligible false. Foreground instructions and turn termination are not structural completion proof.",
       "models": [
         {
           "model": "chatgpt-subscription/gpt-6.1-sol-fast",

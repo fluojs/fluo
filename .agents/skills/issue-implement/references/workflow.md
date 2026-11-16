@@ -172,12 +172,48 @@ The implementer returns `Result` above. Validate it with
   changes from unresolved to remediated
 - no remaining blockers
 
-Before accepting the result, the lead observes the assigned checkout again,
-checks the actual head against the report, and inspects the committed diff
-against the starting head and preflight scope. Confirm there is a real scoped
-change, no unrelated staged/uncommitted residue, no rewritten starting history,
-and no `Co-Authored-By` trailer. The pure validators check supplied values, not
-Git state, command execution, or content-level scope. Keep focused-check logs
+Immediately after either child mode returns, even with no Result, the lead runs
+`../../execute-lane/scripts/workflow-preparation.mjs implement-result <input.json>`
+or calls `prepareImplementResult` from that module. The exact wrapper is
+`{version:1,stage:"implement-result",root,accepted_contract_path,contract,input,
+result}` with absolute root/accepted path, unchanged accepted contract and
+Input, and the original Result or `null`. Do not reuse `implement` preparation:
+completion must admit a new HEAD rather than require the starting HEAD.
+
+Only `{status:"accepted",kind:"implement-result",result}` (CLI stdout, exit 0)
+allows the unchanged Result into the existing success record and subsequent
+review preparation. Admission independently authenticates contract equality and
+issue/digest binding, realpath/common Git repository and current branch, actual
+HEAD/commit equality, starting ancestry, nonempty committed diff/changed_files
+equality and scope, clean staged/unstaged/untracked state, and no live worktree
+commands or descendants. Still inspect the commit for forbidden
+`Co-Authored-By` trailers. Pure validators remain unchanged.
+
+On macOS, process observation uses `ps` and `lsof`; on Linux it uses `ps` and
+`/proc/<pid>/cwd`. The child and lead run under the same effective user. Cwd
+roots cover that user's commands, with descendants from the system-wide parent
+table even outside the worktree. Component boundaries exclude sibling paths;
+the observer itself is excluded. A live process whose cwd cannot be read,
+failed observation or unsupported environment is `input-preparation` with
+`fix_back_eligible:false` (CLI stderr, exit 1), never an empty list.
+This is a point-in-time check and does not lock the process tree.
+
+Observed unfinished work returns a separate `{version:1,status:"incomplete",
+kind:"incomplete-run",lane_id,issue_number,mode,preflight_sha256,worktree,
+starting_head_sha,current_head_sha,branch,changes,result,processes,reasons}`
+(CLI stderr, exit 2). `worktree` is real; changes hold staged/unstaged/untracked
+paths; result is `{present,valid,error}`; process entries contain
+`{pid,ppid,command,attribution}`, with `{kind:"cwd",path}` or
+`{kind:"descendant",ancestor_pid}` attribution. Reasons preserve all observed
+unfinished causes. Missing Result stays incomplete even on a clean new commit.
+Retain this evidence, monitor existing commands, then resume the same assignment
+and rerun admission after it returns. Do not reexecute commands, kill processes,
+auto-commit, automatically retry or record success before acceptance.
+Binding mismatch/observation failure is an input block; unavailable values are
+not guessed. No Result keys, stored facts/digests, authority or engine
+decisions change. Foreground instructions or turn termination cannot substitute
+for admission. Focused test receipts remain self-report, not independent test
+execution proof. Keep focused-check logs
 and the changeset or explicit policy-based no-release rationale as supporting
 evidence, outside the exact result object.
 

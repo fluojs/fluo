@@ -142,6 +142,19 @@ the accepted contract, assigned checkout and declared prerequisites before
 either implementation mode. Finalization returns a contract, not a dispatch;
 the lead records it separately. Local commands declare executable tool search
 paths and dependency/build artifacts; CI-only checks remain remote evidence.
+Immediately after every implement/fix-back child returns, run
+`workflow-preparation.mjs implement-result <input.json>`, even without a Result.
+Use exactly `{version:1,stage:"implement-result",root,accepted_contract_path,
+contract,input,result}` with the original assignment and Result or `null`.
+Only `status:"accepted"` admits its unchanged `result` to the existing success
+`record` and subsequent review preparation. The gate independently observes
+Git identity, committed scope/diff, clean status and worktree commands and
+descendants; foreground instructions or a child ending its turn prove none of
+these. `kind:"incomplete-run"` preserves all observed unfinished work. Retain
+that wrapper, watch existing commands, then resume the same assignment without
+restarting commands, killing processes, auto-committing or inventing a Result.
+Observation failure is `input-preparation`, `fix_back_eligible:false`; restore
+observation before proceeding. The full interface is in operations.md.
 Preparation never installs, builds, tests, writes ledgers or dispatches children.
 Only `status: "prepared"` with a dispatch payload authorizes dispatch. Pass identical authenticated
 `common` evidence to all selected axes in one background wave; preparation

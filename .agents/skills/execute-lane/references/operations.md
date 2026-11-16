@@ -165,6 +165,61 @@ observation stays with the lead. Success returns `{status:"prepared",
 kind:"implement-input",dispatch,input,contract,prerequisites}` using the registered
 implementer for either input mode.
 
+Immediately after an implement or fix-back child returns, before any success
+`record` or review preparation, run `workflow-preparation.mjs implement-result
+<input.json>`. Always run it, including when no Result was returned. Its exact
+wrapper is `{version:1,stage:"implement-result",root,accepted_contract_path,
+contract,input,result}`. Paths are absolute; contract and Input are unchanged;
+`result` is the original version 1 Result or `null`. API callers use
+`prepareImplementResult(wrapper)`. Do not run starting-HEAD preparation again
+on a newly committed implementation.
+
+The read-only gate authenticates accepted-file equality, issue/preflight,
+worktree realpath/common repository, branch, starting ancestry and current HEAD.
+It compares the nonempty committed diff and approved scope against changed_files,
+rejects staged/unstaged/untracked residue, and observes running commands using
+actual cwd and system-wide parent relationships. On macOS it uses `ps` and
+`lsof`; on Linux it uses `ps` and `/proc/<pid>/cwd`. Cwd roots cover the current
+effective user's commands, with descendants attributed through the full process
+table even when they change directories. Run the lead and child under the same
+user. Paths use component boundaries; sibling worktrees are excluded. The
+checker itself is excluded. Missing cwd for a still-live process, failed tools,
+unreadable observations and unsupported platforms fail closed, never as an
+empty process list. This is a point-in-time observation, not a process lock.
+
+Success returns `{status:"accepted",kind:"implement-result",result}` (CLI stdout,
+exit 0) with the original Result unchanged. Only then pass that Result into the
+existing `{ok:true,agent:"fluo-issue-implementer",...}` success record and use a
+fresh plan for review preparation. Passed focused verification remains child
+self-report; admission does not independently execute or certify tests.
+
+Ordinary unfinished work returns `{version:1,status:"incomplete",
+kind:"incomplete-run",lane_id,issue_number,mode,preflight_sha256,worktree,
+starting_head_sha,current_head_sha,branch,changes,result,processes,reasons}`
+(CLI stderr, exit 2, no success stdout). `worktree` is the real path;
+`changes` contains `staged`, `unstaged`, `untracked` path arrays. `result` is
+`{present,valid,error}` with `error:null` unless validation failed. Each process
+has `{pid,ppid,command,attribution}`; attribution is `{kind:"cwd",path}` or
+`{kind:"descendant",ancestor_pid}`. Reasons retain every observed cause:
+`missing-result` or `invalid-result`, `running-processes`, `unchanged-head`
+(or `empty-diff` for a new commit with no tree change), and `dirty-worktree`.
+No Result is inferred even for a clean new commit.
+
+Retain the complete incomplete-run wrapper and raw child return in work-unit
+evidence, without publishing an implementation success fact or starting review.
+Monitor the listed existing commands to their actual exits, then resume the
+same child/assignment with its branch, starting head, contract, dirty work and
+optional PR intact. Do not rerun commands, terminate processes, auto-commit,
+automatically retry, or synthesize missing evidence. Run completion admission
+again when the resumed assignment returns. Binding mismatches and observation
+failures instead throw/emit `kind:"input-preparation"`,
+`fix_back_eligible:false` (CLI stderr, exit 1). Unobserved values remain
+unavailable in that diagnostic; never guess them or turn an unavailable probe
+into incomplete-run. Restore input/observation access before continuing.
+Neither wrapper changes Result, exported issue-implement validators,
+implementerAuthority/leadAuthority, old facts/digests, engine decisions, Git,
+ledgers or remote state.
+
 Local requirements name executable tools with absolute `path_dirs` plus inherited
 PATH, and safe worktree-relative file/directory artifacts, including dependency
 directories and concrete dist files. The preparer only checks executable access

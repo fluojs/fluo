@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import { evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { evaluatePreflight, isRetentionProsePath } from '../../issue-preflight/scripts/contracts.mjs';
 
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) &&
@@ -66,6 +66,7 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
   const overlaps = (left, right) => policies.get(left.issue).valid && policies.get(right.issue).valid
     ? [...new Set(left.obs.preflight.predicted_files.filter(file =>
       right.obs.preflight.predicted_files.includes(file)))].sort() : [];
+  const blockingOverlap = (left, right) => overlaps(left, right).some(file => !isRetentionProsePath(file));
   const eligible = snapshots.map(row => {
     const related = snapshots.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length)
       .sort((a, b) => a.issue - b.issue);
@@ -118,12 +119,21 @@ export const coordinatePreflightOverlap = (lane, snapshots) => {
     .sort((a, b) => Number(readiness.get(b.issue).current) - Number(readiness.get(a.issue).current) ||
       (readiness.get(a.issue).sequence ?? 0) - (readiness.get(b.issue).sequence ?? 0) || a.issue - b.issue);
   const selected = [];
-  for (const occupant of occupants) {
-    if (!selected.some(other => overlaps(occupant, other).length)) selected.push(occupant);
+  for (const occupant of occupants.filter(row => readiness.get(row.issue).current)) {
+    if (!selected.some(other => blockingOverlap(occupant, other))) selected.push(occupant);
+  }
+  let remaining = occupants.filter(row => !readiness.get(row.issue).current &&
+    !selected.some(other => blockingOverlap(row, other)));
+  while (remaining.length) {
+    const degree = row => remaining.filter(other => other.issue !== row.issue && blockingOverlap(row, other)).length;
+    remaining.sort((a, b) => degree(a) - degree(b) || a.issue - b.issue);
+    const candidate = remaining[0];
+    selected.push(candidate);
+    remaining = remaining.filter(row => row.issue !== candidate.issue && !blockingOverlap(row, candidate));
   }
   return eligible.map(row => {
     if (!reviewReadinessState(row).grantable || !row.decision.overlaps) return row;
-    const waiting = selected.filter(sibling => sibling.issue !== row.issue && overlaps(row, sibling).length);
+    const waiting = selected.filter(sibling => sibling.issue !== row.issue && blockingOverlap(row, sibling));
     if (selected.some(sibling => sibling.issue === row.issue) || !waiting.length) return row;
     const siblings = row.decision.overlaps.filter(target => waiting.some(sibling => sibling.issue === target.issue));
     return { ...row, decision: { action: 'wait-preflight-overlap', reason: 'selected-overlapping-sibling',

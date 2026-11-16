@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { accessSync, constants, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, mkdirSync, readFileSync, readlinkSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, delimiter, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { contractDigest, createPreflight, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
-import { assertIssueImplementIdentity, assertIssueImplementInput } from '../../issue-implement/scripts/contracts.mjs';
+import { assertIssueImplementIdentity, assertIssueImplementInput, assertIssueImplementResult } from '../../issue-implement/scripts/contracts.mjs';
 import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
 import { observeReviewRetention } from './lane-v4-cli.mjs';
 import { retentionFreshAxes } from '../../review-head/scripts/contracts.mjs';
@@ -214,6 +214,168 @@ function prepareImplement(input) {
   requireInput(missing.length === 0, `implement preparation: missing prerequisites ${JSON.stringify(missing)}`);
   return { status: 'prepared', kind: 'implement-input',
     dispatch: registeredDispatch(root, dispatchFor(assignment.mode)), input: assignment, contract: accepted, prerequisites };
+}
+
+// Cwd roots are observed for this effective user; the system-wide parent table
+// also attributes their descendants, even after a descendant changes directory.
+function observeImplementProcesses(worktree) {
+  requireInput(['darwin', 'linux'].includes(process.platform) && typeof process.geteuid === 'function',
+    'process observation: unsupported platform');
+  const run = (command, args, statuses = [0]) => {
+    const result = spawnSync(command, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    requireInput(!result.error && statuses.includes(result.status) && result.signal === null && !result.stderr,
+      `process observation: ${command} failed: exit=${result.status} ${result.error?.message ?? result.stderr}`);
+    return result.stdout;
+  };
+  const table = () => run('ps', ['-axo', 'pid=,ppid=,uid=,stat=,command=']).trim().split('\n').map((line) => {
+    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/u.exec(line);
+    requireInput(match !== null, 'process observation: malformed ps output');
+    return { pid: Number(match[1]), ppid: Number(match[2]), uid: Number(match[3]),
+      state: match[4], command: match[5] };
+  }).filter((entry) => !entry.state.startsWith('Z') && entry.pid !== process.pid);
+  const entries = table();
+  const owned = entries.filter((entry) => entry.uid === process.geteuid());
+  const directories = new Map();
+  if (process.platform === 'darwin' && owned.length) {
+    // lsof returns 1 when any selected pid has exited. Missing cwd entries
+    // still fail below unless the second ps observation confirms their exit.
+    const output = run('lsof', ['-nP', '-a', '-p', owned.map((entry) => entry.pid).join(','), '-d', 'cwd', '-F0pn'], [0, 1]);
+    let pid;
+    for (const field of output.split('\0')) {
+      const value = field.replace(/^\n/u, '');
+      if (value.startsWith('p')) pid = Number(value.slice(1));
+      if (value.startsWith('n')) {
+        requireInput(Number.isSafeInteger(pid) && isAbsolute(value.slice(1)),
+          'process observation: malformed lsof cwd');
+        directories.set(pid, value.slice(1));
+      }
+    }
+  }
+  if (process.platform === 'linux') {
+    for (const entry of owned) {
+      try { directories.set(entry.pid, readlinkSync(`/proc/${entry.pid}/cwd`)); }
+      catch (error) {
+        // Disappearing processes are checked against a second live table below.
+        requireInput(error.code === 'ENOENT', `process observation: cwd ${entry.pid}: ${error.message}`);
+      }
+    }
+  }
+  const missing = owned.filter((entry) => !directories.has(entry.pid));
+  if (missing.length) {
+    const alive = new Set(table().map((entry) => entry.pid));
+    requireInput(missing.every((entry) => !alive.has(entry.pid)),
+      `process observation: cwd unavailable for live pids ${missing.filter((entry) => alive.has(entry.pid)).map((entry) => entry.pid).join(',')}`);
+  }
+  const attributed = new Map();
+  for (const entry of owned) {
+    const cwd = directories.get(entry.pid);
+    if (cwd === undefined) continue;
+    const inside = relative(worktree, cwd);
+    if (inside === '' || (inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside))) {
+      attributed.set(entry.pid, { pid: entry.pid, ppid: entry.ppid, command: entry.command,
+        attribution: { kind: 'cwd', path: cwd } });
+    }
+  }
+  for (let added = true; added;) {
+    added = false;
+    for (const entry of entries) {
+      if (!attributed.has(entry.pid) && attributed.has(entry.ppid)) {
+        attributed.set(entry.pid, { pid: entry.pid, ppid: entry.ppid, command: entry.command,
+          attribution: { kind: 'descendant', ancestor_pid: entry.ppid } });
+        added = true;
+      }
+    }
+  }
+  return [...attributed.values()].sort((a, b) => a.pid - b.pid);
+}
+
+/** Read-only completion admission, separate from the exact version 1 Result. */
+export function prepareImplementResult(input) {
+  exact(input, ['version', 'stage', 'root', 'accepted_contract_path', 'contract', 'input', 'result'],
+    'implement result');
+  requireInput(input.version === 1 && input.stage === 'implement-result'
+    && typeof input.root === 'string' && isAbsolute(input.root)
+    && typeof input.accepted_contract_path === 'string' && isAbsolute(input.accepted_contract_path),
+  'implement result: invalid stage/root/accepted contract path');
+  try {
+    assertIssueImplementInput(input.input);
+    validatePreflight(input.contract);
+    const accepted = JSON.parse(readFileSync(input.accepted_contract_path, 'utf8'));
+    requireInput(isDeepStrictEqual(accepted, input.contract), 'implement result: stale accepted contract');
+    const assignment = input.input;
+    requireInput(accepted.issue === assignment.issue_number && accepted.sha256 === assignment.preflight_sha256,
+      'implement result: issue/preflight binding mismatch');
+    const root = realpathSync(input.root);
+    const worktree = realpathSync(resolve(root, assignment.worktree));
+    requireInput(relative(root, worktree) === assignment.worktree, 'implement result: wrong worktree realpath');
+    requireInput(realpathSync(resolve(root, text(root, 'rev-parse', '--git-common-dir')))
+      === realpathSync(resolve(worktree, text(worktree, 'rev-parse', '--git-common-dir'))),
+    'implement result: wrong repository checkout');
+    const branch = text(worktree, 'branch', '--show-current');
+    const head = text(worktree, 'rev-parse', 'HEAD');
+    requireInput(branch === assignment.branch, 'implement result: branch mismatch');
+    git(worktree, 'merge-base', '--is-ancestor', assignment.starting_head_sha, head);
+    const paths = (...args) => git(worktree, ...args).toString().split('\0').filter(Boolean);
+    const changedFiles = paths('diff', '--name-only', '--no-renames', '-z', assignment.starting_head_sha, head);
+    requireInput(changedFiles.every((path) => pathSafe(path)
+      && accepted.scope.some((scope) => path === scope || (scope.endsWith('/') && path.startsWith(scope)))
+      && !accepted.non_scope.some((scope) => path === scope || (scope.endsWith('/') && path.startsWith(scope)))),
+    'implement result: committed diff outside approved scope');
+    const changes = {
+      staged: paths('diff', '--cached', '--name-only', '-z'),
+      unstaged: paths('diff', '--name-only', '-z'),
+      untracked: paths('ls-files', '--others', '--exclude-standard', '-z'),
+    };
+    const result = { present: input.result !== null, valid: false, error: null };
+    if (result.present) {
+      if (input.result && typeof input.result === 'object' && !Array.isArray(input.result)) {
+        const bindings = { mode: assignment.mode, lane_id: assignment.lane_id,
+          issue_number: assignment.issue_number, branch: assignment.branch, worktree: assignment.worktree,
+          preflight_sha256: assignment.preflight_sha256, previous_head_sha: assignment.starting_head_sha,
+          pr: assignment.existing_pr };
+        requireInput(Object.entries(bindings).every(([key, value]) => !Object.hasOwn(input.result, key)
+          || isDeepStrictEqual(input.result[key], value)), 'implement result: result identity binding mismatch');
+      }
+      try { assertIssueImplementResult(assignment, input.result); result.valid = true; }
+      catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+        result.error = error.message;
+      }
+    }
+    if (result.valid) {
+      requireInput(input.result.head_sha === head && input.result.commit_sha === head,
+        'implement result: reported HEAD mismatch');
+      requireInput(isDeepStrictEqual([...input.result.changed_files].sort(), [...changedFiles].sort()),
+        'implement result: reported changed_files mismatch');
+    }
+    const processes = observeImplementProcesses(worktree);
+    requireInput(text(worktree, 'rev-parse', 'HEAD') === head
+      && text(worktree, 'branch', '--show-current') === branch
+      && isDeepStrictEqual(changes, {
+        staged: paths('diff', '--cached', '--name-only', '-z'),
+        unstaged: paths('diff', '--name-only', '-z'),
+        untracked: paths('ls-files', '--others', '--exclude-standard', '-z'),
+      })
+      && isDeepStrictEqual(JSON.parse(readFileSync(input.accepted_contract_path, 'utf8')), accepted),
+    'implement result: observation changed during admission');
+    const reasons = [];
+    if (!result.present) reasons.push('missing-result');
+    else if (!result.valid) reasons.push('invalid-result');
+    if (processes.length) reasons.push('running-processes');
+    if (head === assignment.starting_head_sha) reasons.push('unchanged-head');
+    else if (changedFiles.length === 0) reasons.push('empty-diff');
+    if (Object.values(changes).some((paths) => paths.length)) reasons.push('dirty-worktree');
+    if (reasons.length) {
+      return { version: 1, status: 'incomplete', kind: 'incomplete-run',
+        lane_id: assignment.lane_id, issue_number: assignment.issue_number, mode: assignment.mode,
+        preflight_sha256: assignment.preflight_sha256, worktree, starting_head_sha: assignment.starting_head_sha,
+        current_head_sha: head, branch, changes, result, processes, reasons };
+    }
+    return { status: 'accepted', kind: 'implement-result', result: input.result };
+  } catch (error) {
+    if (error instanceof WorkflowPreparationError) throw error;
+    throw new WorkflowPreparationError(`implement result: observation/binding failed: ${error.message}`);
+  }
 }
 
 /** Read authenticated artifacts completely; never use a clipped tool response. */
@@ -634,8 +796,8 @@ export function prepareReviewInput(input) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const [stage, path] = process.argv.slice(2);
-    requireInput(['preflight', 'finalize-preflight', 'implement', 'review', 'fix-back-red'].includes(stage) && path && process.argv.length === 4,
-      'Usage: node workflow-preparation.mjs <preflight|finalize-preflight|implement|review|fix-back-red> <input.json>');
+    requireInput(['preflight', 'finalize-preflight', 'implement', 'implement-result', 'review', 'fix-back-red'].includes(stage) && path && process.argv.length === 4,
+      'Usage: node workflow-preparation.mjs <preflight|finalize-preflight|implement|implement-result|review|fix-back-red> <input.json>');
     const input = JSON.parse(readFileSync(path, 'utf8'));
     if (stage === 'preflight') {
       exact(input, ['version', 'stage', 'root', 'footprint'], 'preflight preparation');
@@ -648,6 +810,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       case 'review': result = prepareReviewInput(input); break;
       case 'finalize-preflight': result = finalizePreflight(input); break;
       case 'implement': result = prepareImplement(input); break;
+      case 'implement-result': result = prepareImplementResult(input); break;
       case 'fix-back-red': result = captureFixBackRed(input); break;
       case 'preflight':
         result = { status: 'prepared', kind: 'preflight-input',
@@ -655,7 +818,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           footprint: prepareSourceFootprint(input.root, input.footprint) };
         break;
     }
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.kind === 'incomplete-run') {
+      process.stderr.write(`${JSON.stringify(result, null, 2)}\n`);
+      process.exitCode = 2;
+    } else {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    }
   } catch (error) {
     process.stderr.write(`${JSON.stringify({ status: 'blocked', kind: 'input-preparation',
       fix_back_eligible: false, error: error.message,
