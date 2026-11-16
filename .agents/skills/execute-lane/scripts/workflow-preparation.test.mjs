@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { once } from 'node:events';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -10,6 +11,7 @@ import { createPreflight, evaluatePreflight } from '../../issue-preflight/script
 import { buildReviewFact } from '../../review-head/scripts/contracts.mjs';
 import { observeReviewRetention } from './lane-v4-cli.mjs';
 import { prepareReviewInput, prepareSourceFootprint, sourceFootprintCategories } from './workflow-preparation.mjs';
+import * as preparation from './workflow-preparation.mjs';
 import { readRegisteredAgents, validateDispatchTarget } from './dispatch-targets.mjs';
 import { createCommandRunner } from '../../../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
 
@@ -459,6 +461,256 @@ function implementation(t, legacy = false) {
   return { ...value, worktree, toolDir, wrapper: { version: 1, stage: 'implement', root: value.root,
     accepted_contract_path: value.input.accepted_contract_path, contract, input } };
 }
+
+function completion(t, mode = 'implement') {
+  const value = implementation(t);
+  const input = value.wrapper.input;
+  input.mode = mode;
+  if (mode === 'fix-back') {
+    input.fix_back_attempt = 1;
+    input.blockers = [{ reviewer: 'code', signature: 'fixture', evidence: 'source.mjs:1',
+      fix_back_eligible: true, status: 'unresolved' }];
+    input.existing_pr = { number: 42, url: 'https://example.test/pr/42', head_branch: input.branch };
+  }
+  const commitChange = () => {
+    writeFileSync(join(value.worktree, 'source.mjs'), 'export const value = 3;\n');
+    git(value.worktree, 'add', 'source.mjs');
+    git(value.worktree, 'commit', '-qm', 'complete implementation');
+    const head = git(value.worktree, 'rev-parse', 'HEAD');
+    return { version: 1, result: 'completed', mode, lane_id: input.lane_id, issue_number: input.issue_number,
+      branch: input.branch, worktree: input.worktree, pr: input.existing_pr,
+      preflight_sha256: input.preflight_sha256, previous_head_sha: input.starting_head_sha,
+      head_sha: head, commit_sha: head, changed_files: ['source.mjs'],
+      verification: [{ command: 'node focused check', status: 'passed' }],
+      fix_back_result: mode === 'implement' ? 'not-applicable' : 'remediated',
+      addressed_blockers: input.blockers.map((blocker) => ({ ...blocker, status: 'remediated' })),
+      remaining_blockers: [] };
+  };
+  const wrapper = { ...value.wrapper, stage: 'implement-result', result: null };
+  return { ...value, wrapper, commitChange };
+}
+
+// IPC readiness and close are the synchronization, never elapsed time.
+async function runningCommand(t, cwd) {
+  const worker = `
+    const { spawn } = require('node:child_process');
+    const child = spawn(process.execPath, ['-e', "process.send('ready'); process.on('message', () => process.disconnect());"],
+      { cwd: require('node:os').tmpdir(), stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
+    child.once('message', () => process.send({ descendant: child.pid }));
+    process.once('message', () => {
+      child.once('close', () => process.disconnect());
+      child.send('stop');
+    });
+  `;
+  const child = spawn(process.execPath, ['-e', worker], { cwd, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+  const closed = once(child, 'close', { signal: AbortSignal.timeout(15000) });
+  const stop = async () => {
+    if (child.connected) child.send('stop');
+    await closed;
+  };
+  t.after(stop);
+  const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(15000) });
+  return { pid: child.pid, descendant: ready.descendant, stop };
+}
+
+test('#4139 completion CLI: missing result with running command and staged change -> all incomplete evidence', async (t) => {
+  const value = completion(t);
+  const command = await runningCommand(t, value.worktree);
+  writeFileSync(join(value.worktree, 'source.mjs'), 'staged\n');
+  git(value.worktree, 'add', 'source.mjs');
+
+  const result = cli(value, 'implement-result', value.wrapper);
+
+  assert.equal(result.status, 2, result.stderr);
+  assert.equal(result.stdout, '');
+  const output = JSON.parse(result.stderr);
+  assert.equal(output.kind, 'incomplete-run');
+  assert.deepEqual(output.reasons, ['missing-result', 'running-processes', 'unchanged-head', 'dirty-worktree']);
+  assert.equal(output.lane_id, value.wrapper.input.lane_id);
+  assert.equal(output.issue_number, 42);
+  assert.equal(output.preflight_sha256, value.wrapper.contract.sha256);
+  assert.equal(output.starting_head_sha, value.wrapper.input.starting_head_sha);
+  assert.equal(output.current_head_sha, output.starting_head_sha);
+  assert.equal(output.branch, 'issue-42');
+  assert.equal(output.worktree, realpathSync(value.worktree));
+  assert.deepEqual(output.changes, { staged: ['source.mjs'], unstaged: [], untracked: [] });
+  assert.deepEqual(output.result, { present: false, valid: false, error: null });
+  const parent = output.processes.find((entry) => entry.pid === command.pid);
+  const descendant = output.processes.find((entry) => entry.pid === command.descendant);
+  assert.equal(parent.attribution.kind, 'cwd');
+  assert.equal(parent.attribution.path, realpathSync(value.worktree));
+  assert.equal(descendant.ppid, command.pid);
+  assert.deepEqual(descendant.attribution, { kind: 'descendant', ancestor_pid: command.pid });
+  assert.equal(typeof descendant.command, 'string');
+});
+
+test('#4139 completion API: clean new commit without result -> incomplete rather than inferred completion', (t) => {
+  const value = completion(t);
+  const result = value.commitChange();
+
+  const output = preparation.prepareImplementResult(value.wrapper);
+
+  assert.equal(output.kind, 'incomplete-run');
+  assert.deepEqual(output.reasons, ['missing-result']);
+  assert.equal(output.current_head_sha, result.head_sha);
+  assert.deepEqual(output.processes, []);
+});
+
+for (const mode of ['implement', 'fix-back']) {
+  test(`#4139 completion API/CLI: ${mode} result with live command -> accepts same assignment only after close`, async (t) => {
+    const value = completion(t, mode);
+    value.wrapper.result = value.commitChange();
+    const sibling = `${value.worktree}-sibling`;
+    git(value.root, 'worktree', 'add', '--quiet', '--detach', sibling, value.wrapper.result.head_sha);
+    await runningCommand(t, sibling);
+    const command = await runningCommand(t, value.worktree);
+    const before = git(value.worktree, 'rev-parse', 'HEAD');
+
+    const blocked = preparation.prepareImplementResult(value.wrapper);
+    assert.equal(blocked.kind, 'incomplete-run');
+    assert.deepEqual(blocked.reasons, ['running-processes']);
+    assert.deepEqual(blocked.processes.map((entry) => entry.pid).sort((a, b) => a - b),
+      [command.pid, command.descendant].sort((a, b) => a - b));
+    await command.stop();
+    const accepted = preparation.prepareImplementResult(value.wrapper);
+    const result = cli(value, 'implement-result', value.wrapper);
+
+    assert.equal(accepted.status, 'accepted');
+    assert.equal(accepted.kind, 'implement-result');
+    assert.strictEqual(accepted.result, value.wrapper.result);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).result, value.wrapper.result);
+    assert.equal(git(value.worktree, 'rev-parse', 'HEAD'), before);
+    assert.equal(git(value.worktree, 'status', '--porcelain=v1'), '');
+  });
+}
+
+test('#4139 completion API: valid result with staged unstaged and untracked paths -> preserves all dirty evidence', (t) => {
+  const value = completion(t);
+  value.wrapper.result = value.commitChange();
+  writeFileSync(join(value.worktree, 'source.mjs'), 'staged\n');
+  git(value.worktree, 'add', 'source.mjs');
+  writeFileSync(join(value.worktree, 'source.mjs'), 'unstaged\n');
+  writeFileSync(join(value.worktree, 'untracked file.txt'), 'untracked\n');
+
+  const output = preparation.prepareImplementResult(value.wrapper);
+
+  assert.equal(output.kind, 'incomplete-run');
+  assert.deepEqual(output.reasons, ['dirty-worktree']);
+  assert.deepEqual(output.changes, { staged: ['source.mjs'], unstaged: ['source.mjs'], untracked: ['untracked file.txt'] });
+  assert.deepEqual(output.result, { present: true, valid: true, error: null });
+});
+
+test('#4139 completion API/CLI: malformed result -> incomplete retains validator diagnostic', (t) => {
+  const value = completion(t);
+  value.wrapper.result = { ...value.commitChange(), extra: true };
+
+  const output = preparation.prepareImplementResult(value.wrapper);
+  const result = cli(value, 'implement-result', value.wrapper);
+
+  assert.equal(output.kind, 'incomplete-run');
+  assert.deepEqual(output.reasons, ['invalid-result']);
+  assert.equal(output.result.present, true);
+  assert.equal(output.result.valid, false);
+  assert.match(output.result.error, /unknown key extra/u);
+  assert.equal(result.status, 2);
+  assert.equal(JSON.parse(result.stderr).kind, 'incomplete-run');
+});
+
+for (const [name, mutate] of [
+  ['head', (v) => { v.wrapper.result.head_sha = v.base; v.wrapper.result.commit_sha = v.base; }],
+  ['changed-files', (v) => { v.wrapper.result.changed_files = ['fabricated.mjs']; }],
+  ['duplicate-files', (v) => { v.wrapper.result.changed_files.push('source.mjs'); }],
+  ['branch', (v) => git(v.worktree, 'checkout', '--detach', '-q')],
+  ['accepted-contract', (v) => writeFileSync(v.wrapper.accepted_contract_path, '{}')],
+  ['binding', (v) => { v.wrapper.input.preflight_sha256 = '0'.repeat(64); }],
+  ['result-binding', (v) => { v.wrapper.result.lane_id = 'another-lane'; }],
+  ['wrong-repository', (v) => {
+    git(v.root, 'worktree', 'remove', '--force', v.worktree);
+    mkdirSync(v.worktree);
+    git(v.worktree, 'init', '-q', '-b', 'issue-42');
+  }],
+  ['worktree-symlink', (v) => {
+    const moved = `${v.worktree}-moved`;
+    git(v.root, 'worktree', 'move', v.worktree, moved);
+    symlinkSync(moved, v.worktree);
+  }],
+  ['scope', (v) => {
+    writeFileSync(join(v.worktree, 'outside.mjs'), 'outside\n');
+    git(v.worktree, 'add', 'outside.mjs');
+    git(v.worktree, 'commit', '-qm', 'outside scope');
+    v.wrapper.result.head_sha = git(v.worktree, 'rev-parse', 'HEAD');
+    v.wrapper.result.commit_sha = v.wrapper.result.head_sha;
+    v.wrapper.result.changed_files = ['outside.mjs', 'source.mjs'];
+  }],
+  ['history', (v) => {
+    git(v.worktree, 'checkout', '--orphan', 'unrelated', '-q');
+    git(v.worktree, 'commit', '-qam', 'rewritten root');
+    git(v.worktree, 'branch', '-f', 'issue-42');
+    git(v.worktree, 'checkout', 'issue-42', '-q');
+    v.wrapper.result.head_sha = git(v.worktree, 'rev-parse', 'HEAD');
+    v.wrapper.result.commit_sha = v.wrapper.result.head_sha;
+  }],
+  ['wrapper', (v) => { v.wrapper.extra = true; }],
+]) {
+  test(`#4139 completion API/CLI: ${name} drift -> non-fixable input-preparation block`, (t) => {
+    const value = completion(t);
+    value.wrapper.result = value.commitChange();
+    mutate(value);
+
+    assert.throws(() => preparation.prepareImplementResult(value.wrapper),
+      (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false);
+    const result = cli(value, 'implement-result', value.wrapper);
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(JSON.parse(result.stderr).kind, 'input-preparation');
+    assert.equal(JSON.parse(result.stderr).fix_back_eligible, false);
+  });
+}
+
+for (const observer of ['ps', ...(process.platform === 'darwin' ? ['lsof'] : [])]) {
+  test(`#4139 completion CLI: ${observer} observer fails -> input block never empty process success`, (t) => {
+    const value = completion(t);
+    value.wrapper.result = value.commitChange();
+    writeFileSync(join(value.toolDir, observer), '#!/bin/sh\nexit 71\n');
+    chmodSync(join(value.toolDir, observer), 0o755);
+    value.env = { PATH: `${value.toolDir}:${process.env.PATH}` };
+
+    const result = cli(value, 'implement-result', value.wrapper);
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    const output = JSON.parse(result.stderr);
+    assert.equal(output.kind, 'input-preparation');
+    assert.equal(output.fix_back_eligible, false);
+    assert.match(output.error, /process observation/u);
+  });
+}
+
+test('#4139 completion CLI: empty observer output -> unavailable observation cannot prove completion', (t) => {
+  const value = completion(t);
+  value.wrapper.result = value.commitChange();
+  const observer = process.platform === 'darwin' ? 'lsof' : 'ps';
+  writeFileSync(join(value.toolDir, observer), '#!/bin/sh\nexit 0\n');
+  chmodSync(join(value.toolDir, observer), 0o755);
+  value.env = { PATH: `${value.toolDir}:${process.env.PATH}` };
+
+  const result = cli(value, 'implement-result', value.wrapper);
+
+  assert.equal(result.status, 1);
+  assert.match(JSON.parse(result.stderr).error, /process observation/u);
+});
+
+test('#4139 completion API: new commit with identical tree -> incomplete empty diff', (t) => {
+  const value = completion(t);
+  git(value.worktree, 'commit', '--allow-empty', '-qm', 'no implementation');
+
+  const output = preparation.prepareImplementResult(value.wrapper);
+
+  assert.equal(output.kind, 'incomplete-run');
+  assert.deepEqual(output.reasons, ['missing-result', 'empty-diff']);
+});
 
 test('#4129 implement CLI: clean assigned worktree and executable prerequisites -> registered dispatch without execution', (t) => {
   const value = implementation(t);
