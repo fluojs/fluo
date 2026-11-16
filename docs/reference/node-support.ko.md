@@ -9,7 +9,7 @@ Node floor는 역할별로 분류됩니다. 순수 runtime인 15개 Node-bound p
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
 | Exact Node `24.0.0` | Runtime-only floor lane: 지원되는 compiler Node에서 빌드한 artifact로 실제 public runtime entry import와 HTTP listener, dispatch, config, shutdown 동작을 수행; Babel 8 로딩과 24.0.0 설치 없음 | 최소 지원 runtime floor이며 release runtime은 아님 |
-| Exact Node `24.11.0` | PR: 독립 frozen install/fresh build와 영향받는 package test, 관련 4종 starter smoke; full PR: 모든 package; extended: 전체 검증과 browser journey | Babel 8의 최소 compiler toolchain floor |
+| Exact Node `24.11.0` | PR: 독립 frozen install/fresh build와 영향받는 package test, 관련 4종 starter smoke 및 조건부 Node 회귀; full PR: 모든 package; extended: 전체 검증과 browser journey | Babel 8의 최소 compiler toolchain floor |
 | Locked Node `24.x` | 선택된 primary PR 검증, 관련 docs와 생성 starter dev/production browser matrix; full PR과 extended는 모든 primary 검사 유지 | Canonical 개발 검증 및 Changesets release runtime |
 | Locked Node `26.x` | PR: 독립 frozen install/fresh build와 영향받는 package test, 관련 4종 starter smoke; full PR: 모든 package; extended: 전체 검증과 browser journey | Forward verification 전용이며 publish에 사용하지 않음 |
 | Bun, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
@@ -26,9 +26,13 @@ Full PR에서만 `compatibility-floor`와 `compatibility-next` 정의를 각각 
 
 Full primary package test는 4개 shard, tooling은 2개 shard를 유지합니다. 선택된 apps/examples와 직접 Node 회귀는 `tooling-1`에 남고, matching suite가 없는 apps 명령은 명시적인 not-applicable로 기록합니다. Browser 설치와 전체 `capture tooling`은 primary build에 의존하는 `react-product`가 유일하게 소유하며 tooling domain receipt의 필수 producer도 `react-product`입니다. `tooling-1` 성공은 누락된 제품 receipt를 대신하지 않습니다. Scoped PR도 기존 React/example 선택 조건이 참일 때만 제품 task를 한 번 선택합니다. Capture 내부 build/browser/fault/복구 순서와 정상 배포 복원은 유지하고 `starters`의 별도 `capture starters`도 유지합니다. Primary build는 선택 package artifact와 필요한 경우 runtime-floor bundle을 제공합니다. Exact Node `24.0.0`은 workspace dependency 설치와 Babel 로딩 없이 bundle을 실행합니다.
 
+`.agents/` 또는 `tooling/` 아래 JavaScript·TypeScript 스크립트를 변경하는 full PR은 기존 `compatibility-floor-smoke`에서 `pnpm test:node`도 정확히 한 번 실행합니다. 고정된 `compat24` Node `24.11.0`에서 해당 task의 독립 frozen install과 fresh build 뒤에 실행하며 script/package 혼합 입력도 중복 실행하지 않습니다. Scoped PR의 `tooling-1`이 `selection.toolingPaths`에서 `node --test`를 선택하면 기존 `compatibility-floor` composite task에서도 같은 경로를 실행하고 선택된 package test와 조건부 starter smoke를 유지합니다. 무관한 email leaf와 일반 문서만 바뀐 경우 floor Node 실행을 추가하지 않습니다. Node `26.x`에는 Node suite를 추가하지 않으며 extended 보조 검증은 이미 `test:verify`에 포함된 suite를 중복 실행하지 않습니다.
+
+Full PR은 새 job·install·build 없이 기존 floor smoke에 Node suite 실행 시간만 추가합니다. Scoped plan은 floor task가 아직 선택되지 않은 경우에만 기존 composite task와 독립 install/build 비용을 추가하며, 이미 선택된 경우 그 bootstrap을 재사용합니다. 완료된 최종 head 실행에서 실제 GitHub 경과 시간과 합산 job 경과 시간을 기록해야 합니다. 계획만으로 비용 절감이나 15분 예산 충족을 입증할 수 없습니다.
+
 선택된 `react-product`는 기존 post-build task matrix에서 먼저 내보내며 나머지 task의 상대 순서와 고정된 plan 순서는 유지합니다. 이는 matrix 생성 순서의 우선 배치이며 GitHub의 실제 시작 시각을 보장하지 않습니다. 속도 개선 여부는 새로운 CI 실측 전까지 미확인입니다.
 
-이 정책은 기존의 세 버전 전체 PR matrix를 전체 primary profile과 두 compatibility profile로 대체합니다. Package engine 지원 범위는 바꾸지 않지만 보조 버전의 PR 검증 범위는 좁아집니다. 보조 버전의 전체 typecheck, lint, tooling, apps/examples, browser 검증은 `.github/workflows/extended-verification.yml`과 `.github/workflows/release.yml`의 exact-source 선행 검증으로 이동합니다. 이전 정기 실행의 성공은 publishing commit의 extended 검증을 대신하지 않습니다.
+이 정책은 기존의 세 버전 전체 PR matrix를 전체 primary profile과 두 compatibility profile로 대체합니다. Package engine 지원 범위는 바꾸지 않지만 보조 버전의 PR 검증 범위는 좁아집니다. 위의 조건부 floor Node 회귀를 제외한 보조 버전의 전체 typecheck, lint, tooling, apps/examples, browser 검증은 `.github/workflows/extended-verification.yml`과 `.github/workflows/release.yml`의 exact-source 선행 검증으로 이동합니다. 이전 정기 실행의 성공은 publishing commit의 extended 검증을 대신하지 않습니다.
 
 `tooling/ci/environment.lock.json`은 runner마다 floating Node tag를 독립적으로 해석하는 대신 정확한 버전과 다운로드 checksum을 고정합니다. 새 버전을 채택할 때는 리뷰된 변경으로 lock을 갱신합니다. 로컬과 원격 task는 같은 Debian Linux/arm64 image recipe, browser, native runtime 버전을 사용합니다.
 
