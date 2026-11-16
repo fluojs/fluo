@@ -74,6 +74,27 @@ because the opposite call was made and overturned in a real review:
 
 ## Judgment rules
 
+For every acceptance item in the accepted preflight, apply at least one
+realistic boundary input or usage scenario. Derive its expected outcome from
+the governing contract and compare it with what the actual implementation or
+instruction requires. Trace the supported input boundary and caller path to
+explain whether and why the scenario reaches the reviewed behavior. For an
+instruction change, follow how the instruction applies to that scenario.
+Declarations, matching terminology, and the presence of a code location alone
+do not establish acceptance. Inspect whether existing tests cover the specific
+input and expected-outcome combination; distinguish manual tracing from
+executed test evidence.
+
+Record this analysis in the existing `evidence` entries. Keep each entry at
+exactly `acceptance` and `locations`: in the `acceptance` string retain the
+original acceptance item identifier and explain the input or scenario,
+contract-required outcome, reachability and its reason, actual outcome, and
+existing test coverage. In `locations`, cite only repository-relative
+`file:positive-line` locations in the governing contract, implementation or
+instructions, and tests actually read. Do not add top-level or evidence keys,
+or use `observations` in place of required acceptance evidence. This analysis
+does not expand the read-only authority below.
+
 Block only a regression introduced by the change, an acceptance violation for
 supported realistic input, or state corruption, proved with a concrete path
 and evidence. An existing defect is a violation when this acceptance explicitly
