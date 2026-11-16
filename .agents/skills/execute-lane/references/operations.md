@@ -120,6 +120,46 @@ in `../../issue-preflight/SKILL.md` and `../../review-head/SKILL.md`; executable
 validation lives in the preparation source. Reuse the accepted contract and
 canonical `obs.preflightPolicy`; do not alter engine actions or ledgers.
 
+New `preflight` inputs require complete `caller_searches` at the pinned base;
+the preparer authenticates repository-wide fixed-argv Git results, including
+tooling and governance fixtures. The read-only child returns `contract_input`
+and rationale, without a digest or dispatch identity. Run
+`workflow-preparation.mjs finalize-preflight <input.json>` with exactly
+`{version:1,stage:"finalize-preflight",root,footprint,contract_input}`.
+The raw authenticated footprint binds the same issue/issue digest/base.
+`contract_input` excludes `sha256`, `dispatch` and `agent`, and declares one
+`validation_requirements` entry per validation string. Success returns
+`{status:"prepared",kind:"preflight-contract",contract}` without registration
+or writes. The lead records this artifact with child identity outside its digest.
+
+Before implement or fix-back dispatch, run `workflow-preparation.mjs implement
+<input.json>` with exactly `{version:1,stage:"implement",root,
+accepted_contract_path,contract,input}`. Use absolute repository root and
+authoritative accepted-contract path, the complete accepted contract and the
+unchanged issue-implement Input. It checks contract equality/binding, realpaths,
+Git common directory, exact branch/starting HEAD and clean status. PR remote
+observation stays with the lead. Success returns `{status:"prepared",
+kind:"implement-input",dispatch,input,contract,prerequisites}` using the registered
+implementer for either input mode.
+
+Local requirements name executable tools with absolute `path_dirs` plus inherited
+PATH, and safe worktree-relative file/directory artifacts, including dependency
+directories and concrete dist files. The preparer only checks executable access
+and artifact existence/kind; it never runs tools or interprets commands. The lead
+must provide the declared PATH and complete required install/build work before
+dispatch. All missing items name their command in the input block. CI-only
+requirements are returned separately and never marked locally passed. Legacy
+contracts without requirements return `prerequisites.status:"undeclared"` without
+inference, rewriting or a PASS claim. Legacy footprints retain their original
+digest. Fix preparation failures at the input/environment boundary, returning to
+preflight for a real contract conflict.
+
+Review takes the raw `prepared.footprint`, never the entire prepared wrapper.
+Malformed footprint shapes produce `code:"invalid-source-footprint"` on the
+typed error and CLI stderr. Every preparation failure has nonzero CLI exit,
+`kind:"input-preparation"` and `fix_back_eligible:false`, without success stdout.
+Preparation performs no dispatch, Git mutation, commit, PR operation or ledger write.
+
 Only `status:"prepared"` supplies a dispatch payload. Pass its identical
 `common` input to all returned reviewer axes in one background wave.
 `kind:"input-preparation"` is an input block, not a reviewer BLOCK or an

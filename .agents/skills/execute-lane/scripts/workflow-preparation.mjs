@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, realpathSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs';
+import { delimiter, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { contractDigest, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { contractDigest, createPreflight, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { assertIssueImplementIdentity, assertIssueImplementInput } from '../../issue-implement/scripts/contracts.mjs';
 import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
 import { observeReviewRetention } from './lane-v4-cli.mjs';
 import { retentionFreshAxes } from '../../review-head/scripts/contracts.mjs';
@@ -46,9 +47,10 @@ export const sourceFootprintCategories = Object.freeze([
   'en_ko_owners', 'context', 'generated_consumers', 'existing_tests',
 ]);
 
-/** A sidecar keeps the accepted preflight schema unchanged. */
+/** Existing sidecars retain their exact digest when caller_searches is absent. */
 export function prepareSourceFootprint(root, input) {
-  exact(input, ['version', 'issue', 'issue_sha256', 'base_sha', 'categories'], 'source footprint');
+  exact(input, ['version', 'issue', 'issue_sha256', 'base_sha', 'categories',
+    ...(Object.hasOwn(input ?? {}, 'caller_searches') ? ['caller_searches'] : [])], 'source footprint');
   requireInput(input.version === 1 && Number.isSafeInteger(input.issue) && input.issue > 0
     && digest(input.issue_sha256) && commit(input.base_sha), 'source footprint: invalid issue/base binding');
   requireInput(text(root, 'rev-parse', `${input.base_sha}^{commit}`) === input.base_sha,
@@ -71,7 +73,147 @@ export function prepareSourceFootprint(root, input) {
         `source footprint ${name}: source digest mismatch ${source.path}`);
     }
   }
+  if (Object.hasOwn(input, 'caller_searches')) {
+    requireInput(Array.isArray(input.caller_searches) && input.caller_searches.length > 0,
+      'caller_searches: complete symbol searches required');
+    const symbols = new Set();
+    for (const search of input.caller_searches) {
+      exact(search, ['symbol', 'command', 'matches'], 'caller search');
+      requireInput(typeof search.symbol === 'string' && search.symbol.trim()
+        && !/[\x00-\x1f]/u.test(search.symbol) && !symbols.has(search.symbol), 'caller search: invalid/duplicate symbol');
+      symbols.add(search.symbol);
+      const quoted = /^[a-zA-Z0-9_.-]+$/u.test(search.symbol) ? search.symbol
+        : `'${search.symbol.replaceAll("'", "'\\''")}'`;
+      requireInput(search.command === `git grep -n -w -F -e ${quoted} ${input.base_sha} --`,
+        'caller search: command must search the complete pinned repository');
+      requireInput(Array.isArray(search.matches), 'caller search: matches must be complete');
+      for (const match of search.matches) {
+        exact(match, ['path', 'line', 'text'], 'caller match');
+        requireInput(pathSafe(match.path) && Number.isSafeInteger(match.line) && match.line > 0
+          && typeof match.text === 'string', 'caller search: invalid match');
+      }
+      let output;
+      try {
+        output = execFileSync('git', ['grep', '-n', '-z', '-w', '-F', '-e', search.symbol, input.base_sha, '--'],
+          { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (error) {
+        requireInput(error.status === 1 && error.signal === null && !error.stdout?.length
+          && !error.stderr?.length, `caller search: incomplete search for ${search.symbol}: ${error.message}`);
+        output = '';
+      }
+      // NUL delimiters preserve Git paths independently of quoting and colons.
+      const matches = [];
+      const record = /([^\0]+)\0([1-9][0-9]*)\0([^\n]*)\n/guy;
+      let offset = 0;
+      while (offset < output.length) {
+        const match = record.exec(output);
+        requireInput(match !== null && match[1].startsWith(`${input.base_sha}:`),
+          'caller search: incomplete Git output');
+        matches.push({ path: match[1].slice(input.base_sha.length + 1), line: Number(match[2]), text: match[3] });
+        offset = record.lastIndex;
+      }
+      requireInput(isDeepStrictEqual(matches, search.matches), `caller search: incomplete or altered matches for ${search.symbol}`);
+    }
+  }
   return { ...input, sha256: contractDigest(input) };
+}
+
+function authenticatedFootprint(root, value) {
+  const keys = ['version', 'issue', 'issue_sha256', 'base_sha', 'categories', 'sha256'];
+  if (value && typeof value === 'object' && !Array.isArray(value) && Object.hasOwn(value, 'caller_searches')) keys.push('caller_searches');
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || !isDeepStrictEqual(Object.keys(value).sort(), keys.sort())) {
+    const error = new WorkflowPreparationError('invalid source footprint: supply the raw footprint object from prepared.footprint, not the preparation wrapper');
+    error.code = 'invalid-source-footprint';
+    throw error;
+  }
+  const { sha256: expected, ...input } = value;
+  const footprint = prepareSourceFootprint(root, input);
+  requireInput(footprint.sha256 === expected, 'review preparation: stale source footprint binding');
+  return footprint;
+}
+
+function finalizePreflight(input) {
+  exact(input, ['version', 'stage', 'root', 'footprint', 'contract_input'], 'preflight finalization');
+  requireInput(input.version === 1 && input.stage === 'finalize-preflight'
+    && typeof input.root === 'string' && isAbsolute(input.root), 'preflight finalization: invalid stage/root');
+  const footprint = authenticatedFootprint(input.root, input.footprint);
+  requireInput(Object.hasOwn(footprint, 'caller_searches'), 'preflight finalization: caller_searches required');
+  const contractInput = input.contract_input;
+  requireInput(contractInput && typeof contractInput === 'object' && !Array.isArray(contractInput)
+    && ['sha256', 'dispatch', 'agent'].every((key) => !Object.hasOwn(contractInput, key))
+    && Object.hasOwn(contractInput, 'validation_requirements'), 'preflight finalization: digest-free contract_input and complete validation_requirements required');
+  requireInput(contractInput.issue === footprint.issue && contractInput.issue_sha256 === footprint.issue_sha256
+    && contractInput.base_sha === footprint.base_sha, 'preflight finalization: issue/base binding mismatch');
+  const contract = createPreflight(contractInput);
+  validatePreflight(contract);
+  return { status: 'prepared', kind: 'preflight-contract', contract };
+}
+
+function prepareImplement(input) {
+  exact(input, ['version', 'stage', 'root', 'accepted_contract_path', 'contract', 'input'], 'implement preparation');
+  requireInput(input.version === 1 && input.stage === 'implement'
+    && typeof input.root === 'string' && isAbsolute(input.root)
+    && typeof input.accepted_contract_path === 'string' && isAbsolute(input.accepted_contract_path),
+  'implement preparation: invalid stage/root/accepted contract path');
+  assertIssueImplementInput(input.input);
+  validatePreflight(input.contract);
+  const accepted = JSON.parse(readFileSync(input.accepted_contract_path, 'utf8'));
+  requireInput(isDeepStrictEqual(accepted, input.contract), 'implement preparation: stale accepted contract');
+  const assignment = input.input;
+  requireInput(accepted.issue === assignment.issue_number && accepted.sha256 === assignment.preflight_sha256,
+    'implement preparation: issue/preflight binding mismatch');
+  const root = realpathSync(input.root);
+  const worktree = realpathSync(resolve(root, assignment.worktree));
+  requireInput(relative(root, worktree) === assignment.worktree, 'implement preparation: wrong worktree realpath');
+  requireInput(realpathSync(resolve(root, text(root, 'rev-parse', '--git-common-dir')))
+    === realpathSync(resolve(worktree, text(worktree, 'rev-parse', '--git-common-dir'))),
+  'implement preparation: wrong repository checkout');
+  assertIssueImplementIdentity(assignment, {
+    branch: assignment.branch, worktree: relative(root, worktree),
+    checked_out_branch: text(worktree, 'branch', '--show-current'),
+    head_sha: text(worktree, 'rev-parse', 'HEAD'), pr: assignment.existing_pr,
+  });
+  requireInput(text(worktree, 'status', '--porcelain=v1') === '', 'implement preparation: dirty checkout');
+  const prerequisites = { status: Object.hasOwn(accepted, 'validation_requirements') ? 'checked' : 'undeclared',
+    local: [], ci_only: [] };
+  const missing = [];
+  for (const requirement of accepted.validation_requirements ?? []) {
+    if (requirement.kind === 'ci-only') {
+      prerequisites.ci_only.push(requirement);
+      continue;
+    }
+    const tools = requirement.prerequisites.tools.map((tool) => {
+      const directories = [...tool.path_dirs, ...(process.env.PATH ?? '').split(delimiter)];
+      const path = directories.map((directory) => resolve(worktree, directory, tool.name)).find((candidate) => {
+        try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile(); }
+        catch (error) {
+          if (['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(error.code)) return false;
+          throw error;
+        }
+      });
+      if (!path) missing.push({ command: requirement.command, tool: tool.name });
+      return { ...tool, path };
+    });
+    const artifacts = requirement.prerequisites.artifacts.map((artifact) => {
+      let available = false;
+      try {
+        const path = realpathSync(resolve(worktree, artifact.path));
+        const inside = relative(worktree, path);
+        const stat = statSync(path);
+        available = inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)
+          && (artifact.kind === 'file' ? stat.isFile() : stat.isDirectory());
+      } catch (error) {
+        if (!['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(error.code)) throw error;
+      }
+      if (!available) missing.push({ command: requirement.command, artifact });
+      return { ...artifact, available };
+    });
+    prerequisites.local.push({ validation: requirement.validation, command: requirement.command, tools, artifacts });
+  }
+  requireInput(missing.length === 0, `implement preparation: missing prerequisites ${JSON.stringify(missing)}`);
+  return { status: 'prepared', kind: 'implement-input',
+    dispatch: registeredDispatch(root, dispatchFor(assignment.mode)), input: assignment, contract: accepted, prerequisites };
 }
 
 /** Read authenticated artifacts completely; never use a clipped tool response. */
@@ -101,6 +243,7 @@ export function readPreparationArtifact(root, reference, label) {
  * any reviewer. It is preparation, not an engine, dispatcher or ledger writer.
  */
 export function prepareReviewInput(input) {
+  const footprint = authenticatedFootprint(input.root, input.footprint);
   const { readable_index: suppliedIndex, ...preparation } = input;
   exact(preparation, ['version', 'stage', 'root', 'checkout', 'issue', 'issue_sha256', 'contract',
     'policy', 'base_ref', 'base_head_sha', 'head_sha', 'artifact_root', 'diff',
@@ -178,9 +321,7 @@ export function prepareReviewInput(input) {
   const actualDiff = git(root, 'diff', '--binary', '--full-index', '--no-renames', mergeBase, input.head_sha);
   const capturedDiff = readPreparationArtifact(input.artifact_root, input.diff, 'review diff');
   requireInput(actualDiff.equals(capturedDiff), 'review diff: does not match complete merge-base-to-head authored diff');
-  const { sha256: footprintDigest, ...footprintInput } = input.footprint ?? {};
-  const footprint = prepareSourceFootprint(root, footprintInput);
-  requireInput(footprint.sha256 === footprintDigest && footprint.issue === input.issue
+  requireInput(footprint.issue === input.issue
     && footprint.issue_sha256 === input.issue_sha256 && footprint.base_sha === pinned,
   'review preparation: stale source footprint binding');
   requireInput(list(input.required_checks) && input.required_checks.length > 0
@@ -333,21 +474,32 @@ export function prepareReviewInput(input) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const [stage, path] = process.argv.slice(2);
-    requireInput(['preflight', 'review'].includes(stage) && path && process.argv.length === 4,
-      'Usage: node workflow-preparation.mjs <preflight|review> <input.json>');
+    requireInput(['preflight', 'finalize-preflight', 'implement', 'review'].includes(stage) && path && process.argv.length === 4,
+      'Usage: node workflow-preparation.mjs <preflight|finalize-preflight|implement|review> <input.json>');
     const input = JSON.parse(readFileSync(path, 'utf8'));
     if (stage === 'preflight') {
       exact(input, ['version', 'stage', 'root', 'footprint'], 'preflight preparation');
       requireInput(input.version === 1 && input.stage === 'preflight' && isAbsolute(input.root),
         'preflight preparation: invalid stage/root');
+      requireInput(Object.hasOwn(input.footprint ?? {}, 'caller_searches'), 'preflight preparation: caller_searches required');
     }
-    const result = stage === 'review' ? prepareReviewInput(input)
-      : { status: 'prepared', kind: 'preflight-input', dispatch: registeredDispatch(input.root, dispatchFor('preflight')), footprint: prepareSourceFootprint(input.root, input.footprint) };
+    let result;
+    switch (stage) {
+      case 'review': result = prepareReviewInput(input); break;
+      case 'finalize-preflight': result = finalizePreflight(input); break;
+      case 'implement': result = prepareImplement(input); break;
+      case 'preflight':
+        result = { status: 'prepared', kind: 'preflight-input',
+          dispatch: registeredDispatch(input.root, dispatchFor('preflight')),
+          footprint: prepareSourceFootprint(input.root, input.footprint) };
+        break;
+    }
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`${JSON.stringify({ status: 'blocked', kind: 'input-preparation',
       fix_back_eligible: false, error: error.message,
-      ...(error instanceof DispatchPreparationError ? { code: error.code, subagent_type: error.subagent_type } : {}) })}\n`);
+      ...(error.code ? { code: error.code } : {}),
+      ...(error instanceof DispatchPreparationError ? { subagent_type: error.subagent_type } : {}) })}\n`);
     process.exitCode = 1;
   }
 }

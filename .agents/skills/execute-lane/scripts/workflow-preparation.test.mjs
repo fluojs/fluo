@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -92,6 +92,318 @@ function fixture(t) {
   return { root, input, store, receipt, footprintInput, base, baseHead, head, tree };
 }
 
+function callerFootprint(value) {
+  const symbol = 'value';
+  const command = `git grep -n -w -F -e ${symbol} ${value.base} --`;
+  return { ...value.footprintInput, caller_searches: [{ symbol, command,
+    matches: [{ path: 'source.mjs', line: 1, text: 'export const value = 1;' }] }] };
+}
+
+function cli(value, stage, input) {
+  const path = join(value.input.artifact_root, `${stage}-input.json`);
+  writeFileSync(path, JSON.stringify(input));
+  return spawnSync(process.execPath, [modulePath, stage, path], {
+    encoding: 'utf8', env: { ...process.env, ...value.env },
+  });
+}
+
+function finalization(value) {
+  const { sha256, ...contract_input } = value.input.contract;
+  contract_input.validation_requirements = [{ validation: 'node focused check', kind: 'local',
+    command: 'node focused check', prerequisites: { tools: [], artifacts: [] } }];
+  return { version: 1, stage: 'finalize-preflight', root: value.root,
+    footprint: { ...callerFootprint(value), sha256: '' }, contract_input };
+}
+
+test('#4129 preflight CLI: complete repository caller search -> authenticated dispatch and digest', (t) => {
+  const value = fixture(t);
+  const input = { version: 1, stage: 'preflight', root: value.root, footprint: callerFootprint(value) };
+
+  const result = cli(value, 'preflight', input);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).footprint.caller_searches, input.footprint.caller_searches);
+  assert.notEqual(JSON.parse(result.stdout).footprint.sha256, value.input.footprint.sha256);
+});
+
+for (const [name, mutate] of [
+  ['missing', (f) => { delete f.caller_searches; }],
+  ['empty', (f) => { f.caller_searches = []; }],
+  ['duplicate', (f) => { f.caller_searches.push(structuredClone(f.caller_searches[0])); }],
+  ['omitted-match', (f) => { f.caller_searches[0].matches = []; }],
+  ['wrong-line', (f) => { f.caller_searches[0].matches[0].line = 2; }],
+  ['wrong-text', (f) => { f.caller_searches[0].matches[0].text = 'other'; }],
+  ['restricted-search', (f) => { f.caller_searches[0].command += ' source.mjs'; }],
+  ['shell-injection', (f) => { f.caller_searches[0].command += '; touch injected'; }],
+]) {
+  test(`#4129 preflight CLI: ${name} caller search -> typed block without dispatch`, (t) => {
+    const value = fixture(t);
+    const footprint = callerFootprint(value);
+    mutate(footprint);
+
+    const result = cli(value, 'preflight', { version: 1, stage: 'preflight', root: value.root, footprint });
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(JSON.parse(result.stderr).kind, 'input-preparation');
+    assert.equal(JSON.parse(result.stderr).fix_back_eligible, false);
+  });
+}
+
+test('#4129 caller authentication: tooling callers and exit-one empty results -> complete pinned-base inventory', (t) => {
+  const value = fixture(t);
+  git(value.root, 'checkout', '-q', 'main');
+  for (const path of ['tooling/ci/caller.mjs', 'tooling/governance/fixtures/caller.mjs']) {
+    mkdirSync(join(value.root, path, '..'), { recursive: true });
+    writeFileSync(join(value.root, path), 'value();\n');
+    git(value.root, 'add', path);
+  }
+  git(value.root, 'commit', '-qm', 'tooling callers');
+  const base = git(value.root, 'rev-parse', 'HEAD');
+  const footprint = callerFootprint(value);
+  footprint.base_sha = base;
+  footprint.caller_searches[0].command = `git grep -n -w -F -e value ${base} --`;
+  footprint.caller_searches[0].matches.push(
+    { path: 'tooling/ci/caller.mjs', line: 1, text: 'value();' },
+    { path: 'tooling/governance/fixtures/caller.mjs', line: 1, text: 'value();' });
+  footprint.caller_searches.push({ symbol: 'absentSymbol', command: `git grep -n -w -F -e absentSymbol ${base} --`, matches: [] });
+
+  const result = cli(value, 'preflight', { version: 1, stage: 'preflight', root: value.root, footprint });
+
+  assert.equal(result.status, 0, result.stderr);
+  footprint.caller_searches[0].matches.pop();
+  assert.equal(cli(value, 'preflight', { version: 1, stage: 'preflight', root: value.root, footprint }).status, 1);
+});
+
+test('#4129 caller authentication: quoted and colon-bearing paths -> exact repository paths and line text', (t) => {
+  const value = fixture(t);
+  git(value.root, 'checkout', '-q', 'main');
+  const path = 'docs/\uD55C\uAE00:12:guide.md';
+  mkdirSync(join(value.root, 'docs'));
+  writeFileSync(join(value.root, path), 'value:34:remaining text\n');
+  git(value.root, 'add', path);
+  git(value.root, 'commit', '-qm', 'caller path');
+  const footprint = callerFootprint(value);
+  footprint.base_sha = git(value.root, 'rev-parse', 'HEAD');
+  footprint.caller_searches[0].command = `git grep -n -w -F -e value ${footprint.base_sha} --`;
+  footprint.caller_searches[0].matches.unshift({ path, line: 1, text: 'value:34:remaining text' });
+
+  const result = cli(value, 'preflight', { version: 1, stage: 'preflight', root: value.root, footprint });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).footprint.caller_searches, footprint.caller_searches);
+});
+
+test('#4129 finalization CLI: digest-free contract input -> authenticated accepted artifact without writes', (t) => {
+  const value = fixture(t);
+  const input = finalization(value);
+  const prepared = cli(value, 'preflight', { version: 1, stage: 'preflight', root: value.root, footprint: callerFootprint(value) });
+  assert.equal(prepared.status, 0, prepared.stderr);
+  input.footprint = JSON.parse(prepared.stdout).footprint;
+  const before = git(value.root, 'status', '--porcelain=v1');
+
+  const result = cli(value, 'finalize-preflight', input);
+
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.kind, 'preflight-contract');
+  assert.deepEqual(output.contract, createPreflight(input.contract_input));
+  assert.equal(git(value.root, 'status', '--porcelain=v1'), before);
+});
+
+for (const [name, mutate] of [
+  ['issue', (i) => { i.contract_input.issue += 1; }],
+  ['issue-digest', (i) => { i.contract_input.issue_sha256 = '0'.repeat(64); }],
+  ['base', (i) => { i.contract_input.base_sha = '0'.repeat(40); }],
+  ['digest', (i) => { i.contract_input.sha256 = '0'.repeat(64); }],
+  ['dispatch', (i) => { i.contract_input.dispatch = {}; }],
+  ['requirements', (i) => { delete i.contract_input.validation_requirements; }],
+  ['legacy-footprint', (i) => { delete i.footprint.caller_searches; }],
+]) {
+  test(`#4129 finalization CLI: ${name} mismatch -> nonzero preparation block`, (t) => {
+    const value = fixture(t);
+    const input = finalization(value);
+    input.footprint = prepareSourceFootprint(value.root, callerFootprint(value));
+    mutate(input);
+
+    const result = cli(value, 'finalize-preflight', input);
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(JSON.parse(result.stderr).kind, 'input-preparation');
+  });
+}
+
+function implementation(t, legacy = false) {
+  const value = fixture(t);
+  git(value.root, 'checkout', '-q', 'main');
+  const worktree = join(value.root, '.worktrees/issue-42');
+  git(value.root, 'worktree', 'add', '--quiet', worktree, 'issue-42');
+  writeFileSync(join(worktree, '.gitignore'), 'node_modules\n');
+  mkdirSync(join(worktree, 'packages/core/dist'), { recursive: true });
+  writeFileSync(join(worktree, 'packages/core/dist/index.js'), 'export {};\n');
+  git(worktree, 'add', '.gitignore', 'packages/core/dist/index.js');
+  git(worktree, 'commit', '-qm', 'dependency prerequisites');
+  mkdirSync(join(worktree, 'node_modules'));
+  const toolDir = join(value.input.artifact_root, 'tools');
+  mkdirSync(toolDir);
+  writeFileSync(join(toolDir, 'fixture-tool'), '#!/bin/sh\nexit 99\n');
+  chmodSync(join(toolDir, 'fixture-tool'), 0o755);
+  const contract = createPreflight({ ...value.input.contract, ...(legacy ? {} : {
+    validation_requirements: [{ validation: 'node focused check', kind: 'local',
+      command: 'fixture-tool source.mjs', prerequisites: {
+        tools: [{ name: 'fixture-tool', path_dirs: [toolDir] }],
+        artifacts: [{ path: 'source.mjs', kind: 'file' }, { path: 'node_modules', kind: 'directory' },
+          { path: 'packages/core/dist/index.js', kind: 'file' }] } }],
+  }) });
+  writeFileSync(value.input.accepted_contract_path, JSON.stringify(contract));
+  const input = { version: 1, lane_id: 'fixture', issue_number: 42, issue_url: 'https://example.test/42',
+    issue_title: 'Fixture', base_branch: 'main', branch: 'issue-42', worktree: '.worktrees/issue-42',
+    starting_head_sha: git(worktree, 'rev-parse', 'HEAD'), preflight_sha256: contract.sha256,
+    mode: 'implement', existing_pr: null, blockers: [], fix_back_attempt: null };
+  return { ...value, worktree, toolDir, wrapper: { version: 1, stage: 'implement', root: value.root,
+    accepted_contract_path: value.input.accepted_contract_path, contract, input } };
+}
+
+test('#4129 implement CLI: clean assigned worktree and executable prerequisites -> registered dispatch without execution', (t) => {
+  const value = implementation(t);
+  const before = git(value.worktree, 'rev-parse', 'HEAD');
+
+  const result = cli(value, 'implement', value.wrapper);
+
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.dispatch.subagent_type, 'fluo-issue-implementer');
+  assert.deepEqual(output.input, value.wrapper.input);
+  assert.deepEqual(output.contract, value.wrapper.contract);
+  assert.equal(output.prerequisites.status, 'checked');
+  assert.equal(output.prerequisites.local[0].tools[0].path, join(value.toolDir, 'fixture-tool'));
+  assert.equal(git(value.worktree, 'rev-parse', 'HEAD'), before);
+  assert.equal(git(value.worktree, 'status', '--porcelain=v1'), '');
+});
+
+test('#4129 implement CLI: legacy prerequisites and fix-back -> explicit undeclared state with same dispatch', (t) => {
+  const value = implementation(t, true);
+  value.wrapper.input.mode = 'fix-back';
+  value.wrapper.input.fix_back_attempt = 1;
+  value.wrapper.input.blockers = [{ reviewer: 'code', signature: 'fixture', evidence: 'source.mjs:1',
+    fix_back_eligible: true, status: 'unresolved' }];
+
+  const result = cli(value, 'implement', value.wrapper);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).prerequisites.status, 'undeclared');
+  assert.equal(JSON.parse(result.stdout).dispatch.subagent_type, 'fluo-issue-implementer');
+});
+
+test('#4129 implement prerequisites: inherited PATH and CI-only requirement -> checked local files and separate remote check', (t) => {
+  const value = implementation(t);
+  const requirements = structuredClone(value.wrapper.contract.validation_requirements);
+  requirements[0].prerequisites.tools[0].path_dirs = [];
+  requirements.push({ validation: 'GitHub Verify', kind: 'ci-only', check: 'Verify', reason: 'Remote artifact transport' });
+  value.wrapper.contract = createPreflight({ ...value.wrapper.contract,
+    validation: ['node focused check', 'GitHub Verify'], validation_requirements: requirements });
+  value.wrapper.input.preflight_sha256 = value.wrapper.contract.sha256;
+  writeFileSync(value.wrapper.accepted_contract_path, JSON.stringify(value.wrapper.contract));
+  value.env = { PATH: `${value.toolDir}:${process.env.PATH}` };
+
+  const result = cli(value, 'implement', value.wrapper);
+
+  assert.equal(result.status, 0, result.stderr);
+  const prerequisites = JSON.parse(result.stdout).prerequisites;
+  assert.equal(prerequisites.local.length, 1);
+  assert.deepEqual(prerequisites.local[0].artifacts.map((a) => a.available), [true, true, true]);
+  assert.deepEqual(prerequisites.ci_only, [requirements[1]]);
+});
+
+test('#4129 implement prerequisites: missing tools and build artifacts -> every missing item names its command', (t) => {
+  const value = implementation(t);
+  rmSync(join(value.toolDir, 'fixture-tool'));
+  rmSync(join(value.worktree, 'node_modules'), { recursive: true });
+  const requirements = structuredClone(value.wrapper.contract.validation_requirements);
+  requirements[0].prerequisites.artifacts[2].path = 'packages/core/dist/missing.js';
+  value.wrapper.contract = createPreflight({ ...value.wrapper.contract, validation_requirements: requirements });
+  value.wrapper.input.preflight_sha256 = value.wrapper.contract.sha256;
+  writeFileSync(value.wrapper.accepted_contract_path, JSON.stringify(value.wrapper.contract));
+
+  const result = cli(value, 'implement', value.wrapper);
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  const error = JSON.parse(result.stderr).error;
+  const missing = JSON.parse(error.slice(error.indexOf('[{')));
+  assert.deepEqual(missing, [
+    { command: 'fixture-tool source.mjs', tool: 'fixture-tool' },
+    { command: 'fixture-tool source.mjs', artifact: { path: 'node_modules', kind: 'directory' } },
+    { command: 'fixture-tool source.mjs', artifact: { path: 'packages/core/dist/missing.js', kind: 'file' } },
+  ]);
+});
+
+for (const defect of ['wrong-kind', 'escaped-artifact', 'wrong-repository']) {
+  test(`#4129 implement identity/prerequisites: ${defect} -> typed input block`, (t) => {
+    const value = implementation(t);
+    if (defect === 'wrong-kind') {
+      rmSync(join(value.worktree, 'node_modules'), { recursive: true });
+      writeFileSync(join(value.worktree, 'node_modules'), 'not a directory');
+    }
+    if (defect === 'escaped-artifact') {
+      rmSync(join(value.worktree, 'node_modules'), { recursive: true });
+      symlinkSync(value.toolDir, join(value.worktree, 'node_modules'));
+    }
+    if (defect === 'wrong-repository') {
+      git(value.root, 'worktree', 'remove', '--force', value.worktree);
+      mkdirSync(value.worktree);
+      git(value.worktree, 'init', '-q', '-b', 'issue-42');
+    }
+
+    const result = cli(value, 'implement', value.wrapper);
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.match(JSON.parse(result.stderr).error,
+      defect === 'wrong-repository' ? /wrong repository checkout/u : /missing prerequisites/u);
+  });
+}
+
+for (const [name, mutate] of [
+  ['missing-tool', (v) => rmSync(join(v.toolDir, 'fixture-tool'))],
+  ['non-executable-tool', (v) => chmodSync(join(v.toolDir, 'fixture-tool'), 0o644)],
+  ['missing-artifact', (v) => rmSync(join(v.worktree, 'source.mjs'))],
+  ['wrong-head', (v) => { v.wrapper.input.starting_head_sha = v.base; }],
+  ['wrong-branch', (v) => git(v.worktree, 'checkout', '--detach', '-q')],
+  ['dirty', (v) => writeFileSync(join(v.worktree, 'extra.txt'), 'dirty')],
+  ['wrong-digest', (v) => { v.wrapper.input.preflight_sha256 = '0'.repeat(64); }],
+  ['wrong-accepted', (v) => writeFileSync(v.wrapper.accepted_contract_path, '{}')],
+  ['wrong-root', (v) => { v.wrapper.root = v.worktree; }],
+]) {
+  test(`#4129 implement CLI: ${name} -> no successful dispatch`, (t) => {
+    const value = implementation(t);
+    mutate(value);
+
+    const result = cli(value, 'implement', value.wrapper);
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(JSON.parse(result.stderr).kind, 'input-preparation');
+    assert.equal(JSON.parse(result.stderr).fix_back_eligible, false);
+  });
+}
+
+for (const footprint of [null, [], 'footprint', {}, { version: 1 },
+  { status: 'prepared', kind: 'preflight-input', dispatch: {}, footprint: {} }]) {
+  test(`#4129 review footprint: ${JSON.stringify(footprint)} -> named shape error and CLI recovery`, (t) => {
+    const value = fixture(t);
+    value.input.footprint = footprint;
+
+    assert.throws(() => prepareReviewInput(value.input), (error) =>
+      error.name === 'WorkflowPreparationError' && error.code === 'invalid-source-footprint');
+    const result = cli(value, 'review', value.input);
+    assert.equal(result.status, 1);
+    assert.equal(JSON.parse(result.stderr).code, 'invalid-source-footprint');
+    assert.match(JSON.parse(result.stderr).error, /raw footprint/u);
+  });
+}
+
 function retainedPreparation(t) {
   const value = fixture(t);
   const { input } = value;
@@ -178,12 +490,12 @@ test('review preparation: real merged graph -> one identical authenticated input
 test('#4091 preflight preparation: authenticated footprint -> registered preflight dispatch', (t) => {
   const value = fixture(t);
   const path = join(value.input.artifact_root, 'preflight-input.json');
-  writeFileSync(path, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: value.footprintInput }));
+  writeFileSync(path, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: callerFootprint(value) }));
 
   const output = JSON.parse(execFileSync(process.execPath, [modulePath, 'preflight', path], { encoding: 'utf8' }));
 
   assert.deepEqual(output.dispatch, { subagent_type: 'fluo-issue-preflight' });
-  assert.deepEqual(output.footprint, value.input.footprint);
+  assert.deepEqual(output.footprint, prepareSourceFootprint(value.root, callerFootprint(value)));
 });
 
 test('#4091 preparation: absent registration -> typed non-fixable input block', (t) => {
@@ -207,7 +519,7 @@ test('#4091 registration JSONC: comments and trailing commas -> both preparation
   "agents": ${JSON.stringify(agents)},
 }`);
   const inputPath = join(value.input.artifact_root, 'preflight-input.json');
-  writeFileSync(inputPath, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: value.footprintInput }));
+  writeFileSync(inputPath, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: callerFootprint(value) }));
 
   const preflight = JSON.parse(execFileSync(process.execPath, [modulePath, 'preflight', inputPath], { encoding: 'utf8' }));
   const review = prepareReviewInput(value.input);
@@ -269,7 +581,7 @@ for (const [defect, content] of [
     if (content === null) rmSync(path);
     else writeFileSync(path, content);
     const inputPath = join(value.input.artifact_root, 'preflight-input.json');
-    writeFileSync(inputPath, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: value.footprintInput }));
+    writeFileSync(inputPath, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: callerFootprint(value) }));
 
     const result = spawnSync(process.execPath, [modulePath, 'preflight', inputPath], { encoding: 'utf8' });
 
@@ -471,7 +783,7 @@ for (const [name, mutate, expected] of defects) {
 test('workflow preparation CLI: preflight sidecar -> runnable stage input consumed by review', (t) => {
   const value = fixture(t);
   const inputPath = join(value.root, 'preflight-input.json');
-  writeFileSync(inputPath, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: value.footprintInput }));
+  writeFileSync(inputPath, JSON.stringify({ version: 1, stage: 'preflight', root: value.root, footprint: callerFootprint(value) }));
 
   const output = execFileSync(process.execPath, [modulePath, 'preflight', inputPath], { encoding: 'utf8' });
 
