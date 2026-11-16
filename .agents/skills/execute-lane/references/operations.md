@@ -250,7 +250,21 @@ as a policy blocker.
 
 Dependencies release from fresh GitHub issue-closed observations, not task
 completion. Use the CLI `watch` through a monitor to receive transitions and
-stall notices. For `wait-ci` subscribe once to `gh pr checks --watch`.
+stall notices. OPEN PR CI passes only when the rollup satisfies its success
+conditions and the latest exact-PR-head run of `.github/workflows/ci.yml` is
+`completed/success`. Select by workflow path and latest run id, not the display
+name or check count. A successful current rerun attempt also satisfies this run
+condition; earlier failed attempts remain supplementary retrospective history.
+Unavailable, malformed or incomplete Actions observations, a missing canonical
+run, and unfinished runs leave the PR waiting. Rollup failures and completed
+failed runs still require CI fix-back.
+
+For `wait-ci` subscribe once to `gh pr checks --watch`. It can finish between
+registration of the initial checks and the remaining jobs, so its exit alone
+does not prove CI success. Also observe completion of the current canonical run
+through a monitor around `gh run watch <run-id> --exit-status`; when it completes,
+run a fresh `plan` to apply both conditions and the existing mergeability and
+approval gates.
 Disable the GitHub pager in monitor commands (`GH_PAGER=cat`) so an earlier
 identity query cannot block the watch inside the terminal pager.
 Do not poll from the coordinator or create a child merely to wait.
