@@ -17,16 +17,26 @@ const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const git = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 const modulePath = fileURLToPath(new URL('./workflow-preparation.mjs', import.meta.url));
 
-function redFixture(t, scenario = 'assertion') {
+function redFixture(t, scenario = 'assertion', comparison = null) {
   const value = fixture(t);
   const { input } = value;
-  const previous = value.head;
+  if (comparison) {
+    writeFileSync(join(value.root, 'source.mjs'), `export const value = ${JSON.stringify(comparison.before)};\n`);
+    git(value.root, 'add', 'source.mjs');
+    git(value.root, 'commit', '-qm', 'assertion data baseline');
+  }
+  const previous = git(value.root, 'rev-parse', 'HEAD');
   const testFile = 'regression.test.mjs';
+  const expected = comparison ? JSON.stringify(comparison.after) : scenario === 'green' ? '2' : '3';
   const source = scenario === 'setup'
     ? "import './missing.mjs';\n"
-    : `import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { value } from './source.mjs';\ntest('value regression', () => {\n  assert.equal(value, ${scenario === 'green' ? 2 : 3});\n});\n`;
+    : scenario === 'module'
+      ? `console.log("code: 'ERR_ASSERTION'");\nawait import('./missing.mjs');\n`
+      : scenario === 'syntax'
+        ? `import test from 'node:test';\nconst = "code: 'ERR_ASSERTION'";\n`
+        : `import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { value } from './source.mjs';\ntest('value regression', () => {\n  ${scenario === 'reference' ? `console.log("code: 'ERR_ASSERTION'"); unknownValue;` : `assert.equal(value, ${expected});`}\n});\n`;
   writeFileSync(join(value.root, testFile), source);
-  writeFileSync(join(value.root, 'source.mjs'), 'export const value = 3;\n');
+  writeFileSync(join(value.root, 'source.mjs'), `export const value = ${comparison ? JSON.stringify(comparison.after) : '3'};\n`);
   git(value.root, 'add', testFile, 'source.mjs');
   git(value.root, 'commit', '-qm', 'fix-back');
   const head = git(value.root, 'rev-parse', 'HEAD');
@@ -66,7 +76,8 @@ function redFixture(t, scenario = 'assertion') {
     artifact_root: join(input.artifact_root, 'red'), issue: 42, contract: input.contract,
     implementation: input.implementation, command, argv,
     regression_patch: { ...patch, path: `evidence/${patch.path}` },
-    failure: { file: testFile, line: 5, test: 'value regression' } };
+    failure: { file: testFile, line: ['module', 'syntax'].includes(scenario) ? 1 : 5,
+      test: ['module', 'syntax'].includes(scenario) ? testFile : 'value regression' } };
   const capturePath = join(input.artifact_root, 'capture.json');
   const run = () => {
     writeFileSync(capturePath, JSON.stringify(capture));
@@ -79,7 +90,42 @@ function redFixture(t, scenario = 'assertion') {
     input.fix_back_red = { path: 'red/receipt.json', sha256: hash(receipt), bytes: receipt.length };
     return JSON.parse(receipt);
   };
-  return { ...value, capture, run, attach };
+  return { ...value, head: previous, capture, run, attach };
+}
+
+for (const marker of ['ERR_MODULE_NOT_FOUND', 'ERR_TEST_FAILURE', 'SyntaxError:', 'ReferenceError:']) {
+  test(`#4128 fix-back diagnostic data: ${marker} in assertion values -> capture and preparation accept RED`, (t) => {
+    const value = redFixture(t, 'assertion', { before: marker, after: `normalized ${marker}` });
+    const receipt = value.attach();
+
+    const prepared = prepareReviewInput(value.input);
+
+    assert.equal(receipt.exit_code, 1);
+    const stdout = readFileSync(join(value.capture.artifact_root, receipt.stdout.path), 'utf8');
+    assert.ok(stdout.includes(`actual: '${marker}'`));
+    assert.ok(stdout.includes(`expected: 'normalized ${marker}'`));
+    assert.deepEqual(prepared.common.fix_back_red.receipt, receipt);
+  });
+}
+
+for (const [scenario, diagnostic] of [
+  ['module', /code: 'ERR_TEST_FAILURE'/u],
+  ['syntax', /code: 'ERR_TEST_FAILURE'/u],
+  ['reference', /name: 'ReferenceError'/u],
+]) {
+  test(`#4128 fix-back diagnostic kind: genuine ${scenario} failure -> capture rejects non-assertion RED`, (t) => {
+    const value = redFixture(t, scenario);
+
+    const result = value.run();
+
+    assert.equal(result.status, 1);
+    const block = JSON.parse(result.stderr);
+    assert.equal(block.kind, 'input-preparation');
+    assert.match(block.error, /expected one named runner assertion failure/u);
+    const stdout = readFileSync(join(value.capture.artifact_root, 'stdout'), 'utf8');
+    assert.match(stdout, diagnostic);
+    if (scenario === 'reference') assert.match(stdout, /^# code: 'ERR_ASSERTION'$/mu);
+  });
 }
 
 test('#4128 fix-back RED: actual previous-head assertion -> authenticated common evidence', (t) => {

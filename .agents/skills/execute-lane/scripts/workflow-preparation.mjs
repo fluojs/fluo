@@ -136,19 +136,23 @@ const regressionPatch = (root, implementation, bytes, failure) => {
   return paths;
 };
 
-const redAssertion = (receipt, stdout, stderr) => {
+const redAssertion = (receipt, stdout) => {
   requireInput(receipt.version === 1 && receipt.complete === true && receipt.producer === 'lead'
     && Number.isSafeInteger(receipt.exit_code) && receipt.exit_code > 0 && receipt.signal === null
     && Number.isFinite(receipt.duration_ms) && receipt.duration_ms >= 0,
   `RED receipt: incomplete or unsuccessful capture (exit=${receipt.exit_code}, signal=${receipt.signal})`);
-  // TAP is runner output, not an arbitrary child claim or an import/setup failure.
-  const failed = [...stdout.matchAll(/^not ok \d+ - (.+)$/gmu)].map((match) => match[1]);
+  // Only the failing entry's top-level diagnostic fields classify the error.
+  // Expected/actual values and logged error words are assertion data.
+  const failed = [...stdout.matchAll(/^not ok \d+ - (.+)$/gmu)];
+  const diagnostic = failed.length === 1
+    ? /^\n {2}---\n([\s\S]*?)\n {2}\.\.\.(?:\n|$)/u.exec(
+      stdout.slice(failed[0].index + failed[0][0].length))?.[1] : undefined;
   const escapedFile = receipt.failure.file.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  requireInput(failed.length === 1 && failed[0] === receipt.failure.test
+  requireInput(failed.length === 1 && failed[0][1] === receipt.failure.test && diagnostic !== undefined
     && /^# fail 1$/mu.test(stdout) && /^# cancelled 0$/mu.test(stdout)
-    && /code: ['"]ERR_ASSERTION['"]/u.test(stdout)
-    && new RegExp(`${escapedFile}:${receipt.failure.line}:[1-9][0-9]*`, 'u').test(stdout)
-    && !/(?:ERR_MODULE_NOT_FOUND|ERR_TEST_FAILURE|SyntaxError:|ReferenceError:)/u.test(stdout + stderr),
+    && /^ {2}failureType: 'testCodeFailure'$/mu.test(diagnostic)
+    && /^ {2}code: 'ERR_ASSERTION'$/mu.test(diagnostic)
+    && new RegExp(`${escapedFile}:${receipt.failure.line}:[1-9][0-9]*`, 'u').test(diagnostic),
   'RED receipt: expected one named runner assertion failure, without setup/unrelated failures');
 };
 
@@ -212,7 +216,7 @@ const captureFixBackRed = (input) => {
     previous_tree_sha: previousTree, contract_sha256: input.contract.sha256,
     command: input.command, argv: input.argv, regression_patch: store('regression.patch', patch),
     exit_code: result.status, signal: result.signal, duration_ms: duration, stdout, stderr, failure: input.failure };
-  redAssertion(receipt, result.stdout.toString(), result.stderr.toString());
+  redAssertion(receipt, result.stdout.toString());
   const reference = store('receipt.json', Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`));
   return { status: 'captured', kind: 'fix-back-red', receipt: reference };
 };
@@ -285,8 +289,8 @@ export function prepareReviewInput(input) {
     const patch = readPreparationArtifact(redRoot, red.regression_patch, 'RED patch');
     const paths = regressionPatch(root, input.implementation, patch, red.failure);
     redCommand(red.command, red.argv, paths);
-    redAssertion(red, readPreparationArtifact(redRoot, red.stdout, 'RED stdout').toString(),
-      readPreparationArtifact(redRoot, red.stderr, 'RED stderr').toString());
+    readPreparationArtifact(redRoot, red.stderr, 'RED stderr');
+    redAssertion(red, readPreparationArtifact(redRoot, red.stdout, 'RED stdout').toString());
   } else {
     requireInput(!Object.hasOwn(input, 'fix_back_red'), 'RED receipt is only valid for fix-back');
   }
