@@ -27,7 +27,6 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -71,6 +70,27 @@ import {
 	trackStalls,
 	validateRetryPolicy,
 } from "./lane-v4.mjs";
+
+const { DatabaseSync } = await (async () => {
+	const emitWarning = process.emitWarning;
+	try {
+		// Intercept before SQLite schedules its warning, without changing other diagnostics.
+		process.emitWarning = function (warning, ...args) {
+			const message = warning instanceof Error ? warning.message : warning;
+			const type = warning instanceof Error
+				? warning.name
+				: typeof args[0] === "string" ? args[0] : args[0]?.type;
+			if (
+				type === "ExperimentalWarning" &&
+				message === "SQLite is an experimental feature and might change at any time"
+			) return;
+			return Reflect.apply(emitWarning, this, [warning, ...args]);
+		};
+		return await import("node:sqlite");
+	} finally {
+		process.emitWarning = emitWarning;
+	}
+})();
 
 const arg = (args, flag, fallback) => {
 	const i = args.indexOf(flag);
