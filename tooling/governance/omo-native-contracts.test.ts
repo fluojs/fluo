@@ -17,6 +17,7 @@ const contractNames = [
   'event',
 ] as const;
 const modulePath = resolve(contractRoot, 'contracts.mjs');
+const { schemaFailure } = await import(resolve(contractRoot, 'schema-validator.mjs'));
 
 const artifactDigest = (
   value: Readonly<{
@@ -326,6 +327,110 @@ describe('OMO native workflow JSON schemas', () => {
     expect(() => api.assertContract(name, { ...fixture, legacy: true })).toThrow(
       /unknown key/u,
     );
+  });
+});
+
+describe('schemaFailure oneOf composition', () => {
+  it.each([
+    { name: 'one match', oneOf: [{ type: 'string' }, { type: 'null' }], value: 'ok', failure: null },
+    { name: 'zero matches', oneOf: [{ type: 'string' }, { type: 'null' }], value: 1, failure: 'value must match exactly one variant' },
+    { name: 'multiple matches', oneOf: [{ type: 'string' }, { minLength: 1 }], value: 'ok', failure: 'value must match exactly one variant' },
+  ])('schemaFailure: $name -> preserves standalone variant verdict', ({ oneOf, value, failure }) => {
+    expect(schemaFailure({ oneOf }, value, 'value')).toBe(failure);
+  });
+
+  const siblings = [
+    { name: 'required', schema: { required: ['id'] }, valid: { id: 1 }, invalid: {}, path: 'value.id' },
+    { name: 'additionalProperties false', schema: { additionalProperties: false }, valid: {}, invalid: { extra: 1 }, path: 'value' },
+    { name: 'additionalProperties schema', schema: { additionalProperties: { type: 'integer' } }, valid: { id: 1 }, invalid: { id: 'bad' }, path: 'value.id' },
+    { name: 'properties', schema: { properties: { id: { type: 'integer' } } }, valid: { id: 1 }, invalid: { id: 'bad' }, path: 'value.id' },
+    { name: 'type', schema: { type: 'string' }, valid: 'ok', invalid: 1, path: 'value' },
+    { name: 'const', schema: { const: 'ok' }, valid: 'ok', invalid: 'bad', path: 'value' },
+    { name: 'enum', schema: { enum: ['ok', 'yes'] }, valid: 'yes', invalid: 'bad', path: 'value' },
+    { name: 'minLength', schema: { minLength: 2 }, valid: 'ok', invalid: '', path: 'value' },
+    { name: 'format', schema: { format: 'date-time' }, valid: '2026-11-16T00:00:00Z', invalid: '2026-02-30T00:00:00Z', path: 'value' },
+    { name: 'pattern', schema: { pattern: '^ok$' }, valid: 'ok', invalid: 'bad', path: 'value' },
+    { name: 'minimum', schema: { minimum: 1 }, valid: 1, invalid: 0, path: 'value' },
+    { name: 'maximum', schema: { maximum: 2 }, valid: 2, invalid: 3, path: 'value' },
+    { name: 'minItems', schema: { minItems: 1 }, valid: [1], invalid: [], path: 'value' },
+    { name: 'uniqueItems', schema: { uniqueItems: true }, valid: [1, 2], invalid: [1, 1], path: 'value' },
+    { name: 'items', schema: { items: { type: 'integer' } }, valid: [1], invalid: ['bad'], path: 'value[0]' },
+    { name: 'minProperties', schema: { minProperties: 1 }, valid: { id: 1 }, invalid: {}, path: 'value' },
+  ];
+  for (const { name, schema, valid, invalid, path } of siblings) {
+    it(`schemaFailure: oneOf plus ${name} -> applies sibling without mutation`, () => {
+      const composed = { oneOf: [{}], ...schema };
+      const before = structuredClone({ composed, valid, invalid });
+
+      expect(schemaFailure(composed, valid, 'value')).toBeNull();
+      expect(schemaFailure(composed, invalid, 'value')).toMatch(new RegExp(`^${path.replace(/[.[\]]/gu, '\\$&')} `, 'u'));
+      expect({ composed, valid, invalid }).toEqual(before);
+    });
+  }
+
+  it.each([
+    { oneOf: [{ const: 'other' }], const: 'ok' },
+    { oneOf: [{ type: 'string' }, { const: 'ok' }], const: 'ok' },
+  ])('schemaFailure: sibling passes but variant count fails -> rejects %#', (schema) => {
+    expect(schemaFailure(schema, 'ok', 'value')).toBe('value must match exactly one variant');
+  });
+
+  it.each(['properties', 'items', 'additionalProperties'])(
+    'schemaFailure: nested %s with root references -> applies sibling at child path',
+    (keyword) => {
+      const child = {
+        oneOf: [{ $ref: '#/$defs/text' }, { type: 'null' }],
+        enum: ['ok', null],
+      };
+      const schema = {
+        $defs: { text: { type: 'string' } },
+        ...(
+          keyword === 'properties' ? { properties: { child } } :
+          keyword === 'items' ? { items: child } : { additionalProperties: child }
+        ),
+      };
+      const valid = keyword === 'items' ? ['ok', null] : { child: 'ok' };
+      const invalid = keyword === 'items' ? ['bad'] : { child: 'bad' };
+
+      expect(schemaFailure(schema, valid, 'value')).toBeNull();
+      expect(schemaFailure(schema, invalid, 'value')).toBe(
+        `${keyword === 'items' ? 'value[0]' : 'value.child'} must be one of ok, `,
+      );
+    },
+  );
+});
+
+describe('lane-ledger-v2 retry policy schema', () => {
+  it.each([
+    { retry_count_is_terminal: true, max_same_failure_repeats: 1, max_wall_clock_minutes: Number.MAX_SAFE_INTEGER, stop_on_child_contract_error: true },
+    { retry_count_is_terminal: false, max_same_failure_repeats: 3, max_wall_clock_minutes: 180, stop_on_child_contract_error: true },
+    { retry_count_is_terminal: false, max_same_failure_repeats: null, max_wall_clock_minutes: null, stop_on_child_contract_error: true },
+  ])('assertContract: valid retry policy %# -> accepted', (retry_policy) => {
+    expect(() => requireContracts().assertContract('lane-ledger-v2', { ...lane, retry_policy })).not.toThrow();
+  });
+
+  const malformed: Record<string, unknown>[] = [
+    { ...lane.retry_policy, unknown: true },
+    { ...lane.retry_policy, stop_on_child_contract_error: false },
+    { ...lane.retry_policy, stop_on_child_contract_error: 'true' },
+    { ...lane.retry_policy, retry_count_is_terminal: 'true' },
+    { ...lane.retry_policy, max_same_failure_repeats: null },
+    { ...lane.retry_policy, max_wall_clock_minutes: null },
+    { ...lane.retry_policy, max_same_failure_repeats: null, max_wall_clock_minutes: null },
+    { retry_count_is_terminal: true, stop_on_child_contract_error: true },
+  ];
+  for (const key of Object.keys(lane.retry_policy)) {
+    const missing: Record<string, unknown> = { ...lane.retry_policy };
+    delete missing[key];
+    malformed.push(missing);
+  }
+  for (const key of ['max_same_failure_repeats', 'max_wall_clock_minutes']) {
+    for (const value of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      malformed.push({ ...lane.retry_policy, [key]: value });
+    }
+  }
+  it.each(malformed)('assertContract: malformed retry policy %# -> rejected', (retry_policy) => {
+    expect(() => requireContracts().assertContract('lane-ledger-v2', { ...lane, retry_policy })).toThrow();
   });
 });
 

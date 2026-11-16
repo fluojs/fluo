@@ -72,9 +72,9 @@ export const schemaFailure = (schema, value, path, rootSchema = schema) => {
     const matches = schema.oneOf.filter(
       (candidate) => schemaFailure(candidate, value, path, rootSchema) === null,
     );
-    return matches.length === 1
-      ? null
-      : `${path} must match exactly one variant`;
+    if (matches.length !== 1) {
+      return `${path} must match exactly one variant`;
+    }
   }
   if (schema.const !== undefined && !Object.is(value, schema.const)) {
     return `${path} must equal ${JSON.stringify(schema.const)}`;
