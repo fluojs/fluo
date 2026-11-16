@@ -120,6 +120,71 @@ const runTrace = coordinated => {
     finalSourceSha256: digest(source), finalGateCoverage, clock: 'simulation', duration: null };
 };
 
+const runAdmissionScenarios = () => {
+  const operations = '.agents/skills/execute-lane/references/operations.md';
+  const preparation = '.agents/skills/execute-lane/scripts/workflow-preparation.mjs';
+  const cliTest = '.agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs';
+  const generatedTest = '.agents/skills/execute-lane/scripts/generated-integration.test.mjs';
+  const lane = { preflight_overlap: 1 };
+  const row = (issue, files, action = 'review') => {
+    const preflight = createPreflight({
+      issue, issue_sha256: digest({ issue, files }), base_sha: inputs.base,
+      scope: files, non_scope: [], predicted_files: files,
+      acceptance: ['Retain overlap admission and merged-sibling integration'],
+      validation: gates, active_axes: axes,
+    });
+    return { issue, decision: { action }, obs: {
+      issue, preflight, issueSha256: preflight.issue_sha256, baseSha: inputs.base,
+      changedFiles: files, headSha: sha({ issue, files }), hasNewCommits: true,
+      branch: `issue-${issue}`, worktree: `.worktrees/issue-${issue}`, issueState: 'OPEN', pr: null,
+    } };
+  };
+  const grant = candidate => {
+    const { policy } = evaluatePreflight(candidate.obs.preflight, candidate.obs);
+    candidate.obs.facts = { 'review-readiness': { head: candidate.obs.headSha,
+      value: { policy_sha256: policy.sha256, sequence: 1, active: true } } };
+  };
+  const waiting = [operations, 'docs/guides/overlap.md'].map(file => {
+    const incumbent = row(4127, [file], 'wait-ci');
+    incumbent.obs.pr = { number: 4127, state: 'OPEN', headSha: incumbent.obs.headSha,
+      mergeable: 'MERGEABLE', ciStatus: 'pending' };
+    grant(incumbent);
+    const decisions = coordinatePreflightOverlap(lane, [incumbent, row(4129, [file])])
+      .map(({ issue, decision }) => ({ issue, decision }));
+    assert.equal(decisions[1].decision.action,
+      file === operations ? 'wait-preflight-overlap' : 'review');
+    assert.deepEqual(decisions[1].decision.overlaps[0].files, [file]);
+    return { sharedFile: file, decisions };
+  });
+  const rows = [
+    row(4128, [operations, preparation, cliTest, generatedTest]),
+    row(4129, [operations, preparation]),
+    row(4130, [cliTest, generatedTest]),
+  ];
+  const merged = row(4127, [operations, preparation, cliTest, generatedTest], 'cleanup');
+  const mergeCommit = sha('4127-actual-merge');
+  merged.obs.pr = { number: 4127, state: 'MERGED', mergeCommit };
+  for (const candidate of rows) candidate.obs.overlapIntegrations = [{
+    issue: 4127, commit: mergeCommit, base: mergeCommit, inBase: true, inHead: true,
+  }];
+  const permutations = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+  const star = [false, true].map(currentGrant => {
+    const candidates = structuredClone(rows);
+    if (currentGrant) grant(candidates[0]);
+    const traces = permutations.map(order => {
+      const decisions = coordinatePreflightOverlap(lane, [merged, ...order.map(index => candidates[index])])
+        .filter(candidate => candidate.issue !== 4127).sort((a, b) => a.issue - b.issue)
+        .map(({ issue, decision }) => ({ issue, decision }));
+      assert.deepEqual(decisions.filter(candidate => candidate.decision.action === 'review').map(candidate => candidate.issue),
+        currentGrant ? [4128] : [4129, 4130]);
+      if (!currentGrant) assert.deepEqual(decisions[0].decision.siblings.map(candidate => candidate.issue), [4129, 4130]);
+      return { inputOrder: order.map(index => candidates[index].issue), decisions };
+    });
+    return { currentGrant, traces };
+  });
+  return { clock: 'simulation', waiting, star };
+};
+
 /** Both sides run the production per-issue and legacy paths on identical inputs. */
 export const runComparison = () => {
   const before = runTrace(false);
@@ -128,7 +193,7 @@ export const runComparison = () => {
     before.finalSourceSha256 === after.finalSourceSha256 &&
     JSON.stringify(before.finalGateCoverage) === JSON.stringify(after.finalGateCoverage) &&
     Object.values(after.finalGateCoverage).every(coverage => JSON.stringify(coverage) === JSON.stringify([...gates].sort()));
-  return { version: 1, inputs, before, after, comparable, clock: 'simulation', duration: null,
+  return { version: 1, inputs, before, after, admission: runAdmissionScenarios(), comparable, clock: 'simulation', duration: null,
     baseline: 'decideNext -> coordinateGeneratedIntegration',
     candidate: 'decideNext -> coordinateGeneratedIntegration -> coordinatePreflightOverlap',
     verdict: 'INCONCLUSIVE', reason: 'Unknown execution durations; simulation proves work counts, not time savings.' };

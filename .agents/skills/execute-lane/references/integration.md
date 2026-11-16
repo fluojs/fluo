@@ -20,6 +20,18 @@ Only two currently valid accepted preflights' explicit `predicted_files`
 intersect; scope prefixes and file kinds do not alter that rule. Ready
 preflights and implementations remain parallel.
 
+Only review ordering uses a narrower blocking intersection: at least one
+shared file must fail the existing `isRetentionProsePath` allowlist.
+Explanatory prose alone, such as `docs/guides/overlap.md`, does not delay a
+review behind a reviewing or CI-waiting sibling. Mixed prose/code overlap
+still blocks, and `overlaps`, wait `siblings` and wait `files` retain the
+complete sorted, deduplicated intersection.
+The measured #4127/#4129 overlap in
+`.agents/skills/execute-lane/references/operations.md` remains blocking:
+that file governs execution and is not explanatory prose, despite being
+called a document in the measurement. This exception does not remove that
+measured wait or alter retention classification, external observations or CI.
+
 For the executing lane only, `preflight_overlap: 1` also enables supplementary
 `externalOverlaps` observations. `plan` exposes them in `obs`; `plan-all`,
 including `--with-retro`, preserves them on every issue row. The version 1
@@ -91,9 +103,16 @@ including rows with no overlap and a CLOSED PR or CLOSED issue.
 OCCUPANT is the separate sibling selection predicate: a valid accepted
 preflight, implementation head, successful own observation and an action of `review`,
 `create-pr`, `push`, `wait-ci`, `wait-mergeability`, `request-merge-approval` or
-`merge`, excluding CLOSED issues and CLOSED/MERGED PRs. Select occupants
-greedily by valid active readiness sequence, then issue number; ungranted
-occupants follow by issue number. OPEN PRs and current PASS give no priority.
+`merge`, excluding CLOSED issues and CLOSED/MERGED PRs. Select occupants with
+valid active grants first by readiness sequence, then issue number, preserving
+their priority. From the remaining occupants that do not block a selected
+occupant, choose the one with the fewest blocking-overlap neighbors still
+remaining, breaking ties by issue number. Remove it and its blocking neighbors
+and repeat. This deterministic greedy selection is maximal, not necessarily
+maximum in cardinality. OPEN PRs, current PASS, timestamps and input order give
+no priority. For the measured #4128/#4129/#4130 star after #4127 integration,
+ungranted #4129 and #4130 review together and #4128 waits for both; an existing
+valid #4128 grant retains its priority.
 A GRANTABLE row that is not an OCCUPANT reserves no place against siblings.
 Existing publication and CI keep their grant. A waiting review names
 only directly overlapping selected candidates, which never wait on each other.
@@ -137,7 +156,8 @@ issue and field, leaving the ledger unchanged. A well-formed stale binding
 still deactivates normally. Legacy lanes skip this validation entirely,
 including when they happen to contain a malformed readiness key.
 
-When an overlapping sibling merges, verify its actual PR `mergeCommit` is in
+When an overlapping sibling merges, use the full original intersection,
+including explanatory prose, and verify its actual PR `mergeCommit` is in
 observed origin/base and the review head. Missing or unreadable base ancestry
 fails closed. If the head lacks that commit, resolve its integration eligibility
 before selecting occupants: handle `resolve-conflict` with reason

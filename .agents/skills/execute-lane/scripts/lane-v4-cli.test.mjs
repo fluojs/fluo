@@ -2743,6 +2743,52 @@ const readinessFixture = (t, predictions = { 42: ['docs/shared.md'], 43: ['docs/
   return { ...f, planIssue, implementIssue, recordIssue, readiness, all };
 };
 
+for (const [command, flags, granted] of [
+  ['plan-all', [], [43, 44]],
+  ['plan', ['--issue', '43'], [43]],
+  ['watch', ['--once'], [43, 44]],
+]) {
+  test(`#4140 readiness: ${command} on an ungranted star -> only returned independent reviews persist without churn`, (t) => {
+    const f = readinessFixture(t, {
+      42: ['src/shared.ts', 'tests/shared.test.mjs'],
+      43: ['src/shared.ts'],
+      44: ['tests/shared.test.mjs'],
+    });
+    for (const issue of [42, 43, 44]) f.implementIssue(issue);
+
+    const result = f.cli(command, ['--lane', f.lanePath, ...flags]);
+
+    if (command === 'watch') {
+      assert.match(result.stdout, /issue 42:.*-> wait-preflight-overlap/u);
+      for (const issue of granted) assert.match(result.stdout, new RegExp(`issue ${issue}:.*-> review`, 'u'));
+    } else if (command === 'plan-all') {
+      const rows = JSON.parse(result.stdout);
+      assert.deepEqual(rows.map(row => row.decision.action), ['wait-preflight-overlap', 'review', 'review']);
+      assert.deepEqual(rows[0].decision.siblings.map(row => row.issue), [43, 44]);
+    } else {
+      assert.equal(JSON.parse(result.stdout).decision.action, 'review');
+    }
+    const lane = JSON.parse(readFileSync(f.lanePath));
+    for (const issue of [42, 43, 44]) {
+      if (!granted.includes(issue)) {
+        assert.equal(f.readiness(issue), undefined);
+        continue;
+      }
+      const { policy } = evaluatePreflight(lane.issues[issue].facts.preflight.value, {
+        issue, issueSha256: lane.issues[issue].facts.preflight.value.issue_sha256,
+        baseSha: lane.issues[issue].facts.preflight.value.base_sha, changedFiles: [],
+      });
+      assert.deepEqual(f.readiness(issue), {
+        head: f.git(f.root, 'rev-parse', `issue-${issue}`),
+        value: { policy_sha256: policy.sha256, sequence: 1, active: true },
+      });
+    }
+    const bytes = readFileSync(f.lanePath);
+    f.cli(command, ['--lane', f.lanePath, ...flags]);
+    assert.deepEqual(readFileSync(f.lanePath), bytes);
+  });
+}
+
 for (const termination of ['closed-pr', 'closed-issue']) {
   for (const [command, flags] of [
     ['plan', ['--issue', '42']], ['plan-all', []], ['plan-all', ['--with-retro']], ['watch', ['--once']],

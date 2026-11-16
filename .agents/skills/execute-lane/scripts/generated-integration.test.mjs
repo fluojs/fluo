@@ -31,9 +31,9 @@ test('external overlaps: exact paths and partial observations -> sorted matches 
 import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { buildReviewFact } from '../../review-head/scripts/contracts.mjs';
 
-const overlapRow = (issue, files = ['README.md'], action = 'review', patch = {}) => {
+const overlapRow = (issue, files = ['src/shared.ts'], action = 'review', patch = {}) => {
   const preflight = createPreflight({ issue, issue_sha256: 'b'.repeat(64), base_sha: 'c'.repeat(40),
-    scope: ['README.md', 'docs/', 'src/', 'package.json', 'pnpm-lock.yaml', 'CONTEXT.md'],
+    scope: ['README.md', 'docs/', 'src/', '.agents/', 'package.json', 'pnpm-lock.yaml', 'CONTEXT.md'],
     non_scope: [], acceptance: ['Preserve behavior'], validation: ['node --test'], predicted_files: files });
   return { issue, decision: { action, head }, obs: { issueSha256: preflight.issue_sha256,
     baseSha: preflight.base_sha, changedFiles: [], preflight, issueState: 'OPEN', branch: `issue-${issue}`,
@@ -70,7 +70,7 @@ test('readiness ordering: valid grants survive lower numbers and late OPEN PRs i
 test('readiness ordering: fix-back, conflict and failed observation do not occupy or propagate', () => {
   for (const action of ['fix-back', 'resolve-conflict', 'observation-failed']) {
     const failure = { source: 'pr', subject: 'issue-42', code: 'command-failed' };
-    const rows = [overlapRow(42, ['README.md'], action,
+    const rows = [overlapRow(42, ['src/shared.ts'], action,
       { pr: { state: 'OPEN', number: 142 }, ...(action === 'observation-failed' ? { observationFailures: [failure] } : {}) }),
     overlapRow(43)];
     grant(rows[0], 1);
@@ -88,7 +88,7 @@ test('review eligibility: terminated overlapping row -> typed blocker while disj
     [{ pr: { state: 'CLOSED', number: 143 } }, 'pr-closed-externally'],
     [{ issueState: 'CLOSED', pr: { state: 'OPEN', number: 143 } }, 'issue-closed-externally'],
   ]) {
-    const rows = [overlapRow(42, ['README.md'], 'implement'), overlapRow(43, ['README.md'], 'review', patch)];
+    const rows = [overlapRow(42, ['src/shared.ts'], 'implement'), overlapRow(43, ['src/shared.ts'], 'review', patch)];
 
     const result = coordinate(rows);
 
@@ -157,7 +157,7 @@ test('preflight overlap: full overlap and every permutation -> one selected revi
     assert.deepEqual(result[1].decision.siblings.map(r => r.issue), [42]);
     assert.deepEqual(result[2].decision.siblings.map(r => r.issue), [42]);
     assert.deepEqual(result[0].decision.overlaps, [43, 44].map(issue => ({
-      issue, head, pr: null, files: ['README.md'], state: 'review',
+      issue, head, pr: null, files: ['src/shared.ts'], state: 'review',
     })));
   }
   assert.deepEqual(rows.map(r => r.decision.action), ['review', 'review', 'review']);
@@ -191,7 +191,7 @@ test('preflight overlap: explicit files of every kind -> sorted metadata, scope 
 
   assert.deepEqual(result[1].decision.files, [...files].sort());
   for (const patch of [{ baseSha: 'f'.repeat(40) }, { issueSha256: 'f'.repeat(64) }, { changedFiles: ['outside.ts'] }, { preflight: null }]) {
-    const rows = [overlapRow(42), overlapRow(43, ['README.md'], 'review', patch)];
+    const rows = [overlapRow(42), overlapRow(43, ['src/shared.ts'], 'review', patch)];
     assert.deepEqual(coordinate(rows), rows);
   }
 });
@@ -199,17 +199,17 @@ test('preflight overlap: explicit files of every kind -> sorted metadata, scope 
 test('preflight overlap: all non-review actions -> never replaced with the new wait', () => {
   for (const action of ['preflight', 'implement', 'fix-back', 'create-pr', 'push', 'wait-ci', 'wait-mergeability',
     'request-merge-approval', 'merge', 'cleanup', 'done', 'blocked', 'observation-failed', 'wait-dependencies', 'resolve-conflict']) {
-    assert.equal(coordinate([overlapRow(42), overlapRow(43, ['README.md'], action)])[1].decision.action, action);
+    assert.equal(coordinate([overlapRow(42), overlapRow(43, ['src/shared.ts'], action)])[1].decision.action, action);
   }
   for (const [action, patch] of [['blocked', {}], ['done', {}], ['cleanup', {}],
     ['review', { issueState: 'CLOSED' }], ['review', { pr: { state: 'CLOSED', number: 143 } }]]) {
-    assert.equal(coordinate([overlapRow(42, ['README.md'], action, patch), overlapRow(43)])[1].decision.action, 'review');
+    assert.equal(coordinate([overlapRow(42, ['src/shared.ts'], action, patch), overlapRow(43)])[1].decision.action, 'review');
   }
 });
 
 test('preflight overlap: relevant sibling observation failure -> failed issue alone loses eligibility', () => {
   const failure = { source: 'pr', subject: 'issue-42', code: 'command-failed' };
-  const rows = [overlapRow(42, ['README.md'], 'observation-failed', { observationFailures: [failure] }), overlapRow(43)];
+  const rows = [overlapRow(42, ['src/shared.ts'], 'observation-failed', { observationFailures: [failure] }), overlapRow(43)];
   rows[0].decision.failures = [failure];
 
   assert.equal(coordinate(rows)[0].decision.action, 'observation-failed');
@@ -220,7 +220,7 @@ test('preflight overlap: relevant sibling observation failure -> failed issue al
 
 test('preflight overlap: failed issue observation loses current digest -> sibling review remains eligible', () => {
   const failure = { source: 'issue', subject: 42, code: 'command-failed' };
-  const rows = [overlapRow(42, ['README.md'], 'observation-failed',
+  const rows = [overlapRow(42, ['src/shared.ts'], 'observation-failed',
     { issueSha256: null, observationFailures: [failure] }), overlapRow(43)];
   rows[0].decision.failures = [failure];
 
@@ -229,9 +229,10 @@ test('preflight overlap: failed issue observation loses current digest -> siblin
   assert.equal(coordinate(rows)[1].decision.action, 'review');
 });
 
-test('preflight overlap: merged sibling -> base integration only without occupants and verified ancestry', () => {
-  const merged = overlapRow(42, ['README.md'], 'cleanup', { pr: { state: 'MERGED', number: 142, mergeCommit: 'd'.repeat(40) } });
-  const reviewing = overlapRow(43);
+for (const file of ['src/shared.ts', 'docs/guides/overlap.md']) {
+test(`preflight overlap: merged sibling sharing ${file} -> base integration only with verified ancestry`, () => {
+  const merged = overlapRow(42, [file], 'cleanup', { pr: { state: 'MERGED', number: 142, mergeCommit: 'd'.repeat(40) } });
+  const reviewing = overlapRow(43, [file]);
   const evidence = { issue: 42, commit: 'd'.repeat(40), base: 'e'.repeat(40), inBase: true, inHead: false };
   reviewing.obs.overlapIntegrations = [evidence];
 
@@ -245,6 +246,63 @@ test('preflight overlap: merged sibling -> base integration only without occupan
   assert.equal(coordinate([merged, reviewing])[1].decision.action, 'review');
   reviewing.obs.overlapIntegrations[0].inBase = false;
   assert.equal(coordinate([merged, reviewing])[1].decision.action, 'observation-failed');
+});
+}
+
+for (const action of ['review', 'wait-ci']) {
+  for (const files of [
+    ['docs/guides/overlap.md', 'README.md'],
+    ['.agents/skills/execute-lane/references/operations.md'],
+    ['docs/guides/overlap.md', 'src/shared.ts'],
+  ]) {
+    test(`#4140 overlap: ${action} sharing ${files.join(', ')} -> prose-only admission retains complete metadata`, () => {
+      const rows = [overlapRow(4127, files, action), overlapRow(4129, [...files].reverse())];
+      grant(rows[0], 1);
+      const proseOnly = files.every(file => file === 'README.md' || file === 'docs/guides/overlap.md');
+
+      const result = coordinate(rows);
+
+      assert.equal(result[1].decision.action, proseOnly ? 'review' : 'wait-preflight-overlap');
+      assert.deepEqual(result[1].decision.overlaps, [{
+        issue: 4127, head, pr: null, state: action, files: [...files].sort(),
+      }]);
+      if (!proseOnly) {
+        assert.deepEqual(result[1].decision.files, [...files].sort());
+        assert.deepEqual(result[1].decision.siblings, result[1].decision.overlaps);
+      }
+    });
+  }
+}
+
+test('#4140 overlap: measured star in every permutation -> independent leaves review unless the center already has a grant', () => {
+  const operations = '.agents/skills/execute-lane/references/operations.md';
+  const preparation = '.agents/skills/execute-lane/scripts/workflow-preparation.mjs';
+  const cliTest = '.agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs';
+  const generatedTest = '.agents/skills/execute-lane/scripts/generated-integration.test.mjs';
+  const rows = [
+    overlapRow(4128, [operations, preparation, cliTest, generatedTest]),
+    overlapRow(4129, [operations, preparation]),
+    overlapRow(4130, [cliTest, generatedTest]),
+  ];
+  const permutations = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+  rows[0].obs.pr = { state: 'OPEN', number: 4228, headSha: head };
+
+  for (const order of permutations) {
+    const result = coordinate(order.map(index => rows[index])).sort((a, b) => a.issue - b.issue);
+
+    assert.deepEqual(result.map(row => row.decision.action), ['wait-preflight-overlap', 'review', 'review']);
+    assert.deepEqual(result[0].decision.siblings.map(row => row.issue), [4129, 4130]);
+    assert.deepEqual(result[0].decision.files, [operations, preparation, cliTest, generatedTest].sort());
+    assert.equal(result[1].decision.siblings, undefined);
+    assert.equal(result[2].decision.siblings, undefined);
+  }
+  grant(rows[0], 2);
+  for (const order of permutations) {
+    const result = coordinate(order.map(index => rows[index])).sort((a, b) => a.issue - b.issue);
+    assert.deepEqual(result.map(row => row.decision.action), ['review', 'wait-preflight-overlap', 'wait-preflight-overlap']);
+    assert.deepEqual(result[1].decision.siblings.map(row => row.issue), [4128]);
+    assert.deepEqual(result[2].decision.siblings.map(row => row.issue), [4128]);
+  }
 });
 
 const digest = (text) => createHash('sha256').update(text).digest('hex');
