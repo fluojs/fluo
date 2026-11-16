@@ -350,6 +350,32 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 		group.eventIds.push(event.eventId);
 		byJob.set(name, group);
 	}
+	const externalOverlapObservations = [];
+	const externalOverlapUnknowns = [];
+	const conflicts = new Map(snapshots.map(({ issue }) => [issue, new Map()]));
+	for (const event of events) {
+		if (event.kind === "observation") {
+			const overlaps = event.data?.externalOverlaps;
+			if (overlaps) externalOverlapObservations.push({
+				eventId: event.eventId, issue: event.issue, status: overlaps.status,
+				laneMatches: overlaps.laneMatches.length, prMatches: overlaps.prMatches.length,
+				unknowns: overlaps.unknowns,
+			});
+			else externalOverlapUnknowns.push({ eventId: event.eventId, issue: event.issue, code: "external-overlap-unrecorded" });
+		}
+		if (event.kind !== "stage" || event.data?.phase !== "resolve-conflict") continue;
+		const result = event.data.result;
+		if (typeof result !== "object" || result === null || result.ok !== true) continue;
+		// applyChildResult resets this phase to zero only on success; record
+		// captures that outcome, unlike the issue's current attempt counters.
+		const attempts = event.data.attempts?.["resolve-conflict"];
+		if (attempts !== undefined ? attempts !== 0 : result.error?.type === "child-contract-error") continue;
+		const head = result.head_sha;
+		if (!/^[a-f0-9]{40}$/u.test(head ?? "")) continue;
+		const heads = conflicts.get(event.issue) ?? new Map();
+		heads.set(head, [...new Set([...(heads.get(head) ?? []), event.eventId])].sort());
+		conflicts.set(event.issue, heads);
+	}
 	return {
 		version: 1,
 		request,
@@ -366,6 +392,13 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 			b.failures - a.failures || a.job.localeCompare(b.job)
 		),
 		totalElapsedMs: null,
+		externalOverlapObservations,
+		externalOverlapUnknowns,
+		conflictResolutions: [...conflicts].sort(([a], [b]) => a - b).map(([issue, heads]) => ({
+			issue, observedConflictResolutions: heads.size,
+			heads: [...heads].sort(([a], [b]) => a.localeCompare(b)).map(([head, eventIds]) => ({ head, eventIds })),
+			eventIds: [...new Set([...heads.values()].flat())].sort(), history: "unknown",
+		})),
 		integrationMeasurements: summarizeIntegrationMeasurements(events,
 			Object.fromEntries(snapshots.map(({ issue, obs }) => [issue, obs.headSha ?? obs.pr?.headSha]))),
 		limitations: [

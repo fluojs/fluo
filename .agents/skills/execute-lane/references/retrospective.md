@@ -18,6 +18,24 @@ nor simulation timing proves elapsed execution or a CI budget. Compare identical
 initial state, changes, merge/CI schedule, final source and gate coverage, and
 report worse or inconclusive outcomes without reducing checks, retries or timeouts.
 
+Marker lanes retain `externalOverlaps` on planning/watch observation events even
+without generated hints. `externalOverlapObservations` in `retro-evidence`
+lists each event's `eventId`, issue, lane/PR match counts, status and unknowns.
+These are observations, not unique conflict counts: repeated polling must never
+be summed into a count of distinct collisions. `externalOverlapUnknowns` links
+older observation events without this field; missing history is unknown,
+not evidence of zero overlaps.
+
+`conflictResolutions` reports issue-level `observedConflictResolutions`, heads
+and their supporting `eventIds`. It counts successful recorded
+`resolve-conflict` results, deduplicated by actual resulting `result.head_sha`
+per issue. Failed stages, observations of a pending action and attempt counters
+do not count as successful resolutions. This is an observed success count;
+`history: unknown` preserves the possibility of uncollected older successes.
+It is separate from measured integration stage executions. Existing retrospective
+subject identity, final CI collection requirements and `totalElapsedMs: null`
+remain unchanged.
+
 Read `../../retrospective-lane/SKILL.md` when starting or resuming execution. The lead
 retains individual reviewer responses before aggregation/adjudication and
 unsuccessful implementer returns before retry using `retro-record`. Keep task,

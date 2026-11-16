@@ -25,7 +25,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -59,7 +59,7 @@ import {
 	retentionFreshAxes,
 	validateReviewFact,
 } from "../../review-head/scripts/contracts.mjs";
-import { coordinateGeneratedIntegration, coordinatePreflightOverlap, reviewReadinessState, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
+import { coordinateGeneratedIntegration, coordinatePreflightOverlap, externalOverlapObservation, reviewReadinessState, validateGeneratedIntegration, validateStageMeasurements } from "./generated-integration.mjs";
 import { observeKnownBaseline, validateKnownBaseline } from "./known-baseline.mjs";
 import { assertAgentIdentity, dispatchFor, DispatchPreparationError, readRegisteredAgents, validateDispatchTarget, validateUnavailableTarget } from "./dispatch-targets.mjs";
 import {
@@ -227,6 +227,9 @@ class ReviewReadinessError extends TypeError {
 const loadLane = (path) => {
 	const lane = validateOverlapMarker(JSON.parse(readFileSync(path, "utf8")));
 	if (lane.preflight_overlap !== 1) return lane;
+	return validateReadiness(lane);
+};
+const validateReadiness = (lane) => {
 	for (const [issue, entry] of Object.entries(lane.issues)) {
 		if (!entry.facts || !Object.hasOwn(entry.facts, "review-readiness")) continue;
 		const fact = entry.facts["review-readiness"];
@@ -257,6 +260,186 @@ const loadLane = (path) => {
 		}
 	}
 	return lane;
+};
+
+// This boundary reads other ledgers without entering their observation, lock,
+// migration, readiness or save paths. Every failure stays supplementary.
+// Only repository identity is process-local; overlap data is never cached.
+const externalRepositories = new Map();
+const externalOverlapCandidates = (root, lanePath, lane, snapshots) => {
+	const candidates = { laneMatches: [], prMatches: [], unknowns: [] };
+	const unknown = (source, subject, code) => candidates.unknowns.push({ source, subject, code });
+	const record = value => value !== null && typeof value === "object" && !Array.isArray(value);
+	const sha = value => typeof value === "string" && /^[a-f0-9]{40}$/u.test(value);
+	const directory = resolve(root, ".omo/lanes-v4");
+	const external = [];
+	let names = [];
+	try {
+		if (realpathSync(directory) !== resolve(realpathSync(root), ".omo/lanes-v4")) {
+			unknown("lane-directory", directory, "outside-boundary");
+		} else names = readdirSync(directory).filter(name => name.endsWith(".json")).sort();
+	} catch (error) {
+		if (error.code !== "ENOENT") unknown("lane-directory", directory, "enumeration-failed");
+	}
+	for (const name of names) {
+		const path = resolve(directory, name);
+		if (path === lanePath) continue;
+		let other;
+		try {
+			const target = realpathSync(path);
+			if (!target.startsWith(`${realpathSync(directory)}${sep}`)) {
+				unknown("lane", name, "outside-boundary");
+				continue;
+			}
+			other = loadLane(target);
+			if (other?.lane_id === lane.lane_id) continue;
+			if (other?.version !== 4) {
+				unknown("lane", name, "unsupported-version");
+				continue;
+			}
+			if (!record(other) || typeof other.lane_id !== "string" || !other.lane_id ||
+				typeof other.base_branch !== "string" || !other.base_branch ||
+				!record(other.issues) || !Object.keys(other.issues).length) {
+				unknown("lane", name, "invalid-structure");
+				continue;
+			}
+			validateReadiness(other);
+		} catch (error) {
+			unknown("lane", name, error instanceof SyntaxError ? "invalid-json"
+				: error.code === "invalid-review-readiness" ? error.code
+				: error instanceof TypeError ? "invalid-marker-or-structure" : "read-failed");
+			continue;
+		}
+		for (const key of Object.keys(other.issues).sort((a, b) => Number(a) - Number(b))) {
+			const entry = other.issues[key];
+			if (!/^[1-9]\d*$/u.test(key) || !Number.isSafeInteger(Number(key)) || !record(entry) ||
+				entry.issue !== Number(key) || typeof entry.branch !== "string" ||
+				!(entry.branch === `issue-${key}` || new RegExp(`^issue-${key}(?:-[a-z0-9]+)+$`, "u").test(entry.branch)) ||
+				!Array.isArray(entry.depends_on) || entry.depends_on.some(issue => !Number.isSafeInteger(issue) || issue < 1) ||
+				!record(entry.attempts) || !record(entry.approvals) || typeof entry.approvals.merge !== "boolean" ||
+				!(entry.blocker === null || record(entry.blocker)) || !record(entry.facts)) {
+				unknown("lane", `${other.lane_id}:${key}`, "invalid-issue");
+				continue;
+			}
+			external.push({ lane: other, entry });
+		}
+	}
+	if (!snapshots.some(row => evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue }).valid)) {
+		return candidates;
+	}
+	const query = (source, subject, args) => {
+		let text;
+		try {
+			text = execFileSync("gh", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+				env: { ...process.env, GH_PAGER: "cat" } });
+		} catch (error) {
+			unknown(source, subject, "command-failed");
+			// gh can exit nonzero with useful partial GraphQL data on stdout.
+			text = error.stdout?.toString();
+			if (!text) return null;
+		}
+		try { return JSON.parse(text); }
+		catch (error) {
+			if (!(error instanceof SyntaxError)) throw error;
+			unknown(source, subject, "invalid-response");
+			return null;
+		}
+	};
+	const identity = externalRepositories.get(root) ??
+		query("repository", "current", ["repo", "view", "--json", "nameWithOwner"]);
+	if (typeof identity?.nameWithOwner !== "string" ||
+		! /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/u.test(identity.nameWithOwner)) {
+		unknown("repository", "current", "identity-unavailable");
+		return candidates;
+	}
+	externalRepositories.set(root, identity);
+	const [owner, name] = identity.nameWithOwner.split("/");
+	const graphql = (operation, fields) => {
+		const response = query("github", operation, ["api", "graphql", "-f",
+			`query=query ${operation} { repository(owner:${JSON.stringify(owner)},name:${JSON.stringify(name)}) { ${fields} } }`]);
+		if (!record(response)) {
+			unknown("github", operation, "invalid-response");
+			return null;
+		}
+		if (Object.hasOwn(response, "errors")) unknown("github", operation, "graphql-errors");
+		if (!record(response.data?.repository)) { unknown("github", operation, "invalid-response"); return null; }
+		return response.data.repository;
+	};
+	const connection = (value, source, subject, limit) => {
+		if (!record(value) || !Array.isArray(value.nodes)) {
+			unknown(source, subject, "invalid-response");
+			return [];
+		}
+		if (!Number.isSafeInteger(value.totalCount) || value.totalCount < 0 ||
+			typeof value.pageInfo?.hasNextPage !== "boolean") unknown(source, subject, "invalid-completeness");
+		else if (value.totalCount > limit || value.nodes.length > limit) unknown(source, subject, "limit-exceeded");
+		else if (value.pageInfo.hasNextPage || value.totalCount !== value.nodes.length) unknown(source, subject, "incomplete");
+		return value.nodes.slice(0, limit);
+	};
+	const prs = graphql("ExternalOverlapPullRequests",
+		"pullRequests(first:100,states:OPEN,orderBy:{field:CREATED_AT,direction:ASC}) { totalCount pageInfo { hasNextPage } nodes { number headRefName headRefOid files(first:100) { totalCount pageInfo { hasNextPage } nodes { path } } } }");
+	const ownBranches = new Set(Object.values(lane.issues).map(entry => entry.branch));
+	const ownPrs = new Set(snapshots.map(row => row.obs.pr?.number).filter(Boolean));
+	if (prs) for (const pr of connection(prs.pullRequests, "pr", "OPEN", 100)) {
+		if (!Number.isSafeInteger(pr?.number) || pr.number < 1 || !sha(pr.headRefOid) ||
+			typeof pr.headRefName !== "string") { unknown("pr", "OPEN", "invalid-pr"); continue; }
+		if (ownBranches.has(pr.headRefName) || ownPrs.has(pr.number)) continue;
+		const files = [];
+		for (const file of connection(pr.files, "pr-files", pr.number, 100)) {
+			if (typeof file?.path !== "string" || !file.path) unknown("pr-files", pr.number, "invalid-path");
+			else files.push(file.path);
+		}
+		candidates.prMatches.push({ pr: pr.number, head: pr.headRefOid, files });
+	}
+	for (const { lane: other, entry } of external.slice(50)) unknown("issue", `${other.lane_id}:${entry.issue}`, "limit-exceeded");
+	const bounded = external.slice(0, 50);
+	if (!bounded.length) return candidates;
+	const fields = bounded.map(({ entry }, index) =>
+		`issue${index}:issue(number:${entry.issue}) { state title body } branch${index}:pullRequests(first:1,states:[OPEN,CLOSED,MERGED],headRefName:${JSON.stringify(entry.branch)},orderBy:{field:UPDATED_AT,direction:DESC}) { totalCount pageInfo { hasNextPage } nodes { number state headRefOid } }`).join(" ");
+	const issues = graphql("ExternalOverlapIssues", fields);
+	if (!issues) return candidates;
+	for (const [index, { lane: other, entry }] of bounded.entries()) {
+		const subject = `${other.lane_id}:${entry.issue}`;
+		const latest = issues[`issue${index}`];
+		const start = candidates.unknowns.length;
+		const branches = connection(issues[`branch${index}`], "issue-pr", subject, 1);
+		const pr = branches[0];
+		if (!record(latest) || !["OPEN", "CLOSED"].includes(latest.state) ||
+			typeof latest.title !== "string" || typeof latest.body !== "string" ||
+			(branches.length && (!Number.isSafeInteger(pr?.number) || pr.number < 1 ||
+				!["OPEN", "CLOSED", "MERGED"].includes(pr.state) || !sha(pr.headRefOid)))) {
+			unknown("issue", subject, "invalid-response");
+			continue;
+		}
+		if (candidates.unknowns.length !== start) continue;
+		const branch = run(root, "git", ["show-ref", "--verify", "--quiet", `refs/heads/${entry.branch}`]) !== null;
+		const worktree = existsSync(resolve(root, ".worktrees", entry.branch));
+		if (!entry.blocker && ((pr?.state === "MERGED" && !branch && !worktree) ||
+			(latest.state === "CLOSED" && !pr))) continue;
+		const preflight = entry.facts.preflight?.value;
+		try { validatePreflight(preflight); }
+		catch (error) {
+			if (!(error instanceof TypeError)) throw error;
+			unknown("preflight", subject, "invalid-preflight");
+			continue;
+		}
+		const head = branch ? run(root, "git", ["rev-parse", entry.branch]) : null;
+		const source = run(root, "git", ["rev-parse", "--verify", `refs/remotes/origin/${other.base_branch}^{commit}`]);
+		const anchor = preflight.base_sha;
+		const baseSha = source && run(root, "git", ["rev-parse", "--verify", `${anchor}^{commit}`]) === anchor &&
+			run(root, "git", ["merge-base", "--is-ancestor", anchor, source]) !== null &&
+			(!branch || run(root, "git", ["merge-base", "--is-ancestor", anchor, head]) !== null) ? anchor : null;
+		const mergeBase = branch ? run(root, "git", ["merge-base", entry.branch, `origin/${other.base_branch}`]) : null;
+		const changed = baseSha && branch && mergeBase
+			? run(root, "git", ["diff", "--name-only", "--no-renames", "-z", `${mergeBase}...${head}`], false)
+			: baseSha && !branch ? "" : null;
+		const status = evaluatePreflight(preflight, { issue: entry.issue, issueSha256: issueDigest(latest), baseSha,
+			changedFiles: changed === null ? null : changed.split("\0").filter(Boolean),
+			reviewAxisFloor: entry.facts.review?.value?.active_axes ?? [] });
+		if (!status.valid) { unknown("preflight", subject, status.reason); continue; }
+		candidates.laneMatches.push({ lane_id: other.lane_id, issue: entry.issue, files: preflight.predicted_files });
+	}
+	return candidates;
 };
 const saveLane = (path, lane, create = false) => {
 	const temporary = `${path}.${randomUUID()}.tmp`;
@@ -954,6 +1137,7 @@ const main = async () => {
 		observationId: randomUUID(), processId: observationProcess, clock: "monotonic",
 		monotonicMs: performance.now(), head: row.obs.headSha, action: row.decision.action,
 		siblings: row.decision.siblings ?? [], surfaces: row.decision.surfaces ?? [],
+		...(row.obs.externalOverlaps ? { externalOverlaps: row.obs.externalOverlaps } : {}),
 	});
 
 	if (command === "init") {
@@ -1058,8 +1242,10 @@ const main = async () => {
 	// facts/approvals recorded by concurrent operator commands are seen.
 	const snapshotAll = (withObservations = false, previous = null) => {
 		const unlock = lane.preflight_overlap === 1 ? lockLane(lanePath) : null;
+		let fresh;
+		let coordinated;
 		try {
-		const fresh = loadLane(lanePath);
+		fresh = loadLane(lanePath);
 		assertPredictedConflicts(fresh.predicted_conflicts, Object.keys(fresh.issues).map(Number));
 		const snapshots = Object.keys(fresh.issues).map((key) => {
 			const n = Number(key);
@@ -1114,7 +1300,7 @@ const main = async () => {
 			}
 		};
 		if (fresh.preflight_overlap === 1) legacy.forEach(deactivate);
-		const coordinated = coordinatePreflightOverlap(fresh, legacy);
+		coordinated = coordinatePreflightOverlap(fresh, legacy);
 		if (fresh.preflight_overlap === 1) {
 			coordinated.forEach(deactivate);
 			const outputIssue = command === "plan" ? Number(arg(args, "--issue")) : null;
@@ -1141,15 +1327,25 @@ const main = async () => {
 			}
 			if (changed) saveLane(lanePath, fresh);
 		}
-		if (fresh.predicted_conflicts?.some((hint) => hint.generated) &&
+		} finally {
+			unlock?.();
+		}
+		// Supplementary network work cannot affect the committed decisions or
+		// readiness grants and must not delay a concurrent record writer.
+		if (fresh.preflight_overlap === 1 && ["plan", "plan-all", "watch"].includes(command)) {
+			const candidates = externalOverlapCandidates(root, lanePath, fresh, coordinated);
+			for (const row of coordinated) {
+				const valid = evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue }).valid;
+				row.obs.externalOverlaps = externalOverlapObservation(valid ? row.obs.preflight.predicted_files : null, candidates);
+			}
+		}
+		if ((fresh.preflight_overlap === 1 || fresh.predicted_conflicts?.some((hint) => hint.generated)) &&
 			["plan", "plan-all", "watch"].includes(command)) {
 			for (const row of coordinated) recordObservation(fresh.lane_id, row);
 		}
 		return coordinated.map(({ obs, ...row }) =>
-			({ ...row, ...(withObservations ? { obs } : {}) }));
-		} finally {
-			unlock?.();
-		}
+			({ ...row, ...(obs.externalOverlaps ? { externalOverlaps: obs.externalOverlaps } : {}),
+				...(withObservations ? { obs } : {}) }));
 	};
 
 	if (["retro-plan", "retro-evidence", "retro-report"].includes(command)) {
@@ -1167,9 +1363,10 @@ const main = async () => {
 	if (command === "plan-all") {
 		const withRetro = args.includes("--with-retro");
 		const snapshots = snapshotAll(withRetro);
-		const issues = snapshots.map(({ issue, decision }) => ({
+		const issues = snapshots.map(({ issue, decision, externalOverlaps }) => ({
 			issue,
 			decision,
+			...(externalOverlaps ? { externalOverlaps } : {}),
 		}));
 		const retrospective = withRetro
 			? retrospectiveRequest(root, lane.lane_id, snapshots)
@@ -1211,6 +1408,12 @@ const main = async () => {
 			for (;;) {
 				const next = snapshotAll(true, prev);
 				const { changes, settled } = summarizeTransitions(prev, next);
+				for (const row of next) {
+					if (row.obs.externalOverlaps && JSON.stringify(row.obs.externalOverlaps) !==
+						JSON.stringify(prev?.find(item => item.issue === row.issue)?.obs.externalOverlaps)) {
+						process.stdout.write(`${new Date().toISOString()} OBSERVATION issue ${row.issue}: externalOverlaps=${JSON.stringify(row.obs.externalOverlaps)}\n`);
+					}
+				}
 				for (const c of changes) {
 					if (
 						c.to === "fix-back" &&
