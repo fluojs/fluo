@@ -132,6 +132,25 @@ to that exact machine object. Supply supporting evidence separately.
 
 If anything prevents completion, return failure evidence to the lane instead
 of a forged completed object. This module has no partial-success result. Stop
+only after local commands have closed and the scoped work is committed. The
+lead always runs `workflow-preparation.mjs implement-result` after your return
+in either mode, including when Result is absent (`result:null`), before success
+recording or review preparation. The exact wrapper is
+`{version:1,stage:"implement-result",root,accepted_contract_path,contract,input,
+result}`; it is separate from your unchanged Result. The lead independently
+checks binding, actual branch/HEAD, ancestry/scoped diff/changed_files, clean
+Git state and live commands/descendants using macOS `ps`/`lsof` or Linux
+`ps`/`/proc` (same user for lead and child). Only `status:"accepted"` admits
+completion. `kind:"incomplete-run"` (CLI exit 2) preserves missing/invalid
+result, running processes and dirty/unchanged work together. The lead retains
+it, monitors existing commands, and resumes this same assignment; do not
+restart commands, kill processes, auto-commit or automatically retry in response
+to that wrapper. Binding/observation failures are `input-preparation`,
+`fix_back_eligible:false` (exit 1), never proof that no commands remain.
+Foreground use or ending a turn cannot replace this structural check; admission
+also does not independently certify your focused test self-report.
+
+Stop
 at a validated local committed head, not at PR creation. The lane sends every
 new head to selected review, then remote sync; full canonical local CI is only
 for explicitly requested reproduction or diagnosis after review. Local

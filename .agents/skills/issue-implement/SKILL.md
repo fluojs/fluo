@@ -101,6 +101,25 @@ remediated with no remaining blockers. `commit_sha` must equal the new
 `head_sha`; `previous_head_sha` must equal `starting_head_sha`.
 
 Return the exact object accepted by `assertIssueImplementResult`. A malformed
+or missing report still requires the lead to call
+`../execute-lane/scripts/workflow-preparation.mjs implement-result <input.json>`
+immediately after either mode's child returns. Supply exactly
+`{version:1,stage:"implement-result",root,accepted_contract_path,contract,input,
+result}` with absolute paths and the original Result, or `null` if absent.
+Only `{status:"accepted",kind:"implement-result",result}` permits the existing
+success record and review preparation. Admission observes the actual current
+commit, ancestry, scoped diff, clean worktree and live commands/descendants;
+it does not reuse the starting-HEAD-only preparation or execute focused tests.
+Foreground execution or a turn ending is not structural completion evidence.
+An `incomplete-run` (CLI exit 2) preserves result validity, Git residue and
+attributed processes. Retain it, watch existing commands and resume the same
+assignment without rerunning commands, killing processes, auto-committing or
+automatically retrying. `input-preparation`, `fix_back_eligible:false` (exit 1)
+means binding or observation could not be established; repair access/input first.
+See workflow.md for the wrapper and process observation boundary. The exact
+version 1 Input/Identity/Result and authority objects remain unchanged.
+
+A malformed
 or unsuccessful raw return must first be retained by the lead through
 `lane-v4-cli.mjs retro-record --kind implementer`; include available task/head,
 failed command and raw log references without inventing missing measurements.
