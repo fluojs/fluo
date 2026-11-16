@@ -25,6 +25,33 @@ import {
 } from "../../retrospective-lane/scripts/retro.mjs";
 
 const head = "a".repeat(40);
+
+test('external overlap evidence: polling and repeated conflict heads -> event counts and observed successes stay distinct', (t) => {
+	const root = fixture(t);
+	const overlaps = { version: 1, status: "complete", laneMatches: [{ lane_id: "other", issue: 99, files: ["src/a.ts"] }],
+		prMatches: [], unknowns: [] };
+	const first = recordRetroEvent(root, laneId, 1, "observation", { observationId: "first", externalOverlaps: overlaps });
+	const second = recordRetroEvent(root, laneId, 1, "observation", { observationId: "second",
+		externalOverlaps: { ...overlaps, status: "unobservable", unknowns: [{ source: "pr", subject: "OPEN", code: "command-failed" }] } });
+	const old = recordRetroEvent(root, laneId, 1, "observation", { action: "resolve-conflict" });
+	const successful = recordRetroEvent(root, laneId, 1, "stage", {
+		phase: "resolve-conflict", head: head, result: { ok: true, head_sha: "c".repeat(40) } });
+	const repeated = recordRetroEvent(root, laneId, 1, "stage", {
+		phase: "resolve-conflict", head: "d".repeat(40), result: { ok: true, head_sha: "c".repeat(40) } });
+	recordRetroEvent(root, laneId, 1, "stage", {
+		phase: "resolve-conflict", head, result: { ok: false, head_sha: "e".repeat(40) } });
+
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.deepEqual(evidence.externalOverlapObservations.map(item => item.eventId).sort(), [first.eventId, second.eventId].sort());
+	assert.ok(evidence.externalOverlapObservations.every(item => item.issue === 1 && item.laneMatches === 1 && item.prMatches === 0));
+	assert.equal(evidence.externalOverlapObservations.find(item => item.eventId === second.eventId).status, "unobservable");
+	assert.deepEqual(evidence.conflictResolutions, [{ issue: 1, observedConflictResolutions: 1,
+		heads: [{ head: "c".repeat(40), eventIds: [successful.eventId, repeated.eventId].sort() }],
+		eventIds: [successful.eventId, repeated.eventId].sort(), history: "unknown" }]);
+	assert.ok(evidence.externalOverlapUnknowns.some(item => item.eventId === old.eventId));
+	assert.equal(evidence.totalElapsedMs, null);
+});
 const mergeCommit = "b".repeat(40);
 const laneId = "retro-test";
 const fixture = (t, completeCi = false) => {

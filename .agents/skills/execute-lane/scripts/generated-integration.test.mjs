@@ -9,6 +9,25 @@ import { readRetroEvents, recordCiSnapshot } from '../../retrospective-lane/scri
 import { coordinateGeneratedIntegration, summarizeIntegrationMeasurements, validateGeneratedIntegration, validateStageMeasurements } from './generated-integration.mjs';
 import { summarizeTransitions } from './lane-v4.mjs';
 import * as integration from './generated-integration.mjs';
+
+test('external overlaps: exact paths and partial observations -> sorted matches without mutating candidates', () => {
+  const candidates = { laneMatches: [
+    { lane_id: 'other', issue: 99, files: ['src/z.ts', 'src/a.ts', 'src/a.ts', 'src/'] },
+    { lane_id: 'clear', issue: 100, files: ['src/b.ts'] },
+  ], prMatches: [{ pr: 199, head, files: ['src/z.ts', 'src/z.ts'] }],
+  unknowns: [{ source: 'pr', subject: 200, code: 'files-incomplete' }] };
+  const bytes = JSON.stringify(candidates);
+
+  const result = integration.externalOverlapObservation(['src/z.ts', 'src/a.ts'], candidates);
+
+  assert.deepEqual(result, { version: 1, status: 'unobservable',
+    laneMatches: [{ lane_id: 'other', issue: 99, files: ['src/a.ts', 'src/z.ts'] }],
+    prMatches: [{ pr: 199, head, files: ['src/z.ts'] }], unknowns: candidates.unknowns });
+  assert.equal(JSON.stringify(candidates), bytes);
+  assert.equal(integration.externalOverlapObservation(null, { laneMatches: [], prMatches: [], unknowns: [] }).status, 'unobservable');
+  assert.deepEqual(integration.externalOverlapObservation(['src/a.ts'], { laneMatches: [], prMatches: [], unknowns: [] }),
+    { version: 1, status: 'complete', laneMatches: [], prMatches: [], unknowns: [] });
+});
 import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { buildReviewFact } from '../../review-head/scripts/contracts.mjs';
 

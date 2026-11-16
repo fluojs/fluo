@@ -20,6 +20,47 @@ Only two currently valid accepted preflights' explicit `predicted_files`
 intersect; scope prefixes and file kinds do not alter that rule. Ready
 preflights and implementations remain parallel.
 
+For the executing lane only, `preflight_overlap: 1` also enables supplementary
+`externalOverlaps` observations. `plan` exposes them in `obs`; `plan-all`,
+including `--with-retro`, preserves them on every issue row. The version 1
+object has `status: complete | unobservable`, `laneMatches` containing
+`{ lane_id, issue, files }`, `prMatches` containing `{ pr, head, files }`, and
+`unknowns` containing `{ source, subject, code }`. Files are sorted, deduplicated
+exact intersections with a currently valid accepted prediction, never expanded
+scope prefixes. Partial observations preserve confirmed positive matches and
+use `unobservable`. An unavailable current prediction is unknown, not a complete
+empty intersection.
+
+Each fresh snapshot reads sorted immediate `.json` children of
+`--root/.omo/lanes-v4/`, excluding its own file and lane identity. Normal external
+v4 lanes participate with or without the marker. Discovery never locks, saves,
+migrates, grants readiness or invalidates external facts. A missing directory
+means no local candidates; enumeration/read failures, malformed JSON, legacy
+versions, invalid marker/readiness/issue structure and symlinks escaping the
+directory remain explicit unknowns. Accepted external preflights must pass the
+existing canonical digest, issue number/content, pinned-base existence and
+ancestry, and current merge-base-to-head scope checks. Fresh issue and linked
+branch PR observations exclude only `done` issues; a merged issue with local
+branch/worktree cleanup remaining is active.
+
+Supplemental GitHub work is shared once per snapshot: one repository identity
+call, one batch of up to 100 OPEN PRs with up to 100 files each, and one batch
+for the first 50 sorted external issue candidates and their branch PR states.
+No per-issue or per-PR supplemental calls or unbounded pagination occur.
+Completeness uses `totalCount` and `pageInfo`; limits, missing or malformed
+responses, GraphQL errors and command failures produce unknowns while preserving
+bounded positive results. All calls use `GH_PAGER=cat`.
+
+These observations never enter decision objects, own `observationFailures`,
+readiness, priority, waits, merge, cleanup, publication, CI or review admission.
+Existing decisions, sibling coordination and ancestry gates remain identical.
+`watch` prints a separate `OBSERVATION issue <n>: externalOverlaps=<JSON>` row
+on its first snapshot and observation changes only; external changes are not
+action transitions and do not change stall or settled detection. Every next
+snapshot re-observes. Marker lanes retain observations in `.omo/retros/` events
+even without generated hints, never in execution ledgers. Marker-free executing
+lanes retain their original output, observation and persistence paths.
+
 `wait-preflight-overlap` replaces only a new `review` action. Before dispatching
 background reviewers, wait until `plan` actually returns `review`. On marker
 lanes that return, `plan-all` and each `watch` tick save a head-bound

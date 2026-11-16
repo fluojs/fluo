@@ -9,6 +9,19 @@ const exact = (value, keys) => value && typeof value === 'object' && !Array.isAr
   Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 const sha = (value) => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value);
 
+/** External predictions are observations only; scope prefixes never expand. */
+export const externalOverlapObservation = (predictedFiles, candidates) => {
+  const unknowns = [...candidates.unknowns];
+  if (predictedFiles === null) unknowns.push({ source: 'preflight', subject: 'current', code: 'prediction-unavailable' });
+  const intersection = files => [...new Set(files.filter(file => predictedFiles?.includes(file)))].sort();
+  return { version: 1, status: unknowns.length ? 'unobservable' : 'complete',
+    laneMatches: candidates.laneMatches.map(match => ({ ...match, files: intersection(match.files) }))
+      .filter(match => match.files.length).sort((a, b) => a.lane_id.localeCompare(b.lane_id) || a.issue - b.issue),
+    prMatches: candidates.prMatches.map(match => ({ ...match, files: intersection(match.files) }))
+      .filter(match => match.files.length).sort((a, b) => a.pr - b.pr),
+    unknowns };
+};
+
 /** Only ready, related, independently merge-authorized siblings defer a real conflict. */
 export const coordinateGeneratedIntegration = (lane, snapshots) => snapshots.map((row) => {
   const hints = (lane.predicted_conflicts ?? []).filter((hint) =>

@@ -99,6 +99,16 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs retro-report --root . -
   supply a missing execution start or completion time.
 - Attempt counters reset and observations deduplicate. Describe distinct
   recorded outcomes, not a complete execution-count history.
+- `externalOverlapObservations` retains per-event issue, match counts,
+  status/unknowns and `eventId`. Repeated polling is repeated observation,
+  not a sum of unique conflicts. Missing external fields in older events are
+  linked in `externalOverlapUnknowns` and mean unknown, never zero overlaps.
+- `conflictResolutions[].observedConflictResolutions` counts only successful
+  recorded `resolve-conflict` results, deduplicated per issue by the actual
+  resulting `result.head_sha`, with supporting heads and `eventIds`. Failed
+  stages, pending-action observations and attempt counters are excluded.
+  This observed success count is separate from measured integration executions;
+  `history: unknown` leaves uncollected older resolutions unknown.
 - Reviewer BLOCK is a claim. Verify its cited checkout/symbol and lead
   adjudication before calling it an implementation defect. Missing tools/input,
   false blockers and genuine regressions are different bottlenecks.

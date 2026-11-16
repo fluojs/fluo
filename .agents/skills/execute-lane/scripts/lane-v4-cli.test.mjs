@@ -552,7 +552,17 @@ const state = JSON.parse(readFileSync(process.env.GH_STATE));
 const subject = args[0] === 'issue' && args[2] !== '42' ? args[2] : args[0];
 if (state.unavailable || state.fail === subject) process.exit(1);
 if (state.malformed === subject) { process.stdout.write('{}'); process.exit(0); }
-if (args[0] === 'pr' && args[1] === 'view') {
+if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) {
+  process.stdout.write(JSON.stringify(state.externalRepository ?? { nameWithOwner: 'fluojs/fluo' }));
+} else if (args[0] === 'api' && args[1] === 'graphql' && args.some(arg => arg.includes('ExternalOverlapPullRequests'))) {
+  if (process.env.GH_PAGER !== 'cat') process.exit(3);
+  process.stdout.write(JSON.stringify(Object.hasOwn(state, 'externalPrs') ? state.externalPrs : { data: { repository: { pullRequests: {
+    totalCount: 0, pageInfo: { hasNextPage: false }, nodes: [] } } } }));
+  if (state.externalPrExit) process.exit(state.externalPrExit);
+} else if (args[0] === 'api' && args[1] === 'graphql' && args.some(arg => arg.includes('ExternalOverlapIssues'))) {
+  if (process.env.GH_PAGER !== 'cat') process.exit(3);
+  process.stdout.write(JSON.stringify(state.externalIssues ?? { data: { repository: {} } }));
+} else if (args[0] === 'pr' && args[1] === 'view') {
   const pr = Object.hasOwn(state.prs ?? {}, args[2]) ? state.prs[args[2]] : state.pr;
   if (!pr) { process.stderr.write('no pull requests found for branch "' + args[2] + '"'); process.exit(1); }
   process.stdout.write(JSON.stringify(pr));
@@ -2056,6 +2066,316 @@ const generatedFixture = (t) => {
   f.update();
   return { ...f, hint, ready };
 };
+
+const externalFixture = (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const before = f.plan().decision;
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.preflight_overlap = 1;
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const externalPath = join(f.root, '.omo/lanes-v4/other.json');
+  const external = { version: 4, lane_id: 'other', base_branch: 'main', issues: {
+    99: { issue: 99, branch: 'issue-99', depends_on: [], attempts: {}, approvals: { merge: false }, blocker: null,
+      facts: { preflight: { value: createPreflight({ ...lane.issues['42'].facts.preflight.value, issue: 99 }) } } },
+  } };
+  const writeExternal = () => writeFileSync(externalPath, JSON.stringify(external));
+  writeExternal();
+  const connection = nodes => ({ totalCount: nodes.length, pageInfo: { hasNextPage: false }, nodes });
+  f.state.externalIssues = { data: { repository: { issue0: { ...f.state.issue }, branch0: connection([]) } } };
+  f.state.externalPrs = { data: { repository: { pullRequests: connection([
+    { number: 142, headRefName: 'issue-42', headRefOid: 'a'.repeat(40), files: connection([{ path: 'docs/guide.md' }]) },
+    { number: 199, headRefName: 'issue-99', headRefOid: 'b'.repeat(40),
+      files: connection([{ path: 'docs/guide.md' }, { path: 'docs/unrelated.md' }]) },
+  ]) } } };
+  f.update();
+  const calls = () => readFileSync(f.ghLog, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+  return { ...f, before, external, externalPath, writeExternal, connection, calls };
+};
+
+test('#4130 external CLI: shared snapshot and fresh observations -> exact matches, unchanged decisions and read-only external lanes', (t) => {
+  const f = externalFixture(t);
+  const externalBytes = readFileSync(f.externalPath, 'utf8');
+  let count = f.calls().length;
+
+  const planned = f.plan();
+
+  assert.equal(JSON.stringify(planned.decision), JSON.stringify(f.before));
+  assert.deepEqual(planned.obs.externalOverlaps, { version: 1, status: 'complete',
+    laneMatches: [{ lane_id: 'other', issue: 99, files: ['docs/guide.md'] }],
+    prMatches: [{ pr: 199, head: 'b'.repeat(40), files: ['docs/guide.md'] }], unknowns: [] });
+  assert.equal(f.calls().slice(count).filter(args => ['repo', 'api'].includes(args[0])).length, 3);
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.issues['43'] = { ...lane.issues['42'], issue: 43, branch: 'issue-43', facts: {} };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  count = f.calls().length;
+  const rows = JSON.parse(f.cli('plan-all', ['--lane', f.lanePath, '--with-retro']).stdout).issues;
+  assert.deepEqual(rows[0].externalOverlaps, planned.obs.externalOverlaps);
+  assert.equal(rows[1].externalOverlaps.status, 'unobservable');
+  assert.equal(f.calls().slice(count).filter(args => ['repo', 'api'].includes(args[0])).length, 3);
+  f.state.externalPrs.data.repository.pullRequests = f.connection([]);
+  f.external.issues['99'].facts.preflight.value = createPreflight({
+    ...f.external.issues['99'].facts.preflight.value, predicted_files: ['docs/clear.md'] });
+  f.writeExternal();
+  const changedBytes = readFileSync(f.externalPath, 'utf8');
+  f.update();
+  const fresh = f.plan();
+  assert.equal(fresh.obs.externalOverlaps.status, 'complete');
+  assert.deepEqual(fresh.obs.externalOverlaps.laneMatches, []);
+  assert.deepEqual(fresh.obs.externalOverlaps.prMatches, []);
+  assert.equal(JSON.stringify(fresh.decision), JSON.stringify(planned.decision));
+  assert.equal(readFileSync(f.externalPath, 'utf8'), changedBytes);
+  assert.notEqual(externalBytes, changedBytes);
+  assert.equal(existsSync(`${f.externalPath}.lock`), false);
+  const events = readRetroEvents(f.root, 'fixture');
+  assert.ok(events.some(event => event.kind === 'observation' && event.data.externalOverlaps?.laneMatches.length === 1));
+  assert.equal(Object.hasOwn(JSON.parse(readFileSync(f.lanePath)), 'externalOverlaps'), false);
+});
+
+for (const scenario of ['closed', 'merged-done', 'merged-cleanup', 'stale', 'invalid', 'invalid-base', 'scope-expansion']) {
+  test(`#4130 external CLI: ${scenario} -> terminal exclusion or validated active prediction with explicit unknowns`, (t) => {
+    const f = externalFixture(t);
+    const entry = f.external.issues['99'];
+    if (scenario === 'closed') f.state.externalIssues.data.repository.issue0.state = 'CLOSED';
+    if (scenario.startsWith('merged')) {
+      f.state.externalIssues.data.repository.branch0 = f.connection([{ number: 199, state: 'MERGED', headRefOid: 'b'.repeat(40) }]);
+      if (scenario === 'merged-cleanup') f.git(f.root, 'branch', 'issue-99', 'main');
+    }
+    if (scenario === 'stale') f.state.externalIssues.data.repository.issue0 = { ...f.state.issue, body: 'new requirements' };
+    if (scenario === 'invalid') entry.facts.preflight.value.sha256 = '0'.repeat(64);
+    if (scenario === 'invalid-base') entry.facts.preflight.value = createPreflight({
+      ...entry.facts.preflight.value, base_sha: 'f'.repeat(40) });
+    if (scenario === 'scope-expansion') {
+      f.git(f.root, 'branch', 'issue-99', 'issue-42');
+      entry.facts.preflight.value = createPreflight({ ...entry.facts.preflight.value,
+        scope: ['src/'], non_scope: [], predicted_files: ['src/a.ts'],
+        active_axes: ['contract', 'code', 'verification'], omitted_axes: {} });
+    }
+    f.writeExternal();
+    const bytes = readFileSync(f.externalPath, 'utf8');
+    f.update();
+
+    const result = f.plan();
+
+    const unknown = ['stale', 'invalid', 'invalid-base', 'scope-expansion'].includes(scenario);
+    assert.equal(result.obs.externalOverlaps.status, unknown ? 'unobservable' : 'complete');
+    assert.equal(result.obs.externalOverlaps.laneMatches.length, scenario === 'merged-cleanup' ? 1 : 0);
+    assert.equal(result.obs.externalOverlaps.prMatches.length, 1);
+    assert.equal(JSON.stringify(result.decision), JSON.stringify(f.before));
+    assert.equal(readFileSync(f.externalPath, 'utf8'), bytes);
+  });
+}
+
+for (const scenario of ['corrupt', 'unreadable', 'symlink', 'legacy', 'marker', 'readiness', 'structure',
+  'partial-prs', 'partial-files', 'partial-issues', 'errors', 'partial-command', 'null-response', 'missing-issue', 'repository', 'command']) {
+  test(`#4130 external CLI: ${scenario} -> explicit incomplete observation without decision failure`, (t) => {
+    const f = externalFixture(t);
+    if (scenario === 'corrupt') writeFileSync(f.externalPath, '{');
+    if (scenario === 'unreadable') {
+      rmSync(f.externalPath);
+      mkdirSync(f.externalPath);
+    }
+    if (scenario === 'symlink') {
+      rmSync(f.externalPath);
+      symlinkSync(join(f.root, 'gh.json'), f.externalPath);
+    }
+    if (scenario === 'legacy') { f.external.version = 2; f.writeExternal(); }
+    if (scenario === 'marker') { f.external.preflight_overlap = 2; f.writeExternal(); }
+    if (scenario === 'readiness') {
+      f.external.preflight_overlap = 1;
+      f.external.issues['99'].facts['review-readiness'] = { value: {} };
+      f.writeExternal();
+    }
+    if (scenario === 'structure') { f.external.issues['99'].issue = 100; f.writeExternal(); }
+    if (scenario === 'partial-prs') f.state.externalPrs.data.repository.pullRequests.totalCount = 101;
+    if (scenario === 'partial-files') f.state.externalPrs.data.repository.pullRequests.nodes[1].files.pageInfo.hasNextPage = true;
+    if (scenario === 'partial-issues') f.state.externalIssues.data.repository.branch0.totalCount = 2;
+    if (scenario === 'errors') f.state.externalPrs.errors = [{ message: 'partial outage' }];
+    if (scenario === 'partial-command') f.state.externalPrExit = 1;
+    if (scenario === 'null-response') f.state.externalPrs = null;
+    if (scenario === 'missing-issue') delete f.state.externalIssues.data.repository.issue0;
+    if (scenario === 'repository') f.state.externalRepository = {};
+    if (scenario === 'command') f.state.fail = 'api';
+    f.update();
+
+    const result = f.plan();
+
+    assert.equal(result.obs.externalOverlaps.status, 'unobservable');
+    assert.ok(result.obs.externalOverlaps.unknowns.length > 0);
+    assert.deepEqual(result.obs.observationFailures, []);
+    assert.equal(JSON.stringify(result.decision), JSON.stringify(f.before));
+    if (['partial-prs', 'partial-files', 'errors', 'partial-command'].includes(scenario)) assert.equal(result.obs.externalOverlaps.prMatches.length, 1);
+  });
+}
+
+test('#4130 external CLI: legacy execution -> no supplemental calls, events or ledger rewrites', (t) => {
+  const f = externalFixture(t);
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  delete lane.preflight_overlap;
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const bytes = readFileSync(f.lanePath, 'utf8');
+  const count = f.calls().length;
+  const eventCount = readRetroEvents(f.root, 'fixture').length;
+
+  const result = f.plan();
+
+  assert.equal(Object.hasOwn(result.obs, 'externalOverlaps'), false);
+  assert.equal(f.calls().slice(count).filter(args => ['repo', 'api'].includes(args[0])).length, 0);
+  assert.equal(readFileSync(f.lanePath, 'utf8'), bytes);
+  assert.equal(readRetroEvents(f.root, 'fixture').length, eventCount);
+});
+
+test('#4130 external CLI: watch once -> separate observation row and persisted evidence without generated hints', (t) => {
+  const f = externalFixture(t);
+
+  const watched = f.cli('watch', ['--lane', f.lanePath, '--once']).stdout;
+
+  const lines = watched.split('\n').filter(line => line.includes('externalOverlaps='));
+  assert.equal(lines.length, 1);
+  assert.equal(JSON.parse(lines[0].split('externalOverlaps=')[1]).laneMatches[0].issue, 99);
+  assert.equal(watched.split('\n').filter(line => line.includes(' -> ')).length, 1);
+  const evidence = JSON.parse(f.cli('retro-evidence', ['--lane', f.lanePath]).stdout);
+  assert.equal(evidence.externalOverlapObservations.length, 1);
+});
+
+test('#4130 external bounds: 51 issues and 101 PRs/files -> first bounded positives survive with explicit limits', (t) => {
+  const f = externalFixture(t);
+  const template = f.external.issues['99'];
+  f.external.issues = {};
+  f.state.externalIssues.data.repository = {};
+  for (let index = 0; index < 51; index++) {
+    const issue = 99 + index;
+    f.external.issues[issue] = { ...template, issue, branch: `issue-${issue}`,
+      facts: { preflight: { value: createPreflight({ ...template.facts.preflight.value, issue }) } } };
+    if (index < 50) {
+      f.state.externalIssues.data.repository[`issue${index}`] = { ...f.state.issue };
+      f.state.externalIssues.data.repository[`branch${index}`] = f.connection([]);
+    }
+  }
+  f.writeExternal();
+  const files = [{ path: 'docs/guide.md' }, ...Array.from({ length: 100 }, (_, index) => ({ path: `docs/file-${index}.md` }))];
+  f.state.externalPrs.data.repository.pullRequests = f.connection(Array.from({ length: 101 }, (_, index) => ({
+    number: 200 + index, headRefName: `feature-${index}`, headRefOid: 'b'.repeat(40), files: f.connection(files),
+  })));
+  f.update();
+  const count = f.calls().length;
+
+  const observation = f.plan().obs.externalOverlaps;
+
+  assert.equal(observation.status, 'unobservable');
+  assert.equal(observation.laneMatches.length, 50);
+  assert.equal(observation.prMatches.length, 100);
+  assert.ok(observation.unknowns.some(item => item.source === 'issue' && item.subject === 'other:149' && item.code === 'limit-exceeded'));
+  assert.ok(observation.unknowns.some(item => item.source === 'pr' && item.code === 'limit-exceeded'));
+  assert.ok(observation.unknowns.some(item => item.source === 'pr-files' && item.subject === 200 && item.code === 'limit-exceeded'));
+  const supplemental = f.calls().slice(count).filter(args => ['repo', 'api'].includes(args[0]));
+  assert.equal(supplemental.length, 3);
+  const batch = supplemental.find(args => args.some(arg => arg.includes('ExternalOverlapIssues'))).join(' ');
+  assert.equal([...batch.matchAll(/issue\d+:issue\(/gu)].length, 50);
+});
+
+test('#4130 external discovery: current lane identity and marker external lane -> self excluded and external included', (t) => {
+  const f = externalFixture(t);
+  const alias = join(f.root, '.omo/lanes-v4/self.json');
+  writeFileSync(alias, readFileSync(f.lanePath));
+  f.external.preflight_overlap = 1;
+  f.writeExternal();
+  const bytes = readFileSync(alias, 'utf8');
+
+  const observation = f.plan().obs.externalOverlaps;
+
+  assert.equal(observation.status, 'complete');
+  assert.deepEqual(observation.laneMatches.map(item => [item.lane_id, item.issue]), [['other', 99]]);
+  assert.equal(readFileSync(alias, 'utf8'), bytes);
+  assert.equal(existsSync(`${alias}.lock`), false);
+});
+
+for (const scenario of ['missing', 'enumeration-failed']) {
+  test(`#4130 external directory: ${scenario} -> absence or explicit discovery gap`, (t) => {
+    const f = externalFixture(t);
+    const current = join(f.root, 'current-lane.json');
+    writeFileSync(current, readFileSync(f.lanePath));
+    rmSync(join(f.root, '.omo/lanes-v4'), { recursive: true });
+    if (scenario === 'enumeration-failed') writeFileSync(join(f.root, '.omo/lanes-v4'), 'unreadable directory');
+    f.state.externalPrs.data.repository.pullRequests = f.connection([]);
+    f.update();
+
+    const observation = JSON.parse(f.cli('plan', ['--lane', current, '--issue', '42']).stdout).obs.externalOverlaps;
+
+    assert.equal(observation.status, scenario === 'missing' ? 'complete' : 'unobservable');
+    assert.deepEqual(observation.laneMatches, []);
+    if (scenario === 'enumeration-failed') assert.ok(observation.unknowns.some(item => item.code === 'enumeration-failed'));
+  });
+}
+
+test('#4130 external watch: unchanged then changed snapshot -> observation-only output with no action transition', async (t) => {
+  const f = externalFixture(t);
+  const signal = AbortSignal.timeout(20_000);
+  const sockets = [];
+  const pending = [];
+  const server = createServer(socket => {
+    sockets.push(socket);
+    socket.once('data', () => { pending.push(socket); server.emit('tick'); });
+  });
+  const listening = once(server, 'listening', { signal });
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const gh = join(f.root, 'bin/gh');
+  const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
+  writeFileSync(gh, `#!${process.execPath}
+import { connect as fixtureConnect } from 'node:net';
+if(process.argv[2]==='repo') {
+  await new Promise((done,reject)=>{
+    const socket=fixtureConnect(Number(process.env.WATCH_PORT),'127.0.0.1');
+    socket.on('connect',()=>socket.write('tick\\n'));
+    socket.on('end',done); socket.on('error',reject); socket.resume();
+  });
+}
+${original}`);
+  const child = spawn(process.execPath, [script, 'watch', '--root', f.root, '--lane', f.lanePath, '--interval', '0'], {
+    env: { ...f.env, WATCH_PORT: String(server.address().port) }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const closed = once(child, 'close');
+  let transcript = '';
+  let stderr = '';
+  child.stdout.on('data', chunk => { transcript += chunk; });
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  t.after(async () => {
+    child.kill('SIGKILL');
+    for (const socket of sockets) socket.destroy();
+    server.close();
+    await closed;
+  });
+  const tick = async () => {
+    if (!pending.length) await once(server, 'tick', { signal });
+    return pending.shift();
+  };
+  const output = predicate => new Promise((resolve, reject) => {
+    const cleanup = () => { child.stdout.off('data', inspect); signal.removeEventListener('abort', abort); };
+    const inspect = () => { if (predicate(transcript)) { cleanup(); resolve(); } };
+    const abort = () => { cleanup(); reject(new Error(`Missing watch output: ${transcript}\n${stderr}`)); };
+    child.stdout.on('data', inspect);
+    signal.addEventListener('abort', abort, { once: true });
+    inspect();
+  });
+
+  (await tick()).end('continue\n');
+  await output(text => text.includes(' -> review'));
+  (await tick()).end('continue\n');
+  const third = await tick();
+  assert.equal(transcript.split('\n').filter(line => line.includes('externalOverlaps=')).length, 1);
+  f.state.externalPrs.data.repository.pullRequests = f.connection([]);
+  f.update();
+  third.end('continue\n');
+  await output(text => text.split('\n').filter(line => line.includes('externalOverlaps=')).length === 2);
+
+  assert.equal(transcript.split('\n').filter(line => line.includes(' -> ')).length, 1);
+  const observations = transcript.split('\n').filter(line => line.includes('externalOverlaps='))
+    .map(line => JSON.parse(line.split('externalOverlaps=')[1]));
+  assert.equal(observations[0].prMatches.length, 1);
+  assert.equal(observations[1].prMatches.length, 0);
+});
 
 const overlapFixture = (t, enabled = true) => {
   const f = fixture(t);
