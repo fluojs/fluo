@@ -213,6 +213,83 @@ Do not rerun a completed command merely to recover clipped terminal output.
 The prepared reviewer input includes one identical readable, authenticated index
 of actual focused results and packed command/report metadata for every axis.
 
+### CI Node concurrency before review
+
+Preflight records applicability and cost in acceptance and validation after
+inspecting `package.json`'s `test:node`, its tests, called implementation,
+fixtures and shared helpers. Changes affecting long-running work, subprocesses,
+watches, locks, external observations or resource contention on that path are
+included; uncertainty is included. A procedure-only document with no execution
+path effect can be excluded with inspected evidence, never by extension alone.
+
+For every applicable implementation, fix-back or conflict-resolution head, the
+lead completes focused checks, then runs the original `pnpm test:node` before
+review preparation/dispatch. Complete declared install/build prerequisites
+first. Preserve the script's entire file set and default inter-file concurrency.
+Do not substitute split commands, `--test-concurrency=1` or individual passes.
+Record the actual Node executable and `node --version`, pnpm version, OS/arch,
+relevant environment and concurrent work/resource load conditions with the
+run's output or an accompanying incident. Use the declared primary runtime,
+not the machine default; a host run does not establish canonical container or
+remote CI parity. Do not run while another child writes the same worktree.
+
+Put the actual command string, including its declared PATH prefix, in existing
+`required_checks` and the matching `evidence[].command` and receipt `command`.
+Retain the existing receipt's `version`, `complete`, exact `head_sha`,
+`tree_sha`, `contract_sha256`, `status`, `exit_code`, `signal`, monotonic
+`duration_ms` and full stdout/stderr artifact references. Use review
+preparation's authenticated `common` and `readable_index` unchanged for every
+selected axis. No optional CI-evidence field, receipt/contract schema, duration
+threshold, comparison helper or engine action is added.
+
+The lead supplies missing or stale-head evidence before dispatch; this is
+`input-preparation` with `fix_back_eligible:false`, not a product defect.
+Preserve actual failed, timed-out or cancelled executions and original logs
+as incident evidence; they cannot be submitted as passing receipts. An
+unresolved current-head command failure remains blocking under the existing
+local-failure/fix-back boundary. A split success or new review PASS cannot erase
+it. After remediation, keep the earlier incident and obtain a completed
+passing original-command receipt on the corrected head before review.
+An observer timeout alone remains missing observation, not a command verdict.
+
+This selected command is an acceptance-specific pre-review check, not full
+canonical local CI. `pnpm verify:local` remains available only for explicitly
+requested post-review reproduction/diagnosis; final remote CI and merge gates
+remain unchanged.
+
+### Timeout cause diagnosis and corrections
+
+Record the first cause attribution as a hypothesis alongside the original
+incident, head, command, actual elapsed time, exit/signal and complete logs.
+An increase in test duration is an observation, not proof that the change is
+the sole cause of a timeout. Review existing `duration_ms` and reporter output
+without inventing a threshold or interpreting a passing status as no slowdown.
+
+Before confirming a cause, compare a clean comparison base and the problem
+head with the same original command, exact Node executable/version, completed
+install/build preparation, environment and concurrent-work load conditions.
+Keep both comparison commits, commands (including PATH), runtime and pnpm
+versions, preparation, environment/load observations, actual durations,
+exit/signal and full logs. Use separate clean checkouts and evidence roots;
+do not replace the accepted verification base or reuse a stale receipt.
+If conditions cannot be matched or results do not support a difference,
+retain `hypothesis` or record `inconclusive`. Even a matched comparison showing
+a difference does not automatically establish a sole cause: evaluate contrary
+observations and competing explanations before recording a confirmed claim.
+
+For example, a timeout in the original concurrent command followed by a passing
+isolated watch test is diagnostic evidence only. Compare the original command
+on base and head under matched runtime/load; if both pass, that observation
+does not establish which change caused the earlier timeout. Retain isolated or
+split diagnostic runs separately from original concurrent runs. Never weaken
+assertions, timeouts, retries or execution scope to manufacture success.
+
+Append corrections linked to the original incident rather than replacing it.
+Retain the initial attribution, supporting and contrary runs, corrected claim
+and remaining uncertainty together. In particular, do not reuse the
+pre-correction #4130 cause wording in `overlap-measurements.json` as established
+fact; read its accompanying correction evidence. Increased duration and proof
+of a timeout's sole cause are distinct claims.
 
 ## Decision loop and recovery
 

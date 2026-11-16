@@ -83,6 +83,39 @@ machine-consumed Markdown, and executable examples are not automatically
 explanatory docs. On ambiguity, retain the full set. Extra axes may be selected
 when the contract needs them; omission requires an empty review scope.
 
+### CI Node concurrency selection
+
+Record in both acceptance and validation whether the change affects the CI
+`pnpm test:node` execution path or its concurrent resource use, with inspected
+paths and a cost rationale. Inspect `package.json`'s actual `test:node` file set,
+the tests' implementation, fixtures and shared helpers. Include changes to
+long-running work, subprocesses, watches, locks, external observations or
+resource contention on that path. Uncertainty means include the command;
+file extensions alone cannot justify exclusion. Procedure-only documents with
+no effect on that execution path may be excluded with investigated evidence.
+
+When applicable, require the lead to run the original `pnpm test:node` after
+focused checks and before reviewer dispatch on every implementation, fix-back
+and conflict-resolution head. Preserve its file set and default inter-file
+concurrency; split files, `--test-concurrency=1` or individual passes cannot
+replace this result. Declare install/build prerequisites, the exact runtime and
+PATH, environment and concurrent-work observations, and the existing
+`required_checks`/`evidence` receipt delivery described in
+`../execute-lane/references/operations.md#ci-node-concurrency-before-review`.
+Account for the suite's execution cost without inventing a duration threshold
+or treating it as full canonical `pnpm verify:local`.
+
+For example, a shared helper changing watch/subprocess lifetimes is included
+even if its own focused tests pass. In #4141, the four internal workflow
+documents change lead procedures only: no Node test, implementation, fixture,
+helper, execution path or resource use changes. The full concurrent suite adds
+cost without exercising a changed executable seam, so it is excluded for this
+issue. Existing preflight/review-preparation regressions on primary Node
+24.21.0 and floor Node 24.11.0 plus three-axis document review are selected;
+no new deterministic tests are added. If implementation expands into execution
+code, return to preflight and include primary Node 24.21.0 `pnpm test:node`
+and Node 24.11.0 affected tests rather than retaining this exclusion.
+
 ## Acceptance and freshness
 
 Use `scripts/contracts.mjs` and the `execute-lane` CLI to validate and persist
