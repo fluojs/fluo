@@ -90,6 +90,28 @@ Reviewer/signature pairs are unique. CI evidence uses the same canonical shape
 
 ## 1. Validate the preflight and identity boundary
 
+The lead first runs `../../execute-lane/scripts/workflow-preparation.mjs implement
+<input.json>` with `{version:1,stage:"implement",root,accepted_contract_path,
+contract,input}`. `root` and the authoritative contract file path are absolute;
+`input` is the exact Input above for either implement or fix-back. The script
+checks accepted-file equality and issue/preflight digest, realpaths, common Git
+directory, branch, starting HEAD and clean status, using the existing validators.
+It returns `{status:"prepared",kind:"implement-input",dispatch,input,contract,
+prerequisites}` only on success. Remote PR observations still belong to the lead.
+
+When the contract declares `validation_requirements`, each local command names
+its tools (`name`, absolute `path_dirs`) and worktree-relative artifacts (`path`,
+`kind:"file"|"directory"`). Required dependency directories and concrete dist
+files must exist. The script searches declared directories plus inherited PATH
+for executable files, checks artifact kinds without running tools, and lists all
+missing prerequisites with their commands. The lead supplies PATH and completes
+install/build before dispatch. CI-only `{validation,kind:"ci-only",check,reason}`
+entries are returned separately, never as local success. Old contracts retain
+their digest and return `prerequisites.status:"undeclared"` without inference.
+Input/environment failures are nonzero `input-preparation` blocks with
+`fix_back_eligible:false`; fix the input or return to preflight for scope changes.
+This read-only preparation does not dispatch, modify Git, query PRs or write a ledger.
+
 The lane supplies the validated preflight artifact and its `preflight_sha256`
 with the issue body, acceptance scope, governance paths, and review policy. The
 lane is responsible for proving the digest names its current artifact for this

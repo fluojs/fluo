@@ -125,9 +125,16 @@ shape and validation. User-supplied retention or equivalence claims grant nothin
 
 ### Workflow input preparation
 
-Before preparing preflight or review input, read
+Before preparing preflight, implementation/fix-back or review input, read
 [operations.md](references/operations.md#workflow-input-preparation).
-Only `status: "prepared"` authorizes dispatch. Pass identical authenticated
+Use `preflight` for authenticated caller searches, `finalize-preflight` for
+the read-only child's digest-free `contract_input`, and `implement` to verify
+the accepted contract, assigned checkout and declared prerequisites before
+either implementation mode. Finalization returns a contract, not a dispatch;
+the lead records it separately. Local commands declare executable tool search
+paths and dependency/build artifacts; CI-only checks remain remote evidence.
+Preparation never installs, builds, tests, writes ledgers or dispatches children.
+Only `status: "prepared"` with a dispatch payload authorizes dispatch. Pass identical authenticated
 `common` evidence to all selected axes in one background wave; preparation
 failures are input blocks. Browser captures and diagnostics must claim a fresh
 evidence root and retain actual command-close and restoration receipts. Missing

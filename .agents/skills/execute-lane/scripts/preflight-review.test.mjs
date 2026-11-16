@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyReviewAxes, createPreflight, evaluatePreflight, isRetentionProsePath, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { classifyReviewAxes, contractDigest, createPreflight, evaluatePreflight, isRetentionProsePath, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { buildReviewFact, validateReviewFact } from '../../review-head/scripts/contracts.mjs';
 import { applyChildResult, decideNext, localCheckBinding } from './lane-v4.mjs';
 
@@ -375,6 +375,54 @@ test('preflight includes exact omitted axes with nonempty reasons', () => {
   }
   assert.throws(() => validatePreflight({ ...value, acceptance: ['different'] }));
 });
+
+const validationRequirements = () => [
+  { validation: 'node --test', kind: 'local', command: 'PATH=/opt/tools:$PATH node --test',
+    prerequisites: { tools: [{ name: 'node', path_dirs: ['/opt/tools'] }],
+      artifacts: [{ path: 'node_modules', kind: 'directory' }, { path: 'packages/core/dist/index.js', kind: 'file' }] } },
+  { validation: 'GitHub Verify', kind: 'ci-only', check: 'Verify', reason: 'Linux runner and remote artifacts required' },
+];
+
+test('#4129 preflight: optional execution requirements -> authenticated contract and unchanged legacy digest/policy', () => {
+  const legacy = createPreflight(input());
+  const { sha256, ...bytes } = legacy;
+  assert.equal(sha256, contractDigest(bytes));
+  assert.equal(Object.hasOwn(legacy, 'validation_requirements'), false);
+  assert.deepEqual(createPreflight(bytes), legacy);
+  const requirements = validationRequirements();
+
+  const value = createPreflight(input({ validation: requirements.map((r) => r.validation),
+    validation_requirements: requirements }));
+
+  assert.deepEqual(validatePreflight(value).validation_requirements, requirements);
+  assert.notEqual(value.sha256, legacy.sha256);
+  assert.deepEqual(evaluatePreflight(legacy, observation()).policy,
+    evaluatePreflight(createPreflight(bytes), observation()).policy);
+  assert.throws(() => validatePreflight({ ...value, validation_requirements: [] }), TypeError);
+});
+
+for (const [name, mutate] of [
+  ['missing', (r) => r.pop()],
+  ['duplicate', (r) => r.push(structuredClone(r[0]))],
+  ['unbound', (r) => { r[0].validation = 'other'; }],
+  ['unknown-kind', (r) => { r[0].kind = 'passed'; }],
+  ['missing-command', (r) => { delete r[0].command; }],
+  ['relative-tool-path', (r) => { r[0].prerequisites.tools[0].path_dirs = ['bin']; }],
+  ['unsafe-artifact', (r) => { r[0].prerequisites.artifacts[0].path = '../node_modules'; }],
+  ['absolute-artifact', (r) => { r[0].prerequisites.artifacts[0].path = '/tmp/dist'; }],
+  ['unknown-artifact-kind', (r) => { r[0].prerequisites.artifacts[0].kind = 'symlink'; }],
+  ['missing-prerequisites', (r) => { delete r[0].prerequisites; }],
+  ['ci-local-success', (r) => { r[1].status = 'passed'; }],
+  ['missing-ci-reason', (r) => { r[1].reason = ''; }],
+]) {
+  test(`#4129 preflight: ${name} requirements -> rejection before digest acceptance`, () => {
+    const requirements = validationRequirements();
+    mutate(requirements);
+
+    assert.throws(() => createPreflight(input({ validation: ['node --test', 'GitHub Verify'],
+      validation_requirements: requirements })), TypeError);
+  });
+}
 
 test('mandatory preflight retries use existing attempt ceiling', () => {
   assert.equal(decideNext(lane, observation({ preflight: null, branch: null })).action, 'preflight');
