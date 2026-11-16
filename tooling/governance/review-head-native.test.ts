@@ -18,6 +18,7 @@ const review = (
 ) => ({
   reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: reviewedHeadSha, preflight_sha256: policy.sha256,
   verdict_signal: verdictSignal, blockers,
+  evidence: [{ acceptance: 'Preserve route precedence', locations: ['src/router.ts:42'] }], observations: [],
 });
 const gate = (
   reviews: readonly Record<string, unknown>[] = policy.active_axes.map((axis) => review(axis)),
@@ -34,6 +35,43 @@ const blocker = {
 };
 
 describe('$review-head native exact-head selective gate', () => {
+  it('#4128 new admission: evidence required, observations cannot turn a PASS into a blocker', async () => {
+    const { aggregateReviewerGate, buildReviewFact, validateReviewFact } = await loadContracts();
+    const valid = gate();
+    expect(aggregateReviewerGate(valid, policy)).toEqual({ verdict: 'pass', blockers: [] });
+    for (const patch of [
+      { evidence: [] }, { evidence: undefined }, { observations: undefined },
+      { evidence: [{ acceptance: '', locations: ['src/router.ts:42'] }] },
+      { evidence: [{ acceptance: 'precedence', locations: [] }] },
+      { evidence: [{ acceptance: 'precedence', locations: ['../router.ts:42'] }] },
+      { observations: [''] }, { observations: [false] },
+    ]) expect(() => aggregateReviewerGate(gate([
+      { ...review('contract'), ...patch }, review('code'), review('verification'),
+    ]), policy)).toThrow(TypeError);
+    const observed = gate([{ ...review('contract'), observations: ['Optional improvement'] },
+      review('code'), review('verification')]);
+    expect(aggregateReviewerGate(observed, policy)).toEqual({ verdict: 'pass', blockers: [] });
+    const fact = buildReviewFact(observed, headSha, policy);
+    expect(validateReviewFact(fact, headSha, policy)).toEqual(fact);
+  });
+
+  it('#4128 stored envelopes: legacy bytes survive, partial modern fields are rejected', async () => {
+    const { validateReviewFact } = await loadContracts();
+    const reviews = policy.active_axes.map((reviewer, index) => ({
+      reviewer, ...(index ? { agent: `fluo-${reviewer}-reviewer` } : {}),
+      reviewed_head_sha: headSha, preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [],
+    }));
+    const legacy = { ...gate(reviews), head: headSha, verdict: 'pass', blockers: [] };
+    const bytes = JSON.stringify(legacy);
+    expect(validateReviewFact(legacy, headSha, policy)).toEqual(legacy);
+    expect(JSON.stringify(legacy)).toBe(bytes);
+    for (const patch of [{ observations: [] }, { evidence: [] }, { extra: true }]) {
+      expect(() => validateReviewFact({ ...legacy, reviews: [
+        { ...reviews[0], ...patch }, ...reviews.slice(1),
+      ] }, headSha, policy)).toThrow(TypeError);
+    }
+  });
+
   it('#4099 retention: canonical previous PASS -> fresh contract and preserved original reviewer heads', async () => {
     const { buildReviewFact, validateReviewFact, aggregateReviewerGate } = await loadContracts();
     const boundPolicy = { ...policy, contract_sha256: 'd'.repeat(64) };
@@ -71,6 +109,20 @@ describe('$review-head native exact-head selective gate', () => {
     expect(() => buildReviewFact({ ...fresh, reviews: [] }, otherHeadSha, boundPolicy, retention)).toThrow(TypeError);
     expect(() => buildReviewFact({ ...fresh, reviews: [...fresh.reviews, fresh.reviews[0]] },
       otherHeadSha, boundPolicy, retention)).toThrow(TypeError);
+    const legacy = { ...previous, reviews: previous.reviews.map((envelope: Record<string, unknown>) => {
+      const { evidence: _evidence, observations: _observations, agent: _agent, ...old } = envelope;
+      return old;
+    }) };
+    const retained = buildReviewFact(fresh, otherHeadSha, boundPolicy, { ...retention, previous_review: legacy });
+    const thirdHead = 'f'.repeat(40);
+    const third = buildReviewFact({ ...fresh, head_sha: thirdHead,
+      reviews: [review('contract', 'PASS', [], thirdHead)] }, thirdHead, boundPolicy,
+    { ...retention, previous_head_sha: otherHeadSha, new_head_sha: thirdHead, previous_review: retained });
+    expect(validateReviewFact(third, thirdHead, boundPolicy)).toEqual(third);
+    expect(third.retention.previous_review.retention.previous_review).toEqual(legacy);
+    const invalid = structuredClone(third);
+    invalid.retention.previous_review.retention.previous_review.reviews[0].observations = [];
+    expect(() => validateReviewFact(invalid, thirdHead, boundPolicy)).toThrow(TypeError);
   });
 
   it('#4099 contract-only policy: no retained axes are fabricated', async () => {

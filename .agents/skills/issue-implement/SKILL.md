@@ -62,6 +62,29 @@ must retain its exact digest in output and cannot change the contract, choose
 fewer review axes, or substitute a new preflight. Report scope conflicts to the
 lane instead of silently widening or narrowing the task.
 
+Before dispatch in either mode, the lead runs
+`../execute-lane/scripts/workflow-preparation.mjs implement <input.json>`.
+The wrapper is exactly `{version:1,stage:"implement",root,
+accepted_contract_path,contract,input}` with absolute root/accepted-contract
+path and the unchanged Input below it. Preparation authenticates the accepted
+contract and issue/digest, observes worktree realpath/common repository,
+branch/starting HEAD and clean status, and reuses the input/identity validators.
+PR remote observation remains the lead's responsibility.
+
+Success is `{status:"prepared",kind:"implement-input",dispatch,input,contract,
+prerequisites}`. Use its registered dispatch and original input/contract.
+For local `validation_requirements`, tools are checked for executable access in
+absolute `path_dirs` and inherited PATH; worktree-relative dependency directories
+and concrete build files are checked for existence and kind. The lead supplies
+the declared PATH and completes install/build prerequisites before dispatch.
+Preparation never executes tools, commands, install, build or tests. Missing
+items name the affected commands and block with `kind:"input-preparation"` and
+`fix_back_eligible:false`. Resolve the missing environment before retrying;
+return contract conflicts to preflight. CI-only entries remain separate remote
+checks, never local successes. A legacy contract without requirements remains
+valid with `prerequisites.status:"undeclared"`; infer neither prerequisites nor
+PASS. Preparation adds no keys to Input/Identity/Result and writes no ledgers.
+
 ## Authority and completion
 
 `implementerAuthority` permits only local edit, test, and commit; push and PR

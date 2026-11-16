@@ -33,6 +33,7 @@ const makeReview = (signal = 'PASS', head = 'a'.repeat(40)) => buildReviewFact({
 	head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
 	reviews: policy.active_axes.map((reviewer) => ({
 		reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: signal,
+		evidence: [{ acceptance: 'Preserve route behavior', locations: ['packages/http/src/router.ts:1'] }], observations: [],
 		blockers: signal === 'BLOCK' ? [{ reviewer, signature: 'route:order', evidence: 'router.ts:1', fix_back_eligible: true, status: 'unresolved' }] : [],
 	})),
 }, head, policy);
@@ -209,6 +210,7 @@ test('focused-first: reviewed CI and harness changes -> publication without full
 			reviews: pathPolicy.active_axes.map((reviewer) => ({
 				reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha, preflight_sha256: pathPolicy.sha256,
 				verdict_signal: 'PASS', blockers: [],
+				evidence: [{ acceptance: 'Preserve changed behavior', locations: ['packages/http/src/router.ts:1'] }], observations: [],
 			})),
 		}, obs.headSha, pathPolicy);
 
@@ -234,6 +236,7 @@ test('focused-first: reviewed CI heads -> publication unless applicable local fa
 		reviews: ciPolicy.active_axes.map((reviewer) => ({
 			reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256,
 			verdict_signal: 'PASS', blockers: [],
+			evidence: [{ acceptance: 'Preserve CI behavior', locations: ['.github/workflows/ci.yml:1'] }], observations: [],
 		})),
 	}, ciObs.headSha, ciPolicy);
 	assert.equal(decideNext(makeLane(), ciObs).action, 'create-pr');

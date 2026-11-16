@@ -1540,6 +1540,7 @@ const main = async () => {
 					throw new TypeError("Review claims cannot supply retention");
 				}
 				const { head_sha, preflight_sha256, active_axes, reviews } = result;
+				// Admit fresh evidence here; stored legacy validation is observation-only.
 				buildReviewFact({ head_sha, preflight_sha256, active_axes, reviews }, observed.headSha, observed.preflightPolicy, observed.reviewRetention);
 			} else if (["preflight", "implement", "fix-back"].includes(phase)) {
 				assertAgentIdentity(dispatchFor(phase), result.agent);
@@ -1730,6 +1731,7 @@ const main = async () => {
 				for (const target of Object.values(dispatchFor("review", obs.freshReviewAxes ?? obs.preflightPolicy.active_axes))) {
 					registeredDispatch(root, target);
 				}
+				// Share the record path's evidence requirements, never the legacy reader.
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy, obs.reviewRetention);
 				delete entry.facts["local-checks"];
 				delete entry.facts["local-ci-waiver"];

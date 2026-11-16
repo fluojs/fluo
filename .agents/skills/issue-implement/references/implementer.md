@@ -25,6 +25,9 @@ The caller supplies:
 - in fix-back mode, unresolved canonical eligible blockers and the lane's
   attempt number; an existing PR is optional in either mode
 - the focused checks appropriate to the changed behavior
+- the successful `workflow-preparation.mjs implement` output, preserving the
+  original Input and accepted contract with observed prerequisites; legacy
+  contracts explicitly report prerequisites as undeclared
 
 There are no task-name sentinels, DAG bindings, session-identity fields, model
 requirements, or separate CI-origin implementation modes. Follow the exported
@@ -37,6 +40,20 @@ to `WORKTREE_PATH`, the checkout is the assigned branch, and HEAD equals the
 input `starting_head_sha`. Preserve the issue, branch, worktree, optional PR,
 and commit history. Stop on identity drift; never repair it by replacing an
 identity or moving changes to another worktree.
+
+The lead prepares either mode with `{version:1,stage:"implement",root,
+accepted_contract_path,contract,input}`. Preparation checks authoritative
+contract equality, issue/digest, worktree realpath/common repository and clean
+identity, then returns `{status:"prepared",kind:"implement-input",dispatch,
+input,contract,prerequisites}`. It checks executable tool access through declared
+absolute `path_dirs` and inherited PATH, plus declared worktree-relative
+dependency directories and concrete build files. It runs no tools, install,
+build or tests. Use the declared PATH and already prepared build prerequisites
+for focused commands. CI-only checks remain pending remote checks, never local
+PASS. Missing items and their commands are input-preparation blocks with
+`fix_back_eligible:false`; the lead repairs the environment before redispatch,
+or returns a conflicting contract to preflight. PR remote observation remains
+with the lead. Do not add these wrapper fields to the exact Input or Result.
 
 Allowed: read/edit assigned worktree files, write regression tests and required
 doc/release companions, run focused tests and changed-file diagnostics, stage

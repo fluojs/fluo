@@ -57,6 +57,7 @@ const runTrace = coordinated => {
       reviews: policy.active_axes.map(reviewer => ({
         reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha,
         preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [],
+        evidence: [{ acceptance: 'Preserve overlapping source behavior', locations: ['src/source.ts:1'] }], observations: [],
       })) };
     obs.review = buildReviewFact(review, obs.headSha, policy);
     for (const stage of gates.filter(stage => stage !== 'ci')) executions.push({

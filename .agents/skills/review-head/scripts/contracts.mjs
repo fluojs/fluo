@@ -42,7 +42,9 @@ const assertReview = (review, headSha, policySha, stored) => {
   }
   const keys = ['reviewer', 'reviewed_head_sha', 'preflight_sha256', 'verdict_signal', 'blockers'];
   // Only persisted facts may omit identity. Never normalize or rewrite their bytes.
-  if (!stored || Object.hasOwn(review, 'agent')) keys.push('agent');
+  const substantiated = !stored || Object.hasOwn(review, 'evidence') || Object.hasOwn(review, 'observations');
+  if (substantiated || Object.hasOwn(review, 'agent')) keys.push('agent');
+  if (substantiated) keys.push('evidence', 'observations');
   if (!hasExactKeys(review, keys)) {
     fail('reviewer result has non-canonical keys');
   }
@@ -60,6 +62,25 @@ const assertReview = (review, headSha, policySha, stored) => {
   }
   if (!SIGNALS.includes(review.verdict_signal)) {
     fail('verdict_signal must be PASS, BLOCK, or NEEDS-HUMAN-CHECK');
+  }
+  if (substantiated) {
+    if (!Array.isArray(review.evidence) || review.verdict_signal === 'PASS' && review.evidence.length === 0) {
+      fail('PASS requires at least one acceptance evidence entry');
+    }
+    for (const entry of review.evidence) {
+      if (!isRecord(entry) || !hasExactKeys(entry, ['acceptance', 'locations'])
+        || typeof entry.acceptance !== 'string' || !entry.acceptance.trim()
+        || !Array.isArray(entry.locations) || entry.locations.length === 0
+        || entry.locations.some((location) => {
+          if (typeof location !== 'string') return true;
+          const match = /^(.*):([1-9][0-9]*)$/u.exec(location);
+          return !match || !safePath(match[1]) || match[1].includes(':');
+        })) fail('evidence requires acceptance and repository-relative file:line locations');
+    }
+    if (!Array.isArray(review.observations)
+      || review.observations.some((item) => typeof item !== 'string' || !item.trim())) {
+      fail('observations must be an array of non-empty strings');
+    }
   }
   if (!Array.isArray(review.blockers)) {
     fail('blockers must be an array');

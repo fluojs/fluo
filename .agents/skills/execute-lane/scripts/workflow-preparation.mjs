@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, realpathSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { accessSync, constants, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { basename, delimiter, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { contractDigest, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { contractDigest, createPreflight, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { assertIssueImplementIdentity, assertIssueImplementInput } from '../../issue-implement/scripts/contracts.mjs';
 import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
 import { observeReviewRetention } from './lane-v4-cli.mjs';
 import { retentionFreshAxes } from '../../review-head/scripts/contracts.mjs';
@@ -23,7 +24,7 @@ const requireInput = (condition, reason) => {
 };
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const git = (root, ...args) => {
-  try { return execFileSync('git', args, { cwd: root, maxBuffer: 64 * 1024 * 1024 }); }
+  try { return execFileSync('git', args, { cwd: root, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }); }
   catch (error) { throw new WorkflowPreparationError(`git ${args.join(' ')}: ${error.stderr?.toString() ?? error.message}`); }
 };
 const text = (root, ...args) => git(root, ...args).toString().trim();
@@ -46,9 +47,10 @@ export const sourceFootprintCategories = Object.freeze([
   'en_ko_owners', 'context', 'generated_consumers', 'existing_tests',
 ]);
 
-/** A sidecar keeps the accepted preflight schema unchanged. */
+/** Existing sidecars retain their exact digest when caller_searches is absent. */
 export function prepareSourceFootprint(root, input) {
-  exact(input, ['version', 'issue', 'issue_sha256', 'base_sha', 'categories'], 'source footprint');
+  exact(input, ['version', 'issue', 'issue_sha256', 'base_sha', 'categories',
+    ...(Object.hasOwn(input ?? {}, 'caller_searches') ? ['caller_searches'] : [])], 'source footprint');
   requireInput(input.version === 1 && Number.isSafeInteger(input.issue) && input.issue > 0
     && digest(input.issue_sha256) && commit(input.base_sha), 'source footprint: invalid issue/base binding');
   requireInput(text(root, 'rev-parse', `${input.base_sha}^{commit}`) === input.base_sha,
@@ -71,7 +73,147 @@ export function prepareSourceFootprint(root, input) {
         `source footprint ${name}: source digest mismatch ${source.path}`);
     }
   }
+  if (Object.hasOwn(input, 'caller_searches')) {
+    requireInput(Array.isArray(input.caller_searches) && input.caller_searches.length > 0,
+      'caller_searches: complete symbol searches required');
+    const symbols = new Set();
+    for (const search of input.caller_searches) {
+      exact(search, ['symbol', 'command', 'matches'], 'caller search');
+      requireInput(typeof search.symbol === 'string' && search.symbol.trim()
+        && !/[\x00-\x1f]/u.test(search.symbol) && !symbols.has(search.symbol), 'caller search: invalid/duplicate symbol');
+      symbols.add(search.symbol);
+      const quoted = /^[a-zA-Z0-9_.-]+$/u.test(search.symbol) ? search.symbol
+        : `'${search.symbol.replaceAll("'", "'\\''")}'`;
+      requireInput(search.command === `git grep -n -w -F -e ${quoted} ${input.base_sha} --`,
+        'caller search: command must search the complete pinned repository');
+      requireInput(Array.isArray(search.matches), 'caller search: matches must be complete');
+      for (const match of search.matches) {
+        exact(match, ['path', 'line', 'text'], 'caller match');
+        requireInput(pathSafe(match.path) && Number.isSafeInteger(match.line) && match.line > 0
+          && typeof match.text === 'string', 'caller search: invalid match');
+      }
+      let output;
+      try {
+        output = execFileSync('git', ['grep', '-n', '-z', '-w', '-F', '-e', search.symbol, input.base_sha, '--'],
+          { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (error) {
+        requireInput(error.status === 1 && error.signal === null && !error.stdout?.length
+          && !error.stderr?.length, `caller search: incomplete search for ${search.symbol}: ${error.message}`);
+        output = '';
+      }
+      // NUL delimiters preserve Git paths independently of quoting and colons.
+      const matches = [];
+      const record = /([^\0]+)\0([1-9][0-9]*)\0([^\n]*)\n/guy;
+      let offset = 0;
+      while (offset < output.length) {
+        const match = record.exec(output);
+        requireInput(match !== null && match[1].startsWith(`${input.base_sha}:`),
+          'caller search: incomplete Git output');
+        matches.push({ path: match[1].slice(input.base_sha.length + 1), line: Number(match[2]), text: match[3] });
+        offset = record.lastIndex;
+      }
+      requireInput(isDeepStrictEqual(matches, search.matches), `caller search: incomplete or altered matches for ${search.symbol}`);
+    }
+  }
   return { ...input, sha256: contractDigest(input) };
+}
+
+function authenticatedFootprint(root, value) {
+  const keys = ['version', 'issue', 'issue_sha256', 'base_sha', 'categories', 'sha256'];
+  if (value && typeof value === 'object' && !Array.isArray(value) && Object.hasOwn(value, 'caller_searches')) keys.push('caller_searches');
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || !isDeepStrictEqual(Object.keys(value).sort(), keys.sort())) {
+    const error = new WorkflowPreparationError('invalid source footprint: supply the raw footprint object from prepared.footprint, not the preparation wrapper');
+    error.code = 'invalid-source-footprint';
+    throw error;
+  }
+  const { sha256: expected, ...input } = value;
+  const footprint = prepareSourceFootprint(root, input);
+  requireInput(footprint.sha256 === expected, 'review preparation: stale source footprint binding');
+  return footprint;
+}
+
+function finalizePreflight(input) {
+  exact(input, ['version', 'stage', 'root', 'footprint', 'contract_input'], 'preflight finalization');
+  requireInput(input.version === 1 && input.stage === 'finalize-preflight'
+    && typeof input.root === 'string' && isAbsolute(input.root), 'preflight finalization: invalid stage/root');
+  const footprint = authenticatedFootprint(input.root, input.footprint);
+  requireInput(Object.hasOwn(footprint, 'caller_searches'), 'preflight finalization: caller_searches required');
+  const contractInput = input.contract_input;
+  requireInput(contractInput && typeof contractInput === 'object' && !Array.isArray(contractInput)
+    && ['sha256', 'dispatch', 'agent'].every((key) => !Object.hasOwn(contractInput, key))
+    && Object.hasOwn(contractInput, 'validation_requirements'), 'preflight finalization: digest-free contract_input and complete validation_requirements required');
+  requireInput(contractInput.issue === footprint.issue && contractInput.issue_sha256 === footprint.issue_sha256
+    && contractInput.base_sha === footprint.base_sha, 'preflight finalization: issue/base binding mismatch');
+  const contract = createPreflight(contractInput);
+  validatePreflight(contract);
+  return { status: 'prepared', kind: 'preflight-contract', contract };
+}
+
+function prepareImplement(input) {
+  exact(input, ['version', 'stage', 'root', 'accepted_contract_path', 'contract', 'input'], 'implement preparation');
+  requireInput(input.version === 1 && input.stage === 'implement'
+    && typeof input.root === 'string' && isAbsolute(input.root)
+    && typeof input.accepted_contract_path === 'string' && isAbsolute(input.accepted_contract_path),
+  'implement preparation: invalid stage/root/accepted contract path');
+  assertIssueImplementInput(input.input);
+  validatePreflight(input.contract);
+  const accepted = JSON.parse(readFileSync(input.accepted_contract_path, 'utf8'));
+  requireInput(isDeepStrictEqual(accepted, input.contract), 'implement preparation: stale accepted contract');
+  const assignment = input.input;
+  requireInput(accepted.issue === assignment.issue_number && accepted.sha256 === assignment.preflight_sha256,
+    'implement preparation: issue/preflight binding mismatch');
+  const root = realpathSync(input.root);
+  const worktree = realpathSync(resolve(root, assignment.worktree));
+  requireInput(relative(root, worktree) === assignment.worktree, 'implement preparation: wrong worktree realpath');
+  requireInput(realpathSync(resolve(root, text(root, 'rev-parse', '--git-common-dir')))
+    === realpathSync(resolve(worktree, text(worktree, 'rev-parse', '--git-common-dir'))),
+  'implement preparation: wrong repository checkout');
+  assertIssueImplementIdentity(assignment, {
+    branch: assignment.branch, worktree: relative(root, worktree),
+    checked_out_branch: text(worktree, 'branch', '--show-current'),
+    head_sha: text(worktree, 'rev-parse', 'HEAD'), pr: assignment.existing_pr,
+  });
+  requireInput(text(worktree, 'status', '--porcelain=v1') === '', 'implement preparation: dirty checkout');
+  const prerequisites = { status: Object.hasOwn(accepted, 'validation_requirements') ? 'checked' : 'undeclared',
+    local: [], ci_only: [] };
+  const missing = [];
+  for (const requirement of accepted.validation_requirements ?? []) {
+    if (requirement.kind === 'ci-only') {
+      prerequisites.ci_only.push(requirement);
+      continue;
+    }
+    const tools = requirement.prerequisites.tools.map((tool) => {
+      const directories = [...tool.path_dirs, ...(process.env.PATH ?? '').split(delimiter)];
+      const path = directories.map((directory) => resolve(worktree, directory, tool.name)).find((candidate) => {
+        try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile(); }
+        catch (error) {
+          if (['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(error.code)) return false;
+          throw error;
+        }
+      });
+      if (!path) missing.push({ command: requirement.command, tool: tool.name });
+      return { ...tool, path };
+    });
+    const artifacts = requirement.prerequisites.artifacts.map((artifact) => {
+      let available = false;
+      try {
+        const path = realpathSync(resolve(worktree, artifact.path));
+        const inside = relative(worktree, path);
+        const stat = statSync(path);
+        available = inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)
+          && (artifact.kind === 'file' ? stat.isFile() : stat.isDirectory());
+      } catch (error) {
+        if (!['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(error.code)) throw error;
+      }
+      if (!available) missing.push({ command: requirement.command, artifact });
+      return { ...artifact, available };
+    });
+    prerequisites.local.push({ validation: requirement.validation, command: requirement.command, tools, artifacts });
+  }
+  requireInput(missing.length === 0, `implement preparation: missing prerequisites ${JSON.stringify(missing)}`);
+  return { status: 'prepared', kind: 'implement-input',
+    dispatch: registeredDispatch(root, dispatchFor(assignment.mode)), input: assignment, contract: accepted, prerequisites };
 }
 
 /** Read authenticated artifacts completely; never use a clipped tool response. */
@@ -96,15 +238,142 @@ export function readPreparationArtifact(root, reference, label) {
   return bytes;
 }
 
+const implementationBinding = (root, implementation, head, contract) => {
+  exact(implementation, ['mode', 'previous_head_sha', 'head_sha', 'contract_sha256'], 'implementation');
+  requireInput(['implement', 'fix-back', 'resolve-conflict'].includes(implementation.mode)
+    && commit(implementation.previous_head_sha) && commit(implementation.head_sha)
+    && implementation.head_sha === head && implementation.contract_sha256 === contract.sha256
+    && implementation.previous_head_sha !== head, 'implementation: stale mode/head/contract');
+  requireInput(text(root, 'rev-parse', `${implementation.previous_head_sha}^{commit}`) === implementation.previous_head_sha
+    && text(root, 'rev-parse', `${head}^{commit}`) === head, 'implementation: invalid commit');
+  git(root, 'merge-base', '--is-ancestor', implementation.previous_head_sha, head);
+  return text(root, 'rev-parse', `${implementation.previous_head_sha}^{tree}`);
+};
+
+const regressionPatch = (root, implementation, bytes, failure) => {
+  exact(failure, ['file', 'line', 'test'], 'RED failure');
+  requireInput(pathSafe(failure.file) && /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(failure.file)
+    && Number.isSafeInteger(failure.line) && failure.line > 0
+    && typeof failure.test === 'string' && failure.test.trim(), 'RED failure: invalid assertion location/test');
+  let stats;
+  try {
+    stats = execFileSync('git', ['apply', '--numstat', '-z', '-'],
+      { cwd: root, input: bytes, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }).toString();
+  } catch (error) {
+    throw new WorkflowPreparationError(`RED patch: invalid patch: ${error.message}`);
+  }
+  const paths = stats.split('\0').filter(Boolean).map((row) => row.split('\t').slice(2).join('\t'));
+  requireInput(paths.length > 0 && new Set(paths).size === paths.length && paths.includes(failure.file)
+    && paths.every((path) => pathSafe(path) && !path.includes(':')
+      && (/\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path)
+        || /(?:^|\/)(?:tests?|__tests__|fixtures|__fixtures__|test-fixtures)\//u.test(path))),
+  'RED patch: only regression tests and test fixtures may be projected');
+  const expected = git(root, '--literal-pathspecs', 'diff', '--binary', '--full-index', '--no-renames',
+    implementation.previous_head_sha, implementation.head_sha, '--', ...paths);
+  requireInput(bytes.equals(expected), 'RED patch: must equal complete post-head regression test changes');
+  for (const path of paths) {
+    requireInput(/^100(?:644|755) blob /u.test(text(root, '--literal-pathspecs', 'ls-tree', implementation.head_sha, '--', path)),
+      'RED patch: test/fixture must be a regular post-head file');
+  }
+  return paths;
+};
+
+const redAssertion = (receipt, stdout) => {
+  requireInput(receipt.version === 1 && receipt.complete === true && receipt.producer === 'lead'
+    && Number.isSafeInteger(receipt.exit_code) && receipt.exit_code > 0 && receipt.signal === null
+    && Number.isFinite(receipt.duration_ms) && receipt.duration_ms >= 0,
+  `RED receipt: incomplete or unsuccessful capture (exit=${receipt.exit_code}, signal=${receipt.signal})`);
+  // Only the failing entry's top-level diagnostic fields classify the error.
+  // Expected/actual values and logged error words are assertion data.
+  const failed = [...stdout.matchAll(/^not ok \d+ - (.+)$/gmu)];
+  const diagnostic = failed.length === 1
+    ? /^\n {2}---\n([\s\S]*?)\n {2}\.\.\.(?:\n|$)/u.exec(
+      stdout.slice(failed[0].index + failed[0][0].length))?.[1] : undefined;
+  const escapedFile = receipt.failure.file.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  requireInput(failed.length === 1 && failed[0][1] === receipt.failure.test && diagnostic !== undefined
+    && /^# fail 1$/mu.test(stdout) && /^# cancelled 0$/mu.test(stdout)
+    && /^ {2}failureType: 'testCodeFailure'$/mu.test(diagnostic)
+    && /^ {2}code: 'ERR_ASSERTION'$/mu.test(diagnostic)
+    && new RegExp(`${escapedFile}:${receipt.failure.line}:[1-9][0-9]*`, 'u').test(diagnostic),
+  'RED receipt: expected one named runner assertion failure, without setup/unrelated failures');
+};
+
+const redCommand = (command, argv, paths) => {
+  requireInput(typeof command === 'string' && command.trim() && Array.isArray(argv)
+    && argv.length >= 4 && argv.every((arg) => typeof arg === 'string' && arg.length > 0)
+    && basename(argv[0]) === basename(process.execPath) && argv[1] === '--test'
+    && argv[2] === '--test-reporter=tap'
+    && argv.slice(3).every((arg) => paths.includes(arg) || /^--test-name-pattern=.+/u.test(arg))
+    && argv.slice(3).some((arg) => paths.includes(arg)),
+  'RED command: use the focused Node test TAP runner and projected regression paths');
+};
+
+// This lead preparation mode is separate from issue-implement/reviewer authority.
+const captureFixBackRed = (input) => {
+  exact(input, ['version', 'stage', 'root', 'checkout', 'artifact_root', 'issue', 'contract',
+    'implementation', 'command', 'argv', 'regression_patch', 'failure'], 'RED capture');
+  requireInput(input.version === 1 && input.stage === 'fix-back-red'
+    && [input.root, input.checkout, input.artifact_root].every((path) => typeof path === 'string' && isAbsolute(path)),
+  'RED capture: invalid stage/paths');
+  try { validatePreflight(input.contract); }
+  catch (error) { throw new WorkflowPreparationError(`RED capture: ${error.message}`); }
+  requireInput(input.issue === input.contract.issue && input.implementation?.mode === 'fix-back',
+    'RED capture: wrong issue/mode');
+  const previousTree = implementationBinding(input.root, input.implementation, input.implementation.head_sha, input.contract);
+  const root = realpathSync(input.root);
+  const checkout = realpathSync(input.checkout);
+  requireInput(root !== checkout && text(checkout, 'rev-parse', 'HEAD') === input.implementation.previous_head_sha
+    && text(checkout, 'rev-parse', 'HEAD^{tree}') === previousTree
+    && text(checkout, 'status', '--porcelain=v1', '--untracked-files=all') === ''
+    && realpathSync(resolve(root, text(root, 'rev-parse', '--git-common-dir')))
+      === realpathSync(resolve(checkout, text(checkout, 'rev-parse', '--git-common-dir'))),
+  'RED capture: requires a clean separate previous-head checkout in the same repository');
+  const patch = readPreparationArtifact(root, input.regression_patch, 'RED patch');
+  const paths = regressionPatch(root, input.implementation, patch, input.failure);
+  redCommand(input.command, input.argv, paths);
+  // Exclusive creation prevents overwriting an earlier command's evidence.
+  mkdirSync(input.artifact_root);
+  const store = (path, bytes) => {
+    writeFileSync(resolve(input.artifact_root, path), bytes, { flag: 'wx' });
+    return { path, bytes: bytes.length, sha256: sha256(bytes) };
+  };
+  execFileSync('git', ['apply', '--index', '-'], { cwd: checkout, input: patch });
+  const started = performance.now();
+  // A preparation CLI invoked from node:test must start an independent runner.
+  const { NODE_TEST_CONTEXT: _testContext, ...environment } = process.env;
+  const result = spawnSync(input.argv[0], input.argv.slice(1), {
+    cwd: checkout, env: environment, maxBuffer: 64 * 1024 * 1024,
+  });
+  const duration = performance.now() - started;
+  const stdout = store('stdout', result.stdout ?? Buffer.alloc(0));
+  const stderr = store('stderr', result.stderr ?? Buffer.alloc(0));
+  requireInput(!result.error, `RED capture: spawn/stream failure: ${result.error?.message}`);
+  requireInput(text(checkout, 'rev-parse', 'HEAD') === input.implementation.previous_head_sha
+    && git(checkout, 'diff', '--cached', '--binary', '--full-index', '--no-renames').equals(patch)
+    && text(checkout, 'diff', '--name-only') === ''
+    && text(checkout, 'ls-files', '--others', '--exclude-standard') === '',
+  'RED capture: reproduction changed beyond the regression patch');
+  const receipt = { version: 1, complete: true, producer: 'lead', issue: input.issue,
+    previous_head_sha: input.implementation.previous_head_sha, head_sha: input.implementation.head_sha,
+    previous_tree_sha: previousTree, contract_sha256: input.contract.sha256,
+    command: input.command, argv: input.argv, regression_patch: store('regression.patch', patch),
+    exit_code: result.status, signal: result.signal, duration_ms: duration, stdout, stderr, failure: input.failure };
+  redAssertion(receipt, result.stdout.toString());
+  const reference = store('receipt.json', Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`));
+  return { status: 'captured', kind: 'fix-back-red', receipt: reference };
+};
+
 /**
  * The lead calls this after canonical plan observes "review", before spawning
  * any reviewer. It is preparation, not an engine, dispatcher or ledger writer.
  */
 export function prepareReviewInput(input) {
-  const { readable_index: suppliedIndex, ...preparation } = input;
+  const footprint = authenticatedFootprint(input.root, input.footprint);
+  const { readable_index: suppliedIndex, fix_back_red: redReference, ...preparation } = input;
   exact(preparation, ['version', 'stage', 'root', 'checkout', 'issue', 'issue_sha256', 'contract',
     'policy', 'base_ref', 'base_head_sha', 'head_sha', 'artifact_root', 'diff',
-    'changed_paths', 'required_checks', 'evidence', 'footprint', 'accepted_contract_path', 'observation'], 'review preparation');
+    'changed_paths', 'required_checks', 'evidence', 'footprint', 'accepted_contract_path', 'observation',
+    'implementation'], 'review preparation');
   requireInput(input.version === 1 && input.stage === 'review', 'review preparation: invalid stage');
   requireInput([input.root, input.checkout, input.artifact_root].every((path) => typeof path === 'string' && isAbsolute(path)),
     'review preparation: paths must be absolute');
@@ -144,6 +413,30 @@ export function prepareReviewInput(input) {
   'review preparation: stale canonical plan observation');
   requireInput(input.contract.issue === input.issue && input.contract.issue_sha256 === input.issue_sha256,
     'review preparation: stale issue/contract binding');
+  const previousTree = implementationBinding(root, input.implementation, input.head_sha, input.contract);
+  let red;
+  let redRoot;
+  if (input.implementation.mode === 'fix-back') {
+    try { red = JSON.parse(readPreparationArtifact(input.artifact_root, redReference, 'fix-back RED')); }
+    catch (error) {
+      if (error instanceof WorkflowPreparationError) throw error;
+      throw new WorkflowPreparationError(`fix-back RED: invalid receipt: ${error.message}`);
+    }
+    exact(red, ['version', 'complete', 'producer', 'issue', 'previous_head_sha', 'head_sha',
+      'previous_tree_sha', 'contract_sha256', 'command', 'argv', 'regression_patch', 'exit_code',
+      'signal', 'duration_ms', 'stdout', 'stderr', 'failure'], 'RED receipt');
+    requireInput(red.issue === input.issue && red.previous_head_sha === input.implementation.previous_head_sha
+      && red.head_sha === input.head_sha && red.previous_tree_sha === previousTree
+      && red.contract_sha256 === input.contract.sha256, 'RED receipt: stale issue/head/tree/contract');
+    redRoot = dirname(resolve(input.artifact_root, redReference.path));
+    const patch = readPreparationArtifact(redRoot, red.regression_patch, 'RED patch');
+    const paths = regressionPatch(root, input.implementation, patch, red.failure);
+    redCommand(red.command, red.argv, paths);
+    readPreparationArtifact(redRoot, red.stderr, 'RED stderr');
+    redAssertion(red, readPreparationArtifact(redRoot, red.stdout, 'RED stdout').toString());
+  } else {
+    requireInput(!Object.hasOwn(input, 'fix_back_red'), 'RED receipt is only valid for fix-back');
+  }
   requireInput(typeof input.base_ref === 'string' && /^origin\/[^ \x00-\x1f]+$/u.test(input.base_ref)
     && commit(input.base_head_sha), 'review preparation: invalid origin/base observation');
   const baseHead = text(root, 'rev-parse', '--verify', `${input.base_ref}^{commit}`);
@@ -178,9 +471,7 @@ export function prepareReviewInput(input) {
   const actualDiff = git(root, 'diff', '--binary', '--full-index', '--no-renames', mergeBase, input.head_sha);
   const capturedDiff = readPreparationArtifact(input.artifact_root, input.diff, 'review diff');
   requireInput(actualDiff.equals(capturedDiff), 'review diff: does not match complete merge-base-to-head authored diff');
-  const { sha256: footprintDigest, ...footprintInput } = input.footprint ?? {};
-  const footprint = prepareSourceFootprint(root, footprintInput);
-  requireInput(footprint.sha256 === footprintDigest && footprint.issue === input.issue
+  requireInput(footprint.issue === input.issue
     && footprint.issue_sha256 === input.issue_sha256 && footprint.base_sha === pinned,
   'review preparation: stale source footprint binding');
   requireInput(list(input.required_checks) && input.required_checks.length > 0
@@ -226,6 +517,9 @@ export function prepareReviewInput(input) {
     requireInput(receipt.status === 'passed' && receipt.exit_code === 0 && receipt.signal === null
       && Number.isFinite(receipt.duration_ms) && receipt.duration_ms >= 0,
     'focused receipt: no completed passing command');
+    if (red && check.command === red.command) {
+      requireInput(isDeepStrictEqual(receipt.argv, red.argv), 'RED receipt: passing focused argv differs');
+    }
     const stdout = readEvidence(receipt.stdout, 'focused stdout').toString();
     readEvidence(receipt.stderr, 'focused stderr');
     let testResults = null;
@@ -304,6 +598,11 @@ export function prepareReviewInput(input) {
       'readable index: rebound or stale source metadata');
   }
   for (const { reference, label } of authenticated) readPreparationArtifact(input.artifact_root, reference, label);
+  if (red) {
+    requireInput(observedCommands.has(red.command), 'RED receipt: no matching passing focused command');
+    readPreparationArtifact(input.artifact_root, redReference, 'fix-back RED');
+    for (const name of ['regression_patch', 'stdout', 'stderr']) readPreparationArtifact(redRoot, red[name], `RED ${name}`);
+  }
   // Recheck after reading evidence: moving the checkout during preparation is blocked.
   requireInput(text(checkout, 'rev-parse', 'HEAD') === input.head_sha
     && text(root, 'rev-parse', `${input.base_ref}^{commit}`) === baseHead
@@ -323,6 +622,8 @@ export function prepareReviewInput(input) {
     accepted_contract_path: input.accepted_contract_path, observation: input.observation,
     changed_paths: changedPaths, diff: input.diff, artifact_root: input.artifact_root,
     required_checks: input.required_checks, evidence: input.evidence, readable_index: readableIndex, footprint,
+    implementation: input.implementation,
+    ...(red === undefined ? {} : { fix_back_red: { reference: redReference, receipt: red } }),
     ...(retention === undefined ? {} : { retention, fresh_axes: freshAxes }) };
   return { status: 'prepared', kind: 'review-input', common,
     reviewers: freshAxes.map((reviewer) => ({
@@ -333,21 +634,33 @@ export function prepareReviewInput(input) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const [stage, path] = process.argv.slice(2);
-    requireInput(['preflight', 'review'].includes(stage) && path && process.argv.length === 4,
-      'Usage: node workflow-preparation.mjs <preflight|review> <input.json>');
+    requireInput(['preflight', 'finalize-preflight', 'implement', 'review', 'fix-back-red'].includes(stage) && path && process.argv.length === 4,
+      'Usage: node workflow-preparation.mjs <preflight|finalize-preflight|implement|review|fix-back-red> <input.json>');
     const input = JSON.parse(readFileSync(path, 'utf8'));
     if (stage === 'preflight') {
       exact(input, ['version', 'stage', 'root', 'footprint'], 'preflight preparation');
       requireInput(input.version === 1 && input.stage === 'preflight' && isAbsolute(input.root),
         'preflight preparation: invalid stage/root');
+      requireInput(Object.hasOwn(input.footprint ?? {}, 'caller_searches'), 'preflight preparation: caller_searches required');
     }
-    const result = stage === 'review' ? prepareReviewInput(input)
-      : { status: 'prepared', kind: 'preflight-input', dispatch: registeredDispatch(input.root, dispatchFor('preflight')), footprint: prepareSourceFootprint(input.root, input.footprint) };
+    let result;
+    switch (stage) {
+      case 'review': result = prepareReviewInput(input); break;
+      case 'finalize-preflight': result = finalizePreflight(input); break;
+      case 'implement': result = prepareImplement(input); break;
+      case 'fix-back-red': result = captureFixBackRed(input); break;
+      case 'preflight':
+        result = { status: 'prepared', kind: 'preflight-input',
+          dispatch: registeredDispatch(input.root, dispatchFor('preflight')),
+          footprint: prepareSourceFootprint(input.root, input.footprint) };
+        break;
+    }
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`${JSON.stringify({ status: 'blocked', kind: 'input-preparation',
       fix_back_eligible: false, error: error.message,
-      ...(error instanceof DispatchPreparationError ? { code: error.code, subagent_type: error.subagent_type } : {}) })}\n`);
+      ...(error.code ? { code: error.code } : {}),
+      ...(error instanceof DispatchPreparationError ? { subagent_type: error.subagent_type } : {}) })}\n`);
     process.exitCode = 1;
   }
 }

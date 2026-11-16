@@ -39,7 +39,8 @@ const observed = (issue, head, merged = false) => {
   const policy = evaluatePreflight(preflight, obs).policy;
   obs.review = buildReviewFact({ head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
     reviews: policy.active_axes.map((reviewer) => ({ reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head,
-      preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [] })) }, head, policy);
+      preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [],
+      evidence: [{ acceptance: 'Retain generated consumer', locations: ['src/source.ts:1'] }], observations: [] })) }, head, policy);
   return obs;
 };
 

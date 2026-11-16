@@ -176,6 +176,7 @@ test('preflight overlap: A-B B-C chain -> a returned grant survives OPEN PR and 
     active_axes: policy.active_axes, reviews: policy.active_axes.map(reviewer => ({
       reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head,
       preflight_sha256: policy.sha256, verdict_signal: 'PASS', blockers: [],
+      evidence: [{ acceptance: 'Retain generated consumer', locations: ['src/source.ts:1'] }], observations: [],
     })) }, head, policy);
   rows[1].decision.action = 'create-pr';
   assert.deepEqual(coordinate(rows).map(r => r.decision.action), ['wait-preflight-overlap', 'create-pr', 'wait-preflight-overlap']);
