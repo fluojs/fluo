@@ -31,11 +31,11 @@ Before the preflight child starts, prepare its source-footprint sidecar with
 `../execute-lane/scripts/workflow-preparation.mjs preflight <input.json>`.
 The exact input is `{version:1, stage:"preflight", root:<absolute checkout>,
 footprint:<source footprint>}`. Attach the returned `footprint` to the actual
-child input and retain it for review preparation; do not add fields to the
-accepted version 1 preflight artifact or mutate a lane ledger here.
+child input and retain it for finalization and review preparation. This command
+does not mutate a lane ledger.
 
 The footprint binds `version:1`, `issue`, fresh `issue_sha256`, pinned
-`base_sha`, and `categories`. Every category (`direct_callers`,
+`base_sha`, `categories`, and `caller_searches`. Every category (`direct_callers`,
 `reflective_integration`, `governance`, `book`, `en_ko_owners`, `context`,
 `generated_consumers`, `existing_tests`) contains exactly
 `{affected:boolean, reason:string, sources:[{path,sha256}], searches:string[]}`.
@@ -48,6 +48,18 @@ requires an investigation and a concrete selection rationale. No category
 implicitly mandates editing all candidates. The child consumes this footprint
 when choosing scope, companion files and checks, and reports any missing
 investigation as an input-preparation block before fixing the contract.
+
+New preflight preparation requires a nonempty `caller_searches` array of
+`{symbol, command, matches:[{path,line,text}]}` with unique nonempty symbols.
+Use `git grep -n -w -F -e <symbol> <base_sha> --` against the entire pinned
+repository, including `tooling/ci` and `tooling/governance/fixtures`. Simple
+symbols are unquoted; otherwise use POSIX single quotes (escape an embedded
+quote as `'\''`). Matches contain repository paths, positive line numbers and
+the complete line text in Git order. The preparer executes fixed argv, never
+the supplied command string, and compares all matches. Exit 1 means no matches;
+other Git failures block preparation. Incomplete or altered searches cannot
+authorize dispatch. Previously accepted footprints without this optional field
+remain valid for review with their original digest; do not rewrite them.
 
 ## Fix the contract
 
@@ -105,12 +117,14 @@ review. See `review-head` for proof shape, nested validation and invalidation.
 
 ## Machine interface
 
-Read `scripts/contracts.mjs`. `createPreflight(input)` returns a validated
+Read `scripts/contracts.mjs`. The read-only child returns a digest-free
+`contract_input`; the lead runs `finalize-preflight` to produce a validated
 version 1 artifact with these fields:
 
 ```text
 version, issue, issue_sha256, base_sha, scope, non_scope,
-acceptance, validation, predicted_files, active_axes, omitted_axes, sha256
+acceptance, validation, predicted_files, active_axes, omitted_axes, sha256,
+validation_requirements (optional for legacy artifacts)
 ```
 
 Use `issueDigest({ title, body })` on the fresh issue observation.
@@ -120,6 +134,31 @@ inside scope. `acceptance` and `validation` are nonempty string arrays;
 include governing source references and behavioral non-goals in the criteria.
 `omitted_axes` maps each inactive axis to its rationale. The constructor
 computes the digest; never invent one or add unrecognized keys.
+
+New finalizations require `validation_requirements`, exactly one entry for
+each unchanged `validation` string. A local entry is
+`{validation,kind:"local",command,prerequisites:{tools:[{name,path_dirs}],
+artifacts:[{path,kind}]}}`. `command` must be directly runnable, including any
+required PATH prefix. Declare absolute tool search directories, required
+dependency directories and concrete built files, with artifact kinds `file`
+or `directory` and safe worktree-relative paths. State which install/build
+commands must run first; empty prerequisite lists explicitly mean none.
+A CI-only entry is `{validation,kind:"ci-only",check,reason}` and cannot claim
+local success. Legacy artifacts keep `validation:string[]`, unchanged digests
+and policy when requirements are absent.
+
+The lead supplies `{version:1,stage:"finalize-preflight",root,
+footprint:<authenticated raw footprint>,contract_input}` to:
+
+```text
+node .agents/skills/execute-lane/scripts/workflow-preparation.mjs finalize-preflight <input.json>
+```
+
+`contract_input` contains no `sha256`, `dispatch` or `agent`. Finalization
+authenticates the footprint, binds issue/issue digest/base and validates complete
+requirements through `createPreflight` and `validatePreflight`. Success is
+`{status:"prepared",kind:"preflight-contract",contract}`. It writes no file,
+fact or ledger; the lead separately records the returned contract.
 
 Record the artifact from the repository root:
 
@@ -133,7 +172,8 @@ implementation; the effective policy's `sha256` binds review.
 
 ## Output and stop
 
-Return the validated implementation contract, source bindings, active review
-axes, and omitted-axis reasons. The lead records the accepted preflight and
-runs lane `plan` again. Stop after the contract is recorded; do not dispatch
-implementation or operate a task graph.
+Return `contract_input` with source bindings, active review axes, omitted-axis
+reasons and investigation rationale. Do not compute a digest or return an
+accepted artifact. The lead finalizes it, records the accepted preflight with
+agent identity outside its digest, and runs lane `plan` again. The child stops
+after returning its input and rationale.

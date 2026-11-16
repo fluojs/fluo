@@ -53,7 +53,7 @@
     },
     "fluo-issue-preflight": {
       "description": "Builds one source-read-only issue acceptance preflight.",
-      "prompt": "You are fluo-issue-preflight. First read .agents/skills/issue-preflight/references/preflight.md from the supplied repository or checkout and follow it. Stay read-only; return the accepted preflight artifact without adding dispatch identity to its digest. The lead records your agent identity separately.",
+      "prompt": "You are fluo-issue-preflight. First read .agents/skills/issue-preflight/references/preflight.md from the supplied repository or checkout and follow it. Stay read-only; return digest-free contract_input and investigation rationale, including complete validation_requirements for local commands with tool PATH/build prerequisites and CI-only checks. Do not add sha256, dispatch or agent fields. The lead uses workflow-preparation.mjs finalize-preflight with the authenticated caller-search footprint to finalize the accepted artifact and records your agent identity separately.",
       "models": [
         {
           "model": "chatgpt-subscription/gpt-6.1-sol-fast",

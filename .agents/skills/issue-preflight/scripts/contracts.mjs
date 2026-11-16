@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isAbsolute } from 'node:path';
 
 export const REVIEW_AXES = ['contract', 'code', 'verification'];
 const SHA = /^[a-f0-9]{40}$/u;
@@ -17,6 +18,50 @@ const safePath = (p) => typeof p === 'string' && p.length > 0 && !p.startsWith('
 const covers = (pattern, file) => pattern.endsWith('/') ? file.startsWith(pattern) : pattern === file;
 const inScope = (value, file) => value.scope.some((p) => covers(p, file))
   && !value.non_scope.some((p) => covers(p, file));
+
+const exact = (value, keys) => record(value) && Object.keys(value).length === keys.length
+  && keys.every((key) => Object.hasOwn(value, key));
+const nonempty = (value) => typeof value === 'string' && value.trim().length > 0;
+const absolutePath = (value) => nonempty(value) && isAbsolute(value) && !/[\x00-\x1f]/u.test(value);
+const validateRequirements = (value) => {
+  const requirements = value.validation_requirements;
+  if (!Array.isArray(requirements) || requirements.length !== value.validation.length
+    || new Set(requirements.map((r) => r?.validation)).size !== requirements.length) {
+    fail('validation_requirements must correspond one-to-one with validation');
+  }
+  for (const entry of requirements) {
+    if (!record(entry) || !value.validation.includes(entry.validation)) fail('validation_requirements: unbound validation');
+    switch (entry.kind) {
+      case 'local': {
+        if (!exact(entry, ['validation', 'kind', 'command', 'prerequisites']) || !nonempty(entry.command)
+          || !exact(entry.prerequisites, ['tools', 'artifacts'])) fail('validation_requirements: invalid local command/prerequisites');
+        const { tools, artifacts } = entry.prerequisites;
+        if (!Array.isArray(tools) || !Array.isArray(artifacts)
+          || new Set(tools.map((tool) => tool?.name)).size !== tools.length
+          || new Set(artifacts.map((artifact) => artifact?.path)).size !== artifacts.length) {
+          fail('validation_requirements: invalid/duplicate prerequisites');
+        }
+        for (const tool of tools) {
+          if (!exact(tool, ['name', 'path_dirs']) || !nonempty(tool.name)
+            || /[/\\\x00-\x20]/u.test(tool.name) || tool.name === '.' || tool.name === '..'
+            || !Array.isArray(tool.path_dirs) || !tool.path_dirs.every(absolutePath)
+            || new Set(tool.path_dirs).size !== tool.path_dirs.length) fail('validation_requirements: invalid tool search path');
+        }
+        for (const artifact of artifacts) {
+          if (!exact(artifact, ['path', 'kind']) || !safePath(artifact.path) || artifact.path.endsWith('/')
+            || !['file', 'directory'].includes(artifact.kind)) fail('validation_requirements: invalid artifact path/kind');
+        }
+        break;
+      }
+      case 'ci-only':
+        if (!exact(entry, ['validation', 'kind', 'check', 'reason']) || !nonempty(entry.check)
+          || !nonempty(entry.reason)) fail('validation_requirements: invalid ci-only check/reason');
+        break;
+      default:
+        fail('validation_requirements: unknown kind');
+    }
+  }
+};
 
 // Enforcement and agent instruction surfaces never inherit a docs/test exemption.
 export const classifyReviewAxes = (files) => {
@@ -61,6 +106,7 @@ export const createPreflight = (input) => {
 
 export const validatePreflight = (value) => {
   const keys = ['version', 'issue', 'issue_sha256', 'base_sha', 'scope', 'non_scope', 'acceptance', 'validation', 'predicted_files', 'active_axes', 'omitted_axes', 'sha256'];
+  if (record(value) && Object.hasOwn(value, 'validation_requirements')) keys.push('validation_requirements');
   if (!record(value) || Object.keys(value).length !== keys.length || keys.some((k) => !Object.hasOwn(value, k))) fail('non-canonical contract');
   if (value.version !== 1 || !Number.isSafeInteger(value.issue) || value.issue < 1
     || typeof value.issue_sha256 !== 'string' || !DIGEST.test(value.issue_sha256)
@@ -68,6 +114,7 @@ export const validatePreflight = (value) => {
   if (!strings(value.scope) || !strings(value.non_scope, false)
     || [...value.scope, ...value.non_scope].some((p) => !safePath(p))) fail('scope and non_scope require repository paths (trailing / means prefix)');
   if (!strings(value.acceptance) || !strings(value.validation)) fail('acceptance and validation must be nonempty');
+  if (Object.hasOwn(value, 'validation_requirements')) validateRequirements(value);
   if (!strings(value.predicted_files) || value.predicted_files.some((p) => !safePath(p) || p.endsWith('/') || !inScope(value, p))) fail('predicted_files must be files inside approved scope');
   const axes = value.active_axes;
   if (!strings(axes) || axes.some((a) => !REVIEW_AXES.includes(a))
