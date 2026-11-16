@@ -17,6 +17,128 @@ import { localCheckBinding } from './lane-v4.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
 
+function sqliteWarningFixture(t, { otherWarnings = false, fail = false } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-sqlite-4136-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const preload = join(root, 'warnings.mjs');
+  writeFileSync(preload, `
+import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
+const original = process.emitWarning;
+const message = 'SQLite is an experimental feature and might change at any time';
+registerHooks({
+  load(url, context, nextLoad) {
+    if (url === 'node:sqlite') {
+      process.emitWarning(message, 'ExperimentalWarning', 'SQLITE_LOAD_STRING');
+      process.emitWarning(message, { type: 'ExperimentalWarning', code: 'SQLITE_LOAD_OPTIONS' });
+      process.emitWarning(Object.assign(new Error(message), { name: 'ExperimentalWarning', code: 'SQLITE_LOAD_ERROR' }));
+      if (${otherWarnings}) {
+        process.emitWarning('Other experimental feature', 'ExperimentalWarning', 'OTHER_EXPERIMENTAL');
+        process.emitWarning(message, { type: 'Warning', code: 'OTHER_TYPE' });
+        process.emitWarning(Object.assign(new Error(message), { name: 'CustomWarning', code: 'OTHER_ERROR_TYPE' }));
+        process.emitWarning('Ordinary load warning', { code: 'ORDINARY_WARNING', detail: 'Keep warning details' });
+      }
+      if (${fail}) throw new Error('SQLite load fixture failed');
+    }
+    return nextLoad(url, context);
+  },
+});
+process.once('beforeExit', () => {
+  assert.equal(process.emitWarning, original, 'SQLite load must restore emitWarning');
+  if (${otherWarnings}) {
+    process.emitWarning(message, 'ExperimentalWarning', 'AFTER_SQLITE_LOAD');
+    process.emitWarning('Warning after load', { code: 'AFTER_OTHER_WARNING' });
+  }
+});
+`);
+  const env = { ...process.env, NODE_OPTIONS: '' };
+  delete env.NODE_NO_WARNINGS;
+  return {
+    root, preload, env,
+    run: (args) => spawnSync(process.execPath, ['--import', preload, ...args],
+      { cwd: root, env, encoding: 'utf8', timeout: 10_000 }),
+  };
+}
+
+test('#4136 CLI: forced SQLite warnings -> successful init keeps stdout and empty stderr', (t) => {
+  const f = sqliteWarningFixture(t);
+  const lanePath = join(f.root, '.omo/lanes-v4/warnings.json');
+
+  const result = f.run([script, 'init', '--root', f.root, '--lane-id', 'warnings', '--issue', '42']);
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, `${lanePath}\n`);
+  assert.equal(result.stderr, '');
+  assert.equal(JSON.parse(readFileSync(lanePath)).version, 4);
+});
+
+test('#4136 CLI: forced SQLite warnings -> structured dispatch failure remains whole stderr JSON', (t) => {
+  const f = fixture(t);
+  const warnings = sqliteWarningFixture(t);
+  f.env.NODE_OPTIONS = `--import ${warnings.preload}`;
+  delete f.env.NODE_NO_WARNINGS;
+  rmSync(join(f.root, '.omo/omo.jsonc'));
+
+  const result = f.cli('record', [...f.common, '--phase', 'preflight', '--result-json',
+    JSON.stringify({ ok: true, agent: 'fluo-issue-preflight' })], false);
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  const error = JSON.parse(result.stderr);
+  assert.equal(error.status, 'blocked');
+  assert.equal(error.kind, 'input-preparation');
+  assert.equal(error.code, 'dispatch-registration-unreadable');
+  assert.equal(error.fix_back_eligible, false);
+  assert.doesNotMatch(result.stderr, /ExperimentalWarning/u);
+});
+
+test('#4136 preparation CLI: forced SQLite warnings -> input failure remains whole stderr JSON', (t) => {
+  const f = sqliteWarningFixture(t);
+  const preparation = new URL('./workflow-preparation.mjs', import.meta.url).pathname;
+
+  const result = f.run([preparation]);
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  const error = JSON.parse(result.stderr);
+  assert.equal(error.status, 'blocked');
+  assert.equal(error.kind, 'input-preparation');
+  assert.equal(error.fix_back_eligible, false);
+  assert.match(error.error, /Usage: node workflow-preparation.mjs/u);
+  assert.doesNotMatch(result.stderr, /ExperimentalWarning/u);
+});
+
+for (const fail of [false, true]) {
+  test(`#4136 helper import: SQLite load ${fail ? 'fails' : 'succeeds'} -> preserves other warnings, restoration and errors`, (t) => {
+    const f = sqliteWarningFixture(t, { otherWarnings: true, fail });
+    const driver = `
+try {
+  await import(${JSON.stringify(new URL('./lane-v4-cli.mjs', import.meta.url).href)});
+  process.stdout.write('loaded\\n');
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
+}`;
+
+    const result = f.run(['--input-type=module', '-e', driver]);
+
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, fail ? 1 : 0, result.stderr);
+    assert.equal(result.stdout, fail ? '' : 'loaded\n');
+    assert.doesNotMatch(result.stderr, /SQLITE_LOAD_(STRING|OPTIONS|ERROR)/u);
+    assert.match(result.stderr, /\[OTHER_EXPERIMENTAL\] ExperimentalWarning: Other experimental feature/u);
+    assert.match(result.stderr, /\[OTHER_TYPE\] Warning: SQLite is an experimental feature/u);
+    assert.match(result.stderr, /\[OTHER_ERROR_TYPE\] CustomWarning: SQLite is an experimental feature/u);
+    assert.match(result.stderr, /\[ORDINARY_WARNING\] Warning: Ordinary load warning/u);
+    assert.match(result.stderr, /Keep warning details/u);
+    assert.match(result.stderr, /\[AFTER_SQLITE_LOAD\] ExperimentalWarning: SQLite is an experimental feature/u);
+    assert.match(result.stderr, /\[AFTER_OTHER_WARNING\] Warning: Warning after load/u);
+    if (fail) assert.match(result.stderr, /Error: SQLite load fixture failed/u);
+  });
+}
+
 test('#4128 CLI review admission: missing or empty PASS evidence -> both writers preserve lane bytes', (t) => {
   const f = fixture(t);
   f.set('preflight', f.preflight());

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -170,7 +170,7 @@ test('prepare: generation failure -> exits one without publishing either target'
 
 test('prepare: fresh consumer with only restored CLI dist -> generates artifacts locally', (t) => {
   const f = fixture(t);
-  rmSync(join(f.root, 'packages/cli'));
+  unlinkSync(join(f.root, 'packages/cli'));
   mkdirSync(join(f.root, 'packages/cli/bin'), { recursive: true });
   copyFileSync(join(repository, 'packages/cli/bin/fluo.mjs'), join(f.root, 'packages/cli/bin/fluo.mjs'));
   f.put('packages/cli/package.json', '{"type":"module"}');
