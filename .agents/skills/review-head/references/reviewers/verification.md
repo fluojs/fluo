@@ -89,6 +89,32 @@ Authenticate rather than trust:
 
 ## Evidence requirements
 
+- For newly added or changed decision logic, such as classifiers, aggregators,
+  or validators, independently derive at least one contract-valid potential
+  counterexample outside the existing fixtures. Start from the governing
+  contract, not the implementer's explanation or fixture outputs as an oracle.
+  Specify the input, the contract-required outcome, and exactly how it differs
+  from existing fixtures. A candidate duplicating an existing fixture does not
+  count as an independently derived uncovered case; seek another candidate.
+  If the supported input space is already fully covered, explain that with
+  contract and test evidence rather than inventing an uncovered case or defect.
+- Trace each candidate through the actual caller and input boundary into the
+  reviewed code path. Assess separately whether it reaches that path and why,
+  what result the code produces, and whether existing tests cover that exact
+  input and outcome combination. Reject unreachable or out-of-contract
+  candidates as product blockers. A candidate is an investigation, not proof
+  of a defect: apply the existing Verification rules to the result, and do not
+  invent a defect when no violation is found.
+- Put the counterexample analysis in the existing `evidence` entries, each
+  with exactly `acceptance` and `locations`. Retain the original acceptance
+  item identifier in the `acceptance` string and include the input,
+  contract-required outcome, difference from fixtures, reachability and its
+  reason, actual result, and test coverage there. Use only repository-relative
+  `file:positive-line` locations in the governing contract, implementation, and
+  tests actually read. Add no top-level or evidence keys; `observations` cannot
+  replace required acceptance evidence. Manual code tracing is not an executed
+  test result. Counterexample exploration grants no command execution, edits,
+  test additions, or remote mutation beyond the read-only authority below.
 - Tie each blocker to the exact check, command, test, changed behavior, and
   missing or failed evidence.
 - For a coverage blocker, name the regression seam and the canonical verifier
