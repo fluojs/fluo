@@ -43,9 +43,17 @@ ancestry, and current merge-base-to-head scope checks. Fresh issue and linked
 branch PR observations exclude only `done` issues; a merged issue with local
 branch/worktree cleanup remaining is active.
 
-Supplemental GitHub work is shared once per snapshot: one repository identity
+Supplemental GitHub work is shared once per snapshot: at most one repository identity
 call, one batch of up to 100 OPEN PRs with up to 100 files each, and one batch
 for the first 50 sorted external issue candidates and their branch PR states.
+Successful repository identity is reused within the process; failed identity
+queries are retried on the next snapshot. PR files and external issue states are
+always observed afresh, never cached across snapshots. With no valid current
+prediction, supplemental GitHub calls cannot produce a comparison and are
+omitted; the observation remains `unobservable`. No external lane candidates
+means no issue batch. Supplementary reads and event recording run after the
+readiness transaction releases its write lock, without changing its decisions
+or grants.
 No per-issue or per-PR supplemental calls or unbounded pagination occur.
 Completeness uses `totalCount` and `pageInfo`; limits, missing or malformed
 responses, GraphQL errors and command failures produce unknowns while preserving

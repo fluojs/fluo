@@ -2436,8 +2436,12 @@ for (const scenario of ['missing', 'enumeration-failed']) {
   });
 }
 
-test('#4130 external watch: unchanged then changed snapshot -> observation-only output with no action transition', async (t) => {
+for (const externalLane of [false, true]) {
+test(`#4130 external watch: ${externalLane ? 'with' : 'without'} external lane -> fresh observations with one repository lookup per process`, async (t) => {
   const f = externalFixture(t);
+  if (!externalLane) rmSync(f.externalPath);
+  const supplemental = start => f.calls().slice(start).filter(args => ['repo', 'api'].includes(args[0]));
+  const initialCalls = f.calls().length;
   const signal = AbortSignal.timeout(20_000);
   const sockets = [];
   const pending = [];
@@ -2452,7 +2456,7 @@ test('#4130 external watch: unchanged then changed snapshot -> observation-only 
   const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
   writeFileSync(gh, `#!${process.execPath}
 import { connect as fixtureConnect } from 'node:net';
-if(process.argv[2]==='repo') {
+if(process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverlapPullRequests'))) {
   await new Promise((done,reject)=>{
     const socket=fixtureConnect(Number(process.env.WATCH_PORT),'127.0.0.1');
     socket.on('connect',()=>socket.write('tick\\n'));
@@ -2489,19 +2493,43 @@ ${original}`);
 
   (await tick()).end('continue\n');
   await output(text => text.includes(' -> review'));
+  const firstEnd = f.calls().length;
+  assert.equal(supplemental(initialCalls).length, externalLane ? 3 : 2);
   (await tick()).end('continue\n');
   const third = await tick();
+  assert.equal(supplemental(firstEnd).length, externalLane ? 2 : 1);
+  assert.equal(supplemental(initialCalls).filter(args => args[0] === 'repo').length, 1);
+  const secondEnd = f.calls().length;
   assert.equal(transcript.split('\n').filter(line => line.includes('externalOverlaps=')).length, 1);
   f.state.externalPrs.data.repository.pullRequests = f.connection([]);
   f.update();
   third.end('continue\n');
   await output(text => text.split('\n').filter(line => line.includes('externalOverlaps=')).length === 2);
 
+  assert.equal(supplemental(secondEnd).length, externalLane ? 2 : 1);
+  assert.ok(supplemental(secondEnd).length <= 3);
   assert.equal(transcript.split('\n').filter(line => line.includes(' -> ')).length, 1);
   const observations = transcript.split('\n').filter(line => line.includes('externalOverlaps='))
     .map(line => JSON.parse(line.split('externalOverlaps=')[1]));
   assert.equal(observations[0].prMatches.length, 1);
   assert.equal(observations[1].prMatches.length, 0);
+});
+}
+
+test('#4130 external cost: no valid current prediction -> no supplemental gh calls and explicit unknown', (t) => {
+  const f = externalFixture(t);
+  f.state.issue = { ...f.state.issue, body: 'Changed current issue requirements.' };
+  f.update();
+  const externalBytes = readFileSync(f.externalPath, 'utf8');
+  const initialCalls = f.calls().length;
+
+  const result = f.plan();
+
+  assert.equal(result.decision.action, 'preflight');
+  assert.equal(result.obs.externalOverlaps.status, 'unobservable');
+  assert.ok(result.obs.externalOverlaps.unknowns.some(item => item.code === 'prediction-unavailable'));
+  assert.equal(f.calls().slice(initialCalls).filter(args => ['repo', 'api'].includes(args[0])).length, 0);
+  assert.equal(readFileSync(f.externalPath, 'utf8'), externalBytes);
 });
 
 const overlapFixture = (t, enabled = true) => {

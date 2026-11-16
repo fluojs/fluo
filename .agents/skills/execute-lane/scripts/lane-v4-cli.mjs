@@ -264,6 +264,8 @@ const validateReadiness = (lane) => {
 
 // This boundary reads other ledgers without entering their observation, lock,
 // migration, readiness or save paths. Every failure stays supplementary.
+// Only repository identity is process-local; overlap data is never cached.
+const externalRepositories = new Map();
 const externalOverlapCandidates = (root, lanePath, lane, snapshots) => {
 	const candidates = { laneMatches: [], prMatches: [], unknowns: [] };
 	const unknown = (source, subject, code) => candidates.unknowns.push({ source, subject, code });
@@ -322,6 +324,9 @@ const externalOverlapCandidates = (root, lanePath, lane, snapshots) => {
 			external.push({ lane: other, entry });
 		}
 	}
+	if (!snapshots.some(row => evaluatePreflight(row.obs.preflight, { ...row.obs, issue: row.issue }).valid)) {
+		return candidates;
+	}
 	const query = (source, subject, args) => {
 		let text;
 		try {
@@ -340,12 +345,14 @@ const externalOverlapCandidates = (root, lanePath, lane, snapshots) => {
 			return null;
 		}
 	};
-	const identity = query("repository", "current", ["repo", "view", "--json", "nameWithOwner"]);
+	const identity = externalRepositories.get(root) ??
+		query("repository", "current", ["repo", "view", "--json", "nameWithOwner"]);
 	if (typeof identity?.nameWithOwner !== "string" ||
 		! /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/u.test(identity.nameWithOwner)) {
 		unknown("repository", "current", "identity-unavailable");
 		return candidates;
 	}
+	externalRepositories.set(root, identity);
 	const [owner, name] = identity.nameWithOwner.split("/");
 	const graphql = (operation, fields) => {
 		const response = query("github", operation, ["api", "graphql", "-f",
@@ -1235,8 +1242,10 @@ const main = async () => {
 	// facts/approvals recorded by concurrent operator commands are seen.
 	const snapshotAll = (withObservations = false, previous = null) => {
 		const unlock = lane.preflight_overlap === 1 ? lockLane(lanePath) : null;
+		let fresh;
+		let coordinated;
 		try {
-		const fresh = loadLane(lanePath);
+		fresh = loadLane(lanePath);
 		assertPredictedConflicts(fresh.predicted_conflicts, Object.keys(fresh.issues).map(Number));
 		const snapshots = Object.keys(fresh.issues).map((key) => {
 			const n = Number(key);
@@ -1291,7 +1300,7 @@ const main = async () => {
 			}
 		};
 		if (fresh.preflight_overlap === 1) legacy.forEach(deactivate);
-		const coordinated = coordinatePreflightOverlap(fresh, legacy);
+		coordinated = coordinatePreflightOverlap(fresh, legacy);
 		if (fresh.preflight_overlap === 1) {
 			coordinated.forEach(deactivate);
 			const outputIssue = command === "plan" ? Number(arg(args, "--issue")) : null;
@@ -1318,6 +1327,11 @@ const main = async () => {
 			}
 			if (changed) saveLane(lanePath, fresh);
 		}
+		} finally {
+			unlock?.();
+		}
+		// Supplementary network work cannot affect the committed decisions or
+		// readiness grants and must not delay a concurrent record writer.
 		if (fresh.preflight_overlap === 1 && ["plan", "plan-all", "watch"].includes(command)) {
 			const candidates = externalOverlapCandidates(root, lanePath, fresh, coordinated);
 			for (const row of coordinated) {
@@ -1332,9 +1346,6 @@ const main = async () => {
 		return coordinated.map(({ obs, ...row }) =>
 			({ ...row, ...(obs.externalOverlaps ? { externalOverlaps: obs.externalOverlaps } : {}),
 				...(withObservations ? { obs } : {}) }));
-		} finally {
-			unlock?.();
-		}
 	};
 
 	if (["retro-plan", "retro-evidence", "retro-report"].includes(command)) {
