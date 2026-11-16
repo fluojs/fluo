@@ -147,6 +147,26 @@ test('v1 native receipt and wrong platform, profile, image or source fail admiss
   assert.equal(validateReceipt(failed).valid, false);
 });
 
+test('floor Node receipt: omitted command or failed suite -> rejects success evidence', () => {
+  const plan = buildVerificationPlan({ changedFiles: ['.agents/skills/execute-lane/scripts/lane-v4-cli.mjs'], identity });
+  const receipt = receiptFor(plan);
+  const floor = receipt.taskResults.find(({ taskId }) => taskId === 'compatibility-floor-smoke');
+  const index = floor.commands.findIndex(({ command }) => command.argv.join(' ') === 'test:node');
+
+  assert.notEqual(index, -1);
+  assert.deepEqual(validateReceipt(receipt), { valid: true });
+  assert.equal(receiptMatchesPlan(receipt, identity, plan), true);
+  const missing = structuredClone(receipt);
+  missing.taskResults.find(({ taskId }) => taskId === floor.taskId).commands.splice(index, 1);
+  assert.equal(receiptMatchesPlan(missing, identity, plan), false);
+  const failed = structuredClone(receipt);
+  failed.taskResults.find(({ taskId }) => taskId === floor.taskId).commands[index].exitCode = 1;
+  assert.equal(validateReceipt(failed).valid, false);
+  const wrongRuntime = structuredClone(receipt);
+  wrongRuntime.taskResults.find(({ taskId }) => taskId === floor.taskId).environment.node.compat24 = '24.21.0';
+  assert.equal(validateReceipt(wrongRuntime).valid, false);
+});
+
 test('v2 receipt authenticates log, archive and receipt bytes inside the real evidence root', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'fluo-receipt-v2-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

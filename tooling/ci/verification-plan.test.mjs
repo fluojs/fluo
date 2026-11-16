@@ -201,6 +201,97 @@ test('buildVerificationPlan: CLI script changes -> retain the Node script regres
   }
 });
 
+for (const changedFiles of [
+  ['.agents/skills/execute-lane/scripts/lane-v4-cli.mjs'],
+  ['tooling/ci/local-verification.mjs'],
+  ['.agents/skills/execute-lane/scripts/lane-v4-cli.mjs', 'tooling/ci/local-verification.mjs', 'packages/cli/src/index.ts'],
+]) {
+  test(`buildVerificationPlan: script PR ${changedFiles.join(', ')} -> one independently built floor Node suite`, () => {
+    const plan = buildVerificationPlan({ changedFiles, identity });
+
+    assert.equal(plan.mode, 'full');
+    assert.equal(plan.tasks.length, 25);
+    assert.equal(readVerificationManifest().tasks.length, 17);
+    assert.equal(plan.environment.lock.node.compat24.version, '24.11.0');
+    const floor = plan.tasks.filter(({ runtime }) => runtime === 'compat24');
+    const executions = floor.flatMap((task) => task.commands
+      .filter(({ executable, argv }) => executable === 'pnpm' && argv.join(' ') === 'test:node')
+      .map((command) => ({ task, command })));
+    assert.equal(executions.length, 1);
+    assert.equal(executions[0].task.id, 'compatibility-floor-smoke');
+    assert.deepEqual(executions[0].task.commands.slice(0, 2).map(({ argv }) => argv),
+      [['install', '--frozen-lockfile'], ['build']]);
+    assert.ok(executions[0].task.commands.indexOf(executions[0].command) > 1);
+    assert.deepEqual(executions[0].task.inputs, []);
+    assert.deepEqual(executions[0].command, { executable: 'pnpm', argv: ['test:node'], cwd: '.' });
+    assert.ok(executions[0].task.commands.some(({ env }) => env?.FLUO_CLI_SANDBOX_PROFILE === 'smoke'));
+    assert.equal(plan.tasks.filter(({ runtime }) => runtime === 'compat26')
+      .flatMap(({ commands }) => commands).filter(({ argv }) => argv.join(' ') === 'test:node').length, 0);
+  });
+}
+
+test('buildVerificationPlan: scoped Node companion -> same paths on primary and independently built floor', () => {
+  const plan = buildVerificationPlan({ changedFiles: ['packages/cli/scripts/local-test-env.mjs'], identity });
+
+  assert.equal(plan.mode, 'scoped');
+  const primary = plan.tasks.find(({ id }) => id === 'tooling-1').commands
+    .find(({ executable, argv }) => executable === 'node' && argv[0] === '--test');
+  const floor = plan.tasks.find(({ id }) => id === 'compatibility-floor');
+  assert.equal(floor.runtime, 'compat24');
+  assert.deepEqual(primary.argv, ['--test', ...plan.selection.toolingPaths.filter((path) => path.endsWith('.mjs'))]);
+  assert.equal(floor.commands.filter(({ executable, argv }) => executable === 'node' && argv[0] === '--test').length, 1);
+  assert.deepEqual(floor.commands.find(({ executable, argv }) => executable === 'node' && argv[0] === '--test'), primary);
+  assert.equal(floor.commands.filter(({ argv }) => argv[0] === 'install').length, 1);
+  assert.equal(floor.commands.filter(({ argv }) => argv.includes('build')).length, 1);
+  assert.ok(floor.commands.findIndex(({ argv }) => argv[0] === '--test')
+    > floor.commands.findIndex(({ argv }) => argv.includes('build')));
+  assert.ok(floor.commands.some(({ argv }) => argv.includes('packages/cli/')));
+  assert.ok(floor.commands.some(({ env }) => env?.FLUO_CLI_SANDBOX_PROFILE === 'smoke'));
+  assert.deepEqual(floor.inputs, []);
+  assert.ok(plan.tasks.find(({ id }) => id === 'compatibility-next').commands
+    .every(({ argv }) => argv[0] !== '--test'));
+});
+
+test('buildVerificationPlan: tooling-only scoped Node companion -> selects existing floor bootstrap once', (t) => {
+  const { root, manifest } = catalogFixture(t);
+  manifest.scope.companionEdges.push({
+    owners: ['fixture-other'], toolingPaths: ['tooling/ci/*.test.mjs'],
+  });
+  const plan = buildVerificationPlan({ changedFiles: ['apps/other/index.ts'], identity, root, manifest });
+
+  assert.equal(plan.mode, 'scoped');
+  const primary = plan.tasks.find(({ id }) => id === 'tooling-1').commands
+    .find(({ executable, argv }) => executable === 'node' && argv[0] === '--test');
+  const floor = plan.tasks.find(({ id }) => id === 'compatibility-floor');
+  assert.ok(floor);
+  assert.equal(floor.runtime, 'compat24');
+  assert.deepEqual(floor.commands, [
+    { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
+    { executable: 'pnpm', argv: ['-r', ...plan.selection.buildFilters, '--if-present', 'run', 'build'], cwd: '.' },
+    primary,
+  ]);
+  assert.deepEqual(floor.dependencies, []);
+  assert.deepEqual(floor.inputs, []);
+});
+
+for (const changedFiles of [
+  ['packages/email/src/index.ts'],
+  ['docs/reference/node-support.md'],
+  ['.agents/skills/execute-lane/SKILL.md'],
+]) {
+  test(`buildVerificationPlan: unrelated ${changedFiles[0]} -> no extra floor Node execution`, () => {
+    const plan = buildVerificationPlan({ changedFiles, identity });
+
+    assert.ok(plan.tasks.filter(({ runtime }) => runtime === 'compat24').every(({ commands }) =>
+      commands.every(({ executable, argv }) => !(executable === 'node' && argv[0] === '--test')
+        && argv.join(' ') !== 'test:node')));
+    if (changedFiles[0].startsWith('packages/')) {
+      assert.deepEqual(plan.tasks.map(({ id }) => id),
+        ['build', 'static', 'packages-1', 'compatibility-floor', 'compatibility-next']);
+    }
+  });
+}
+
 test('buildVerificationPlan: prose docs -> no build or runtime prerequisites', () => {
   const plan = buildVerificationPlan({ changedFiles: ['docs/reference/node-support.md'], identity });
 
@@ -359,7 +450,7 @@ test('full PR compatibility expands each secondary runtime into four shards and 
     assert.deepEqual(smoke.dependencies, []);
     assert.deepEqual(smoke.inputs, []);
     assert.deepEqual(smoke.outputs, []);
-    assert.equal(smoke.commands.length, 3);
+    assert.equal(smoke.commands.length, base === 'compatibility-floor' ? 4 : 3);
     assert.ok(smoke.commands.every(({ argv }) => !argv.includes('tooling/ci/prepare-react-typegen.mjs')));
     assert.deepEqual(smoke.commands[2], original.commands.at(-1));
     assert.equal(smoke.commands[2].env.FLUO_CLI_SANDBOX_PROFILE, 'smoke');
@@ -739,6 +830,7 @@ test('the extended profile restores complete secondary verification', () => {
     assert.ok(task.commands.some(({ argv }) => argv.join(' ') === 'lint'), id);
     assert.ok(task.commands.some(({ argv }) => argv.includes('test:verify')), id);
     assert.ok(task.commands.some(({ env }) => env?.FLUO_CLI_SANDBOX_PROFILE === 'full'), id);
+    assert.ok(task.commands.every(({ argv }) => argv.join(' ') !== 'test:node'), id);
   }
 });
 

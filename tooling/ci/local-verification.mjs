@@ -276,7 +276,15 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
         tooling.capabilities.push(project === 'tooling' ? 'tooling-1' : project);
       }
       const nodePaths = selection.toolingPaths.filter((path) => path.endsWith('.mjs'));
-      if (nodePaths.length) tooling.commands.push(command('node', ['--test', ...nodePaths]));
+      if (nodePaths.length) {
+        const nodeTests = command('node', ['--test', ...nodePaths]);
+        tooling.commands.push(nodeTests);
+        if (!selected.has('compatibility-floor')) {
+          selected.add('compatibility-floor');
+          task('compatibility-floor').commands = [install, buildCommands[1]];
+        }
+        task('compatibility-floor').commands.push(nodeTests);
+      }
       if (product) {
         const original = manifest.tasks.find((item) => item.id === 'tooling-1');
         tooling.commands.push(...original.commands.filter((item) =>
@@ -293,6 +301,11 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     }
   }
   if (profile === 'pr' && mode === 'full') {
+    if (changedFiles.some((path) => (path.startsWith('.agents/') || path.startsWith('tooling/'))
+      && /\.(?:[cm]?[jt]s)$/u.test(path))) {
+      tasks.find(({ id }) => id === 'compatibility-floor').commands
+        .push({ executable: 'pnpm', argv: ['test:node'], cwd: '.' });
+    }
     tasks = tasks.flatMap((task) => task.id.startsWith('compatibility-') ? expandCompatibilityTask(task) : [task]);
   }
   if (!testCatalog.apps.length) {

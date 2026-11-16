@@ -32,10 +32,21 @@ function job(source: string, id: string): string {
   return source.slice(start).split(/\n(?= {2}[a-z][a-z-]*:\n)/u)[0] ?? '';
 }
 
-for (const [mode, profile] of [['full', 'pr'], ['scoped', 'pr'], ['docs', 'pr'], ['full', 'extended']] as const) it(`workflow matrix resolver: ${profile}/${mode} -> exact selected groups`, () => {
+for (const [mode, profile, changedFiles, floorNode] of [
+  ['full', 'pr', ['package.json'], false],
+  ['scoped', 'pr', ['packages/email/src/index.ts'], false],
+  ['docs', 'pr', ['docs/reference/node-support.md'], false],
+  ['full', 'extended', ['tooling/ci/local-verification.mjs'], false],
+  ['full', 'pr', ['.agents/skills/execute-lane/scripts/lane-v4-cli.mjs'], true],
+  ['full', 'pr', ['tooling/ci/local-verification.mjs'], true],
+  ['full', 'pr', ['tooling/ci/local-verification.mjs', 'packages/cli/src/index.ts'], true],
+] as const) it(`workflow matrix resolver: ${profile}/${mode} ${changedFiles.join(', ')} -> exact selected groups`, () => {
   // Given
-  const plan = buildVerificationPlan({ changedFiles: [mode === 'full' ? 'package.json'
-    : mode === 'scoped' ? 'packages/email/src/index.ts' : 'docs/reference/node-support.md'], identity, profile });
+  const plan = buildVerificationPlan({ changedFiles: [...changedFiles], identity, profile });
+  expect(plan.mode).toBe(mode);
+  const nodeSuites = plan.tasks.filter(({ runtime }) => runtime === 'compat24').flatMap(({ commands }) =>
+    commands.filter(({ argv }) => argv.join(' ') === 'test:node'));
+  expect(nodeSuites).toHaveLength(floorNode ? 1 : 0);
   const script = job(workflow, 'plan').match(/node --input-type=module <<'EOF'\n([\s\S]+?)\n {10}EOF/u)?.[1];
   if (!script) throw new Error('Missing executable workflow matrix resolver');
   const root = mkdtempSync(join(tmpdir(), 'fluo-ci-plan-'));
