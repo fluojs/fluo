@@ -363,8 +363,14 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 			});
 			else externalOverlapUnknowns.push({ eventId: event.eventId, issue: event.issue, code: "external-overlap-unrecorded" });
 		}
-		if (event.kind !== "stage" || event.data?.phase !== "resolve-conflict" || event.data.result?.ok !== true) continue;
-		const head = event.data.result.head_sha;
+		if (event.kind !== "stage" || event.data?.phase !== "resolve-conflict") continue;
+		const result = event.data.result;
+		if (typeof result !== "object" || result === null || result.ok !== true) continue;
+		// applyChildResult resets this phase to zero only on success; record
+		// captures that outcome, unlike the issue's current attempt counters.
+		const attempts = event.data.attempts?.["resolve-conflict"];
+		if (attempts !== undefined ? attempts !== 0 : result.error?.type === "child-contract-error") continue;
+		const head = result.head_sha;
 		if (!/^[a-f0-9]{40}$/u.test(head ?? "")) continue;
 		const heads = conflicts.get(event.issue) ?? new Map();
 		heads.set(head, [...new Set([...(heads.get(head) ?? []), event.eventId])].sort());

@@ -77,6 +77,31 @@ const snapshots = [{
 		attempts: {},
 	},
 }];
+
+test('#4130 fix-back retrospective: engine-rejected conflict outcomes -> only genuine success contributes its head', (t) => {
+	const root = fixture(t);
+	const rejected = [
+		{ result: { ok: true, head_sha: head, error: { type: "child-contract-error" } } },
+		{ result: { ok: true, head_sha: "d".repeat(40) }, attempts: { "resolve-conflict": 1 } },
+		{ result: { ok: false, head_sha: "e".repeat(40) } },
+		{ result: { ok: "true", head_sha: "f".repeat(40) } },
+		{ result: null },
+	];
+	for (const outcome of rejected) {
+		recordRetroEvent(root, laneId, 1, "stage", { phase: "resolve-conflict", head, ...outcome });
+	}
+	const success = recordRetroEvent(root, laneId, 1, "stage", {
+		phase: "resolve-conflict", head, attempts: { "resolve-conflict": 0 },
+		result: { ok: true, head_sha: "c".repeat(40) },
+	});
+
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.deepEqual(evidence.conflictResolutions, [{ issue: 1, observedConflictResolutions: 1,
+		heads: [{ head: "c".repeat(40), eventIds: [success.eventId] }],
+		eventIds: [success.eventId], history: "unknown" }]);
+});
+
 const report = (request, eventId) => ({
 	version: 1,
 	scope: "lane",

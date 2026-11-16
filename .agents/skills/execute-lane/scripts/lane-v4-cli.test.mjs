@@ -3504,3 +3504,25 @@ if(process.argv.includes('--check')) {
   f.commit('docs/guide.md', 'another source revision\n');
   assert.equal(f.plan().decision.reason, 'generated-integration-evidence-missing');
 });
+
+test('#4130 fix-back CLI: rejected conflict result with ok true -> retrospective records zero successful resolutions', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.retry_policy = importedAdaptive;
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const result = { ok: true, head_sha: 'f'.repeat(40), error: { type: 'child-contract-error' } };
+
+  const recorded = JSON.parse(f.cli('record', [...f.common, '--phase', 'resolve-conflict',
+    '--result-json', JSON.stringify(result)]).stdout);
+  const evidence = JSON.parse(f.cli('retro-evidence', ['--lane', f.lanePath]).stdout);
+
+  assert.deepEqual(recorded.blocker, { type: 'child-contract-error', phase: 'resolve-conflict' });
+  assert.equal(recorded.attempts['resolve-conflict'], 1);
+  const event = evidence.events.find(event => event.kind === 'stage' && event.data.phase === 'resolve-conflict');
+  assert.deepEqual(event.data.result, result);
+  assert.equal(event.data.attempts['resolve-conflict'], 1);
+  assert.deepEqual(evidence.conflictResolutions, [{ issue: 42, observedConflictResolutions: 0,
+    heads: [], eventIds: [], history: 'unknown' }]);
+});
