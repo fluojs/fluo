@@ -584,6 +584,7 @@ function externalFixture(t) {
     reviews: policy.active_axes.map((reviewer) => ({
       reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: head, preflight_sha256: policy.sha256,
       verdict_signal: 'PASS', blockers: [],
+      evidence: [{ acceptance: 'Preserve product acceptance', locations: ['src/source.ts:1'] }], observations: [],
     })),
   }, head, policy);
   const binding = localCheckBinding(review, acceptedAt);

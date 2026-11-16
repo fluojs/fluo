@@ -17,6 +17,30 @@ import { localCheckBinding } from './lane-v4.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
 
+test('#4128 CLI review admission: missing or empty PASS evidence -> both writers preserve lane bytes', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight());
+  f.implement();
+  const valid = f.review();
+  for (const patch of [{ evidence: [] }, { observations: [''] }, { evidence: undefined, observations: undefined }]) {
+    const invalid = structuredClone(valid);
+    Object.assign(invalid.reviews[0], patch);
+    const before = readFileSync(f.lanePath);
+
+    f.set('review', invalid, valid.head_sha, false);
+    f.cli('record', [...f.common, '--phase', 'review',
+      '--result-json', JSON.stringify({ ok: true, ...invalid })], false);
+
+    assert.deepEqual(readFileSync(f.lanePath), before);
+  }
+  valid.reviews[0].observations = ['Optional baseline observation'];
+  f.cli('record', [...f.common, '--phase', 'review', '--result-json', JSON.stringify({ ok: true, ...valid })]);
+  f.set('review', valid, valid.head_sha);
+  const stored = JSON.parse(readFileSync(f.lanePath)).issues['42'].facts.review.value;
+  assert.equal(stored.verdict, 'pass');
+  assert.deepEqual(stored.reviews, valid.reviews);
+});
+
 function retentionFixture(t) {
   const f = fixture(t);
   f.set('preflight', f.preflight({ active_axes: ['contract', 'code', 'verification'] }));
@@ -656,7 +680,8 @@ if (args[0] === 'pr' && args[1] === 'view') {
     const { obs } = plan();
     return { head_sha: obs.headSha, preflight_sha256: obs.preflightPolicy.sha256, active_axes: obs.preflightPolicy.active_axes,
       reviews: obs.preflightPolicy.active_axes.map((reviewer) => ({ reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha,
-        preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [] })) };
+        preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [],
+        evidence: [{ acceptance: 'Keep public behavior', locations: ['docs/guide.md:1'] }], observations: [] })) };
   };
   const verify = (ok = true, forceFull = false) => {
     const entry = JSON.parse(readFileSync(lanePath, 'utf8')).issues['42'];
@@ -2158,7 +2183,8 @@ const generatedFixture = (t) => {
       active_axes: current.preflightPolicy.active_axes,
       reviews: current.preflightPolicy.active_axes.map((reviewer) => ({ reviewer, agent: `fluo-${reviewer}-reviewer`,
         reviewed_head_sha: current.headSha, preflight_sha256: current.preflightPolicy.sha256,
-        verdict_signal: 'PASS', blockers: [] })) };
+        verdict_signal: 'PASS', blockers: [],
+        evidence: [{ acceptance: 'Retain generated consumer', locations: ['src/generated.ts:1'] }], observations: [] })) };
     f.cli('set-fact', [...args, '--kind', 'review', '--head', current.headSha, '--value', JSON.stringify(review)]);
     const pr = { number: issue + 100, state: 'OPEN', headRefOid: current.headSha,
       mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }] };
@@ -2598,6 +2624,7 @@ test(`readiness wait control: watch ${action} awaiting its next tick -> independ
       active_axes: obs.preflightPolicy.active_axes, reviews: obs.preflightPolicy.active_axes.map(reviewer => ({
         reviewer, agent: `fluo-${reviewer}-reviewer`, reviewed_head_sha: obs.headSha,
         preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [],
+        evidence: [{ acceptance: 'Keep public behavior', locations: ['docs/guide.md:1'] }], observations: [],
       })) };
     f.cli('set-fact', ['--lane', f.lanePath, '--issue', '43', '--kind', 'review', '--head', obs.headSha,
       '--value', JSON.stringify(value)]);

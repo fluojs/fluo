@@ -69,6 +69,54 @@ streams, not only summaries. Missing, truncated, altered, stale or out-of-scope
 inputs fail before the review wave. The preparer rechecks observations after
 reading evidence.
 
+Review input also requires `implementation:{mode,previous_head_sha,head_sha,
+contract_sha256}`. Modes are `implement`, `fix-back`, and `resolve-conflict`.
+Bind the current commit and accepted contract; the previous commit must be an
+ancestor. For fix-back, take both heads from the actual implementer Result,
+not the fixed verification base. A fix-back additionally requires
+`fix_back_red:{path,sha256,bytes}`; ordinary implementation and conflict
+resolution need no RED receipt. Missing or inconsistent evidence stops before
+dispatch as non-fixable `input-preparation`.
+
+The lead prepares a separate clean checkout at `previous_head_sha`, then runs:
+
+```text
+node .agents/skills/execute-lane/scripts/workflow-preparation.mjs fix-back-red <input.json>
+```
+
+Capture input has exactly `version:1`, `stage:"fix-back-red"`, absolute `root`,
+`checkout`, a new `artifact_root`, `issue`, accepted `contract`, `implementation`,
+`command`, `argv`, `regression_patch:{path,sha256,bytes}`, and
+`failure:{file,line,test}`. The input patch reference is relative to `root`.
+Capture validates commit/tree/ancestry and projects only complete regression
+test and necessary test-fixture changes actually present at the corrected
+head. Product changes are forbidden. The focused runner uses
+`argv:[<node executable>,"--test","--test-reporter=tap",<regression paths>]`,
+optionally with `--test-name-pattern=...`; use that same command and argv in the
+corrected head's passing focused receipt. Prepare tooling regression tests
+with this runner; do not substitute a shell command that prints a failure.
+
+The capture applies the patch to the reproduction index, executes argv, retains
+complete stdout/stderr and patch bytes in the new artifact directory, and emits
+`receipt.json` only for one named assertion failure at the supplied positive
+file/line. GREEN, spawn/import/setup errors, signal termination, and unrelated
+failures are rejected. It leaves the reproduction checkout with its test patch
+for inspection; cleanup belongs to the lead. This focused lead reproduction is
+review preparation only. It changes neither issue-implement's `leadAuthority`
+nor reviewer permissions.
+
+The receipt has exactly `version`, `complete`, `producer`, `issue`,
+`previous_head_sha`, `head_sha`, `previous_tree_sha`, `contract_sha256`,
+`command`, `argv`, `regression_patch`, `exit_code`, `signal`, `duration_ms`,
+`stdout`, `stderr`, `failure`. It requires `version:1`, `complete:true`,
+`producer:"lead"`, positive integer exit, null signal, finite nonnegative
+duration, and hash/byte references for patch and both streams (relative to the
+receipt directory). Review preparation authenticates these artifacts, the
+complete patch and failure output, commit/tree/ancestry and issue/contract/head,
+and matches command/argv to a passing focused receipt. All axes receive the
+same `common.fix_back_red:{reference,receipt}`. A child's failed claim or
+producer string alone supplies no execution evidence.
+
 `common.readable_index` is decoder-free machine metadata derived from those
 authenticated receipts and raw artifacts, with exact head/tree, distinct
 `contract_sha256` and `policy_sha256`, actual command outcomes/durations and
@@ -171,12 +219,21 @@ both the fixed contract and effective axes. Do not substitute the artifact's
 own `sha256` (the implementation binding) for this policy digest.
 
 Each new reviewer returns exactly `reviewer`, `agent`, `reviewed_head_sha`,
-`preflight_sha256`, `verdict_signal`, and `blockers`; `preflight_sha256` equals
+`preflight_sha256`, `verdict_signal`, `blockers`, `evidence`, and `observations`;
+`preflight_sha256` equals
 the effective policy digest.
 `agent` must equal the registered target for that axis. New `record` review
 successes carry this complete aggregate input with `ok:true`. Stored legacy
-facts without `agent` retain full head/policy/verdict/blocker validation and
-their original bytes and acceptance bindings; new inputs cannot use that path.
+facts with the old five keys or six keys including `agent` retain full
+head/policy/verdict/blocker validation and their original bytes and acceptance
+bindings, including every retention hop; new inputs cannot use that path.
+Stored envelopes with modern evidence must include both new fields and meet
+all new requirements. Partial shapes and unknown keys are rejected.
+`evidence` contains exact `{acceptance,locations}` entries: a non-empty
+criterion identifier and a non-empty array of repository-relative `file:line`
+locations. PASS requires at least one entry. Every verdict includes
+`observations`, an array of non-empty strings (possibly empty), which never
+changes the aggregate verdict or canonical blockers.
 Assemble:
 
 ```text
