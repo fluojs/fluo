@@ -2257,6 +2257,1773 @@
     "clock": "simulation",
     "duration": null
   },
+  "admission": {
+    "clock": "simulation",
+    "waiting": [
+      {
+        "sharedFile": ".agents/skills/execute-lane/references/operations.md",
+        "decisions": [
+          {
+            "issue": 4127,
+            "decision": {
+              "action": "wait-ci",
+              "overlaps": [
+                {
+                  "issue": 4129,
+                  "head": "047119640c451fcbbce28ffbca1548116de7bcb7",
+                  "pr": null,
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md"
+                  ],
+                  "state": "review"
+                }
+              ]
+            }
+          },
+          {
+            "issue": 4129,
+            "decision": {
+              "action": "wait-preflight-overlap",
+              "reason": "selected-overlapping-sibling",
+              "head": "047119640c451fcbbce28ffbca1548116de7bcb7",
+              "siblings": [
+                {
+                  "issue": 4127,
+                  "head": "30b61c8fd505027d83459269fe2cb4da043ad815",
+                  "pr": 4127,
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md"
+                  ],
+                  "state": "wait-ci"
+                }
+              ],
+              "files": [
+                ".agents/skills/execute-lane/references/operations.md"
+              ],
+              "overlaps": [
+                {
+                  "issue": 4127,
+                  "head": "30b61c8fd505027d83459269fe2cb4da043ad815",
+                  "pr": 4127,
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md"
+                  ],
+                  "state": "wait-ci"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "sharedFile": "docs/guides/overlap.md",
+        "decisions": [
+          {
+            "issue": 4127,
+            "decision": {
+              "action": "wait-ci",
+              "overlaps": [
+                {
+                  "issue": 4129,
+                  "head": "70395c026ea3b97bb21f703bf0d6497e50273b8c",
+                  "pr": null,
+                  "files": [
+                    "docs/guides/overlap.md"
+                  ],
+                  "state": "review"
+                }
+              ]
+            }
+          },
+          {
+            "issue": 4129,
+            "decision": {
+              "action": "review",
+              "overlaps": [
+                {
+                  "issue": 4127,
+                  "head": "290cb103a510bc9a83961891c034f3cf0158945d",
+                  "pr": 4127,
+                  "files": [
+                    "docs/guides/overlap.md"
+                  ],
+                  "state": "wait-ci"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "star": [
+      {
+        "currentGrant": false,
+        "traces": [
+          {
+            "inputOrder": [
+              4128,
+              4129,
+              4130
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                  "siblings": [
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4128,
+              4130,
+              4129
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                  "siblings": [
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4129,
+              4128,
+              4130
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                  "siblings": [
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4129,
+              4130,
+              4128
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                  "siblings": [
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4130,
+              4128,
+              4129
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                  "siblings": [
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4130,
+              4129,
+              4128
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                  "siblings": [
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "currentGrant": true,
+        "traces": [
+          {
+            "inputOrder": [
+              4128,
+              4129,
+              4130
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4128,
+              4130,
+              4129
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4129,
+              4128,
+              4130
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4129,
+              4130,
+              4128
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4130,
+              4128,
+              4129
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inputOrder": [
+              4130,
+              4129,
+              4128
+            ],
+            "decisions": [
+              {
+                "issue": 4128,
+                "decision": {
+                  "action": "review",
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4129,
+                      "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    },
+                    {
+                      "issue": 4130,
+                      "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4129,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "0f44ede88030e32a598da10b47e0f1f31971cc37",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/references/operations.md",
+                    ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/references/operations.md",
+                        ".agents/skills/execute-lane/scripts/workflow-preparation.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              },
+              {
+                "issue": 4130,
+                "decision": {
+                  "action": "wait-preflight-overlap",
+                  "reason": "selected-overlapping-sibling",
+                  "head": "2e2c1e4c9c986f58a0d9b427e46fb43f7bdeada8",
+                  "siblings": [
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ],
+                  "files": [
+                    ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                    ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                  ],
+                  "overlaps": [
+                    {
+                      "issue": 4127,
+                      "head": "991043363c1d56fd0b009a099f06c90526c216cd",
+                      "pr": 4127,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "cleanup"
+                    },
+                    {
+                      "issue": 4128,
+                      "head": "4c4da2ae55131962c5cddbd26ea6e4dad131cc4d",
+                      "pr": null,
+                      "files": [
+                        ".agents/skills/execute-lane/scripts/generated-integration.test.mjs",
+                        ".agents/skills/execute-lane/scripts/lane-v4-cli.test.mjs"
+                      ],
+                      "state": "review"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
   "comparable": true,
   "clock": "simulation",
   "duration": null,
