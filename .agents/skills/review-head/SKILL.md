@@ -12,7 +12,10 @@ approval is not permission to merge, and reviewers never execute local CI.
 
 Require lane/issue identity, accepted preflight, captured base/head, actual
 changed paths, implementation report with focused test evidence, and optional
-PR identity. The post-review local CI receipt is not a prerequisite.
+PR identity. The post-review full local CI receipt is not a prerequisite.
+When preflight selects CI Node concurrency validation, the lead's completed
+original `pnpm test:node` receipt is required before reviewer dispatch on each
+implementation, fix-back and conflict-resolution head, after focused checks.
 The lead checks actual diff scope and determines the effective axes using the
 preflight contract helpers. An out-of-scope change returns to preflight.
 Newly implicated axes are added; never trust implementer-reported scope alone.
@@ -68,6 +71,26 @@ monotonic `duration_ms`, and `stdout`/`stderr` artifact references with the same
 streams, not only summaries. Missing, truncated, altered, stale or out-of-scope
 inputs fail before the review wave. The preparer rechecks observations after
 reading evidence.
+
+For a preflight-selected `pnpm test:node`, include the actual execution string
+with declared PATH in `required_checks`, `evidence[].command` and the receipt's
+`command` exactly. Use the existing receipt fields above, including
+`duration_ms` and full streams; add no optional CI-evidence field or schema.
+Complete install/build first and preserve the original script file set and
+default inter-file concurrency. Split files, `--test-concurrency=1` and
+individual passes cannot supply this receipt. Preserve actual Node executable
+and version, environment and concurrent-work load observations in retained
+output or accompanying incident evidence available to every axis.
+
+The lead completes missing or stale-head receipts before dispatch as
+`input-preparation`, `fix_back_eligible:false`. Actual failures, timeouts and
+cancellations keep their original logs as incident evidence; unresolved
+current-head failures follow the existing local-failure/fix-back boundary.
+Neither split success nor another review PASS clears them. Use
+`../execute-lane/references/operations.md#timeout-cause-diagnosis-and-corrections`
+for matched base/head comparisons and correction history. Pass the same
+authenticated `common`/`readable_index` to all axes; no reviewer rerun
+substitutes for the lead's selected pre-review evidence.
 
 Review input also requires `implementation:{mode,previous_head_sha,head_sha,
 contract_sha256}`. Modes are `implement`, `fix-back`, and `resolve-conflict`.
@@ -160,7 +183,9 @@ axis judges regression coverage and the implementer's focused test results.
 Full local CI runs only for explicitly requested reproduction or diagnosis,
 after the selected reviews pass. All approved changes, including
 CI/configuration, manifests and lockfiles, proceed directly to publication
-after focused checks and reviews; full remote CI follows publication.
+after focused checks, any preflight-selected original `pnpm test:node`, and
+reviews; full remote CI follows publication. The selected pre-review command
+does not claim completion of canonical `pnpm verify:local`.
 
 Use `scripts/contracts.mjs` to aggregate exactly one result per selected axis.
 Before aggregation or rejecting any envelope, retain each raw reviewer response

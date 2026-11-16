@@ -32,16 +32,24 @@ reset. V2 source bytes remain provenance; import does not expand authority.
 ## Canonical order
 
 ```text
-preflight -> implement + focused tests -> selected exact-head reviews
-                                      <- fix-back if review blocks
+preflight -> implement + focused tests -> lead's preflight-selected pnpm test:node
+          -> selected exact-head reviews <- fix-back if review blocks
           -> verify-local only for explicitly requested full local reproduction
           -> create-pr / push -> full remote CI
                                     <- fix-back if CI fails
           -> merge authority + mergeability gate -> merge -> cleanup -> done
 ```
 
-Every new implementation or conflict-resolution head repeats fresh required
-reviews after focused checks. Only the Git-authenticated explanatory-document
+Every implementation, fix-back or conflict-resolution head repeats focused
+checks, the lead's acceptance-specific `pnpm test:node` when preflight selects
+it, then fresh required reviews. Preserve the CI command's file set and default
+inter-file concurrency; split or serial passes do not replace it. Before
+dispatch, follow
+[CI Node concurrency before review](references/operations.md#ci-node-concurrency-before-review)
+for prepared runtime/build conditions, authenticated receipts and timeout
+diagnosis. This is a selected pre-review check; full canonical
+`pnpm verify:local` remains explicitly requested and post-review.
+Only the Git-authenticated explanatory-document
 exception below can retain prior code/verification PASS.
 All approved changes, including CI execution,
 configuration, manifests and lockfiles, proceed to publication without an
@@ -90,8 +98,9 @@ an ancestor of both the issue head (when present) and the observed
 invalidate the approved base, review, or local receipt. Scope and review axes
 use the current merge-base-to-head issue diff, excluding upstream changes
 incorporated by a merge or rebase; local verification retains the pinned
-base. An integration head still requires focused checks and fresh required reviews; full
-local CI runs only for explicitly requested reproduction or diagnosis.
+base. An integration head still requires focused checks, any preflight-selected
+CI Node concurrency check and fresh required reviews; full local CI runs only
+for explicitly requested reproduction or diagnosis.
 Re-registering the same
 preflight digest keeps existing head-bound facts and timestamps; changing
 the digest invalidates them.
@@ -207,6 +216,11 @@ package release impact. Use the release governance contract.
 
 Focused checks must exercise the changed behavior and meet preflight criteria;
 retain their commands, results and real-surface evidence for exact-head review.
+For changes affecting CI Node concurrency, the lead completes the selected
+original `pnpm test:node` before reviewer dispatch and includes it in the
+existing `required_checks`/`evidence` inventory. Missing or stale receipts
+require input preparation; unresolved current-head failures require diagnosis
+and applicable fix-back, not a replacement review PASS.
 Full local CI is not an automatic publication prerequisite for any approved
 change, including CI/configuration, manifests and lockfiles. It remains
 available for explicitly requested reproduction or diagnosis. Report omitted
