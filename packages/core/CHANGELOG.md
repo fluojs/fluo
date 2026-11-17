@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+## 2.2.0
+
+### Minor Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+### Patch Changes
+
+- [#4060](https://github.com/fluojs/fluo/pull/4060) [`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70) Thanks [@ayden94](https://github.com/ayden94)! - Make internal payload cloning deterministic by always preserving supported nested class prototypes, own symbol properties, and circular references, regardless of runtime structuredClone behavior. Document the shared clone contract and CQRS value-object isolation; functions remain shared references, while Buffer and private-field behavior remains unspecified pending [#4015](https://github.com/fluojs/fluo/issues/4015).
+
+- [#4116](https://github.com/fluojs/fluo/pull/4116) [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36) Thanks [@ayden94](https://github.com/ayden94)! - Copy Node `Buffer` values and other typed array subclasses in the shared fallback clone without calling the subclass constructor, so cloning a `Buffer` no longer emits the `DEP0005` deprecation warning. Instances whose class declares ECMAScript private members are now returned by reference instead of as a detached copy that threw a `TypeError` when private state was read. Detection is conservative so no private member is missed: a class whose source contains `#` followed by an identifier character anywhere, including text such as a `/#tag/` regular expression, is returned by reference, as is any instance whose class cannot be identified because its prototype `constructor` is missing or shadowed; prototype methods and accessors are inspected as well. Objects with any own getter or setter, or with an own function property whose source mentions `this` or a private name (for example an object stamped with private fields through a constructor return override, even when a helper reads them), are also returned by reference, while own callbacks mentioning neither still allow copying. State reached only indirectly through closures, external helpers, or WeakMaps without such source markers is a documented limitation. Typed arrays and DataViews created in another realm are copied without relying on prototype identity, and ArrayBuffer, typed array, and DataView subclasses keep their prototype and own string/symbol properties (including circular references) without calling the subclass constructor. The core and CQRS READMEs document the decided behavior.
+
+- [#4051](https://github.com/fluojs/fluo/pull/4051) [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1) Thanks [@ayden94](https://github.com/ayden94)! - Throw `InvariantError` for route metadata missing a method or path while preserving the existing error message. Align `FrameworkService` with the standard class decorator type. Deprecate the internal `defineInjectionMetadata` and `getInjectionSchema` helpers for removal in the next `@fluojs/core` major release, preserving their current exports and runtime behavior.
+
+- [#4067](https://github.com/fluojs/fluo/pull/4067) [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca) Thanks [@ayden94](https://github.com/ayden94)! - Throw InvariantError when a non-configurable incompatible value occupies the internal metadata registry key instead of silently splitting metadata stores.
+
+- [#4070](https://github.com/fluojs/fluo/pull/4070) [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526) Thanks [@ayden94](https://github.com/ayden94)! - Reorganize the English and Korean core READMEs and document metadata storage, merge order, inheritance, cloning, and explicit polyfill installation without changing runtime behavior or APIs.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
 ## 2.1.3
 
 ### Patch Changes
