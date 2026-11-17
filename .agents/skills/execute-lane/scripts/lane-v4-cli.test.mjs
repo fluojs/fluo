@@ -909,7 +909,7 @@ if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) 
 
 for (const scenario of [
   { name: 'JavaScript test only', files: ['scripts/local-test-env.test.mjs'], visible: false },
-  { name: 'development script only', files: ['scripts/check.mjs'], visible: false },
+  { name: 'development script only', files: ['scripts/check.mjs'], visible: false, developmentOnly: true },
   { name: 'production source mixed with test', files: ['scripts/check.test.js', 'src/adapter.ts'], visible: true, firstVisible: false },
   { name: 'generation input outside files', files: ['scripts/generate.mjs'], visible: true },
   { name: 'unclassified script', files: ['scripts/unknown.mjs'], visible: true },
@@ -927,21 +927,41 @@ for (const scenario of [
       visible: packaging !== 'literal', packaging,
     }))),
   { name: 'indirect Markdown copy through build helper', files: ['src/assets/guide.md'], visible: true, buildCopy: true },
+  ...['CHANGELOG.md', 'design-rfc.md', 'design-rfc.ko.md'].map(file => ({
+    name: `root notes copied through helper ${file}`, files: [file],
+    visible: true, buildCopy: true, copyInput: file,
+  })),
+  { name: 'relative dynamic import reaches development script', files: ['scripts/check.mjs'], visible: true, dynamicBuild: true },
   { name: 'unclassified root Markdown input', files: ['input.md'], visible: true },
-  { name: 'nonshipping root documentation', files: ['CHANGELOG.md'], visible: false },
+  { name: 'nonshipping root documentation', files: ['CHANGELOG.md'], visible: false, developmentOnly: true },
+  { name: 'isolated root notes without filename exemption', files: ['notes.md'], visible: false, developmentOnly: true },
+  { name: 'root notes with undeclared production source', files: ['CHANGELOG.md', 'src/runtime.ts'], visible: true, developmentOnly: true },
+  { name: 'root notes with missing runtime entrypoint', files: ['CHANGELOG.md'], visible: true, developmentOnly: true, runtimeEntry: true },
 ]) {
   test(`#4154 CLI: ${scenario.name} -> observed consumer impact and changeset plan`, (t) => {
     const f = fixture(t);
     const manifest = { name: '@fluojs/cli',
       files: scenario.packaging === 'glob' ? ['test/**', 'fixtures/**'] : ['dist', 'bin'],
       scripts: scenario.buildCopy ? { build: 'node scripts/build.mjs' }
-        : { 'sandbox:check': 'node ./scripts/check.mjs', prebuild: 'node ./scripts/generate.mjs' } };
+        : scenario.dynamicBuild ? { build: 'node scripts/run.mjs', 'sandbox:check': 'node ./scripts/check.mjs' }
+          : scenario.developmentOnly ? { 'sandbox:check': 'node ./scripts/check.mjs' }
+            : { 'sandbox:check': 'node ./scripts/check.mjs', prebuild: 'node ./scripts/generate.mjs' },
+      ...(scenario.runtimeEntry ? { exports: './dist/index.js' } : {}) };
     mkdirSync(join(f.root, 'packages/cli'), { recursive: true });
     writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify(manifest));
     if (scenario.buildCopy) {
       mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
       writeFileSync(join(f.root, 'packages/cli/scripts/build.mjs'),
-        "import { cpSync } from 'node:fs';\ncpSync('src/assets', 'dist/assets', { recursive: true });\n");
+        "import { cpSync, mkdirSync } from 'node:fs';\nmkdirSync('dist', { recursive: true });\n" +
+        `cpSync(${JSON.stringify(scenario.copyInput ?? 'src/assets')}, ${JSON.stringify(scenario.copyInput ? 'dist/release-notes.md' : 'dist/assets')}, { recursive: true });\n`);
+    }
+    if (scenario.dynamicBuild || scenario.developmentOnly) {
+      mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
+      writeFileSync(join(f.root, 'packages/cli/scripts/check.mjs'), '// development command\n');
+    }
+    if (scenario.dynamicBuild) {
+      writeFileSync(join(f.root, 'packages/cli/scripts/run.mjs'),
+        "const name='check';\nawait import(`./${name}.mjs`);\n");
     }
     f.git(f.root, 'add', 'packages');
     f.git(f.root, 'commit', '-m', 'package metadata');
@@ -966,7 +986,9 @@ for (const scenario of [
       mkdirSync(dirname(join(f.worktree, path)), { recursive: true });
       writeFileSync(join(f.worktree, path), file === 'src/runtime.ts'
         ? "import '../scripts/check.mjs';\n" : file === 'scripts/build.mjs'
-          ? "import './check.mjs';\n" : '// changed\n');
+          ? "import './check.mjs';\n" : scenario.dynamicBuild
+            ? "import { mkdirSync, writeFileSync } from 'node:fs';\nmkdirSync('dist', { recursive: true });\nwriteFileSync('dist/result.txt', 'changed');\n"
+            : '// changed\n');
       f.git(f.worktree, 'add', '-f', path);
       f.commit(path, readFileSync(join(f.worktree, path), 'utf8'));
     }
@@ -981,6 +1003,14 @@ for (const scenario of [
     if (scenario.visible) assert.equal(row.decision.reason, 'changeset-missing');
     f.commit('.changeset/consumer.md', '---\n"@fluojs/cli": patch\n---\nPreserve consumer behavior.\n');
     assert.equal(f.plan().decision.action, 'review');
+    if (scenario.buildCopy || scenario.dynamicBuild) {
+      execFileSync(process.execPath, [scenario.dynamicBuild ? 'scripts/run.mjs' : 'scripts/build.mjs'],
+        { cwd: join(f.worktree, 'packages/cli'), env: f.env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const output = scenario.dynamicBuild ? 'dist/result.txt'
+        : scenario.copyInput ? 'dist/release-notes.md' : 'dist/assets/guide.md';
+      assert.equal(readFileSync(join(f.worktree, 'packages/cli', output), 'utf8'),
+        scenario.dynamicBuild ? 'changed' : '// changed\n');
+    }
   });
 }
 

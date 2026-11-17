@@ -698,8 +698,8 @@ test('#4154 classifier: nonshipping JavaScript tests do not require a changeset'
 	}
 });
 
-test('#4154 classifier: development entry differs from generation and production inputs', () => {
-	assert.equal(isConsumerVisibleFile('packages/cli/scripts/local-test-env.mjs'), false);
+test('#4154 classifier: unproven development entry and production inputs remain visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/cli/scripts/local-test-env.mjs'), true);
 	for (const file of [
 		'packages/cli/scripts/generate-published-internal-dependencies.mjs',
 		'packages/cli/src/new/templates/app/README.md',
@@ -768,15 +768,13 @@ test('C3b: package-root README and LICENSE ship in the tarball -> consumer-visib
 	assert.equal(isConsumerVisibleFile('packages/studio/LICENSE'), true);
 });
 
-test('C3b: production input README stays visible while non-shipping root docs stay invisible', () => {
+test('C3b: source and root Markdown without isolation proof stay visible', () => {
 	assert.equal(isConsumerVisibleFile('packages/studio/src/README.md'), true);
 	assert.equal(isConsumerVisibleFile('packages/cli/src/assets/guide.md'), true);
 	assert.equal(isConsumerVisibleFile('packages/cli/input.md'), true);
-	// CHANGELOG is not auto-included and files:["dist"] excludes it (verified in
-	// the same #3347 pack output).
-	assert.equal(isConsumerVisibleFile('packages/studio/CHANGELOG.md'), false);
-	assert.equal(isConsumerVisibleFile('packages/graphql/field-resolver-rfc.md'), false);
-	assert.equal(isConsumerVisibleFile('packages/graphql/field-resolver-rfc.ko.md'), false);
+	assert.equal(isConsumerVisibleFile('packages/studio/CHANGELOG.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/graphql/field-resolver-rfc.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/graphql/field-resolver-rfc.ko.md'), true);
 });
 
 test('C3b: changeset files are recognized, README is not', () => {

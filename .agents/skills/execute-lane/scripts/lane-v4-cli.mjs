@@ -660,40 +660,32 @@ export const isConsumerVisibleFile = (file, {
 	if (/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(withinPackage)) {
 		return false;
 	}
-	if (withinPackage.startsWith("scripts/")) {
-		if (read(file) === null || !manifest.scripts ||
-			typeof manifest.scripts !== "object" || Array.isArray(manifest.scripts)) return true;
-		const basename = withinPackage.split("/").at(-1);
+	const developmentScript = withinPackage.startsWith("scripts/");
+	const rootMarkdown = file.endsWith(".md") && !withinPackage.includes("/");
+	if (developmentScript || rootMarkdown) {
+		// Absence of a filename reference cannot prove isolation from arbitrary
+		// build/runtime code. Exclude only a closed, development-only package.
+		if (read(file) === null || (manifest.scripts !== undefined &&
+			(manifest.scripts === null || typeof manifest.scripts !== "object" ||
+				Array.isArray(manifest.scripts)))) return true;
+		if (Object.keys(manifest).some((key) =>
+			!["name", "version", "description", "private", "license", "files", "scripts"].includes(key))) return true;
 		const development = /^(?:pre|post)?(?:test|sandbox|lint|typecheck|check|bench|benchmark|dev)(?::|$)/;
-		const entries = Object.entries(manifest.scripts);
-		if (entries.some(([, command]) => typeof command !== "string")) return true;
-		const owners = entries.filter(([, command]) => command.includes(basename));
-		if (!owners.length || owners.some(([name]) => !development.test(name))) return true;
-		const production = entries.filter(([name]) => !development.test(name));
-		if (production.some(([, command]) =>
-			/[$`]|(?:^|[\s'"])scripts(?:[\s'"]|$)/.test(command) ||
-			owners.some(([name]) => command.includes(name)))) return true;
-		const { scripts, ...metadata } = manifest;
-		if (JSON.stringify(metadata).includes(basename)) return true;
+		const entries = Object.entries(manifest.scripts ?? {});
+		if (entries.some(([name, command]) =>
+			!development.test(name) || typeof command !== "string")) return true;
+		if (developmentScript && !entries.some(([, command]) => command.includes(withinPackage))) return true;
 		const tracked = run(root, "git", ["ls-tree", "-r", "--name-only", "-z", head, "--", packagePath], false);
 		if (tracked === null) return true;
 		for (const path of tracked.split("\0").filter(Boolean)) {
-			if (path === file || path === `${packagePath}package.json` ||
-				/\.(test|test-fixture)\.[cm]?[tj]s$/.test(path) ||
-				/(^|\/)(test-types|test-fixtures|__tests__|test|fixtures)\//.test(path.slice(packagePath.length)) ||
-				/\.(?:md|mdx)$/.test(path)) continue;
-			const bytes = read(path);
-			// A runtime/build reference (including another script) invalidates the
-			// development entry proof; do not infer isolation from files alone.
-			if (bytes === null || bytes.includes(basename) ||
-				/['"`](?:\.{1,2}\/)*scripts\/?['"`]/.test(bytes)) return true;
+			const relativePath = path.slice(packagePath.length);
+			if (path === file || relativePath === "package.json" ||
+				(relativePath.endsWith(".md") && !relativePath.includes("/")) ||
+				(relativePath.startsWith("scripts/") &&
+					entries.some(([, command]) => command.includes(relativePath)))) continue;
+			return true;
 		}
 		return false;
-	}
-	if (file.endsWith(".md")) {
-		// Retain known root release/design notes outside the payload. Other
-		// Markdown can reach the build through helpers absent from manifest text.
-		return !/^(?:CHANGELOG|[^/]+-rfc)(?:\.[a-z]{2})?\.md$/i.test(withinPackage);
 	}
 	return true;
 };
