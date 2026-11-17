@@ -166,9 +166,23 @@ function changesPath(source, simpleCommand = false) {
     if (/^PATH(?:\+)?=/u.test(word)
       && (context !== 'arguments' || /^PATH(?:\+)?=/u.test(raw))) return true;
     if (context === 'environment') {
-      if (['-i', '--ignore-environment', '-', '--unset=PATH', '-uPATH'].includes(word)) return true;
-      if (word === '-u' || word === '--unset') {
+      if (['--ignore-environment', '-', '--unset=PATH'].includes(word)) return true;
+      if (word === '--unset') {
         context = 'environment-unset';
+        continue;
+      }
+      if (/^-[^-]/u.test(word)) {
+        for (let offset = 1; offset < word.length; offset += 1) {
+          const option = word[offset];
+          if (option === 'i') return true;
+          if (option === 'u') {
+            const target = word.slice(offset + 1);
+            if (target === 'PATH') return true;
+            if (!target) context = 'environment-unset';
+            break;
+          }
+          if (option !== 'v' && option !== '0') return true;
+        }
         continue;
       }
     }

@@ -253,6 +253,9 @@ The same block applies to wrapped env resets: `env -u PATH pnpm test`,
 declared or inherited tools. Ordinary arguments such as
 `pnpm 'env -u PATH' '-i'` and `env -u OTHER pnpm 'PATH='` remain ordinary
 non-PATH-modifying contexts.
+Short env option groups are scanned in order: `-vi` and `-iv` also reset PATH.
+`-u` consumes its attached or following name, so `-vuindirect` does not treat
+the name's `i` as a flag. Unknown short options receive the same typed block.
 
 This is filesystem inspection and static string parsing only: the preparer
 checks executable regular files and artifact existence/kind without running the

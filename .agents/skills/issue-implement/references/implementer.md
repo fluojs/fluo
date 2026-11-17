@@ -72,6 +72,9 @@ PATH success. Wrapped env resets (`env -u PATH pnpm test`,
 They cannot use declared or inherited tools to infer success.
 `pnpm 'env -u PATH' '-i'` and `env -u OTHER pnpm 'PATH='` remain ordinary
 non-PATH-modifying contexts.
+Short env option groups are scanned in order: `-vi` and `-iv` also reset PATH.
+`-u` consumes its attached or following name; `-vuindirect` keeps that name
+literal. Unknown short options receive the same typed block.
 Use the declared PATH and already prepared build prerequisites
 for focused commands. CI-only checks remain pending remote checks, never local
 PASS. Missing items and their commands are input-preparation blocks with

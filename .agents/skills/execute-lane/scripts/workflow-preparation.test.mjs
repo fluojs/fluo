@@ -936,6 +936,8 @@ test('#4150 PATH lifetime: export compound and quoted operators -> resolved none
     (directory) => `PATH=${directory} pnpm '&&' "||" ';' '|' '&' '(' ')' '{' '}'`,
     () => `env -u OTHER pnpm 'PATH=' '--unset=PATH' '-i'`,
     () => `pnpm 'env -u PATH' '--unset=PATH' '-i'`,
+    () => `env -vuindirect pnpm '-vi' 'PATH='`,
+    () => `env -vui pnpm '-i'`,
   ]) {
     const value = commandPathFixture(t, buildCommand);
 
@@ -945,6 +947,15 @@ test('#4150 PATH lifetime: export compound and quoted operators -> resolved none
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout).prerequisites.local[0].tools.map((tool) => tool.path),
       ['pnpm', 'node'].map((name) => join(value.toolDir, name)));
+  }
+});
+
+test('#4150 env option clusters: ignore-environment flags -> typed nonexecuting block', (t) => {
+  for (const options of ['-vi', '-iv', '-vvvi', '-v0i', '-viu OTHER', '-vu PATH']) {
+    const value = commandPathFixture(t, (_directory, marker) =>
+      `/usr/bin/env ${options} pnpm test; /bin/sh -c 'printf ran > "${marker}"'`);
+
+    assertUnsupportedCommandPath(value);
   }
 });
 

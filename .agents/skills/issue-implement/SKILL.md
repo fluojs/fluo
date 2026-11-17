@@ -110,6 +110,9 @@ Wrapped env resets (`env -u PATH pnpm test`, `env --unset=PATH pnpm test`,
 and `env -` forms) also produce that typed block. They cannot use declared or
 inherited tools to infer success. `pnpm 'env -u PATH' '-i'` and
 `env -u OTHER pnpm 'PATH='` retain their ordinary argument behavior.
+Short env option groups are scanned in order: `-vi` and `-iv` also reset PATH.
+`-u` consumes its attached or following name; `-vuindirect` keeps that name
+literal. Unknown short options receive the same typed block.
 
 ## Authority and completion
 
