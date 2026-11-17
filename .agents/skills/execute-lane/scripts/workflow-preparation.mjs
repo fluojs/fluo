@@ -150,12 +150,56 @@ function finalizePreflight(input) {
   return { status: 'prepared', kind: 'preflight-contract', contract };
 }
 
+// Classify literal shell words without evaluating assignments or substitutions.
+function changesPath(source) {
+  let context = 'command';
+  const words = /(?:'[^']*'|"(?:\\.|[^"\\])*"|\\[\s\S]|[^\s;&|(){}'"\\])+|[;&|(){}\n]/gu;
+  for (const [raw] of source.matchAll(words)) {
+    if (/^[;&|(){}\n]$/u.test(raw)) {
+      context = 'command';
+      continue;
+    }
+    const word = raw.replace(/'([^']*)'|"((?:\\.|[^"\\])*)"|\\([\s\S])/gu,
+      (_match, single, double, escaped) => single ?? (double === undefined
+        ? escaped : double.replace(/\\([$`"\\\n])/gu, '$1')));
+    if (/^PATH(?:\+)?=/u.test(word)
+      && (context !== 'arguments' || /^PATH(?:\+)?=/u.test(raw))) return true;
+    switch (context) {
+      case 'arguments':
+      case 'assignment':
+        break;
+      case 'unset':
+        if (word === 'PATH') return true;
+        break;
+      case 'shell':
+        if (changesPath(word)) return true;
+        break;
+      case 'environment':
+      case 'command':
+        if (/^-|^[a-zA-Z_][a-zA-Z0-9_]*=/u.test(word)) break;
+        switch (basename(word)) {
+          case 'command': case 'builtin': case 'exec': case 'nohup':
+            context = 'command'; break;
+          case 'env':
+            context = 'environment'; break;
+          case 'export': case 'readonly': case 'declare': case 'typeset': case 'local':
+            context = 'assignment'; break;
+          case 'unset':
+            context = 'unset'; break;
+          case 'sh': case 'bash': case 'dash': case 'zsh': case 'ksh': case 'eval':
+            context = 'shell'; break;
+          default:
+            context = 'arguments';
+        }
+        break;
+    }
+  }
+  return false;
+}
+
 // Read only the supported leading PATH assignment, never evaluate shell code.
 function commandPath(command) {
   const assignment = /^\s*(export[ \t]+)?PATH=/u.exec(command);
-  // Literal quoted arguments cannot assign PATH; keep dynamic expressions visible.
-  const changesPath = (source) => /(?:^|[\s;&|("'`])(?:PATH\s*\+?=|unset\s+PATH\b)/u.test(
-    source.replace(/'[^']*'|"(?:\\.|[^"\\$`])*"/gu, 'x'));
   const unsupported = () => {
     throw new WorkflowPreparationError(`implement preparation: unsupported command PATH: ${command}`);
   };
