@@ -130,8 +130,9 @@ also produce that typed block rather than using declared or inherited tools.
 `pnpm 'env -u PATH' '-i'` and `env -u OTHER pnpm 'PATH='` remain ordinary
 non-PATH-modifying contexts. Short env option groups are scanned in order:
 `-vi` and `-iv` also reset PATH. `-u` consumes its attached or following name;
-`-vuindirect` keeps that name literal. Unknown short options receive the same
-typed block. The lead supplies PATH and completes
+`-vuindirect` keeps that name literal. Unknown env options, including unmodelled
+long options and their operands, receive the same typed block.
+The lead supplies PATH and completes
 install/build before dispatch. CI-only `{validation,kind:"ci-only",check,reason}`
 entries are returned separately, never as local success. Old contracts retain
 their digest and return `prerequisites.status:"undeclared"` without inference.

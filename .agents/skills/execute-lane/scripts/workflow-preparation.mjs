@@ -171,6 +171,7 @@ function changesPath(source, simpleCommand = false) {
         context = 'environment-unset';
         continue;
       }
+      if (word.startsWith('--') && !word.startsWith('--unset=')) return true;
       if (/^-[^-]/u.test(word)) {
         for (let offset = 1; offset < word.length; offset += 1) {
           const option = word[offset];

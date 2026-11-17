@@ -112,7 +112,8 @@ inherited tools to infer success. `pnpm 'env -u PATH' '-i'` and
 `env -u OTHER pnpm 'PATH='` retain their ordinary argument behavior.
 Short env option groups are scanned in order: `-vi` and `-iv` also reset PATH.
 `-u` consumes its attached or following name; `-vuindirect` keeps that name
-literal. Unknown short options receive the same typed block.
+literal. Unknown env options, including unmodelled long options and their
+operands, receive the same typed block.
 
 ## Authority and completion
 

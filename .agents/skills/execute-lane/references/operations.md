@@ -255,7 +255,9 @@ declared or inherited tools. Ordinary arguments such as
 non-PATH-modifying contexts.
 Short env option groups are scanned in order: `-vi` and `-iv` also reset PATH.
 `-u` consumes its attached or following name, so `-vuindirect` does not treat
-the name's `i` as a flag. Unknown short options receive the same typed block.
+the name's `i` as a flag. Unknown env options receive the same typed block;
+for example, `env --chdir /tmp -i pnpm test` is rejected without interpreting
+the option's operand.
 
 This is filesystem inspection and static string parsing only: the preparer
 checks executable regular files and artifact existence/kind without running the

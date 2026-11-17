@@ -204,7 +204,8 @@ inherited tools. `pnpm 'env -u PATH' '-i'` and
 `env -u OTHER pnpm 'PATH='` retain their ordinary argument behavior.
 Short env option groups are scanned in order: `-vi` and `-iv` also reset PATH.
 `-u` consumes its attached or following name; `-vuindirect` keeps that name
-literal. Unknown short options receive the same typed block.
+literal. Unknown env options, including unmodelled long options and their
+operands, receive the same typed block.
 A CI-only entry is `{validation,kind:"ci-only",check,reason}` and cannot claim
 local success. Legacy artifacts keep `validation:string[]`, unchanged digests
 and policy when requirements are absent.

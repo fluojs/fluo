@@ -938,6 +938,8 @@ test('#4150 PATH lifetime: export compound and quoted operators -> resolved none
     () => `pnpm 'env -u PATH' '--unset=PATH' '-i'`,
     () => `env -vuindirect pnpm '-vi' 'PATH='`,
     () => `env -vui pnpm '-i'`,
+    () => `env --unset=OTHER pnpm '--chdir' '/tmp' '-i'`,
+    () => `env --unset OTHER pnpm '--split-string' '-vi'`,
   ]) {
     const value = commandPathFixture(t, buildCommand);
 
@@ -952,6 +954,15 @@ test('#4150 PATH lifetime: export compound and quoted operators -> resolved none
 
 test('#4150 env option clusters: ignore-environment flags -> typed nonexecuting block', (t) => {
   for (const options of ['-vi', '-iv', '-vvvi', '-v0i', '-viu OTHER', '-vu PATH']) {
+    const value = commandPathFixture(t, (_directory, marker) =>
+      `/usr/bin/env ${options} pnpm test; /bin/sh -c 'printf ran > "${marker}"'`);
+
+    assertUnsupportedCommandPath(value);
+  }
+});
+
+test('#4150 env unknown options: operand cannot hide reset -> typed nonexecuting block', (t) => {
+  for (const options of ['--chdir /tmp -i', '--chdir=/tmp -i', "--split-string 'OTHER=1' -i", '--chdir /tmp']) {
     const value = commandPathFixture(t, (_directory, marker) =>
       `/usr/bin/env ${options} pnpm test; /bin/sh -c 'printf ran > "${marker}"'`);
 
