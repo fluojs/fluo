@@ -937,9 +937,25 @@ for (const scenario of [
   { name: 'isolated root notes without filename exemption', files: ['notes.md'], visible: false, developmentOnly: true },
   { name: 'root notes with undeclared production source', files: ['CHANGELOG.md', 'src/runtime.ts'], visible: true, developmentOnly: true },
   { name: 'root notes with missing runtime entrypoint', files: ['CHANGELOG.md'], visible: true, developmentOnly: true, runtimeEntry: true },
+  ...['root', 'sibling'].flatMap(externalConsumer =>
+    ['CHANGELOG.md', 'scripts/check.mjs'].map(file => ({
+      name: `${externalConsumer} computed consumer of ${file}`, files: [file],
+      visible: true, developmentOnly: true, externalConsumer,
+    }))),
+  ...['tooling/ci/unrelated.mjs', '.agents/opaque/build.mjs'].map(externalDefinition => ({
+    name: `unknown external definition ${externalDefinition}`, files: ['CHANGELOG.md'],
+    visible: true, developmentOnly: true, externalDefinition,
+  })),
 ]) {
   test(`#4154 CLI: ${scenario.name} -> observed consumer impact and changeset plan`, (t) => {
     const f = fixture(t);
+    if (scenario.developmentOnly) {
+      // Keep the executable harness on disk, outside this scenario's observed
+      // repository. Only explicitly added package/consumer files form its base.
+      writeFileSync(join(f.root, '.gitignore'),
+        `${readFileSync(join(f.root, '.gitignore'), 'utf8')}.gitignore\n/docs/\n/tooling/\n/.agents/\n`);
+      f.git(f.root, 'rm', '-r', '--cached', '.');
+    }
     const manifest = { name: '@fluojs/cli',
       files: scenario.packaging === 'glob' ? ['test/**', 'fixtures/**'] : ['dist', 'bin'],
       scripts: scenario.buildCopy ? { build: 'node scripts/build.mjs' }
@@ -963,6 +979,40 @@ for (const scenario of [
       writeFileSync(join(f.root, 'packages/cli/scripts/run.mjs'),
         "const name='check';\nawait import(`./${name}.mjs`);\n");
     }
+    const externalScript = scenario.externalConsumer && scenario.files[0].endsWith('.mjs');
+    const externalHelper = scenario.externalConsumer === 'root'
+      ? 'tooling/build.mjs' : 'packages/builder/scripts/build.mjs';
+    const externalOutput = scenario.externalConsumer === 'root' ? 'packages/cli/dist' : 'packages/builder/dist';
+    if (scenario.externalConsumer) {
+      writeFileSync(join(f.root, 'packages/cli', scenario.files[0]),
+        externalScript ? "export const content = 'base';\n" : '// base\n');
+      mkdirSync(dirname(join(f.root, externalHelper)), { recursive: true });
+      const prefix = scenario.externalConsumer === 'root' ? '../packages/' : '../../';
+      writeFileSync(join(f.root, externalHelper),
+        "import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';\n" +
+        `const input = new URL(${JSON.stringify(prefix)} + ['c', 'li'].join('') + '/' + ` +
+        (externalScript ? "'scripts/' + ['ch', 'eck'].join('') + '.mjs'" : "['CHANGE', 'LOG.md'].join('')") +
+        ", import.meta.url);\n" +
+        `const output = new URL(${JSON.stringify(scenario.externalConsumer === 'root' ? '../packages/cli/dist/' : '../dist/')}, import.meta.url);\n` +
+        "mkdirSync(output, { recursive: true });\n" +
+        `writeFileSync(new URL('result.txt', output), ${externalScript ? '(await import(input.href)).content' : "readFileSync(input, 'utf8')"});\n`);
+      const consumerManifest = scenario.externalConsumer === 'root'
+        ? 'package.json' : 'packages/builder/package.json';
+      writeFileSync(join(f.root, consumerManifest), JSON.stringify({
+        name: '@fluojs/builder', files: ['dist'],
+        scripts: { build: scenario.externalConsumer === 'root' ? 'node tooling/build.mjs' : 'node scripts/build.mjs' },
+      }));
+      f.git(f.root, 'add', '-f', externalHelper, consumerManifest);
+      execFileSync(process.execPath, [externalHelper], { cwd: f.root, env: f.env });
+      assert.equal(readFileSync(join(f.root, externalOutput, 'result.txt'), 'utf8'),
+        externalScript ? 'base' : '// base\n');
+      rmSync(join(f.root, externalOutput), { recursive: true });
+    }
+    if (scenario.externalDefinition) {
+      mkdirSync(dirname(join(f.root, scenario.externalDefinition)), { recursive: true });
+      writeFileSync(join(f.root, scenario.externalDefinition), 'export {};\n');
+      f.git(f.root, 'add', '-f', scenario.externalDefinition);
+    }
     f.git(f.root, 'add', 'packages');
     f.git(f.root, 'commit', '-m', 'package metadata');
     if (scenario.packaging === 'deleted') {
@@ -971,7 +1021,7 @@ for (const scenario of [
     }
     f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
     f.set('preflight', f.preflight({ scope: ['docs/', 'packages/', '.changeset/'] }));
-    f.implement();
+    f.git(f.root, 'worktree', 'add', '-b', 'issue-42', f.worktree, 'main');
     // The engine checkout deliberately disagrees with the observed issue head.
     mkdirSync(join(f.root, 'packages/cli'), { recursive: true });
     writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify({ ...manifest, files: ['scripts'] }));
@@ -986,13 +1036,21 @@ for (const scenario of [
       mkdirSync(dirname(join(f.worktree, path)), { recursive: true });
       writeFileSync(join(f.worktree, path), file === 'src/runtime.ts'
         ? "import '../scripts/check.mjs';\n" : file === 'scripts/build.mjs'
-          ? "import './check.mjs';\n" : scenario.dynamicBuild
+          ? "import './check.mjs';\n" : externalScript ? "export const content = 'changed';\n" : scenario.dynamicBuild
             ? "import { mkdirSync, writeFileSync } from 'node:fs';\nmkdirSync('dist', { recursive: true });\nwriteFileSync('dist/result.txt', 'changed');\n"
             : '// changed\n');
       f.git(f.worktree, 'add', '-f', path);
       f.commit(path, readFileSync(join(f.worktree, path), 'utf8'));
     }
 
+    if (scenario.externalConsumer) {
+      assert.deepEqual(f.git(f.worktree, 'diff', '--name-only', 'origin/main', 'HEAD').split('\n'),
+        [`packages/cli/${scenario.files[0]}`]);
+      execFileSync(process.execPath, [externalHelper], { cwd: f.worktree, env: f.env });
+      assert.equal(readFileSync(join(f.worktree, externalOutput, 'result.txt'), 'utf8'),
+        externalScript ? 'changed' : '// changed\n');
+      rmSync(join(f.worktree, externalOutput), { recursive: true });
+    }
     assert.equal(isConsumerVisibleFile(`packages/cli/${scenario.files[0]}`,
       { root: f.root, head: f.git(f.worktree, 'rev-parse', 'HEAD') }), scenario.firstVisible ?? scenario.visible);
     const row = f.plan();

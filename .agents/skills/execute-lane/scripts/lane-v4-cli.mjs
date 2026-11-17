@@ -664,7 +664,8 @@ export const isConsumerVisibleFile = (file, {
 	const rootMarkdown = file.endsWith(".md") && !withinPackage.includes("/");
 	if (developmentScript || rootMarkdown) {
 		// Absence of a filename reference cannot prove isolation from arbitrary
-		// build/runtime code. Exclude only a closed, development-only package.
+		// build/runtime code. Exclude only when the entire observed repository
+		// is closed over this development-only package; external files are unknown.
 		if (read(file) === null || (manifest.scripts !== undefined &&
 			(manifest.scripts === null || typeof manifest.scripts !== "object" ||
 				Array.isArray(manifest.scripts)))) return true;
@@ -675,9 +676,10 @@ export const isConsumerVisibleFile = (file, {
 		if (entries.some(([name, command]) =>
 			!development.test(name) || typeof command !== "string")) return true;
 		if (developmentScript && !entries.some(([, command]) => command.includes(withinPackage))) return true;
-		const tracked = run(root, "git", ["ls-tree", "-r", "--name-only", "-z", head, "--", packagePath], false);
+		const tracked = run(root, "git", ["ls-tree", "-r", "--name-only", "-z", head], false);
 		if (tracked === null) return true;
 		for (const path of tracked.split("\0").filter(Boolean)) {
+			if (!path.startsWith(packagePath)) return true;
 			const relativePath = path.slice(packagePath.length);
 			if (path === file || relativePath === "package.json" ||
 				(relativePath.endsWith(".md") && !relativePath.includes("/")) ||
