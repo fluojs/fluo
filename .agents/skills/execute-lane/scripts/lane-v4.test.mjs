@@ -692,6 +692,30 @@ test('C3b: test files are not consumer-visible', () => {
 	assert.equal(isConsumerVisibleFile('packages/testing/src/module.test-fixture.ts'), false);
 });
 
+test('#4154 classifier: nonshipping JavaScript tests do not require a changeset', () => {
+	for (const extension of ['mjs', 'cjs', 'js', 'ts', 'cts', 'mts']) {
+		assert.equal(isConsumerVisibleFile(`packages/cli/scripts/local-test-env.test.${extension}`), false, extension);
+	}
+});
+
+test('#4154 classifier: development entry differs from generation and production inputs', () => {
+	assert.equal(isConsumerVisibleFile('packages/cli/scripts/local-test-env.mjs'), false);
+	for (const file of [
+		'packages/cli/scripts/generate-published-internal-dependencies.mjs',
+		'packages/cli/src/new/templates/app/README.md',
+		'packages/cli/src/new/templates/app/app.test.js',
+		'packages/cli/bin/fluo.mjs',
+		'packages/react/src/runtime.ts',
+		'packages/platform-express/src/adapter.ts',
+		'packages/prisma/src/fixtures/client.ts',
+		'packages/cli/dist/new/templates/README.md',
+		'packages/cli/package.json',
+		'packages/cli/README.ko.md',
+		'packages/cli/LICENSE',
+		'packages/unknown/scripts/check.mjs',
+	]) assert.equal(isConsumerVisibleFile(file), true, file);
+});
+
 test('C3b: test-support declarations outside src are not consumer-visible', () => {
 	assert.equal(isConsumerVisibleFile('packages/platform-express/test-types/testing-http-adapter-portability.d.ts'), false);
 	assert.equal(isConsumerVisibleFile('packages/platform-bun/__tests__/helpers.ts'), false);
@@ -734,9 +758,8 @@ test('C3b: package-root README and LICENSE ship in the tarball -> consumer-visib
 	assert.equal(isConsumerVisibleFile('packages/studio/LICENSE'), true);
 });
 
-test('C3b: nested README and non-shipping package-root docs stay invisible', () => {
-	// npm's auto-include applies only at the package root.
-	assert.equal(isConsumerVisibleFile('packages/studio/src/README.md'), false);
+test('C3b: production input README stays visible while non-shipping root docs stay invisible', () => {
+	assert.equal(isConsumerVisibleFile('packages/studio/src/README.md'), true);
 	// CHANGELOG is not auto-included and files:["dist"] excludes it (verified in
 	// the same #3347 pack output).
 	assert.equal(isConsumerVisibleFile('packages/studio/CHANGELOG.md'), false);

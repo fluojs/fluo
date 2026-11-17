@@ -598,10 +598,8 @@ export const validateLocalCheckFact = (
 	};
 };
 
-// Consumer-visible only: test files, test-support types, fixtures, and docs do
-// not ship to consumers and therefore do not require a changeset per
-// docs/contracts/release-governance.md. Exported so the gate is testable —
-// when this lived inline it could drift silently.
+// Release impact includes payload and production inputs; exclusion needs
+// evidence from the issue head (docs/contracts/release-governance.md).
 //
 // EXCEPTION the .md blanket exclusion got wrong (caught by a reviewer on
 // #3347): npm auto-includes package-root README* and LICENSE/LICENCE* in the
@@ -613,23 +611,92 @@ export const validateLocalCheckFact = (
 const packageRootAlwaysPacked =
 	/^packages\/[^/]+\/(?:README|LICEN[SC]E)[^/]*$/i;
 
-export const isConsumerVisibleFile = (file) => {
+export const isConsumerVisibleFile = (file, {
+	root = resolve(fileURLToPath(new URL("../../../../", import.meta.url))),
+	head = "HEAD",
+} = {}) => {
 	if (packageRootAlwaysPacked.test(file)) {
 		return true;
 	}
-	if (!file.startsWith("packages/") || file.endsWith(".md")) {
+	if (!/^packages\/[^/]+\//.test(file)) {
 		return false;
 	}
-	if (/\.(test|test-fixture)\.[cm]?ts$/.test(file)) {
-		return false;
+	const packagePath = file.match(/^packages\/[^/]+\//)[0];
+	const withinPackage = file.slice(packagePath.length);
+	const read = (path) => run(root, "git", ["show", `${head}:${path}`], false);
+	const manifestBytes = read(`${packagePath}package.json`);
+	let manifest;
+	try {
+		manifest = manifestBytes === null ? null : JSON.parse(manifestBytes);
+	} catch (error) {
+		if (!(error instanceof SyntaxError)) throw error;
+		return true;
 	}
-	const withinPackage = file.replace(/^packages\/[^/]+\//, "");
+	// Only literal package paths prove exclusion. Unsupported pack rules or
+	// absent/deleted metadata never establish that an input is development-only.
+	const files = manifest?.files;
+	const literalFiles = Array.isArray(files) && files.every((path) =>
+		typeof path === "string" && /^(?:\.\/)?[\w-]+(?:\/[\w.-]+)*\/?$/.test(path) &&
+		!path.split("/").some((part) => part === ".." || part === "."));
+	const packed = literalFiles && files.some((path) => {
+		const normalized = path.replace(/^\.\//, "").replace(/\/$/, "");
+		return withinPackage === normalized || withinPackage.startsWith(`${normalized}/`);
+	});
+	if (packed || /^(?:dist|bin)\//.test(withinPackage) || withinPackage === "package.json") {
+		return true;
+	}
+	if (withinPackage.includes("/templates/")) {
+		return true;
+	}
+	if (/\.(test|test-fixture)\.[cm]?[tj]s$/.test(file)) {
+		return !literalFiles;
+	}
 	if (withinPackage.startsWith("fixtures/")) {
 		return false;
 	}
-	return !/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(
-		withinPackage,
-	);
+	if (/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(withinPackage)) {
+		return false;
+	}
+	if (withinPackage.startsWith("scripts/")) {
+		if (!literalFiles || read(file) === null || !manifest.scripts ||
+			typeof manifest.scripts !== "object" || Array.isArray(manifest.scripts)) return true;
+		const basename = withinPackage.split("/").at(-1);
+		const development = /^(?:pre|post)?(?:test|sandbox|lint|typecheck|check|bench|benchmark|dev)(?::|$)/;
+		const entries = Object.entries(manifest.scripts);
+		if (entries.some(([, command]) => typeof command !== "string")) return true;
+		const owners = entries.filter(([, command]) => command.includes(basename));
+		if (!owners.length || owners.some(([name]) => !development.test(name))) return true;
+		const production = entries.filter(([name]) => !development.test(name));
+		if (production.some(([, command]) =>
+			/[$`]|(?:^|[\s'"])scripts(?:[\s'"]|$)/.test(command) ||
+			owners.some(([name]) => command.includes(name)))) return true;
+		const { scripts, ...metadata } = manifest;
+		if (JSON.stringify(metadata).includes(basename)) return true;
+		const tracked = run(root, "git", ["ls-tree", "-r", "--name-only", "-z", head, "--", packagePath], false);
+		if (tracked === null) return true;
+		for (const path of tracked.split("\0").filter(Boolean)) {
+			if (path === file || path === `${packagePath}package.json` ||
+				/\.(test|test-fixture)\.[cm]?[tj]s$/.test(path) ||
+				/(^|\/)(test-types|test-fixtures|__tests__|test|fixtures)\//.test(path.slice(packagePath.length)) ||
+				/\.(?:md|mdx)$/.test(path)) continue;
+			const bytes = read(path);
+			// A runtime/build reference (including another script) invalidates the
+			// development entry proof; do not infer isolation from files alone.
+			if (bytes === null || bytes.includes(basename) ||
+				/['"`](?:\.{1,2}\/)*scripts\/?['"`]/.test(bytes)) return true;
+		}
+		return false;
+	}
+	if (file.endsWith(".md")) {
+		// Source templates/assets copied by a production command are build inputs.
+		if (!literalFiles) return true;
+		return Object.entries(manifest.scripts ?? {}).some(([name, command]) =>
+			!/^(?:test|sandbox|lint|typecheck)(?::|$)/.test(name) &&
+			typeof command === "string" &&
+			withinPackage.split("/").slice(0, -1).some((_, index, parts) =>
+				command.includes(parts.slice(0, index + 1).join("/"))));
+	}
+	return true;
 };
 
 export const isChangesetFile = (file) =>
@@ -910,7 +977,7 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		}
 	})();
 	const publicPackagesTouched = (changedFiles ?? []).some(
-		isConsumerVisibleFile,
+		(file) => isConsumerVisibleFile(file, { root, head: headSha }),
 	);
 	const changesetPresent = (changedFiles ?? []).some(isChangesetFile);
 

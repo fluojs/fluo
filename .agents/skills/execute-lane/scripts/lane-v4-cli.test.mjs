@@ -14,6 +14,7 @@ import { createPreflight, evaluatePreflight } from '../../issue-preflight/script
 import { readRetroEvents } from '../../retrospective-lane/scripts/retro.mjs';
 import { summarizeIntegrationMeasurements } from './generated-integration.mjs';
 import { localCheckBinding } from './lane-v4.mjs';
+import { isConsumerVisibleFile } from './lane-v4-cli.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
 
@@ -905,6 +906,63 @@ if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) 
   };
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog, env };
 };
+
+for (const scenario of [
+  { name: 'JavaScript test only', files: ['scripts/local-test-env.test.mjs'], visible: false },
+  { name: 'development script only', files: ['scripts/check.mjs'], visible: false },
+  { name: 'production source mixed with test', files: ['scripts/check.test.js', 'src/adapter.ts'], visible: true, firstVisible: false },
+  { name: 'generation input outside files', files: ['scripts/generate.mjs'], visible: true },
+  { name: 'unclassified script', files: ['scripts/unknown.mjs'], visible: true },
+  { name: 'template test copied into output', files: ['src/new/templates/app.test.js'], visible: true },
+  { name: 'packed Markdown', files: ['dist/guide.md'], visible: true },
+  { name: 'packed script test', files: ['bin/check.test.cjs'], visible: true },
+  { name: 'missing manifest after deletion', files: ['scripts/check.mjs'], visible: true, metadata: 'deleted' },
+  { name: 'invalid manifest', files: ['scripts/check.mjs'], visible: true, metadata: 'invalid' },
+  { name: 'unsupported files pattern', files: ['scripts/check.mjs'], visible: true, metadata: 'glob' },
+  { name: 'runtime references development entry', files: ['scripts/check.mjs', 'src/runtime.ts'], visible: true },
+  { name: 'build helper references development entry', files: ['scripts/check.mjs', 'scripts/build.mjs'], visible: true },
+]) {
+  test(`#4154 CLI: ${scenario.name} -> observed consumer impact and changeset plan`, (t) => {
+    const f = fixture(t);
+    const manifest = { name: '@fluojs/cli', files: ['dist', 'bin'],
+      scripts: { 'sandbox:check': 'node ./scripts/check.mjs', prebuild: 'node ./scripts/generate.mjs' } };
+    mkdirSync(join(f.root, 'packages/cli'), { recursive: true });
+    writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify(manifest));
+    f.git(f.root, 'add', 'packages');
+    f.git(f.root, 'commit', '-m', 'package metadata');
+    f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    f.set('preflight', f.preflight({ scope: ['docs/', 'packages/', '.changeset/'] }));
+    f.implement();
+    // The engine checkout deliberately disagrees with the observed issue head.
+    writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify({ ...manifest, files: ['scripts'] }));
+    if (scenario.metadata === 'deleted') {
+      rmSync(join(f.worktree, 'packages/cli/package.json'));
+    } else if (scenario.metadata) {
+      writeFileSync(join(f.worktree, 'packages/cli/package.json'),
+        scenario.metadata === 'invalid' ? '{' : JSON.stringify({ ...manifest, files: ['dist/**'] }));
+    }
+    for (const file of scenario.files) {
+      const path = `packages/cli/${file}`;
+      mkdirSync(dirname(join(f.worktree, path)), { recursive: true });
+      writeFileSync(join(f.worktree, path), file === 'src/runtime.ts'
+        ? "import '../scripts/check.mjs';\n" : file === 'scripts/build.mjs'
+          ? "import './check.mjs';\n" : '// changed\n');
+      f.git(f.worktree, 'add', '-f', path);
+      f.commit(path, readFileSync(join(f.worktree, path), 'utf8'));
+    }
+
+    assert.equal(isConsumerVisibleFile(`packages/cli/${scenario.files[0]}`,
+      { root: f.root, head: f.git(f.worktree, 'rev-parse', 'HEAD') }), scenario.firstVisible ?? scenario.visible);
+    const row = f.plan();
+
+    assert.equal(row.obs.publicPackagesTouched, scenario.visible);
+    assert.equal(row.obs.changesetPresent, false);
+    assert.equal(row.decision.action, scenario.visible ? 'fix-back' : 'review');
+    if (scenario.visible) assert.equal(row.decision.reason, 'changeset-missing');
+    f.commit('.changeset/consumer.md', '---\n"@fluojs/cli": patch\n---\nPreserve consumer behavior.\n');
+    assert.equal(f.plan().decision.action, 'review');
+  });
+}
 
 const importedAdaptive = {
   retry_count_is_terminal: false, max_same_failure_repeats: null,
