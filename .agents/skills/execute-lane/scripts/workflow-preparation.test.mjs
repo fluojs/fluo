@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -762,6 +762,86 @@ test('#4129 implement prerequisites: inherited PATH and CI-only requirement -> c
   assert.deepEqual(prerequisites.local[0].artifacts.map((a) => a.available), [true, true, true]);
   assert.deepEqual(prerequisites.ci_only, [requirements[1]]);
 });
+
+for (const scenario of [
+  { name: 'literal replacement ignores inherited-only pnpm', path: (d) => `PATH=${d.empty}`, declared: false, found: null },
+  { name: 'export replacement ignores inherited and declared directories', path: (d) => `export PATH=${d.empty};`, found: null },
+  { name: 'single-quoted replacement ignores inherited and declared directories', path: (d) => `PATH='${d.empty}'`, found: null },
+  { name: 'literal command PATH wins over declared directories', path: (d) => `PATH=${d.command}`, found: 'command' },
+  { name: 'export command PATH wins over declared directories', path: (d) => `export PATH=${d.command};`, found: 'command' },
+  { name: 'single-quoted literal PATH', path: (d) => `PATH='${d.command}'`, found: 'command' },
+  { name: 'double-quoted literal PATH with spaces', path: (d) => `PATH="${d.spaces}"`, found: 'spaces' },
+  { name: 'appended inherited PATH preserves command directory priority', path: (d) => `PATH=${d.command}:$PATH`, found: 'command' },
+  { name: 'prepended inherited PATH preserves inherited directory priority', path: (d) => `PATH=$PATH:${d.command}`, found: 'inherited' },
+  { name: 'middle inherited PATH expands at its position', path: (d) => `PATH=${d.empty}:$PATH:${d.command}`, found: 'inherited' },
+  { name: 'double-quoted inherited PATH expands', path: (d) => `PATH="${d.empty}:$PATH"`, found: 'inherited' },
+  { name: 'export double-quoted inherited PATH expands', path: (d) => `export PATH="${d.empty}:$PATH";`, found: 'inherited' },
+  { name: 'single-quoted PATH variable stays literal', path: (d) => `PATH='${d.empty}:$PATH'`, found: null },
+  { name: 'empty replacement does not restore inherited PATH', path: () => 'PATH=""', found: null },
+  { name: 'relative PATH resolves from assigned worktree', path: () => 'PATH=node_modules/path-tools', found: 'relative' },
+  { name: 'non-executable candidate is excluded', path: (d) => `PATH=${d.nonExecutable}`, found: null },
+  { name: 'directory candidate is excluded', path: (d) => `PATH=${d.directory}`, found: null },
+  { name: 'command substitution is blocked without execution', path: (d) => `PATH=$(/bin/sh -c 'printf ran > "${d.marker}"')`, blocked: true },
+  { name: 'backtick substitution is blocked without execution', path: (d) => `PATH=\`printf ran > "${d.marker}"\``, blocked: true },
+  { name: 'unsupported variable is blocked', path: () => 'PATH=$HOME/bin:$PATH', blocked: true },
+  { name: 'parameter operation is blocked', path: () => 'PATH=${PATH:-/bin}', blocked: true },
+  { name: 'tilde expansion is blocked', path: () => 'PATH=~/bin', blocked: true },
+  { name: 'glob expansion is blocked', path: (d) => `PATH=${d.empty}/*`, blocked: true },
+  { name: 'unterminated quoting is blocked', path: (d) => `PATH="${d.command}`, blocked: true },
+  { name: 'wrapped assignment is blocked', path: (d) => `env PATH=${d.command}`, blocked: true },
+  { name: 'later assignment is blocked', path: (d) => `printf ready; PATH=${d.command}`, blocked: true },
+  { name: 'multiple PATH assignments are blocked', path: (d) => `PATH=${d.command} PATH=${d.empty}`, blocked: true },
+]) {
+  test(`#4150 implement command PATH: ${scenario.name} -> ${scenario.blocked ? 'typed block' : scenario.found ? 'resolved executable' : 'missing pnpm'}`, (t) => {
+    const value = implementation(t);
+    const directories = Object.fromEntries(['empty', 'command', 'inherited', 'spaces', 'nonExecutable', 'directory']
+      .map((name) => [name, join(value.input.artifact_root, name === 'spaces' ? 'command tools' : name)]));
+    directories.relative = join(realpathSync(value.worktree), 'node_modules/path-tools');
+    directories.marker = join(value.input.artifact_root, 'executed');
+    for (const [name, directory] of Object.entries(directories)) {
+      if (name === 'marker') continue;
+      mkdirSync(directory, { recursive: true });
+      if (name === 'empty') continue;
+      if (name === 'directory') {
+        mkdirSync(join(directory, 'pnpm'));
+        continue;
+      }
+      writeFileSync(join(directory, 'pnpm'), `#!/bin/sh\nprintf ran > "${directories.marker}"\nexit 99\n`);
+      chmodSync(join(directory, 'pnpm'), name === 'nonExecutable' ? 0o644 : 0o755);
+    }
+    writeFileSync(join(value.toolDir, 'pnpm'), `#!/bin/sh\nprintf ran > "${directories.marker}"\nexit 99\n`);
+    chmodSync(join(value.toolDir, 'pnpm'), 0o755);
+    const command = `${scenario.path(directories)} pnpm test; /bin/sh -c 'printf ran > "${directories.marker}"'`;
+    const requirements = structuredClone(value.wrapper.contract.validation_requirements);
+    requirements[0].command = command;
+    requirements[0].prerequisites.tools = [{ name: 'pnpm', path_dirs: scenario.declared === false ? [] : [value.toolDir] }];
+    value.wrapper.contract = createPreflight({ ...value.wrapper.contract, validation_requirements: requirements });
+    value.wrapper.input.preflight_sha256 = value.wrapper.contract.sha256;
+    writeFileSync(value.wrapper.accepted_contract_path, JSON.stringify(value.wrapper.contract));
+    value.env = { PATH: `${directories.inherited}:${process.env.PATH}` };
+
+    const result = cli(value, 'implement', value.wrapper);
+
+    assert.equal(existsSync(directories.marker), false, 'preparation must execute neither command nor tool');
+    assert.equal(result.status, scenario.found ? 0 : 1, result.stderr || result.stdout);
+    if (scenario.found) {
+      assert.equal(JSON.parse(result.stdout).prerequisites.local[0].tools[0].path,
+        join(directories[scenario.found], 'pnpm'));
+    } else {
+      assert.equal(result.stdout, '');
+      const output = JSON.parse(result.stderr);
+      assert.equal(output.kind, 'input-preparation');
+      assert.equal(output.fix_back_eligible, false);
+      if (scenario.blocked) {
+        assert.match(output.error, /unsupported command PATH/u);
+        assert.ok(output.error.includes(command));
+      } else {
+        const missing = JSON.parse(output.error.slice(output.error.indexOf('[{')));
+        assert.deepEqual(missing, [{ command, tool: 'pnpm' }]);
+      }
+    }
+  });
+}
 
 test('#4129 implement prerequisites: missing tools and build artifacts -> every missing item names its command', (t) => {
   const value = implementation(t);

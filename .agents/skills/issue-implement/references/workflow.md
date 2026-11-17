@@ -102,9 +102,23 @@ prerequisites}` only on success. Remote PR observations still belong to the lead
 When the contract declares `validation_requirements`, each local command names
 its tools (`name`, absolute `path_dirs`) and worktree-relative artifacts (`path`,
 `kind:"file"|"directory"`). Required dependency directories and concrete dist
-files must exist. The script searches declared directories plus inherited PATH
-for executable files, checks artifact kinds without running tools, and lists all
-missing prerequisites with their commands. The lead supplies PATH and completes
+files must exist. Commands without PATH assignments search declared directories
+then inherited PATH for executable regular files. Leading `PATH=... cmd` and
+`export PATH=...; cmd` search only the command's PATH in order; `path_dirs` does
+not augment it. Literal single/double quotes are supported. Unquoted or
+double-quoted `$PATH`/`${PATH}` expands inherited PATH at its position; single
+quotes preserve it literally. Relative/empty entries resolve from the assigned
+worktree. The script only parses strings and inspects files: it never executes
+the validation command, tools, a shell or command substitution. It checks
+artifact kinds and lists all missing prerequisites with their commands.
+Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
+`export PATH="/opt/node/bin:/opt/pnpm/bin:$PATH"; pnpm test:node`.
+Wrong: `PATH=/opt/node/bin pnpm test:node` with pnpm only in inherited PATH or
+declared `/opt/pnpm/bin`. Unsupported command/backtick substitutions (for example
+`PATH=$(find-tools) pnpm test`), other variables/parameter operations, unquoted
+tilde/globs, escapes, malformed quotes and wrapped/later/multiple PATH assignments
+produce typed `input-preparation`, `fix_back_eligible:false`; inherited PATH
+cannot stand in for an unresolvable command PATH. The lead supplies PATH and completes
 install/build before dispatch. CI-only `{validation,kind:"ci-only",check,reason}`
 entries are returned separately, never as local success. Old contracts retain
 their digest and return `prerequisites.status:"undeclared"` without inference.

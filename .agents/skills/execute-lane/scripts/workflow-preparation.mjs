@@ -150,6 +150,55 @@ function finalizePreflight(input) {
   return { status: 'prepared', kind: 'preflight-contract', contract };
 }
 
+// Read only the supported leading PATH assignment, never evaluate shell code.
+function commandPath(command) {
+  const assignment = /^\s*(export[ \t]+)?PATH=/u.exec(command);
+  const changesPath = /(?:^|[\s;&|("'`])(?:PATH\s*\+?=|unset\s+PATH\b)/u;
+  const unsupported = () => {
+    throw new WorkflowPreparationError(`implement preparation: unsupported command PATH: ${command}`);
+  };
+  if (!assignment) {
+    if (changesPath.test(command)) unsupported();
+    return null;
+  }
+  let value = '';
+  let quote = null;
+  let offset = assignment[0].length;
+  for (; offset < command.length; offset += 1) {
+    const character = command[offset];
+    if (quote === "'") {
+      if (character === "'") quote = null;
+      else value += character;
+      continue;
+    }
+    if (character === quote) {
+      quote = null;
+      continue;
+    }
+    if (!quote && (character === "'" || character === '"')) {
+      quote = character;
+      continue;
+    }
+    if (!quote && /[\s;]/u.test(character)) break;
+    if (character === '$') {
+      const expansion = /^(?:\$PATH(?![a-zA-Z0-9_])|\$\{PATH\})/u.exec(command.slice(offset));
+      if (!expansion) unsupported();
+      value += process.env.PATH ?? '';
+      offset += expansion[0].length - 1;
+      continue;
+    }
+    if (character === '`' || character === '\\' || /[\x00-\x1f]/u.test(character)
+      || (!quote && !/[a-zA-Z0-9_/:.,+@%=-]/u.test(character))) unsupported();
+    value += character;
+  }
+  if (quote !== null) unsupported();
+  const remainder = command.slice(offset);
+  const next = assignment[1] ? /^[ \t]*;[ \t]*(\S[\s\S]*)$/u.exec(remainder)
+    : /^[ \t]+([^;&|][\s\S]*)$/u.exec(remainder);
+  if (!next || changesPath.test(next[1])) unsupported();
+  return value.split(delimiter);
+}
+
 function prepareImplement(input) {
   exact(input, ['version', 'stage', 'root', 'accepted_contract_path', 'contract', 'input'], 'implement preparation');
   requireInput(input.version === 1 && input.stage === 'implement'
@@ -183,8 +232,9 @@ function prepareImplement(input) {
       prerequisites.ci_only.push(requirement);
       continue;
     }
+    const commandDirectories = commandPath(requirement.command);
     const tools = requirement.prerequisites.tools.map((tool) => {
-      const directories = [...tool.path_dirs, ...(process.env.PATH ?? '').split(delimiter)];
+      const directories = commandDirectories ?? [...tool.path_dirs, ...(process.env.PATH ?? '').split(delimiter)];
       const path = directories.map((directory) => resolve(worktree, directory, tool.name)).find((candidate) => {
         try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile(); }
         catch (error) {

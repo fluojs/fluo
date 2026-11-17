@@ -220,10 +220,30 @@ Neither wrapper changes Result, exported issue-implement validators,
 implementerAuthority/leadAuthority, old facts/digests, engine decisions, Git,
 ledgers or remote state.
 
-Local requirements name executable tools with absolute `path_dirs` plus inherited
-PATH, and safe worktree-relative file/directory artifacts, including dependency
-directories and concrete dist files. The preparer only checks executable access
-and artifact existence/kind; it never runs tools or interprets commands. The lead
+Local requirements name executable tools with absolute `path_dirs`, and safe
+worktree-relative file/directory artifacts, including dependency directories and
+concrete dist files. Without a PATH assignment, tools are searched in `path_dirs`
+followed by inherited PATH. A leading `PATH=... cmd` or `export PATH=...; cmd`
+instead uses only that command's PATH, in order; `path_dirs` never adds directories
+to it. Literal single/double quotes are supported, including spaces inside quotes.
+Unquoted or double-quoted `$PATH` (also `${PATH}`) expands inherited PATH exactly
+at that position; single-quoted `$PATH` stays literal. Relative/empty PATH entries
+resolve from the assigned worktree.
+
+Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
+`export PATH="/opt/node/bin:/opt/pnpm/bin:$PATH"; pnpm test:node`.
+Good literal replacement: `PATH='/opt/node/bin:/opt/pnpm/bin:/usr/bin' pnpm test:node`.
+Wrong: `PATH=/opt/node/bin pnpm test:node` with pnpm available only in inherited
+PATH or declared `/opt/pnpm/bin`; preparation blocks the missing tool and names
+its command. Wrong: `PATH=$(find-tools) pnpm test:node` or `PATH=$HOME/bin pnpm test`.
+Command/backtick substitution, other variables/parameter operations, unquoted
+tilde/glob expansion, escapes, malformed quotes, wrapped/later or multiple PATH
+assignments are unsupported and produce `kind:"input-preparation"`,
+`fix_back_eligible:false`, not an inherited-PATH success.
+
+This is filesystem inspection and static string parsing only: the preparer
+checks executable regular files and artifact existence/kind without running the
+validation command, declared tools, a shell or command substitution. The lead
 must provide the declared PATH and complete required install/build work before
 dispatch. All missing items name their command in the input block. CI-only
 requirements are returned separately and never marked locally passed. Legacy

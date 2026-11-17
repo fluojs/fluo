@@ -73,8 +73,13 @@ PR remote observation remains the lead's responsibility.
 
 Success is `{status:"prepared",kind:"implement-input",dispatch,input,contract,
 prerequisites}`. Use its registered dispatch and original input/contract.
-For local `validation_requirements`, tools are checked for executable access in
-absolute `path_dirs` and inherited PATH; worktree-relative dependency directories
+For local `validation_requirements`, commands without PATH assignments search
+absolute `path_dirs` then inherited PATH for executable regular files. Leading
+`PATH=... cmd` and `export PATH=...; cmd` instead search only the command's PATH
+in order; `path_dirs` does not augment it. Literal single/double quotes are
+supported; unquoted or double-quoted `$PATH`/`${PATH}` expands inherited PATH at
+that position, while single quotes preserve it literally. Relative/empty entries
+resolve from the assigned worktree. Worktree-relative dependency directories
 and concrete build files are checked for existence and kind. The lead supplies
 the declared PATH and completes install/build prerequisites before dispatch.
 Preparation never executes tools, commands, install, build or tests. Missing
@@ -84,6 +89,16 @@ return contract conflicts to preflight. CI-only entries remain separate remote
 checks, never local successes. A legacy contract without requirements remains
 valid with `prerequisites.status:"undeclared"`; infer neither prerequisites nor
 PASS. Preparation adds no keys to Input/Identity/Result and writes no ledgers.
+
+Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
+`export PATH="/opt/node/bin:/opt/pnpm/bin:$PATH"; pnpm test:node`.
+Wrong: `PATH=/opt/node/bin pnpm test:node` when pnpm exists only in inherited
+PATH or declared `/opt/pnpm/bin`. Static parsing never executes a shell or
+substitution. Unsupported command/backtick substitution, other variables or
+parameter operations, unquoted tilde/globs, escapes, malformed quotes and
+wrapped/later/multiple PATH assignments block as `input-preparation` with
+`fix_back_eligible:false`; for example `PATH=$(find-tools) pnpm test` cannot pass
+by finding an inherited pnpm.
 
 ## Authority and completion
 

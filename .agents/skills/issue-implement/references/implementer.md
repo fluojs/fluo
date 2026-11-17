@@ -45,10 +45,23 @@ The lead prepares either mode with `{version:1,stage:"implement",root,
 accepted_contract_path,contract,input}`. Preparation checks authoritative
 contract equality, issue/digest, worktree realpath/common repository and clean
 identity, then returns `{status:"prepared",kind:"implement-input",dispatch,
-input,contract,prerequisites}`. It checks executable tool access through declared
-absolute `path_dirs` and inherited PATH, plus declared worktree-relative
+input,contract,prerequisites}`. Commands without PATH assignments search declared
+absolute `path_dirs` then inherited PATH for executable regular files. Leading
+`PATH=... cmd` and `export PATH=...; cmd` search only the command's PATH in order;
+`path_dirs` never adds directories to it. Literal single/double quotes work;
+unquoted or double-quoted `$PATH`/`${PATH}` expands inherited PATH at its position,
+while single quotes keep it literal. Relative/empty entries resolve from the
+assigned worktree. Preparation also checks declared worktree-relative
 dependency directories and concrete build files. It runs no tools, install,
-build or tests. Use the declared PATH and already prepared build prerequisites
+build or tests, and never executes a validation command, shell or substitution.
+Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
+`export PATH="/opt/node/bin:/opt/pnpm/bin:$PATH"; pnpm test:node`.
+Wrong: `PATH=/opt/node/bin pnpm test:node` with pnpm only in inherited PATH or
+declared `/opt/pnpm/bin`. Unsupported substitutions (for example
+`PATH=$(find-tools) pnpm test`), other variables/parameter operations, unquoted
+tilde/globs, escapes, malformed quotes and wrapped/later/multiple PATH assignments
+produce `input-preparation`, `fix_back_eligible:false` rather than an inherited
+PATH success. Use the declared PATH and already prepared build prerequisites
 for focused commands. CI-only checks remain pending remote checks, never local
 PASS. Missing items and their commands are input-preparation blocks with
 `fix_back_eligible:false`; the lead repairs the environment before redispatch,
