@@ -38,6 +38,7 @@ import {
 	validateReceiptEvidence,
 } from "../../../../tooling/ci/local-verification.mjs";
 import { collectIdentity } from "../../../../tooling/ci/verify-local.mjs";
+import { productionInputClassifier } from "../../../../tooling/governance/package-production-inputs.mjs";
 import { assertPredictedConflicts } from "../../../workflow-contracts/contracts.mjs";
 import {
 	evaluatePreflight,
@@ -598,39 +599,13 @@ export const validateLocalCheckFact = (
 	};
 };
 
-// Consumer-visible only: test files, test-support types, fixtures, and docs do
-// not ship to consumers and therefore do not require a changeset per
-// docs/contracts/release-governance.md. Exported so the gate is testable —
-// when this lived inline it could drift silently.
-//
-// EXCEPTION the .md blanket exclusion got wrong (caught by a reviewer on
-// #3347): npm auto-includes package-root README* and LICENSE/LICENCE* in the
-// tarball regardless of the manifest `files` field, so those ARE shipped
-// package content. `npm pack --dry-run` on @fluojs/testing (files:["dist"])
-// showed README.md and README.ko.md in the tarball. Root-level only — npm's
-// auto-include does not apply to nested paths — and CHANGELOG is not in npm's
-// auto-include set.
-const packageRootAlwaysPacked =
-	/^packages\/[^/]+\/(?:README|LICEN[SC]E)[^/]*$/i;
-
-export const isConsumerVisibleFile = (file) => {
-	if (packageRootAlwaysPacked.test(file)) {
-		return true;
-	}
-	if (!file.startsWith("packages/") || file.endsWith(".md")) {
-		return false;
-	}
-	if (/\.(test|test-fixture)\.[cm]?ts$/.test(file)) {
-		return false;
-	}
-	const withinPackage = file.replace(/^packages\/[^/]+\//, "");
-	if (withinPackage.startsWith("fixtures/")) {
-		return false;
-	}
-	return !/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(
-		withinPackage,
-	);
-};
+// Read declarations and producer evidence from the observed Git objects, not
+// the engine checkout. The shared owner contract precedes filename exclusions.
+export const isConsumerVisibleFile = (file, {
+	root = resolve(fileURLToPath(new URL("../../../../", import.meta.url))),
+	head = "HEAD",
+	base = head,
+} = {}) => productionInputClassifier(root, head, base)(file);
 
 export const isChangesetFile = (file) =>
 	/^\.changeset\/.+\.md$/.test(file) && !file.endsWith("README.md");
@@ -909,9 +884,8 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 			return null;
 		}
 	})();
-	const publicPackagesTouched = (changedFiles ?? []).some(
-		isConsumerVisibleFile,
-	);
+	const consumerInput = productionInputClassifier(root, headSha, baseSha ?? headSha);
+	const publicPackagesTouched = (changedFiles ?? []).some(consumerInput);
 	const changesetPresent = (changedFiles ?? []).some(isChangesetFile);
 
 	let pr = null;

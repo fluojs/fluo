@@ -689,14 +689,47 @@ test('C3b: production source under packages/ is consumer-visible', () => {
 
 test('C3b: test files are not consumer-visible', () => {
 	assert.equal(isConsumerVisibleFile('packages/platform-express/src/adapter.test.ts'), false);
-	assert.equal(isConsumerVisibleFile('packages/testing/src/module.test-fixture.ts'), false);
+	assert.equal(isConsumerVisibleFile('packages/graphql/src/async-module-options.consumer.test-fixture.ts'), false);
 });
 
-test('C3b: test-support declarations outside src are not consumer-visible', () => {
+test('#4154 classifier: nonshipping JavaScript tests do not require a changeset', () => {
+	for (const extension of ['mjs', 'cjs', 'js', 'ts', 'cts', 'mts']) {
+		assert.equal(isConsumerVisibleFile(`packages/cli/scripts/local-test-env.test.${extension}`), false, extension);
+	}
+});
+
+test('#4154 classifier: declared development entry differs from production inputs', () => {
+	assert.equal(isConsumerVisibleFile('packages/cli/scripts/local-test-env.mjs'), false);
+	for (const file of [
+		'packages/cli/scripts/generate-published-internal-dependencies.mjs',
+		'packages/cli/src/new/templates/app/README.md',
+		'packages/cli/src/new/templates/app/app.test.js',
+		'packages/cli/bin/fluo.mjs',
+		'packages/react/src/runtime.ts',
+		'packages/platform-express/src/adapter.ts',
+		'packages/prisma/src/fixtures/client.ts',
+		'packages/cli/dist/new/templates/README.md',
+		'packages/cli/package.json',
+		'packages/cli/README.ko.md',
+		'packages/cli/LICENSE',
+		'packages/unknown/scripts/check.mjs',
+	]) assert.equal(isConsumerVisibleFile(file), true, file);
+});
+
+test('C3b: declared nonshipping test-support scopes are not consumer-visible', () => {
 	assert.equal(isConsumerVisibleFile('packages/platform-express/test-types/testing-http-adapter-portability.d.ts'), false);
-	assert.equal(isConsumerVisibleFile('packages/platform-bun/__tests__/helpers.ts'), false);
-	assert.equal(isConsumerVisibleFile('packages/platform-deno/test/helper.ts'), false);
+	assert.equal(isConsumerVisibleFile('packages/platform-bun/src/test-support/application.ts'), false);
 	assert.equal(isConsumerVisibleFile('packages/terminus/test-fixtures/public-subpaths-import.ts'), false);
+});
+
+test('#4154 fix-back classifier: missing packaging evidence keeps support paths consumer-visible', () => {
+	for (const file of [
+		'packages/platform-deno/test/helper.ts',
+		'packages/platform-deno/fixtures/data.json',
+		'packages/platform-deno/test-types/helper.d.ts',
+		'packages/platform-deno/test-fixtures/data.json',
+		'packages/platform-deno/__tests__/helper.ts',
+	]) assert.equal(isConsumerVisibleFile(file), true, file);
 });
 
 test('C3b: private package-root fixtures are not consumer-visible', () => {
@@ -734,12 +767,13 @@ test('C3b: package-root README and LICENSE ship in the tarball -> consumer-visib
 	assert.equal(isConsumerVisibleFile('packages/studio/LICENSE'), true);
 });
 
-test('C3b: nested README and non-shipping package-root docs stay invisible', () => {
-	// npm's auto-include applies only at the package root.
-	assert.equal(isConsumerVisibleFile('packages/studio/src/README.md'), false);
-	// CHANGELOG is not auto-included and files:["dist"] excludes it (verified in
-	// the same #3347 pack output).
+test('C3b: declared nonshipping root notes differ from production Markdown', () => {
+	assert.equal(isConsumerVisibleFile('packages/studio/src/README.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/cli/src/assets/guide.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/cli/input.md'), true);
 	assert.equal(isConsumerVisibleFile('packages/studio/CHANGELOG.md'), false);
+	assert.equal(isConsumerVisibleFile('packages/graphql/field-resolver-rfc.md'), false);
+	assert.equal(isConsumerVisibleFile('packages/graphql/field-resolver-rfc.ko.md'), false);
 });
 
 test('C3b: changeset files are recognized, README is not', () => {

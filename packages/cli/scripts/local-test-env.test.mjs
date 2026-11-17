@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setImmediate } from 'node:timers/promises';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { resolveSandboxProfile, verifyReactColdDev } from './local-test-env.mjs';
 
@@ -27,45 +29,82 @@ function coldDevFixture(t, withBrowser = false) {
     writeFileSync(join(root, 'node_modules/@playwright/test/package.json'), '{"type":"module","main":"index.mjs"}');
     writeFileSync(join(root, 'node_modules/@playwright/test/index.mjs'), `
 import assert from 'node:assert/strict';
-import { appendFileSync, watch } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 const events = resolve(import.meta.dirname, '../../..', 'browser-events');
-const resolvePath = resolve(import.meta.dirname, '../../..', 'src');
+const pagePath = resolve(import.meta.dirname, '../../..', 'src/page.tsx');
+export const observation = { beforeReady: async () => {}, events: [] };
 export const chromium = {
   async launch() {
+    const pages = new Set();
     return {
       async newPage() {
         appendFileSync(events, 'new-page\\n');
         let websocket;
+        let observer;
+        let pending;
+        let content;
         const socket = {
           waitForEvent(_event, { timeout }) {
+            observation.events.push('subscribed');
             return new Promise((resolve, reject) => {
               const deadline = setTimeout(() => {
-                watcher.close();
+                observation.events.push('timeout');
+                clearInterval(observer);
+                pending = undefined;
                 reject(new Error('Fixture client update did not arrive.'));
               }, timeout);
-              const watcher = watch(resolvePath, (_event, path) => {
-                if (path === 'page.tsx') {
-                  clearTimeout(deadline);
-                  watcher.close();
-                  resolve({ payload: '{"type":"update","updates":[{"path":"/src/page.tsx"}]}' });
-                }
-              });
+              pending = { resolve, reject, deadline };
             });
           },
         };
-        return {
+        const page = {
           on() {},
           waitForEvent() { return new Promise((resolve) => { websocket = resolve; }); },
           async goto(url) {
             assert.equal((await fetch(url)).status, 200);
+            await observation.beforeReady();
+            const ready = Promise.withResolvers();
+            // Observe retained file content, not a late one-shot native watch event.
+            observer = setInterval(() => {
+              const next = readFileSync(pagePath, 'utf8');
+              if (content === undefined) {
+                content = next;
+                observation.events.push('ready');
+                ready.resolve();
+              } else if (next !== content) {
+                content = next;
+                observation.events.push('changed');
+                if (pending) {
+                  clearTimeout(pending.deadline);
+                  pending.resolve({ payload: '{"type":"update","updates":[{"path":"/src/page.tsx"}]}' });
+                  pending = undefined;
+                  observation.events.push('received');
+                }
+              }
+            }, 10);
+            await ready.promise;
             websocket(socket);
           },
           getByRole() { return { async click() {}, async waitFor() {} }; },
-          async close() { appendFileSync(events, 'close-page\\n'); },
+          async close() {
+            clearInterval(observer);
+            if (pending) {
+              clearTimeout(pending.deadline);
+              pending.reject(new Error('Fixture page closed before client update.'));
+              pending = undefined;
+            }
+            pages.delete(page);
+            appendFileSync(events, 'close-page\\n');
+          },
         };
+        pages.add(page);
+        return page;
       },
-      async close() { appendFileSync(events, 'close-browser\\n'); },
+      async close() {
+        for (const page of pages) await page.close();
+        appendFileSync(events, 'close-browser\\n');
+      },
     };
   },
 };
@@ -137,11 +176,60 @@ test('full verification requires the browser instead of silently degrading to sm
 
 test('full verification retires the live page before removing its route and probes a new page after restoration', { timeout: 30_000 }, async (t) => {
   const root = coldDevFixture(t, true);
+  const { observation } = await import(pathToFileURL(join(root, 'node_modules/@playwright/test/index.mjs')).href);
+  const preparing = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  let preparations = 0;
+  observation.beforeReady = async () => {
+    if (++preparations !== 2) return;
+    preparing.resolve();
+    await release.promise;
+  };
+  t.after(() => release.resolve());
 
-  await verifyReactColdDev(root, 'full');
+  const verification = verifyReactColdDev(root, 'full');
+  try {
+    await Promise.race([
+      preparing.promise,
+      verification.then(() => assert.fail('Verifier edited page.tsx without waiting for observation readiness.')),
+    ]);
+    await setImmediate();
+    assert.equal(readFileSync(join(root, 'src/page.tsx'), 'utf8'), 'Catalog item');
+  } finally {
+    release.resolve();
+    await verification;
+  }
 
   const events = readFileSync(join(root, 'browser-events'), 'utf8').trim().split('\n');
   assert.deepEqual(events.slice(0, 5), ['new-page', 'close-page', 'route-removed', 'route-restored', 'new-page']);
+  assert.deepEqual(observation.events, ['ready', 'ready', 'subscribed', 'changed', 'received']);
   assert.equal(readFileSync(join(root, 'src/app.ts'), 'utf8'), "@Router('/products')");
   assert.equal(readFileSync(join(root, 'src/page.tsx'), 'utf8'), 'Catalog item');
 });
+
+for (const failure of ['timeout', 'page-close', 'browser-close']) {
+  test(`fake browser: ${failure} without a source change rejects and releases observation`, { timeout: 30_000 }, async (t) => {
+    const root = coldDevFixture(t, true);
+    const { chromium, observation } = await import(pathToFileURL(join(root, 'node_modules/@playwright/test/index.mjs')).href);
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      const connected = page.waitForEvent('websocket');
+      await page.goto('data:text/html,fixture');
+      const socket = await connected;
+
+      const update = socket.waitForEvent('framereceived', { timeout: 10 });
+      const rejected = assert.rejects(update, failure === 'timeout'
+        ? /Fixture client update did not arrive/u : /Fixture page closed before client update/u);
+      if (failure === 'page-close') await page.close();
+      if (failure === 'browser-close') await browser.close();
+      await rejected;
+
+      assert.deepEqual(observation.events, failure === 'timeout'
+        ? ['ready', 'subscribed', 'timeout'] : ['ready', 'subscribed']);
+      assert.equal(readFileSync(join(root, 'src/page.tsx'), 'utf8'), 'Catalog item');
+    } finally {
+      await browser.close();
+    }
+  });
+}

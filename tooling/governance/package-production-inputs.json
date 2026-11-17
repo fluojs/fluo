@@ -1,0 +1,1577 @@
+{
+  "version": 1,
+  "owner": "@ayden94",
+  "packages": [
+    {
+      "name": "@fluojs/auth",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/auth/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/auth/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/auth/test/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/auth/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/auth-http",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/auth-http/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/auth-http/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/auth-http/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/cache-manager",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/cache-manager/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/cache-manager/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/cache-manager/test/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/cache-manager/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/cli",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/cli/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/cli/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/cli/CHANGELOG.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/cli/scripts/local-test-env.mjs",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/config",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/config/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/config/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/config/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/core",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/core/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/core/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/core/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/cqrs",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/cqrs/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/cqrs/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/cqrs/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/cron",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/cron/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/cron/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/cron/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/di",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/di/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/di/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/di/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/diagnostics",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/diagnostics/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/diagnostics/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/diagnostics/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/discord",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/discord/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/discord/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/discord/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/drizzle",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/drizzle/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/drizzle/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/drizzle/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/email",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/email/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/email/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/email/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/event-bus",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/event-bus/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/event-bus/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/event-bus/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/graphql",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/graphql/src/",
+          "excludeTests": true,
+          "excludeDirectories": [
+            "packages/graphql/src/test-support/"
+          ],
+          "excludeTestFixtures": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/graphql/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/graphql/CHANGELOG.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/graphql/field-resolver-rfc.ko.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/graphql/field-resolver-rfc.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/graphql/src/test-support/",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/http",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/http/src/",
+          "excludeTests": true,
+          "excludeTestFixtures": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/http/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/http/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/i18n",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/i18n/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/i18n/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/i18n/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/jwt",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/jwt/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/jwt/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/jwt/test/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/jwt/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/metrics",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/metrics/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/metrics/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/metrics/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/microservices",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/microservices/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/microservices/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/microservices/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/mongoose",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/mongoose/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/mongoose/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/mongoose/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/notifications",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/notifications/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/notifications/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/notifications/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/openapi",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/openapi/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/openapi/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/openapi/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/passport",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/passport/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/passport/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/passport/test/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/passport/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/persistence",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/persistence/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/persistence/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/persistence/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/platform-bun",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/platform-bun/src/",
+          "excludeTests": true,
+          "excludeDirectories": [
+            "packages/platform-bun/src/test-support/"
+          ]
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/platform-bun/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/platform-bun/CHANGELOG.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/platform-bun/src/test-support/",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/platform-cloudflare-workers",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/platform-cloudflare-workers/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/platform-cloudflare-workers/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/platform-cloudflare-workers/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/platform-express",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/platform-express/src/",
+          "excludeTests": true,
+          "excludeDirectories": [
+            "packages/platform-express/src/test-support/"
+          ]
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/platform-express/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/platform-express/test-types/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/platform-express/CHANGELOG.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/platform-express/src/test-support/",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/platform-fastify",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/platform-fastify/src/",
+          "excludeTests": true,
+          "excludeDirectories": [
+            "packages/platform-fastify/src/test-support/"
+          ]
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/platform-fastify/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/platform-fastify/CHANGELOG.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/platform-fastify/src/test-support/",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/platform-nextjs",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/platform-nextjs/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/platform-nextjs/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/platform-nextjs/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/platform-nodejs",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/platform-nodejs/src/",
+          "excludeTests": true,
+          "excludeDirectories": [
+            "packages/platform-nodejs/src/test-support/"
+          ],
+          "excludeTestFixtures": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/platform-nodejs/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/platform-nodejs/test-types/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/platform-nodejs/CHANGELOG.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/platform-nodejs/src/test-support/",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/prisma",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/prisma/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/prisma/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/prisma/fixtures/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/prisma/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/queue",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/queue/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/queue/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/queue/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/react",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/react/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/react/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/react/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/redis",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/redis/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/redis/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/redis/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/runtime",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/runtime/src/",
+          "excludeTests": true,
+          "excludeDirectories": [
+            "packages/runtime/src/test-support/"
+          ]
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/runtime/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/runtime/CHANGELOG.md",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/runtime/src/test-support/",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/serialization",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/serialization/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/serialization/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/serialization/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/slack",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/slack/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/slack/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/slack/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/socket.io",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/socket.io/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/socket.io/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/socket.io/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/studio",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/studio/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/studio/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/studio/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/terminus",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/terminus/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/terminus/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/terminus/test-fixtures/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/terminus/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/testing",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/testing/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/testing/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/testing/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/throttler",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/throttler/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/throttler/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/throttler/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/validation",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/validation/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/validation/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/validation/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/vite",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/vite/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/vite/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/vite/test-fixtures/",
+          "testsOnly": false
+        },
+        {
+          "path": "packages/vite/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    },
+    {
+      "name": "@fluojs/websockets",
+      "owner": "@ayden94",
+      "inputs": [
+        {
+          "path": "packages/websockets/src/",
+          "excludeTests": true
+        }
+      ],
+      "nonProduction": [
+        {
+          "path": "packages/websockets/",
+          "testsOnly": true
+        },
+        {
+          "path": "packages/websockets/CHANGELOG.md",
+          "testsOnly": false
+        }
+      ]
+    }
+  ],
+  "producers": [
+    {
+      "id": "workspace-build",
+      "owner": "@ayden94",
+      "consumers": [
+        "@fluojs/auth",
+        "@fluojs/auth-http",
+        "@fluojs/cache-manager",
+        "@fluojs/cli",
+        "@fluojs/config",
+        "@fluojs/core",
+        "@fluojs/cqrs",
+        "@fluojs/cron",
+        "@fluojs/di",
+        "@fluojs/diagnostics",
+        "@fluojs/discord",
+        "@fluojs/drizzle",
+        "@fluojs/email",
+        "@fluojs/event-bus",
+        "@fluojs/graphql",
+        "@fluojs/http",
+        "@fluojs/i18n",
+        "@fluojs/jwt",
+        "@fluojs/metrics",
+        "@fluojs/microservices",
+        "@fluojs/mongoose",
+        "@fluojs/notifications",
+        "@fluojs/openapi",
+        "@fluojs/passport",
+        "@fluojs/persistence",
+        "@fluojs/platform-bun",
+        "@fluojs/platform-cloudflare-workers",
+        "@fluojs/platform-express",
+        "@fluojs/platform-fastify",
+        "@fluojs/platform-nextjs",
+        "@fluojs/platform-nodejs",
+        "@fluojs/prisma",
+        "@fluojs/queue",
+        "@fluojs/react",
+        "@fluojs/redis",
+        "@fluojs/runtime",
+        "@fluojs/serialization",
+        "@fluojs/slack",
+        "@fluojs/socket.io",
+        "@fluojs/studio",
+        "@fluojs/terminus",
+        "@fluojs/testing",
+        "@fluojs/throttler",
+        "@fluojs/validation",
+        "@fluojs/vite",
+        "@fluojs/websockets"
+      ],
+      "inputs": [],
+      "definitions": {
+        ".github/CODEOWNERS": "8dab977f1cda089655ef6972bb87f5b3ac218267c7e0ac326142d24c9aeb0451",
+        "pnpm-workspace.yaml": "206cfc7df9505ef0c91b05791bd100259d3e45addbbe754c6ecc1f457a0f87ac",
+        "tsconfig.base.json": "2e2f8ef6cef1847ef65e9c8abc363b5e9c08ea2f5830226601fd5cfacdbf1e25",
+        "tooling/tsconfig/base.json": "801559e01d22e54dd9c5daa2570777ecf37677638923cae145b8be361679fe54",
+        "tooling/babel/babel.config.cjs": "eadcaf8a4b9a2842457a11f79157f32f64c051f0c6d34300ffe38d44f7516bff",
+        "tooling/scripts/clean-dist.mjs": "394a336bd3febe48368807e08da49aa97653fa622e14400f3ca05949f274375e",
+        "packages/auth/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/auth/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/auth-http/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/auth-http/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/cache-manager/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/cache-manager/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/cli/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/cli/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/config/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/config/tsconfig.build.json": "e0f7167c135f76daa64ad7c8bde32f4144d1f6c6912ea83e370889e95f7a4a3f",
+        "packages/core/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/core/tsconfig.build.json": "e0f7167c135f76daa64ad7c8bde32f4144d1f6c6912ea83e370889e95f7a4a3f",
+        "packages/cqrs/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/cqrs/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/cron/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/cron/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/di/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/di/tsconfig.build.json": "e0f7167c135f76daa64ad7c8bde32f4144d1f6c6912ea83e370889e95f7a4a3f",
+        "packages/diagnostics/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/diagnostics/tsconfig.build.json": "e0f7167c135f76daa64ad7c8bde32f4144d1f6c6912ea83e370889e95f7a4a3f",
+        "packages/discord/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/discord/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/drizzle/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/drizzle/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/email/tsconfig.json": "28282abe534bce160861ed5c0798292c960cb61c7dfa5636d552a245c7223d09",
+        "packages/email/tsconfig.build.json": "290f2f1f55d3083a5d6698264e4bff37d3c311eea40409f636a68568d9ab97d6",
+        "packages/event-bus/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/event-bus/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/graphql/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/graphql/tsconfig.build.json": "bb70928a146aadac6db7ee88cd7da3a2cdc327fff2233a6cd55c7185adbbf321",
+        "packages/http/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/http/tsconfig.build.json": "fb218e10e253d0739d9a5de7755d2ab79f88d81b3ddc2b32c0e486d8601c2fe7",
+        "packages/i18n/tsconfig.json": "ca8cfcf8d7e38c8094506129528a72ccc97ec35dfdce22e8ba4fb32cb1210c43",
+        "packages/i18n/tsconfig.build.json": "07a9ec31c3c560bf2ae81e9057cd67613cc046eb38e303b8802a6c1cd982e2b6",
+        "packages/jwt/tsconfig.json": "8d1d26f50cd25b876a46b0f75f726761c19dfe2cdda73ac38f575fbfa8ad5f5f",
+        "packages/jwt/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/metrics/tsconfig.json": "28282abe534bce160861ed5c0798292c960cb61c7dfa5636d552a245c7223d09",
+        "packages/metrics/tsconfig.build.json": "e9c85f3dd58804114ca16d9669909004b5058a75fddf33a884ef6acfc1840fb4",
+        "packages/microservices/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/microservices/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/mongoose/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/mongoose/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/notifications/tsconfig.json": "28282abe534bce160861ed5c0798292c960cb61c7dfa5636d552a245c7223d09",
+        "packages/notifications/tsconfig.build.json": "e9c85f3dd58804114ca16d9669909004b5058a75fddf33a884ef6acfc1840fb4",
+        "packages/openapi/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/openapi/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/passport/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/passport/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/persistence/tsconfig.json": "df1e1b5e4b906a2bb3762cf1e4c19e638c808380b92f5fb6e9af3af9b6ed1848",
+        "packages/persistence/tsconfig.build.json": "bed49aac25c82703f38d3d3d87f15a0e62fdaac92118133194e1ea1cd858dd4b",
+        "packages/platform-bun/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/platform-bun/tsconfig.build.json": "89767bee1d95fd2c64e684d3bfdc23897d25fc54c4b67ab739786419ade752d9",
+        "packages/platform-cloudflare-workers/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/platform-cloudflare-workers/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/platform-express/tsconfig.json": "97fef09e11a1606a28cbdfe1fe0714716ec8e396e485df5eb5dceacbde9de46b",
+        "packages/platform-express/tsconfig.build.json": "0cfe6d1ce157e4f440dc7fb655c8be603a5fa95e786f87c838284b46618ca823",
+        "packages/platform-fastify/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/platform-fastify/tsconfig.build.json": "89767bee1d95fd2c64e684d3bfdc23897d25fc54c4b67ab739786419ade752d9",
+        "packages/platform-nextjs/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/platform-nextjs/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/platform-nodejs/tsconfig.json": "1ab6586081d0f6e972104ff3b1e25ef6fd3278252e43c63c9a72fdfac537f2d7",
+        "packages/platform-nodejs/tsconfig.build.json": "5b799030bac89576c8593e675f909800c229777448c3c0e1450320544e9ecb9f",
+        "packages/prisma/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/prisma/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/queue/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/queue/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/react/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/react/tsconfig.build.json": "e0f7167c135f76daa64ad7c8bde32f4144d1f6c6912ea83e370889e95f7a4a3f",
+        "packages/redis/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/redis/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/runtime/tsconfig.json": "9117b3d480ed1915dde35d8c925fa1074f7cc310fe1098e4f0d88ad1ff71dd5e",
+        "packages/runtime/tsconfig.build.json": "40ff6e3c55b14d86a9f6751267c644c011fa9eb06716ff6f7cf90b7a8c2d0e6b",
+        "packages/serialization/tsconfig.json": "ba9f3fc72e438bee2f0b6f283f4b519533f6b367202ef283b7ae256759a1e347",
+        "packages/serialization/tsconfig.build.json": "e0f7167c135f76daa64ad7c8bde32f4144d1f6c6912ea83e370889e95f7a4a3f",
+        "packages/slack/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/slack/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/socket.io/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/socket.io/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        "packages/studio/tsconfig.json": "af7a379223efeb1ba36a7214dc3984787f481b039d646e0178882cb53abc851b",
+        "packages/studio/tsconfig.build.json": "cf666c1cd49e03000d416d2039fb115f78f112c6dd1ae6244ef0677267f26bb6",
+        "packages/terminus/tsconfig.json": "28282abe534bce160861ed5c0798292c960cb61c7dfa5636d552a245c7223d09",
+        "packages/terminus/tsconfig.build.json": "e9c85f3dd58804114ca16d9669909004b5058a75fddf33a884ef6acfc1840fb4",
+        "packages/testing/tsconfig.json": "28282abe534bce160861ed5c0798292c960cb61c7dfa5636d552a245c7223d09",
+        "packages/testing/tsconfig.build.json": "c9e64b3b2b0edeb6a25e6c9c44951a7a0e8e8a214fe5f5413f81bb68c8064bb2",
+        "packages/throttler/tsconfig.json": "d38c25bd76efc8abab7cf154f44a0f78de3e421f898a93e73ac1756650deb977",
+        "packages/throttler/tsconfig.build.json": "e9c85f3dd58804114ca16d9669909004b5058a75fddf33a884ef6acfc1840fb4",
+        "packages/validation/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/validation/tsconfig.build.json": "e0f7167c135f76daa64ad7c8bde32f4144d1f6c6912ea83e370889e95f7a4a3f",
+        "packages/vite/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/vite/tsconfig.build.json": "ce6041ae0497d5809f0825210d2bb31ded2b72fcead98c2116355b8e557abb31",
+        "packages/websockets/tsconfig.json": "1a3ae27a2d98d063d5ed52cb1dee3f70d90ab3c4f5fa55f8b9b73ca3001bfccc",
+        "packages/websockets/tsconfig.build.json": "63767b4c5a201c2ad796f3a7940775ae57eeca4874fb1713e7550c8dc0496eaa",
+        ".github/workflows/ci.yml": "43c6a04090c749c1a7e2da7b6b8e7653f63ded7e13413907da74b77b0ca6d9c4",
+        ".github/workflows/extended-verification.yml": "be64442619b209313009b16c79f9b101853a8a39b3ec006d5a66c96ae6d2bb94",
+        ".github/workflows/node-verification.yml": "863af63f818aebcbf0f070ef6210d140bb61202bff952b6cab44d2e781efb798",
+        ".github/workflows/react-app-performance.yml": "68b995721efe575c31c75c848b087b8d904955a76ef8e90a88d405d7ac32a963",
+        ".github/workflows/react-reliability-soak.yml": "436de9a7c1923b171d3d65f9addb60d7c84a8cdb0c51455469b961342f3ed3e9",
+        ".github/workflows/release-single-package.yml": "a0ac9e39960ccb5e7f36450c3516455abc2a96b9441945c475fb675e4a893696",
+        ".github/workflows/release.yml": "744d97cfb5fef8315847a05e044f550326e05ea4165dc4787d0ad5901c8985f7",
+        "tooling/scripts/run-workspace-build-closure.mjs": "29637d790c3c01605f9ccf643e283cf731c218aae32399a2657429a300dd38b3",
+        "tooling/scripts/run-workspace-script.mjs": "121d25a0c63e185aed3bddf0bff820b6af63e1bc5eaceb918cce89c8c2b9b890"
+      },
+      "definitionScopes": [
+        ".github/workflows/"
+      ]
+    },
+    {
+      "id": "cli-published-dependencies",
+      "owner": "@ayden94",
+      "consumers": [
+        "@fluojs/cli"
+      ],
+      "inputs": [
+        {
+          "path": "packages/cli/src/new/starter-profiles.ts",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/auth/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/auth-http/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/cache-manager/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/cli/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/config/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/core/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/cqrs/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/cron/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/di/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/diagnostics/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/discord/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/drizzle/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/email/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/event-bus/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/graphql/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/http/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/i18n/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/jwt/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/metrics/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/microservices/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/mongoose/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/notifications/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/openapi/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/passport/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/persistence/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/platform-bun/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/platform-cloudflare-workers/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/platform-express/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/platform-fastify/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/platform-nextjs/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/platform-nodejs/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/prisma/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/queue/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/react/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/redis/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/runtime/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/serialization/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/slack/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/socket.io/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/studio/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/terminus/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/testing/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/throttler/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/validation/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/vite/package.json",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/websockets/package.json",
+          "excludeTests": false
+        }
+      ],
+      "definitions": {
+        "packages/cli/scripts/generate-published-internal-dependencies.mjs": "699ce419512b8528a5e336bd6656bc8a4ed9b1eb1dacb0d96beb751134497bd9"
+      }
+    },
+    {
+      "id": "cli-template-readers",
+      "owner": "@ayden94",
+      "consumers": [
+        "@fluojs/cli"
+      ],
+      "inputs": [
+        {
+          "path": "packages/cli/src/new/templates/",
+          "excludeTests": false
+        },
+        {
+          "path": "packages/cli/src/generators/templates/",
+          "excludeTests": false
+        }
+      ],
+      "definitions": {
+        "packages/cli/src/new/scaffold.ts": "b3c674d2014fc92c54d6053079668c026ee789942c12b2dbe7747189000fd722"
+      }
+    },
+    {
+      "id": "studio-vite-build",
+      "owner": "@ayden94",
+      "consumers": [
+        "@fluojs/studio"
+      ],
+      "inputs": [
+        {
+          "path": "packages/vite/src/",
+          "excludeTests": true
+        }
+      ],
+      "definitions": {
+        "packages/studio/vite.config.ts": "8f800f1d3c70f6fcc62a47204a7dd6a76f5edca84ec6942135cf2cd1117b86e4",
+        "packages/vite/src/decorators-plugin.ts": "0c4ad71e64c0e81536ccee1bb8b18ff374c800f3228ecbc2dcc853d7a3fece57",
+        "packages/vite/src/index.ts": "7461889b10ca0ab867350c88f79078adff36f038dee7dfed0a10887eb60fa6da"
+      }
+    }
+  ],
+  "manifests": {
+    "apps/docs/package.json": "af66d6303a046b9c058cfe2fc7a2aed7fb14b70f96e9cb324a1c26ae5184d408",
+    "examples/auth-jwt-passport/package.json": "da2ffb4db33fae2b3df4f91f0cfdb9c101d6636080bca1fc580cc7acd22bb4b8",
+    "examples/fluo-blog/package.json": "d74465a3b35c88198dfbd2d0abc71b0a6239f2ee26b51d40c3e60b4121be78ce",
+    "examples/graphql/package.json": "87a6bf81e54aa3d22877c7a8689785f500a8a67b353e1a4c72b95191a5b8aa0d",
+    "examples/minimal/package.json": "279acff1774330c8d6c8d09fc3d3c00af603b25d5235ad5631a6b54a2cafb66e",
+    "examples/openapi-multiple-documents/package.json": "141d213dcd7905da4cc5dfb3f6953676bd84a77a4e7490d7543091bee36b699d",
+    "examples/ops-metrics-terminus/package.json": "910b8f1acae8cbad1f104a055767bfcd8192c91e38f8b5a558a7eb098b2a5391",
+    "examples/react-stable-ssr/package.json": "c073c1ffbd5c554ab2a8da5f5c09d094f705a2c9b79db2e09d5b6cd0fa027338",
+    "examples/react-vite-ssr/package.json": "5e7b70fb775ed042ec5435a75fdd9ce96d08a5c9bb34b8b0e281ba7826ca9a82",
+    "examples/realworld-api/package.json": "408e75ae9d5ca78a44e592fdd1967dc32aeb570eec0bcf824060f0eafb81848c",
+    "package.json": "473f55702efb425562a3aa1505ab853510311ca6f11de6b688391b42dcd30048",
+    "packages/auth-http/package.json": "b9f8d60ae29a5704b603a88ca59e54efdf84d34b075ad8bb4f58ee2be73d51c4",
+    "packages/auth/package.json": "fb8c8b572cf81886e12b7b9ae16f2a7630b1acee567e0471009dfb7f50e097ab",
+    "packages/cache-manager/package.json": "255299ce19410a891d9187c8795d4ee4c49c51b4ccf84fff8796d3d369f0ed2f",
+    "packages/cli/package.json": "75fba856c5c5cd14ad467c4f8df03e9eb2d31ff436abe3326c635e61ae5e4703",
+    "packages/config/package.json": "f5da5a2221242525ce3fec398aa6740bc2e06360d9e249f41e0734d0c69d5ad8",
+    "packages/core/package.json": "dea767420790b205d06c2bcf6309314b0625fa1a33c4ea53bbfe6fc9e2c924e7",
+    "packages/cqrs/package.json": "3180bb796224a58d07edd4c4dfdbd0804cb17f2bf81494f53edb63e3476a8e81",
+    "packages/cron/package.json": "5bdf688a4b8a28e8336a9a4c0c3db0349d120a3a46ea048c5324d6338f38f91d",
+    "packages/di/package.json": "980178f4fbd62da8df3fd8dc1da0abb79041e34de5467962b716fc0d1d8a8ec4",
+    "packages/diagnostics/package.json": "870f873dcd41706446cad2ac153fd393fd395fd9e33775e7012c088cc5d25ea3",
+    "packages/discord/package.json": "769d3bdf2d30f4410583cecf830a4a2933bfebb2ad6094adfd517801e00eaee3",
+    "packages/drizzle/package.json": "8605cba98af7ad552512ae466daf678ff680903e35a04c8ec423c3b928613507",
+    "packages/email/package.json": "8ac0a4141ccc779cfae8a940e7fb0d603e0ddb0e8fd9de13308fadff70ee1d97",
+    "packages/event-bus/package.json": "bf90ef5c8412fbbad32de732f76bd09bbc60872a6f52c4f8cd4106ebbd446c22",
+    "packages/graphql/package.json": "0a09a85cc68f083f052295ab8ab20d42a37d601e5650bd647a5d89fd8407410d",
+    "packages/http/package.json": "7dc8a6750dfaddbe230a80688bf7793d9e6bcbe3a21138725aceb9165d30f560",
+    "packages/i18n/package.json": "68b26b9a1d5279a59792b26ab4837466c70068f07dcbdc6153527ce831ee1756",
+    "packages/jwt/package.json": "cdd6c96206355c9d8c570aa387c1831b00700e19d7b5deb3cec7d7730e980618",
+    "packages/metrics/package.json": "a08d0f294459c8ffc68b49e4158a6e01928717ce6f5ff3708370a0e1d0dac7e5",
+    "packages/microservices/package.json": "17d90ea3cbdf4c6cd09c440bdd2a148fb0aaf0c4c435c60d6c25fd52a798736f",
+    "packages/mongoose/package.json": "d42d896766b4d8f61dd737856550948cf668b45115be8a460a77d902df5c1d97",
+    "packages/notifications/package.json": "27e72f1d38cf612fd817430043d6545daf8cb37f8aa9baf6c40dc87bd6c7b1cf",
+    "packages/openapi/package.json": "c11ee03c2d0b0611e37c5e2d2c2c16ace776eeb0f618c8e13033e362f305a44b",
+    "packages/passport/package.json": "398565d6750492af5ae46aac4e0efdba1d5e56d1dbb40721120b92446efb5366",
+    "packages/persistence/package.json": "81012a10bd0c7a8474168ce58063b8198c41b37aec9f451a212a5c38e59c5e63",
+    "packages/platform-bun/package.json": "581b4918da9d8ea47f93095207cbdad646d2ef55c498b342dc5c8d032564cb52",
+    "packages/platform-cloudflare-workers/package.json": "ad48dc5d1bcaf76b3b6c1e6b0a3fad8a0f0e87262963fdb3d3610c24f1538759",
+    "packages/platform-express/package.json": "dd42ff135f5a8a57e8d5d2990b1ea500e255c32ec991872a8e658410cb8a1f9f",
+    "packages/platform-fastify/package.json": "fc40a35d4a80e0c563d7bfdf691a4cafd96d1dfd7407919e52399c099e068e32",
+    "packages/platform-nextjs/package.json": "7611a0b281ee277a4171c63397bb895807d94401a4684444b25a44e32fdfec0b",
+    "packages/platform-nodejs/package.json": "5c713cb20e5a699d18fc862225eee3a8e43b25fda82593a49bc72b043991444b",
+    "packages/prisma/package.json": "d417c272b9416631628dfc154dc2bb7b329be970c64a0239e002d8b513b2b287",
+    "packages/queue/package.json": "2addcbf20a54d3e92ed32bb3643d069e1bbcecce7824359b00e9dd0576921d5c",
+    "packages/react/package.json": "d8a6ce9506be76e06f443fb40d68df7d0857c4d722afbfa31fb5683175a40192",
+    "packages/redis/package.json": "0592fa4a0730c239743581f44ee990d6437b80e682b855153fa66e00699ce8a6",
+    "packages/runtime/package.json": "cdc6f6dc59a022d3e69ce74e879e750142bf412c68370196c1d3718924ec5992",
+    "packages/serialization/package.json": "c8e8fc3e813ff3e8e9f5fe7722b61863234d765a40ffd073cd27a74645a72d4c",
+    "packages/slack/package.json": "92c618bcf7c6290844377347b772cd170a0a07642f9fc34208a68c9bf93a263b",
+    "packages/socket.io/package.json": "643901755a7514f8ef31225ae5656d5321273a18c636dbbe5355a8f6fce9d28c",
+    "packages/studio/package.json": "61c61b5f77cc0db37ae0dc333a519e1661af7d5085b4fe96381f5fd132d3e8ae",
+    "packages/terminus/package.json": "9865a722fd21f488e2a12c68fd086fde56570d4f6d47d0d2a7becba1e77601c1",
+    "packages/testing/package.json": "107d988c595acc0374dd91ddb58d2d373fa44222e7a7abbc84e4ac4fff4d0dda",
+    "packages/throttler/package.json": "df74a149a3ebe0b6a074ad3b9a3e85d609beaf2053fafc60530ff523e57a7d17",
+    "packages/validation/package.json": "8160fd4d788efebd1ceb23e835509f30e1509a40573d045d102e12b6101212ee",
+    "packages/vite/package.json": "7d39ced8b0169a308ba4d696cc56b05a183044cae34068710c95f8a8b7bfae8a",
+    "packages/websockets/package.json": "413e178292583ebc13f77acfe146e47bad11c73a7b4c252ba964f7ab41fe1e46",
+    "tooling/babel/package.json": "bafa93c21661348d801feea2df8977d0153fc509179477cc886468fe1a042689",
+    "tooling/tsconfig/package.json": "b131dae388ecee3c757cebc26b844f738891361c29f90a6b3d02dcdcc1c4a38c",
+    "tooling/vite/package.json": "a41a3ac17149340c468c6482faef7a56ca4187385a4acb9f64022db1a6993c30",
+    "tooling/vitest/package.json": "5017509443dad84d5138f333a3cb28b5aa2522caf8e2e5c8e046926841423640"
+  },
+  "nonProduction": [
+    {
+      "path": "docs/",
+      "testsOnly": false
+    },
+    {
+      "path": "book/",
+      "testsOnly": false
+    },
+    {
+      "path": ".agents/",
+      "testsOnly": false
+    },
+    {
+      "path": ".changeset/",
+      "testsOnly": false
+    },
+    {
+      "path": "tooling/governance/",
+      "testsOnly": false
+    },
+    {
+      "path": "tooling/testing/",
+      "testsOnly": false
+    },
+    {
+      "path": "tooling/benchmarks/",
+      "testsOnly": false
+    },
+    {
+      "path": "tooling/docs/",
+      "testsOnly": false
+    },
+    {
+      "path": "tooling/ci/",
+      "testsOnly": false
+    },
+    {
+      "path": "examples/",
+      "testsOnly": false
+    },
+    {
+      "path": "apps/",
+      "testsOnly": false
+    },
+    {
+      "path": "AGENTS.md",
+      "testsOnly": false
+    },
+    {
+      "path": "CHANGELOG.md",
+      "testsOnly": false
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "testsOnly": false
+    },
+    {
+      "path": "CONTRIBUTING.ko.md",
+      "testsOnly": false
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "testsOnly": false
+    },
+    {
+      "path": "README.ko.md",
+      "testsOnly": false
+    },
+    {
+      "path": "README.md",
+      "testsOnly": false
+    },
+    {
+      "path": "SECURITY.ko.md",
+      "testsOnly": false
+    },
+    {
+      "path": "SECURITY.md",
+      "testsOnly": false
+    },
+    {
+      "path": "SUPPORT.ko.md",
+      "testsOnly": false
+    },
+    {
+      "path": "SUPPORT.md",
+      "testsOnly": false
+    }
+  ]
+}

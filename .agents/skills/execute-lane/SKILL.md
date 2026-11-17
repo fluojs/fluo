@@ -214,6 +214,14 @@ Public consumer-visible package changes require a Changeset before review.
 Package-root README/LICENSE files ship too; unrelated root docs do not imply
 package release impact. Use the release governance contract.
 
+Follow [Production Input Declarations](../../../docs/contracts/release-governance.md#production-input-declarations):
+the issue head and comparison base supply the central declaration and producer
+freshness evidence. Production inputs, including root/tooling/sibling consumers,
+precede test/fixture names and nonshipping rules. Package/build owners maintain
+input completeness and refresh changed command/producer/config evidence; unknown,
+stale or missing old-base evidence cannot justify exclusion. See
+[operations.md](references/operations.md#declared-production-inputs).
+
 Focused checks must exercise the changed behavior and meet preflight criteria;
 retain their commands, results and real-surface evidence for exact-head review.
 For changes affecting CI Node concurrency, the lead completes the selected

@@ -7,6 +7,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
+import { enforcePackageProductionInputs, productionInputClassifier } from '../../../../tooling/governance/package-production-inputs.mjs';
 import { buildVerificationPlan, digest, readVerificationManifest } from '../../../../tooling/ci/local-verification.mjs';
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
 import { generatedHintDigest } from '../../../workflow-contracts/contracts.mjs';
@@ -14,8 +15,30 @@ import { createPreflight, evaluatePreflight } from '../../issue-preflight/script
 import { readRetroEvents } from '../../retrospective-lane/scripts/retro.mjs';
 import { summarizeIntegrationMeasurements } from './generated-integration.mjs';
 import { localCheckBinding } from './lane-v4.mjs';
+import { isConsumerVisibleFile } from './lane-v4-cli.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
+
+function writeProductionDeclaration(root, packages, producers = [], manifests = []) {
+  const manifestKeys = ['name', 'private', 'scripts', 'type', 'files', 'main', 'module', 'types', 'typings', 'exports', 'bin', 'imports'];
+  const declaration = {
+    version: 1, owner: 'fixture-maintainer',
+    packages: packages.map(entry => ({ owner: 'fixture-maintainer', ...entry })),
+    producers: producers.map(({ definitions = [], ...entry }) => ({
+      owner: 'fixture-maintainer', ...entry,
+      definitions: Object.fromEntries(definitions.map(path => [path,
+        createHash('sha256').update(readFileSync(join(root, path))).digest('hex')])),
+    })),
+    manifests: Object.fromEntries(manifests.map(path => {
+      const manifest = JSON.parse(readFileSync(join(root, path), 'utf8'));
+      const projection = Object.fromEntries(manifestKeys.map(key => [key, manifest[key] ?? null]));
+      return [path, createHash('sha256').update(JSON.stringify(projection)).digest('hex')];
+    })),
+    nonProduction: [],
+  };
+  mkdirSync(join(root, 'tooling/governance'), { recursive: true });
+  writeFileSync(join(root, 'tooling/governance/package-production-inputs.json'), JSON.stringify(declaration));
+}
 
 function sqliteWarningFixture(t, { otherWarnings = false, fail = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'fluo-sqlite-4136-'));
@@ -678,13 +701,18 @@ socket.on('data', () => {
     && event.data.run.attempt === 2 && event.data.complete === true && event.data.conclusion === 'success'));
   assert.ok(events.some((event) => event.data.job?.conclusion === 'failure'));
 });
-const fixture = (t, isolatedOrchestrator = false, parent = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir()) => {
+const fixture = (t, isolatedOrchestrator = false, parent = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir(), realRepository = false) => {
   mkdirSync(parent, { recursive: true });
   const root = realpathSync(mkdtempSync(join(parent, 'fluo-lane-v4-')));
   if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
+  if (realRepository) {
+    execFileSync('git', ['clone', '--shared', '--no-checkout', new URL('../../../../', import.meta.url).pathname, root],
+      { stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('git', ['switch', '-c', 'main', 'HEAD'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+  }
   const bin = join(root, 'bin');
   mkdirSync(bin);
-  mkdirSync(join(root, '.omo'));
+  mkdirSync(join(root, '.omo'), { recursive: true });
   cpSync(new URL('../../../../.omo/omo.jsonc', import.meta.url), join(root, '.omo/omo.jsonc'));
   const ghState = join(root, 'gh.json');
   const ghLog = join(root, 'gh.log');
@@ -732,9 +760,10 @@ if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) 
     GIT_AUTHOR_NAME: 'fixture', GIT_AUTHOR_EMAIL: 'fixture@example.test', GIT_COMMITTER_NAME: 'fixture', GIT_COMMITTER_EMAIL: 'fixture@example.test',
     GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' };
   const git = (cwd, ...args) => execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 }).trim();
-  git(root, 'init', '-b', 'main');
-  writeFileSync(join(root, '.gitignore'), 'bin/\ngh.json\ngh.log\n.omo/\n.worktrees/\n');
-  mkdirSync(join(root, 'docs'));
+  if (!realRepository) git(root, 'init', '-b', 'main');
+  writeFileSync(join(root, '.gitignore'),
+    `${existsSync(join(root, '.gitignore')) ? readFileSync(join(root, '.gitignore'), 'utf8') : ''}\nbin/\ngh.json\ngh.log\n.omo/\n.worktrees/\n`);
+  mkdirSync(join(root, 'docs'), { recursive: true });
   writeFileSync(join(root, 'docs/guide.md'), 'base\n');
   for (const file of ['tooling/ci/verify-local.mjs', 'tooling/ci/local-verification.mjs',
     'tooling/ci/verification-runner.mjs', 'tooling/ci/verification-environment.mjs',
@@ -748,7 +777,15 @@ if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) 
   if (isolatedOrchestrator) {
     cpSync(new URL('../../../', import.meta.url), join(root, '.agents'), { recursive: true });
     cpSync(new URL('../../../../tooling/ci/', import.meta.url), join(root, 'tooling/ci'), { recursive: true });
+    for (const file of ['tooling/governance/package-production-inputs.mjs', 'tooling/release/release-intents.mjs']) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      cpSync(new URL(`../../../../${file}`, import.meta.url), join(root, file));
+    }
   }
+  if (realRepository) {
+    cpSync(new URL('../../../../tooling/governance/package-production-inputs.json', import.meta.url),
+      join(root, 'tooling/governance/package-production-inputs.json'));
+  } else writeProductionDeclaration(root, []);
   git(root, 'add', '.');
   git(root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture base');
   git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
@@ -905,6 +942,350 @@ if (args[0] === 'repo' && args[1] === 'view' && args.includes('nameWithOwner')) 
   };
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog, env };
 };
+
+test('#4154 real monorepo: #4151 test-only diff -> review without Changeset', (t) => {
+  const f = fixture(t, false, undefined, true);
+  const input = 'packages/cli/scripts/local-test-env.test.mjs';
+  const rootBuild = JSON.parse(readFileSync(join(f.root, 'package.json'), 'utf8')).scripts.build;
+  const cliBuild = JSON.parse(readFileSync(join(f.root, 'packages/cli/package.json'), 'utf8')).scripts.prebuild;
+  assert.equal(rootBuild, "pnpm -r --filter './packages/*' --if-present run build");
+  assert.match(cliBuild, /generate-published-internal-dependencies\.mjs/u);
+  assert.ok(f.git(f.root, 'ls-files', '.github/workflows/ci.yml', 'packages/react/src/index.ts').includes('packages/react/src/index.ts'));
+  f.set('preflight', f.preflight({ scope: ['packages/cli/scripts/'], predicted_files: [input] }));
+  f.git(f.root, 'worktree', 'add', '-b', 'issue-42', f.worktree, 'main');
+  f.commit(input, `${readFileSync(join(f.worktree, input), 'utf8')}\n// test-only change\n`);
+
+  assert.deepEqual(f.git(f.worktree, 'diff', '--name-only', 'origin/main', 'HEAD').split('\n'), [input]);
+  const row = f.plan();
+  assert.equal(row.obs.publicPackagesTouched, false);
+  assert.equal(row.obs.changesetPresent, false);
+  assert.equal(row.decision.action, 'review');
+});
+
+test('#4154 declared-production-input: stale parent -> repaired head preserves coverage', (t) => {
+  const f = fixture(t);
+  const declarationPath = 'tooling/governance/package-production-inputs.json';
+  const producer = 'tooling/build.mjs';
+  const input = 'packages/cli/scripts/check.test.mjs';
+  const unconsumed = 'packages/cli/scripts/unconsumed.test.mjs';
+  mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
+  writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify({
+    name: '@fluojs/cli', type: 'module', files: ['dist'],
+    publishConfig: { access: 'public' }, scripts: { build: 'node ../../tooling/build.mjs' },
+  }));
+  writeFileSync(join(f.root, input), 'export default 1;\n');
+  writeFileSync(join(f.root, unconsumed), '// nonshipping\n');
+  writeFileSync(join(f.root, producer), '// existing reader\n');
+  const declare = () => writeProductionDeclaration(f.root, [{
+    name: '@fluojs/cli', inputs: [],
+    nonProduction: [{ path: 'packages/cli/', testsOnly: true }],
+  }], [{
+    id: 'cli-build', consumers: ['@fluojs/cli'],
+    inputs: [{ path: input, excludeTests: false }], definitions: [producer],
+  }], ['packages/cli/package.json']);
+  const commit = message => {
+    f.git(f.root, 'add', 'packages', 'tooling');
+    f.git(f.root, 'commit', '-m', message);
+    return f.git(f.root, 'rev-parse', 'HEAD');
+  };
+  declare();
+  commit('existing declared reader');
+  writeFileSync(join(f.root, producer), '// changed reader\n');
+  const stale = commit('A changes producer before refreshing declaration');
+  assert.throws(() => enforcePackageProductionInputs(f.root), /stale producer definition/u);
+  assert.equal(productionInputClassifier(f.root)(unconsumed), true);
+  declare();
+  const repaired = commit('B refreshes only the producer digest');
+  const repairedDeclaration = readFileSync(join(f.root, declarationPath), 'utf8');
+  assert.equal(f.git(f.root, 'diff', '--name-only', stale, repaired), declarationPath);
+
+  assert.doesNotThrow(() => enforcePackageProductionInputs(f.root),
+    'a fresh current head must be accepted after a stale parent is repaired');
+  assert.equal(productionInputClassifier(f.root, repaired, stale)(unconsumed), false);
+  assert.equal(productionInputClassifier(f.root, repaired, stale)(input), true);
+  assert.throws(() => enforcePackageProductionInputs(f.root, stale), /stale producer definition/u);
+
+  const narrowed = JSON.parse(repairedDeclaration);
+  narrowed.producers[0].inputs = [];
+  writeFileSync(join(f.root, declarationPath), JSON.stringify(narrowed));
+  commit('remove previously covered input');
+  assert.throws(() => enforcePackageProductionInputs(f.root), /removed or narrowed production input/u);
+  assert.equal(productionInputClassifier(f.root, 'HEAD', repaired)(unconsumed), true);
+  assert.equal(productionInputClassifier(f.root, 'HEAD', repaired)(input), true);
+
+  writeFileSync(join(f.root, declarationPath), '{}');
+  const unusable = commit('unusable historical declaration');
+  writeFileSync(join(f.root, declarationPath), repairedDeclaration);
+  commit('restore declaration after unusable history');
+  assert.throws(() => enforcePackageProductionInputs(f.root), /invalid declaration fields/u);
+  assert.equal(productionInputClassifier(f.root, 'HEAD', unusable)(unconsumed), true);
+});
+
+for (const extension of ['mjs', 'cjs', 'js']) {
+  test(`#4154 declared-production-input: .${extension} copied by existing producer -> changeset required`, (t) => {
+    const f = fixture(t);
+    const input = `packages/cli/scripts/check.test.${extension}`;
+    const producer = 'packages/cli/scripts/build.mjs';
+    mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
+    writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify({
+      name: '@fluojs/cli', type: 'module', files: ['dist'],
+      publishConfig: { access: 'public' }, scripts: { build: 'node scripts/build.mjs' },
+    }));
+    writeFileSync(join(f.root, input), "globalThis.fixtureValue = 'base';\n");
+    writeFileSync(join(f.root, 'packages/cli/scripts/unconsumed.test.mjs'), '// nonshipping\n');
+    writeFileSync(join(f.root, producer),
+      "import { cpSync, mkdirSync } from 'node:fs';\nmkdirSync('dist', { recursive: true });\n" +
+      `cpSync('scripts/check.test.${extension}', 'dist/index.js');\n`);
+    writeProductionDeclaration(f.root, [{
+      name: '@fluojs/cli', inputs: [],
+      nonProduction: [{ path: 'packages/cli/', testsOnly: true }],
+    }], [{
+      id: 'cli-build', consumers: ['@fluojs/cli'],
+      inputs: [{ path: input, excludeTests: false }], definitions: [producer],
+    }], ['packages/cli/package.json']);
+    f.git(f.root, 'add', 'packages', 'tooling/governance/package-production-inputs.json');
+    f.git(f.root, 'commit', '-m', 'existing declared producer');
+    f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    f.set('preflight', f.preflight({ scope: ['packages/', '.changeset/'], predicted_files: [input] }));
+    f.git(f.root, 'worktree', 'add', '-b', 'issue-42', f.worktree, 'main');
+    const build = () => {
+      execFileSync(process.execPath, ['scripts/build.mjs'], { cwd: join(f.worktree, 'packages/cli'), env: f.env });
+      const output = readFileSync(join(f.worktree, 'packages/cli/dist/index.js'), 'utf8');
+      rmSync(join(f.worktree, 'packages/cli/dist'), { recursive: true });
+      return output;
+    };
+    assert.equal(build(), "globalThis.fixtureValue = 'base';\n");
+    f.commit(input, "globalThis.fixtureValue = 'changed';\n");
+    assert.deepEqual(f.git(f.worktree, 'diff', '--name-only', 'origin/main', 'HEAD').split('\n'), [input]);
+    assert.equal(build(), "globalThis.fixtureValue = 'changed';\n");
+
+    assert.equal(isConsumerVisibleFile(input, { root: f.root, head: f.git(f.worktree, 'rev-parse', 'HEAD') }), true);
+    assert.equal(isConsumerVisibleFile('packages/cli/scripts/unconsumed.test.mjs',
+      { root: f.root, head: f.git(f.worktree, 'rev-parse', 'HEAD') }), false);
+    const row = f.plan();
+    assert.equal(row.obs.publicPackagesTouched, true);
+    assert.equal(row.obs.changesetPresent, false);
+    assert.equal(row.decision.action, 'fix-back');
+    assert.equal(row.decision.reason, 'changeset-missing');
+    f.commit('.changeset/consumer.md', '---\n"@fluojs/cli": patch\n---\nUpdate generated output.\n');
+    assert.equal(f.plan().decision.action, 'review');
+  });
+}
+
+for (const scenario of [
+  { name: 'JavaScript test only', files: ['scripts/local-test-env.test.mjs'], visible: false },
+  { name: 'development script only', files: ['scripts/check.mjs'], visible: false, developmentOnly: true },
+  { name: 'production source mixed with test', files: ['scripts/check.test.js', 'src/adapter.ts'], visible: true, firstVisible: false },
+  { name: 'generation input outside files', files: ['scripts/generate.mjs'], visible: true },
+  { name: 'unclassified script', files: ['scripts/unknown.mjs'], visible: true },
+  { name: 'template test copied into output', files: ['src/new/templates/app.test.js'], visible: true },
+  { name: 'packed Markdown', files: ['dist/guide.md'], visible: true },
+  { name: 'packed script test', files: ['bin/check.test.cjs'], visible: true },
+  { name: 'missing manifest after deletion', files: ['scripts/check.mjs'], visible: true, metadata: 'deleted' },
+  { name: 'invalid manifest', files: ['scripts/check.mjs'], visible: true, metadata: 'invalid' },
+  { name: 'unsupported files pattern', files: ['scripts/check.mjs'], visible: true, metadata: 'glob' },
+  { name: 'runtime references development entry', files: ['scripts/check.mjs', 'src/runtime.ts'], visible: true },
+  { name: 'build helper references development entry', files: ['scripts/check.mjs', 'scripts/build.mjs'], visible: true },
+  ...['deleted', 'glob', 'literal'].flatMap(packaging =>
+    ['test/helper.ts', 'fixtures/data.json'].map(file => ({
+      name: `${packaging} packaging with ${file}`, files: [file],
+      visible: packaging !== 'literal', packaging,
+    }))),
+  { name: 'indirect Markdown copy through build helper', files: ['src/assets/guide.md'], visible: true, buildCopy: true },
+  ...['CHANGELOG.md', 'design-rfc.md', 'design-rfc.ko.md'].map(file => ({
+    name: `root notes copied through helper ${file}`, files: [file],
+    visible: true, buildCopy: true, copyInput: file,
+  })),
+  { name: 'relative dynamic import reaches development script', files: ['scripts/check.mjs'], visible: true, dynamicBuild: true },
+  { name: 'unclassified root Markdown input', files: ['input.md'], visible: true },
+  { name: 'nonshipping root documentation', files: ['CHANGELOG.md'], visible: false, developmentOnly: true },
+  { name: 'isolated root notes without filename exemption', files: ['notes.md'], visible: false, developmentOnly: true },
+  { name: 'nonshipping notes mixed with declared production source', files: ['CHANGELOG.md', 'src/runtime.ts'], visible: true, firstVisible: false, developmentOnly: true },
+  { name: 'changed runtime entrypoint invalidates declaration', files: ['CHANGELOG.md'], visible: true, developmentOnly: true, runtimeEntry: true },
+  ...['root', 'sibling'].flatMap(externalConsumer =>
+    ['CHANGELOG.md', 'scripts/check.mjs'].map(file => ({
+      name: `${externalConsumer} computed consumer of ${file}`, files: [file],
+      visible: true, developmentOnly: true, externalConsumer,
+    }))),
+  ...['tooling/ci/unrelated.mjs', '.agents/opaque/build.mjs'].map(externalDefinition => ({
+    name: `stale external producer definition ${externalDefinition}`, files: ['CHANGELOG.md'],
+    visible: true, developmentOnly: true, externalDefinition,
+  })),
+]) {
+  test(`#4154 CLI: ${scenario.name} -> observed consumer impact and changeset plan`, (t) => {
+    const f = fixture(t);
+    if (scenario.developmentOnly) {
+      // Keep the executable harness on disk, outside this scenario's observed
+      // repository. Only explicitly added package/consumer files form its base.
+      writeFileSync(join(f.root, '.gitignore'),
+        `${readFileSync(join(f.root, '.gitignore'), 'utf8')}.gitignore\n/docs/\n/tooling/\n/.agents/\n`);
+      f.git(f.root, 'rm', '-r', '--cached', '.');
+    }
+    const manifest = { name: '@fluojs/cli', publishConfig: { access: 'public' },
+      files: scenario.packaging === 'glob' ? ['test/**', 'fixtures/**'] : ['dist', 'bin'],
+      scripts: scenario.buildCopy ? { build: 'node scripts/build.mjs' }
+        : scenario.dynamicBuild ? { build: 'node scripts/run.mjs', 'sandbox:check': 'node ./scripts/check.mjs' }
+          : scenario.developmentOnly ? { 'sandbox:check': 'node ./scripts/check.mjs' }
+            : { 'sandbox:check': 'node ./scripts/check.mjs', prebuild: 'node ./scripts/generate.mjs' },
+    };
+    mkdirSync(join(f.root, 'packages/cli'), { recursive: true });
+    writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify(manifest));
+    if (scenario.buildCopy) {
+      mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
+      writeFileSync(join(f.root, 'packages/cli/scripts/build.mjs'),
+        "import { cpSync, mkdirSync } from 'node:fs';\nmkdirSync('dist', { recursive: true });\n" +
+        `cpSync(${JSON.stringify(scenario.copyInput ?? 'src/assets')}, ${JSON.stringify(scenario.copyInput ? 'dist/release-notes.md' : 'dist/assets')}, { recursive: true });\n`);
+    }
+    if (scenario.dynamicBuild || scenario.developmentOnly) {
+      mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
+      writeFileSync(join(f.root, 'packages/cli/scripts/check.mjs'), '// development command\n');
+    }
+    if (!scenario.developmentOnly && !scenario.buildCopy && !scenario.dynamicBuild) {
+      mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
+      writeFileSync(join(f.root, 'packages/cli/scripts/check.mjs'), '// development command\n');
+      writeFileSync(join(f.root, 'packages/cli/scripts/generate.mjs'), '// production generator\n');
+    }
+    if (scenario.dynamicBuild) {
+      writeFileSync(join(f.root, 'packages/cli/scripts/run.mjs'),
+        "const name='check';\nawait import(`./${name}.mjs`);\n");
+    }
+    const externalScript = scenario.externalConsumer && scenario.files[0].endsWith('.mjs');
+    const externalHelper = scenario.externalConsumer === 'root'
+      ? 'tooling/build.mjs' : 'packages/builder/scripts/build.mjs';
+    const externalOutput = scenario.externalConsumer === 'root' ? 'packages/cli/dist' : 'packages/builder/dist';
+    if (scenario.externalConsumer) {
+      writeFileSync(join(f.root, 'packages/cli', scenario.files[0]),
+        externalScript ? "export const content = 'base';\n" : '// base\n');
+      mkdirSync(dirname(join(f.root, externalHelper)), { recursive: true });
+      const prefix = scenario.externalConsumer === 'root' ? '../packages/' : '../../';
+      writeFileSync(join(f.root, externalHelper),
+        "import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';\n" +
+        `const input = new URL(${JSON.stringify(prefix)} + ['c', 'li'].join('') + '/' + ` +
+        (externalScript ? "'scripts/' + ['ch', 'eck'].join('') + '.mjs'" : "['CHANGE', 'LOG.md'].join('')") +
+        ", import.meta.url);\n" +
+        `const output = new URL(${JSON.stringify(scenario.externalConsumer === 'root' ? '../packages/cli/dist/' : '../dist/')}, import.meta.url);\n` +
+        "mkdirSync(output, { recursive: true });\n" +
+        `writeFileSync(new URL('result.txt', output), ${externalScript ? '(await import(input.href)).content' : "readFileSync(input, 'utf8')"});\n`);
+      const consumerManifest = scenario.externalConsumer === 'root'
+        ? 'package.json' : 'packages/builder/package.json';
+      writeFileSync(join(f.root, consumerManifest), JSON.stringify({
+        name: '@fluojs/builder', files: ['dist'],
+        scripts: { build: scenario.externalConsumer === 'root' ? 'node tooling/build.mjs' : 'node scripts/build.mjs' },
+      }));
+      f.git(f.root, 'add', '-f', externalHelper, consumerManifest);
+      execFileSync(process.execPath, [externalHelper], { cwd: f.root, env: f.env });
+      assert.equal(readFileSync(join(f.root, externalOutput, 'result.txt'), 'utf8'),
+        externalScript ? 'base' : '// base\n');
+      rmSync(join(f.root, externalOutput), { recursive: true });
+    }
+    if (scenario.externalDefinition) {
+      mkdirSync(dirname(join(f.root, scenario.externalDefinition)), { recursive: true });
+      writeFileSync(join(f.root, scenario.externalDefinition), 'export {};\n');
+      f.git(f.root, 'add', '-f', scenario.externalDefinition);
+    }
+    const packageInputs = scenario.files.filter(file => file.startsWith('src/')).map(file => ({
+      path: `packages/cli/${file}`, excludeTests: false,
+    }));
+    const nonProduction = [{ path: 'packages/cli/', testsOnly: true }];
+    if (scenario.developmentOnly) {
+      nonProduction.push({ path: 'packages/cli/scripts/check.mjs', testsOnly: false });
+      for (const file of scenario.files.filter(file => file.endsWith('.md'))) {
+        if (!existsSync(join(f.root, 'packages/cli', file))) writeFileSync(join(f.root, 'packages/cli', file), '// base\n');
+        nonProduction.push({ path: `packages/cli/${file}`, testsOnly: false });
+      }
+    }
+    for (const directory of ['test/', 'fixtures/']) {
+      if (scenario.files.some(file => file.startsWith(directory))) {
+        mkdirSync(join(f.root, 'packages/cli', directory), { recursive: true });
+        writeFileSync(join(f.root, 'packages/cli', directory, 'baseline'), 'base\n');
+        nonProduction.push({ path: `packages/cli/${directory}`, testsOnly: false });
+      }
+    }
+    const producerInputs = scenario.externalConsumer || scenario.buildCopy || scenario.dynamicBuild
+      ? [{ path: `packages/cli/${scenario.files[0]}`, excludeTests: false }] : [];
+    for (const input of [...packageInputs, ...producerInputs]) {
+      if (!existsSync(join(f.root, input.path))) {
+        mkdirSync(dirname(join(f.root, input.path)), { recursive: true });
+        writeFileSync(join(f.root, input.path), '// base\n');
+      }
+    }
+    const definitions = scenario.externalConsumer ? [externalHelper]
+      : scenario.buildCopy ? ['packages/cli/scripts/build.mjs']
+        : scenario.dynamicBuild ? ['packages/cli/scripts/run.mjs']
+          : scenario.developmentOnly ? [] : ['packages/cli/scripts/generate.mjs'];
+    if (scenario.externalDefinition) definitions.push(scenario.externalDefinition);
+    const manifestPaths = ['packages/cli/package.json',
+      ...(scenario.externalConsumer === 'root' ? ['package.json'] : []),
+      ...(scenario.externalConsumer === 'sibling' ? ['packages/builder/package.json'] : [])];
+    writeProductionDeclaration(f.root, [{ name: '@fluojs/cli', inputs: packageInputs, nonProduction }], [{
+      id: 'cli-build', consumers: ['@fluojs/cli'], inputs: producerInputs, definitions,
+    }], manifestPaths);
+    f.git(f.root, 'add', '-f', 'tooling/governance/package-production-inputs.json');
+    f.git(f.root, 'add', 'packages');
+    f.git(f.root, 'commit', '-m', 'package metadata');
+    if (scenario.packaging === 'deleted') {
+      f.git(f.root, 'rm', 'packages/cli/package.json');
+      f.git(f.root, 'commit', '-m', 'remove package metadata');
+    }
+    f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    f.set('preflight', f.preflight({ scope: ['docs/', 'packages/', '.changeset/',
+      ...(scenario.externalDefinition ? [scenario.externalDefinition] : [])] }));
+    f.git(f.root, 'worktree', 'add', '-b', 'issue-42', f.worktree, 'main');
+    // The engine checkout deliberately disagrees with the observed issue head.
+    mkdirSync(join(f.root, 'packages/cli'), { recursive: true });
+    writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify({ ...manifest, files: ['scripts'] }));
+    if (scenario.externalDefinition) {
+      writeFileSync(join(f.worktree, scenario.externalDefinition), 'export const changed = true;\n');
+    }
+    if (scenario.runtimeEntry) {
+      writeFileSync(join(f.worktree, 'packages/cli/package.json'), JSON.stringify({ ...manifest, exports: './dist/index.js' }));
+    }
+    if (scenario.metadata === 'deleted') {
+      rmSync(join(f.worktree, 'packages/cli/package.json'));
+    } else if (scenario.metadata) {
+      writeFileSync(join(f.worktree, 'packages/cli/package.json'),
+        scenario.metadata === 'invalid' ? '{' : JSON.stringify({ ...manifest, files: ['dist/**'] }));
+    }
+    for (const file of scenario.files) {
+      const path = `packages/cli/${file}`;
+      mkdirSync(dirname(join(f.worktree, path)), { recursive: true });
+      writeFileSync(join(f.worktree, path), file === 'src/runtime.ts'
+        ? "import '../scripts/check.mjs';\n" : file === 'scripts/build.mjs'
+          ? "import './check.mjs';\n" : externalScript ? "export const content = 'changed';\n" : scenario.dynamicBuild
+            ? "import { mkdirSync, writeFileSync } from 'node:fs';\nmkdirSync('dist', { recursive: true });\nwriteFileSync('dist/result.txt', 'changed');\n"
+            : '// changed\n');
+      f.git(f.worktree, 'add', '-f', path);
+      f.commit(path, readFileSync(join(f.worktree, path), 'utf8'));
+    }
+
+    if (scenario.externalConsumer) {
+      assert.deepEqual(f.git(f.worktree, 'diff', '--name-only', 'origin/main', 'HEAD').split('\n'),
+        [`packages/cli/${scenario.files[0]}`]);
+      execFileSync(process.execPath, [externalHelper], { cwd: f.worktree, env: f.env });
+      assert.equal(readFileSync(join(f.worktree, externalOutput, 'result.txt'), 'utf8'),
+        externalScript ? 'changed' : '// changed\n');
+      rmSync(join(f.worktree, externalOutput), { recursive: true });
+    }
+    assert.equal(isConsumerVisibleFile(`packages/cli/${scenario.files[0]}`,
+      { root: f.root, head: f.git(f.worktree, 'rev-parse', 'HEAD') }), scenario.firstVisible ?? scenario.visible);
+    const row = f.plan();
+
+    assert.equal(row.obs.publicPackagesTouched, scenario.visible);
+    assert.equal(row.obs.changesetPresent, false);
+    assert.equal(row.decision.action, scenario.visible ? 'fix-back' : 'review');
+    if (scenario.visible) assert.equal(row.decision.reason, 'changeset-missing');
+    f.commit('.changeset/consumer.md', '---\n"@fluojs/cli": patch\n---\nPreserve consumer behavior.\n');
+    assert.equal(f.plan().decision.action, 'review');
+    if (scenario.buildCopy || scenario.dynamicBuild) {
+      execFileSync(process.execPath, [scenario.dynamicBuild ? 'scripts/run.mjs' : 'scripts/build.mjs'],
+        { cwd: join(f.worktree, 'packages/cli'), env: f.env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const output = scenario.dynamicBuild ? 'dist/result.txt'
+        : scenario.copyInput ? 'dist/release-notes.md' : 'dist/assets/guide.md';
+      assert.equal(readFileSync(join(f.worktree, 'packages/cli', output), 'utf8'),
+        scenario.dynamicBuild ? 'changed' : '// changed\n');
+    }
+  });
+}
 
 const importedAdaptive = {
   retry_count_is_terminal: false, max_same_failure_repeats: null,
@@ -1759,11 +2140,21 @@ for (const file of ['.github/workflows/ci.yml', 'package.json', 'pnpm-lock.yaml'
   'tooling/ci/package.json', 'vitest.config.ts', 'tooling/ci/verify-local.mjs']) {
   test(`CLI: reviewed ${file} -> publication without local receipt or waiver`, (t) => {
     const f = fixture(t);
+    const privateManifest = { name: 'fixture-ci', private: true, type: 'module' };
+    if (file.endsWith('package.json')) {
+      mkdirSync(dirname(join(f.root, file)), { recursive: true });
+      writeFileSync(join(f.root, file), JSON.stringify(privateManifest));
+      writeProductionDeclaration(f.root, [], [], [file]);
+      f.git(f.root, 'add', file, 'tooling/governance/package-production-inputs.json');
+      f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'private publication fixture');
+      f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    }
     f.set('preflight', f.preflight({
       scope: ['docs/', file], predicted_files: [file],
     }));
     f.implement();
-    f.commit(file, file.endsWith('package.json') ? '{"private":true}\n' : 'fixture change\n');
+    f.commit(file, file.endsWith('package.json')
+      ? JSON.stringify({ ...privateManifest, description: 'internal metadata change' }) : 'fixture change\n');
     assert.equal(f.plan().decision.action, 'review');
     const review = f.review();
     f.set('review', review, review.head_sha);
