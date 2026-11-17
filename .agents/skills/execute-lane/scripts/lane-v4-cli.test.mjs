@@ -2080,11 +2080,21 @@ for (const file of ['.github/workflows/ci.yml', 'package.json', 'pnpm-lock.yaml'
   'tooling/ci/package.json', 'vitest.config.ts', 'tooling/ci/verify-local.mjs']) {
   test(`CLI: reviewed ${file} -> publication without local receipt or waiver`, (t) => {
     const f = fixture(t);
+    const privateManifest = { name: 'fixture-ci', private: true, type: 'module' };
+    if (file.endsWith('package.json')) {
+      mkdirSync(dirname(join(f.root, file)), { recursive: true });
+      writeFileSync(join(f.root, file), JSON.stringify(privateManifest));
+      writeProductionDeclaration(f.root, [], [], [file]);
+      f.git(f.root, 'add', file, 'tooling/governance/package-production-inputs.json');
+      f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'private publication fixture');
+      f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    }
     f.set('preflight', f.preflight({
       scope: ['docs/', file], predicted_files: [file],
     }));
     f.implement();
-    f.commit(file, file.endsWith('package.json') ? '{"private":true}\n' : 'fixture change\n');
+    f.commit(file, file.endsWith('package.json')
+      ? JSON.stringify({ ...privateManifest, description: 'internal metadata change' }) : 'fixture change\n');
     assert.equal(f.plan().decision.action, 'review');
     const review = f.review();
     f.set('review', review, review.head_sha);
