@@ -953,6 +953,7 @@ for (const scenario of [
     f.set('preflight', f.preflight({ scope: ['docs/', 'packages/', '.changeset/'] }));
     f.implement();
     // The engine checkout deliberately disagrees with the observed issue head.
+    mkdirSync(join(f.root, 'packages/cli'), { recursive: true });
     writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify({ ...manifest, files: ['scripts'] }));
     if (scenario.metadata === 'deleted') {
       rmSync(join(f.worktree, 'packages/cli/package.json'));
