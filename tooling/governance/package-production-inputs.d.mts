@@ -44,9 +44,10 @@ export function validatePackageProductionInputs(source: {
   readonly files: readonly string[];
   readonly readText: (path: string) => string;
   readonly readBytes?: (path: string) => Uint8Array;
+  readonly validation?: 'current' | 'historical';
 }): ProductionInputSnapshot;
 export function assertProductionInputsPreserved(previous: ProductionInputSnapshot, current: ProductionInputSnapshot): void;
 export function consumerVisibleFromInputs(file: string, snapshot: ProductionInputSnapshot): boolean;
-export function readPackageProductionInputs(root?: string, ref?: string): ProductionInputSnapshot;
+export function readPackageProductionInputs(root?: string, ref?: string, validation?: 'current' | 'historical'): ProductionInputSnapshot;
 export function productionInputClassifier(root?: string, head?: string, base?: string): (file: string) => boolean;
 export function enforcePackageProductionInputs(root?: string, ref?: string): ProductionInputSnapshot;

@@ -7,6 +7,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
+import { enforcePackageProductionInputs, productionInputClassifier } from '../../../../tooling/governance/package-production-inputs.mjs';
 import { buildVerificationPlan, digest, readVerificationManifest } from '../../../../tooling/ci/local-verification.mjs';
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
 import { generatedHintDigest } from '../../../workflow-contracts/contracts.mjs';
@@ -959,6 +960,65 @@ test('#4154 real monorepo: #4151 test-only diff -> review without Changeset', (t
   assert.equal(row.obs.publicPackagesTouched, false);
   assert.equal(row.obs.changesetPresent, false);
   assert.equal(row.decision.action, 'review');
+});
+
+test('#4154 declared-production-input: stale parent -> repaired head preserves coverage', (t) => {
+  const f = fixture(t);
+  const declarationPath = 'tooling/governance/package-production-inputs.json';
+  const producer = 'tooling/build.mjs';
+  const input = 'packages/cli/scripts/check.test.mjs';
+  const unconsumed = 'packages/cli/scripts/unconsumed.test.mjs';
+  mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
+  writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify({
+    name: '@fluojs/cli', type: 'module', files: ['dist'],
+    publishConfig: { access: 'public' }, scripts: { build: 'node ../../tooling/build.mjs' },
+  }));
+  writeFileSync(join(f.root, input), 'export default 1;\n');
+  writeFileSync(join(f.root, unconsumed), '// nonshipping\n');
+  writeFileSync(join(f.root, producer), '// existing reader\n');
+  const declare = () => writeProductionDeclaration(f.root, [{
+    name: '@fluojs/cli', inputs: [],
+    nonProduction: [{ path: 'packages/cli/', testsOnly: true }],
+  }], [{
+    id: 'cli-build', consumers: ['@fluojs/cli'],
+    inputs: [{ path: input, excludeTests: false }], definitions: [producer],
+  }], ['packages/cli/package.json']);
+  const commit = message => {
+    f.git(f.root, 'add', 'packages', 'tooling');
+    f.git(f.root, 'commit', '-m', message);
+    return f.git(f.root, 'rev-parse', 'HEAD');
+  };
+  declare();
+  commit('existing declared reader');
+  writeFileSync(join(f.root, producer), '// changed reader\n');
+  const stale = commit('A changes producer before refreshing declaration');
+  assert.throws(() => enforcePackageProductionInputs(f.root), /stale producer definition/u);
+  assert.equal(productionInputClassifier(f.root)(unconsumed), true);
+  declare();
+  const repaired = commit('B refreshes only the producer digest');
+  const repairedDeclaration = readFileSync(join(f.root, declarationPath), 'utf8');
+  assert.equal(f.git(f.root, 'diff', '--name-only', stale, repaired), declarationPath);
+
+  assert.doesNotThrow(() => enforcePackageProductionInputs(f.root),
+    'a fresh current head must be accepted after a stale parent is repaired');
+  assert.equal(productionInputClassifier(f.root, repaired, stale)(unconsumed), false);
+  assert.equal(productionInputClassifier(f.root, repaired, stale)(input), true);
+  assert.throws(() => enforcePackageProductionInputs(f.root, stale), /stale producer definition/u);
+
+  const narrowed = JSON.parse(repairedDeclaration);
+  narrowed.producers[0].inputs = [];
+  writeFileSync(join(f.root, declarationPath), JSON.stringify(narrowed));
+  commit('remove previously covered input');
+  assert.throws(() => enforcePackageProductionInputs(f.root), /removed or narrowed production input/u);
+  assert.equal(productionInputClassifier(f.root, 'HEAD', repaired)(unconsumed), true);
+  assert.equal(productionInputClassifier(f.root, 'HEAD', repaired)(input), true);
+
+  writeFileSync(join(f.root, declarationPath), '{}');
+  const unusable = commit('unusable historical declaration');
+  writeFileSync(join(f.root, declarationPath), repairedDeclaration);
+  commit('restore declaration after unusable history');
+  assert.throws(() => enforcePackageProductionInputs(f.root), /invalid declaration fields/u);
+  assert.equal(productionInputClassifier(f.root, 'HEAD', unusable)(unconsumed), true);
 });
 
 for (const extension of ['mjs', 'cjs', 'js']) {

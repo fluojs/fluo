@@ -77,7 +77,7 @@ Prerelease workflow는 Changesets prerelease mode(`changeset pre enter <tag>`)�
 
 **유지보수와 한계.** 구조 검사는 임의 프로그램의 입력 완전성이나 비의존성을 증명하지 않습니다. package/build 소유자는 새 reader, 복사, import, 동적 경로 계산 또는 directory discovery가 실제 읽는 exact path나 충분한 directory 범위를 선언하고 검토해야 합니다. 문자열 검색 무일치, 테스트 이름, 외부 파일 부재 또는 선언 자체를 그 증명으로 사용하지 않습니다. 실행·설정 파일은 실제 bytes의 SHA-256으로, root/workspace manifest는 명령과 runtime layout의 의미 있는 projection으로 freshness를 확인합니다. 새 manifest나 생산 명령·lifecycle 연결, producer/config 정의가 바뀌면 근거를 갱신하고 소유자가 재검토합니다. payload, package version, dependency version 값만 바뀌어도 모든 producer 정의를 다시 고정하도록 만들지는 않습니다.
 
-기존 입력·producer·consumer·정의의 삭제나 축소로 release impact를 지우지 않습니다. classifier는 비교 base의 근거도 유지하고, governance는 유효한 이전 선언이 있으면 제거·축소를 거부합니다. 새로운 선언이 없는 old base는 비배포의 증거가 아닙니다. 최초 선언의 구조 검증 성공도 old-base diff 면제를 뜻하지 않습니다. 그런 제외가 필요하면 merge 이후 유효한 선언이 있는 새 main에 대해 정식으로 재-preflight하며, Changeset 검사를 피하려고 진행 중인 lane의 고정 base나 engine을 바꾸지 않습니다.
+기존 입력·producer·consumer·정의의 삭제나 축소로 release impact를 지우지 않습니다. 현재 head는 모든 freshness 검사를 통과해야 합니다. coverage를 비교하는 과거 선언은 구조·inventory·경로·digest 형식을 검증하되 실행 코드와 manifest digest가 과거 bytes와 일치할 필요는 없습니다. 후속 커밋이 coverage를 유지하면서 stale 근거를 복구할 수 있기 때문입니다. classifier는 이 비교 base의 근거도 유지하고, governance는 제거·축소 또는 사용할 수 없는 과거 선언을 거부합니다. 새로운 선언이 없는 old base는 비배포의 증거가 아닙니다. 최초 선언의 구조 검증 성공도 old-base diff 면제를 뜻하지 않습니다. 그런 제외가 필요하면 merge 이후 유효한 선언이 있는 새 main에 대해 정식으로 재-preflight하며, Changeset 검사를 피하려고 진행 중인 lane의 고정 base나 engine을 바꾸지 않습니다.
 
 선택적인 `definitionScopes`는 실행 코드·설정 정의만 담는 literal directory prefix를 지정합니다. 그 안에 새 tracked 파일이 생기면 실제 digest 항목이 없을 때 검증이 실패합니다. 현재 workflow 정의 inventory도 이 범위로 유지합니다. payload와 version 데이터는 `inputs`에 두며 이 정의 snapshot 범위에 넣지 않습니다.
 

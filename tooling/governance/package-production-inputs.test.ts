@@ -204,8 +204,15 @@ describe('declared package production inputs', () => {
       ...fixture.manifest, scripts: { ...fixture.manifest.scripts, prepack: 'node external.mjs' },
     }));
     expect(() => fixture.load()).toThrow(/stale command\/runtime definition/u);
+    expect(() => validatePackageProductionInputs({ ...fixture.source(), validation: 'historical' })).not.toThrow();
+    fixture.data.manifests[fixture.manifestPath] = 'malformed';
+    fixture.save();
+    expect(() => validatePackageProductionInputs({ ...fixture.source(), validation: 'historical' }))
+      .toThrow(/stale command\/runtime definition/u);
     fixture.files.set('packages/private/package.json', '{"name":"private","private":true}');
     expect(() => fixture.load()).toThrow(/workspace manifest inventory/u);
+    expect(() => validatePackageProductionInputs({ ...fixture.source(), validation: 'historical' }))
+      .toThrow(/workspace manifest inventory/u);
   });
 
   it('does not stale producer definitions for payload, package-version or dependency-version updates', () => {
@@ -271,6 +278,11 @@ describe('declared package production inputs', () => {
     const fixture = declaredFixture();
     fixture.files.set(fixture.producerPath, 'changed reader');
     expect(() => fixture.load()).toThrow(/stale producer definition/u);
+    expect(() => validatePackageProductionInputs({ ...fixture.source(), validation: 'historical' })).not.toThrow();
+    fixture.data.producers[0].definitions[fixture.producerPath] = 'malformed';
+    fixture.save(fixture.data);
+    expect(() => validatePackageProductionInputs({ ...fixture.source(), validation: 'historical' }))
+      .toThrow(/stale producer definition/u);
     fixture.files.delete(fixture.producerPath);
     expect(() => fixture.load()).toThrow(/missing path/u);
     const source = fixture.source();

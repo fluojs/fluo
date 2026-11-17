@@ -30,7 +30,8 @@ export function productionManifestDigest(manifest) {
   return hash(JSON.stringify(Object.fromEntries(manifestKeys.map(key => [key, manifest[key] ?? null]))));
 }
 
-export function validatePackageProductionInputs({ files, readText, readBytes = path => Buffer.from(readText(path), 'utf8') }) {
+export function validatePackageProductionInputs({ files, readText, readBytes = path => Buffer.from(readText(path), 'utf8'), validation = 'current' }) {
+  if (!['current', 'historical'].includes(validation)) fail('unsupported snapshot validation');
   const source = readText(productionInputsPath);
   let declaration;
   try { declaration = JSON.parse(source); }
@@ -83,7 +84,8 @@ export function validatePackageProductionInputs({ files, readText, readBytes = p
     if (!object(manifest) || typeof manifest.name !== 'string' ||
       (manifest.scripts !== undefined && (!object(manifest.scripts) ||
         Object.values(manifest.scripts).some(command => typeof command !== 'string')))) fail(`invalid manifest ${packageJsonPath}`);
-    if (declaration.manifests[packageJsonPath] !== productionManifestDigest(manifest)) fail(`stale command/runtime definition ${packageJsonPath}`);
+    if (!/^[a-f0-9]{64}$/u.test(declaration.manifests[packageJsonPath]) ||
+      (validation === 'current' && declaration.manifests[packageJsonPath] !== productionManifestDigest(manifest))) fail(`stale command/runtime definition ${packageJsonPath}`);
     return { packageJsonPath, manifest };
   });
   const publicManifests = manifests.filter(item => /^packages\/[^/]+\/package\.json$/u.test(item.packageJsonPath));
@@ -127,7 +129,8 @@ export function validatePackageProductionInputs({ files, readText, readBytes = p
     }
     for (const [definition, digest] of Object.entries(producer.definitions)) {
       path(definition, false);
-      if (!/^[a-f0-9]{64}$/u.test(digest) || hash(readBytes(definition)) !== digest) fail(`stale producer definition ${definition}`);
+      const bytes = readBytes(definition);
+      if (!/^[a-f0-9]{64}$/u.test(digest) || (validation === 'current' && hash(bytes) !== digest)) fail(`stale producer definition ${definition}`);
     }
   }
   unique(declaration.producers.map(producer => producer.id), 'producer id');
@@ -186,7 +189,7 @@ export function consumerVisibleFromInputs(file, snapshot) {
     (!rule.testsOnly || testModule.test(file) || fixtureModule.test(file)));
 }
 
-export function readPackageProductionInputs(root = repoRoot, ref = 'HEAD') {
+export function readPackageProductionInputs(root = repoRoot, ref = 'HEAD', validation = 'current') {
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const records = git(['ls-tree', '-r', '-z', ref]).split('\0').filter(Boolean);
   const modes = new Map(records.map(record => [record.slice(record.indexOf('\t') + 1), record.slice(0, 6)]));
@@ -195,13 +198,13 @@ export function readPackageProductionInputs(root = repoRoot, ref = 'HEAD') {
     if (!['100644', '100755'].includes(modes.get(path))) fail(`missing or unsupported Git file ${ref}:${path}`);
     return execFileSync('git', ['show', `${ref}:${path}`], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
   };
-  return validatePackageProductionInputs({ files, readText: path => readBytes(path).toString('utf8'), readBytes });
+  return validatePackageProductionInputs({ files, readText: path => readBytes(path).toString('utf8'), readBytes, validation });
 }
 
 export function productionInputClassifier(root = repoRoot, head = 'HEAD', base = head) {
   try {
     const current = readPackageProductionInputs(root, head);
-    const previous = base === head ? current : readPackageProductionInputs(root, base);
+    const previous = base === head ? current : readPackageProductionInputs(root, base, 'historical');
     assertProductionInputsPreserved(previous, current);
     return file => consumerVisibleFromInputs(file, current) || consumerVisibleFromInputs(file, previous);
   } catch (error) {
@@ -215,7 +218,7 @@ export function enforcePackageProductionInputs(root = repoRoot, ref = 'HEAD') {
   const parents = execFileSync('git', ['show', '-s', '--format=%P', ref], { cwd: root, encoding: 'utf8' }).trim().split(' ').filter(Boolean);
   if (parents.length) {
     const files = execFileSync('git', ['ls-tree', '-r', '--name-only', parents[0]], { cwd: root, encoding: 'utf8' }).split('\n');
-    if (files.includes(productionInputsPath)) assertProductionInputsPreserved(readPackageProductionInputs(root, parents[0]), current);
+    if (files.includes(productionInputsPath)) assertProductionInputsPreserved(readPackageProductionInputs(root, parents[0], 'historical'), current);
   }
   return current;
 }
