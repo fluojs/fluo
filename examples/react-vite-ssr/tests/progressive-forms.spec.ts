@@ -92,6 +92,7 @@ for (const mode of ['disabled', 'bootstrap-blocked'] as const) {
       await create.getByRole('button', { name: 'Create product', exact: true }).click();
       expect((await created).status()).toBe(303);
       await detail;
+      await page.waitForURL(/\/catalog\/item-\d+$/u);
       const sku = new URL(page.url()).pathname.split('/').at(-1);
       if (sku === undefined) throw new Error('Missing created SKU');
       await expect(page.locator(`[data-product="${sku}"]`)).toHaveText(`Native ${mode}`);
@@ -109,6 +110,7 @@ for (const mode of ['disabled', 'bootstrap-blocked'] as const) {
       await page.getByRole('button', { name: 'Save product', exact: true }).click();
       expect((await corrected).status()).toBe(303);
       await correctedRead;
+      await page.waitForURL((url) => url.pathname === `/catalog/${sku}`);
       await expect(page.locator(`[data-product="${sku}"]`)).toHaveText(`Corrected ${mode}`);
       const beforeReload = posts.length;
       await page.reload();
@@ -118,6 +120,7 @@ for (const mode of ['disabled', 'bootstrap-blocked'] as const) {
       await page.getByRole('button', { name: 'Delete product', exact: true }).click();
       expect((await deleted).status()).toBe(303);
       await listRead;
+      await page.waitForURL((url) => url.pathname === '/catalog');
       await expect(page.locator(`[data-product="${sku}"]`)).toHaveCount(0);
       console.log(JSON.stringify({ observation: 'native-crud', mode, sku, posts: posts.length, postReplayOnRefresh: false }));
     } finally {

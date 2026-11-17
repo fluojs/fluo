@@ -268,6 +268,24 @@ Do not rerun a completed command merely to recover clipped terminal output.
 The prepared reviewer input includes one identical readable, authenticated index
 of actual focused results and packed command/report metadata for every axis.
 
+### Declared production inputs
+
+Use the owning [release contract](../../../../docs/contracts/release-governance.md#production-input-declarations)
+and `tooling/governance/package-production-inputs.json`. The CLI and existing
+governance runner share `package-production-inputs.mjs`; no build executes during
+plan. Read the actual issue head and comparison base, not dirty files or the
+engine checkout. Declared root/tooling/sibling inputs and packed payloads precede
+test/fixture/Markdown names and explicit nonshipping rules.
+
+Package/build owners review complete reader/transitive-input scopes, including
+computed paths, and refresh command/producer/config definitions when they change.
+Structural validation is not code-dependency analysis. Invalid, stale, deleted
+or narrowed evidence remains consumer-visible and fails governance. A new
+declaration cannot exempt a diff against an undeclared old base; retain the pinned
+base/engine and reconcile preflight through the normal post-merge process.
+Validate with `node tooling/governance/package-production-inputs.mjs` and
+`pnpm verify:platform-consistency-governance`, retaining actual receipts.
+
 ### CI Node concurrency before review
 
 Preflight records applicability and cost in acceptance and validation after
