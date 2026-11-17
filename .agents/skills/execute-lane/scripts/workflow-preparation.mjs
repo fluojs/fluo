@@ -153,12 +153,14 @@ function finalizePreflight(input) {
 // Read only the supported leading PATH assignment, never evaluate shell code.
 function commandPath(command) {
   const assignment = /^\s*(export[ \t]+)?PATH=/u.exec(command);
-  const changesPath = /(?:^|[\s;&|("'`])(?:PATH\s*\+?=|unset\s+PATH\b)/u;
+  // Literal quoted arguments cannot assign PATH; keep dynamic expressions visible.
+  const changesPath = (source) => /(?:^|[\s;&|("'`])(?:PATH\s*\+?=|unset\s+PATH\b)/u.test(
+    source.replace(/'[^']*'|"(?:\\.|[^"\\$`])*"/gu, 'x'));
   const unsupported = () => {
     throw new WorkflowPreparationError(`implement preparation: unsupported command PATH: ${command}`);
   };
   if (!assignment) {
-    if (changesPath.test(command)) unsupported();
+    if (changesPath(command)) unsupported();
     return null;
   }
   let value = '';
@@ -195,7 +197,7 @@ function commandPath(command) {
   const remainder = command.slice(offset);
   const next = assignment[1] ? /^[ \t]*;[ \t]*(\S[\s\S]*)$/u.exec(remainder)
     : /^[ \t]+([^;&|][\s\S]*)$/u.exec(remainder);
-  if (!next || changesPath.test(next[1])) unsupported();
+  if (!next || changesPath(next[1])) unsupported();
   return value.split(delimiter);
 }
 

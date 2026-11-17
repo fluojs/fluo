@@ -764,6 +764,13 @@ test('#4129 implement prerequisites: inherited PATH and CI-only requirement -> c
 });
 
 for (const scenario of [
+  { name: 'single-quoted PATH argument without assignment', path: () => '', argument: "'PATH='", found: 'declared' },
+  { name: 'double-quoted PATH argument without assignment', path: () => '', argument: '"PATH="', found: 'declared' },
+  { name: 'quoted PATH argument preserves inherited lookup', path: () => '', argument: "'PATH='", declared: false, found: 'inherited' },
+  { name: 'single-quoted PATH argument after leading assignment', path: (d) => `PATH=${d.command}`, argument: "'PATH='", found: 'command' },
+  { name: 'double-quoted PATH argument after leading assignment', path: (d) => `PATH=${d.command}`, argument: '"PATH="', found: 'command' },
+  { name: 'single-quoted PATH argument after export assignment', path: (d) => `export PATH=${d.command};`, argument: "'PATH='", found: 'command' },
+  { name: 'double-quoted PATH argument after export assignment', path: (d) => `export PATH=${d.command};`, argument: '"PATH="', found: 'command' },
   { name: 'literal replacement ignores inherited-only pnpm', path: (d) => `PATH=${d.empty}`, declared: false, found: null },
   { name: 'export replacement ignores inherited and declared directories', path: (d) => `export PATH=${d.empty};`, found: null },
   { name: 'single-quoted replacement ignores inherited and declared directories', path: (d) => `PATH='${d.empty}'`, found: null },
@@ -791,6 +798,10 @@ for (const scenario of [
   { name: 'wrapped assignment is blocked', path: (d) => `env PATH=${d.command}`, blocked: true },
   { name: 'later assignment is blocked', path: (d) => `printf ready; PATH=${d.command}`, blocked: true },
   { name: 'multiple PATH assignments are blocked', path: (d) => `PATH=${d.command} PATH=${d.empty}`, blocked: true },
+  { name: 'quoted argument does not hide later assignment', path: (d) => `printf 'PATH='; PATH=${d.command}`, blocked: true },
+  { name: 'quoted argument does not hide wrapped assignment', path: (d) => `env PATH=${d.command}`, argument: "'PATH='", blocked: true },
+  { name: 'quoted argument does not hide second assignment', path: (d) => `PATH=${d.command} PATH=${d.empty}`, argument: '"PATH="', blocked: true },
+  { name: 'quoted argument does not hide unset PATH', path: (d) => `PATH=${d.command}`, argument: "'PATH='; unset PATH", blocked: true },
 ]) {
   test(`#4150 implement command PATH: ${scenario.name} -> ${scenario.blocked ? 'typed block' : scenario.found ? 'resolved executable' : 'missing pnpm'}`, (t) => {
     const value = implementation(t);
@@ -811,7 +822,8 @@ for (const scenario of [
     }
     writeFileSync(join(value.toolDir, 'pnpm'), `#!/bin/sh\nprintf ran > "${directories.marker}"\nexit 99\n`);
     chmodSync(join(value.toolDir, 'pnpm'), 0o755);
-    const command = `${scenario.path(directories)} pnpm test; /bin/sh -c 'printf ran > "${directories.marker}"'`;
+    directories.declared = value.toolDir;
+    const command = `${scenario.path(directories)} pnpm ${scenario.argument ?? 'test'}; /bin/sh -c 'printf ran > "${directories.marker}"'`;
     const requirements = structuredClone(value.wrapper.contract.validation_requirements);
     requirements[0].command = command;
     requirements[0].prerequisites.tools = [{ name: 'pnpm', path_dirs: scenario.declared === false ? [] : [value.toolDir] }];
