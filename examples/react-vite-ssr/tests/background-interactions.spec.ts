@@ -194,6 +194,7 @@ test('native GET search and POST 303 GET queue remain usable without JavaScript'
     // Then: the existing native HTTP path, not JSON acknowledgement, owns navigation.
     expect((await post).status()).toBe(303);
     await document;
+    await page.waitForURL((url) => url.pathname === '/catalog/background');
     expect(new URL(page.url()).pathname).toBe('/catalog/background');
   } finally { await context.close(); }
 });

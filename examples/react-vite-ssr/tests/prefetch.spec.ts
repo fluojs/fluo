@@ -37,6 +37,7 @@ test('refreshes a consumed public entry on revisit and history traversal', async
   await page.getByRole('link', { name: 'Prefetch public sku-84' }).hover();
   await prefetch;
   await page.getByRole('link', { name: 'Prefetch public sku-84' }).click();
+  await expect(page.getByRole('heading', { name: /Browser destination: Prefetch public-84 visit/u })).toBeVisible();
   const original = await page.getByRole('heading', { name: /Browser destination: Prefetch public-84 visit/u }).textContent();
 
   // When: the browser traverses away and back without a cached entry.
@@ -45,6 +46,7 @@ test('refreshes a consumed public entry on revisit and history traversal', async
   const back = nextNavigation(page, '/admin/qr');
   await page.goBack();
   await back;
+  await expect(page.getByRole('heading', { name: 'Admin QR', exact: true })).toBeVisible();
   const revisit = nextNavigation(page, '/prefetch/public-84');
   await page.getByRole('link', { name: 'Prefetch public sku-84' }).evaluate((anchor) => {
     if (anchor instanceof HTMLAnchorElement) anchor.click();
@@ -52,6 +54,7 @@ test('refreshes a consumed public entry on revisit and history traversal', async
   await revisit;
 
   // Then: HTTP approves the revisit rather than replaying the first rendering.
+  await expect(page.getByRole('heading', { name: /Browser destination: Prefetch public-84 visit/u })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Browser destination: Prefetch public-84 visit/u }))
     .not.toHaveText(original ?? '');
   const revisited = await page.getByRole('heading', { name: /Browser destination: Prefetch public-84 visit/u }).textContent();
@@ -60,9 +63,12 @@ test('refreshes a consumed public entry on revisit and history traversal', async
   const backAgain = nextNavigation(page, '/admin/qr');
   await page.goBack();
   await backAgain;
+  // Headers precede body validation, module import and the approved router commit.
+  await expect(page.getByRole('heading', { name: 'Admin QR', exact: true })).toBeVisible();
   const forward = nextNavigation(page, '/prefetch/public-84');
   await page.goForward();
   await forward;
+  await expect(page.getByRole('heading', { name: /Browser destination: Prefetch public-84 visit/u })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Browser destination: Prefetch public-84 visit/u }))
     .not.toHaveText(revisited ?? '');
   expect(requests).toHaveLength(3);
