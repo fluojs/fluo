@@ -719,8 +719,18 @@ test('#4154 classifier: development entry differs from generation and production
 test('C3b: test-support declarations outside src are not consumer-visible', () => {
 	assert.equal(isConsumerVisibleFile('packages/platform-express/test-types/testing-http-adapter-portability.d.ts'), false);
 	assert.equal(isConsumerVisibleFile('packages/platform-bun/__tests__/helpers.ts'), false);
-	assert.equal(isConsumerVisibleFile('packages/platform-deno/test/helper.ts'), false);
+	assert.equal(isConsumerVisibleFile('packages/platform-express/test/helper.ts'), false);
 	assert.equal(isConsumerVisibleFile('packages/terminus/test-fixtures/public-subpaths-import.ts'), false);
+});
+
+test('#4154 fix-back classifier: missing packaging evidence keeps support paths consumer-visible', () => {
+	for (const file of [
+		'packages/platform-deno/test/helper.ts',
+		'packages/platform-deno/fixtures/data.json',
+		'packages/platform-deno/test-types/helper.d.ts',
+		'packages/platform-deno/test-fixtures/data.json',
+		'packages/platform-deno/__tests__/helper.ts',
+	]) assert.equal(isConsumerVisibleFile(file), true, file);
 });
 
 test('C3b: private package-root fixtures are not consumer-visible', () => {
@@ -760,9 +770,13 @@ test('C3b: package-root README and LICENSE ship in the tarball -> consumer-visib
 
 test('C3b: production input README stays visible while non-shipping root docs stay invisible', () => {
 	assert.equal(isConsumerVisibleFile('packages/studio/src/README.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/cli/src/assets/guide.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/cli/input.md'), true);
 	// CHANGELOG is not auto-included and files:["dist"] excludes it (verified in
 	// the same #3347 pack output).
 	assert.equal(isConsumerVisibleFile('packages/studio/CHANGELOG.md'), false);
+	assert.equal(isConsumerVisibleFile('packages/graphql/field-resolver-rfc.md'), false);
+	assert.equal(isConsumerVisibleFile('packages/graphql/field-resolver-rfc.ko.md'), false);
 });
 
 test('C3b: changeset files are recognized, README is not', () => {

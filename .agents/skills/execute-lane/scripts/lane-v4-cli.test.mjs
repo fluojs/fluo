@@ -921,15 +921,34 @@ for (const scenario of [
   { name: 'unsupported files pattern', files: ['scripts/check.mjs'], visible: true, metadata: 'glob' },
   { name: 'runtime references development entry', files: ['scripts/check.mjs', 'src/runtime.ts'], visible: true },
   { name: 'build helper references development entry', files: ['scripts/check.mjs', 'scripts/build.mjs'], visible: true },
+  ...['deleted', 'glob', 'literal'].flatMap(packaging =>
+    ['test/helper.ts', 'fixtures/data.json'].map(file => ({
+      name: `${packaging} packaging with ${file}`, files: [file],
+      visible: packaging !== 'literal', packaging,
+    }))),
+  { name: 'indirect Markdown copy through build helper', files: ['src/assets/guide.md'], visible: true, buildCopy: true },
+  { name: 'unclassified root Markdown input', files: ['input.md'], visible: true },
+  { name: 'nonshipping root documentation', files: ['CHANGELOG.md'], visible: false },
 ]) {
   test(`#4154 CLI: ${scenario.name} -> observed consumer impact and changeset plan`, (t) => {
     const f = fixture(t);
-    const manifest = { name: '@fluojs/cli', files: ['dist', 'bin'],
-      scripts: { 'sandbox:check': 'node ./scripts/check.mjs', prebuild: 'node ./scripts/generate.mjs' } };
+    const manifest = { name: '@fluojs/cli',
+      files: scenario.packaging === 'glob' ? ['test/**', 'fixtures/**'] : ['dist', 'bin'],
+      scripts: scenario.buildCopy ? { build: 'node scripts/build.mjs' }
+        : { 'sandbox:check': 'node ./scripts/check.mjs', prebuild: 'node ./scripts/generate.mjs' } };
     mkdirSync(join(f.root, 'packages/cli'), { recursive: true });
     writeFileSync(join(f.root, 'packages/cli/package.json'), JSON.stringify(manifest));
+    if (scenario.buildCopy) {
+      mkdirSync(join(f.root, 'packages/cli/scripts'), { recursive: true });
+      writeFileSync(join(f.root, 'packages/cli/scripts/build.mjs'),
+        "import { cpSync } from 'node:fs';\ncpSync('src/assets', 'dist/assets', { recursive: true });\n");
+    }
     f.git(f.root, 'add', 'packages');
     f.git(f.root, 'commit', '-m', 'package metadata');
+    if (scenario.packaging === 'deleted') {
+      f.git(f.root, 'rm', 'packages/cli/package.json');
+      f.git(f.root, 'commit', '-m', 'remove package metadata');
+    }
     f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
     f.set('preflight', f.preflight({ scope: ['docs/', 'packages/', '.changeset/'] }));
     f.implement();

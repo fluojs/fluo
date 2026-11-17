@@ -645,11 +645,14 @@ export const isConsumerVisibleFile = (file, {
 	if (packed || /^(?:dist|bin)\//.test(withinPackage) || withinPackage === "package.json") {
 		return true;
 	}
+	if (!literalFiles) {
+		return true;
+	}
 	if (withinPackage.includes("/templates/")) {
 		return true;
 	}
 	if (/\.(test|test-fixture)\.[cm]?[tj]s$/.test(file)) {
-		return !literalFiles;
+		return false;
 	}
 	if (withinPackage.startsWith("fixtures/")) {
 		return false;
@@ -658,7 +661,7 @@ export const isConsumerVisibleFile = (file, {
 		return false;
 	}
 	if (withinPackage.startsWith("scripts/")) {
-		if (!literalFiles || read(file) === null || !manifest.scripts ||
+		if (read(file) === null || !manifest.scripts ||
 			typeof manifest.scripts !== "object" || Array.isArray(manifest.scripts)) return true;
 		const basename = withinPackage.split("/").at(-1);
 		const development = /^(?:pre|post)?(?:test|sandbox|lint|typecheck|check|bench|benchmark|dev)(?::|$)/;
@@ -688,13 +691,9 @@ export const isConsumerVisibleFile = (file, {
 		return false;
 	}
 	if (file.endsWith(".md")) {
-		// Source templates/assets copied by a production command are build inputs.
-		if (!literalFiles) return true;
-		return Object.entries(manifest.scripts ?? {}).some(([name, command]) =>
-			!/^(?:test|sandbox|lint|typecheck)(?::|$)/.test(name) &&
-			typeof command === "string" &&
-			withinPackage.split("/").slice(0, -1).some((_, index, parts) =>
-				command.includes(parts.slice(0, index + 1).join("/"))));
+		// Retain known root release/design notes outside the payload. Other
+		// Markdown can reach the build through helpers absent from manifest text.
+		return !/^(?:CHANGELOG|[^/]+-rfc)(?:\.[a-z]{2})?\.md$/i.test(withinPackage);
 	}
 	return true;
 };
