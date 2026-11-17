@@ -150,6 +150,128 @@ function finalizePreflight(input) {
   return { status: 'prepared', kind: 'preflight-contract', contract };
 }
 
+// Classify literal shell words without evaluating assignments or substitutions.
+function changesPath(source, simpleCommand = false) {
+  let context = 'command';
+  const words = /(?:'[^']*'|"(?:\\.|[^"\\])*"|\\[\s\S]|[^\s;&|(){}'"\\])+|[;&|(){}\n]/gu;
+  for (const [raw] of source.matchAll(words)) {
+    if (/^[;&|(){}\n]$/u.test(raw)) {
+      if (simpleCommand) return true;
+      context = 'command';
+      continue;
+    }
+    const word = raw.replace(/'([^']*)'|"((?:\\.|[^"\\])*)"|\\([\s\S])/gu,
+      (_match, single, double, escaped) => single ?? (double === undefined
+        ? escaped : double.replace(/\\([$`"\\\n])/gu, '$1')));
+    if (/^PATH(?:\+)?=/u.test(word)
+      && (context !== 'arguments' || /^PATH(?:\+)?=/u.test(raw))) return true;
+    if (context === 'environment') {
+      if (['--ignore-environment', '-', '--unset=PATH'].includes(word)) return true;
+      if (word === '--unset') {
+        context = 'environment-unset';
+        continue;
+      }
+      if (word.startsWith('--') && !word.startsWith('--unset=')) return true;
+      if (/^-[^-]/u.test(word)) {
+        for (let offset = 1; offset < word.length; offset += 1) {
+          const option = word[offset];
+          if (option === 'i') return true;
+          if (option === 'u') {
+            const target = word.slice(offset + 1);
+            if (target === 'PATH') return true;
+            if (!target) context = 'environment-unset';
+            break;
+          }
+          if (option !== 'v' && option !== '0') return true;
+        }
+        continue;
+      }
+    }
+    switch (context) {
+      case 'arguments':
+      case 'assignment':
+        break;
+      case 'unset':
+        if (word === 'PATH') return true;
+        break;
+      case 'environment-unset':
+        if (word === 'PATH') return true;
+        context = 'environment';
+        break;
+      case 'shell':
+        if (changesPath(word)) return true;
+        break;
+      case 'environment':
+      case 'command':
+        if (/^-|^[a-zA-Z_][a-zA-Z0-9_]*=/u.test(word)) break;
+        switch (basename(word)) {
+          case 'command': case 'builtin': case 'exec': case 'nohup':
+            context = 'command'; break;
+          case 'env':
+            context = 'environment'; break;
+          case 'export': case 'readonly': case 'declare': case 'typeset': case 'local':
+            context = 'assignment'; break;
+          case 'unset':
+            context = 'unset'; break;
+          case 'sh': case 'bash': case 'dash': case 'zsh': case 'ksh': case 'eval':
+            context = 'shell'; break;
+          default:
+            context = 'arguments';
+        }
+        break;
+    }
+  }
+  return false;
+}
+
+// Read only the supported leading PATH assignment, never evaluate shell code.
+function commandPath(command) {
+  const assignment = /^\s*(export[ \t]+)?PATH=/u.exec(command);
+  const unsupported = () => {
+    throw new WorkflowPreparationError(`implement preparation: unsupported command PATH: ${command}`);
+  };
+  if (!assignment) {
+    if (changesPath(command)) unsupported();
+    return null;
+  }
+  let value = '';
+  let quote = null;
+  let offset = assignment[0].length;
+  for (; offset < command.length; offset += 1) {
+    const character = command[offset];
+    if (quote === "'") {
+      if (character === "'") quote = null;
+      else value += character;
+      continue;
+    }
+    if (character === quote) {
+      quote = null;
+      continue;
+    }
+    if (!quote && (character === "'" || character === '"')) {
+      quote = character;
+      continue;
+    }
+    if (!quote && /[\s;]/u.test(character)) break;
+    if (character === '$') {
+      const expansion = /^(?:\$PATH(?![a-zA-Z0-9_])|\$\{PATH\})/u.exec(command.slice(offset));
+      if (!expansion) unsupported();
+      value += process.env.PATH ?? '';
+      offset += expansion[0].length - 1;
+      continue;
+    }
+    if (character === '`' || character === '\\' || /[\x00-\x1f]/u.test(character)
+      || (!quote && !/[a-zA-Z0-9_/:.,+@%=-]/u.test(character))) unsupported();
+    value += character;
+  }
+  if (quote !== null) unsupported();
+  const remainder = command.slice(offset);
+  const next = assignment[1] ? /^[ \t]*;[ \t]*(\S[\s\S]*)$/u.exec(remainder)
+    : /^[ \t]+([^;&|][\s\S]*)$/u.exec(remainder);
+  if (!next || changesPath(next[1], !assignment[1])) unsupported();
+  return value.split(delimiter);
+}
+
 function prepareImplement(input) {
   exact(input, ['version', 'stage', 'root', 'accepted_contract_path', 'contract', 'input'], 'implement preparation');
   requireInput(input.version === 1 && input.stage === 'implement'
@@ -183,8 +305,9 @@ function prepareImplement(input) {
       prerequisites.ci_only.push(requirement);
       continue;
     }
+    const commandDirectories = commandPath(requirement.command);
     const tools = requirement.prerequisites.tools.map((tool) => {
-      const directories = [...tool.path_dirs, ...(process.env.PATH ?? '').split(delimiter)];
+      const directories = commandDirectories ?? [...tool.path_dirs, ...(process.env.PATH ?? '').split(delimiter)];
       const path = directories.map((directory) => resolve(worktree, directory, tool.name)).find((candidate) => {
         try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile(); }
         catch (error) {

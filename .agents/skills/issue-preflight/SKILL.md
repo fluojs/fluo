@@ -176,6 +176,36 @@ required PATH prefix. Declare absolute tool search directories, required
 dependency directories and concrete built files, with artifact kinds `file`
 or `directory` and safe worktree-relative paths. State which install/build
 commands must run first; empty prerequisite lists explicitly mean none.
+Without PATH assignments, preparation searches declared `path_dirs` then
+inherited PATH for executable regular files. Leading `PATH=... cmd` and
+`export PATH=...; cmd` instead use only that command's PATH, in order;
+`path_dirs` never adds directories to it. Literal single/double quotes work;
+unquoted or double-quoted `$PATH`/`${PATH}` expands inherited PATH at its
+position, while single quotes keep it literal. Relative/empty entries resolve
+from the assigned worktree.
+The non-export form supports one simple command only. Reject
+`PATH=/cmd-tools pnpm --version && node check.mjs`; use
+`export PATH=/cmd-tools; pnpm --version && node check.mjs` for persistence.
+Unquoted command boundaries are unsupported in the non-export form; quoted
+operators such as `pnpm '&&' ';'` remain literal arguments.
+Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
+`export PATH="/opt/node/bin:/opt/pnpm/bin:$PATH"; pnpm test:node`.
+Wrong: `PATH=/opt/node/bin pnpm test:node` with pnpm only in inherited PATH or
+declared `/opt/pnpm/bin`. Preparation only parses strings and inspects files,
+never executing commands, tools, shells or substitutions. Unsupported
+command/backtick substitutions (`PATH=$(find-tools) pnpm test`), other
+variables/parameter operations, unquoted tilde/globs, escapes, malformed quotes
+and wrapped/later/multiple PATH assignments block with `kind:"input-preparation"`,
+`fix_back_eligible:false`; inherited PATH cannot justify success.
+Wrapped env resets (`env -u PATH pnpm test`, `env --unset=PATH pnpm test`,
+`env -i pnpm test`, and the `--unset PATH`, `-uPATH`, `--ignore-environment`
+and `env -` forms) also produce that typed block rather than using declared or
+inherited tools. `pnpm 'env -u PATH' '-i'` and
+`env -u OTHER pnpm 'PATH='` retain their ordinary argument behavior.
+Short env option groups are scanned in order: `-vi` and `-iv` also reset PATH.
+`-u` consumes its attached or following name; `-vuindirect` keeps that name
+literal. Unknown env options, including unmodelled long options and their
+operands, receive the same typed block.
 A CI-only entry is `{validation,kind:"ci-only",check,reason}` and cannot claim
 local success. Legacy artifacts keep `validation:string[]`, unchanged digests
 and policy when requirements are absent.
