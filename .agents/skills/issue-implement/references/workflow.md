@@ -108,7 +108,12 @@ then inherited PATH for executable regular files. Leading `PATH=... cmd` and
 not augment it. Literal single/double quotes are supported. Unquoted or
 double-quoted `$PATH`/`${PATH}` expands inherited PATH at its position; single
 quotes preserve it literally. Relative/empty entries resolve from the assigned
-worktree. The script only parses strings and inspects files: it never executes
+worktree. The non-export form supports one simple command only: reject
+`PATH=/cmd-tools pnpm --version && node check.mjs`; use
+`export PATH=/cmd-tools; pnpm --version && node check.mjs` for persistence.
+Unquoted command boundaries are unsupported in the non-export form; quoted
+operators such as `pnpm '&&' ';'` remain literal arguments.
+The script only parses strings and inspects files: it never executes
 the validation command, tools, a shell or command substitution. It checks
 artifact kinds and lists all missing prerequisites with their commands.
 Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
@@ -118,7 +123,12 @@ declared `/opt/pnpm/bin`. Unsupported command/backtick substitutions (for exampl
 `PATH=$(find-tools) pnpm test`), other variables/parameter operations, unquoted
 tilde/globs, escapes, malformed quotes and wrapped/later/multiple PATH assignments
 produce typed `input-preparation`, `fix_back_eligible:false`; inherited PATH
-cannot stand in for an unresolvable command PATH. The lead supplies PATH and completes
+cannot stand in for an unresolvable command PATH. Wrapped env resets
+(`env -u PATH pnpm test`, `env --unset=PATH pnpm test`, `env -i pnpm test`,
+and the `--unset PATH`, `-uPATH`, `--ignore-environment` and `env -` forms)
+also produce that typed block rather than using declared or inherited tools.
+`pnpm 'env -u PATH' '-i'` and `env -u OTHER pnpm 'PATH='` remain ordinary
+non-PATH-modifying contexts. The lead supplies PATH and completes
 install/build before dispatch. CI-only `{validation,kind:"ci-only",check,reason}`
 entries are returned separately, never as local success. Old contracts retain
 their digest and return `prerequisites.status:"undeclared"` without inference.

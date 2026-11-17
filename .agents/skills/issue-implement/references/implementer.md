@@ -51,7 +51,12 @@ absolute `path_dirs` then inherited PATH for executable regular files. Leading
 `path_dirs` never adds directories to it. Literal single/double quotes work;
 unquoted or double-quoted `$PATH`/`${PATH}` expands inherited PATH at its position,
 while single quotes keep it literal. Relative/empty entries resolve from the
-assigned worktree. Preparation also checks declared worktree-relative
+assigned worktree. The non-export form supports one simple command only.
+Reject `PATH=/cmd-tools pnpm --version && node check.mjs`; use
+`export PATH=/cmd-tools; pnpm --version && node check.mjs` for persistence.
+Unquoted command boundaries are unsupported in the non-export form; quoted
+operators such as `pnpm '&&' ';'` remain literal arguments.
+Preparation also checks declared worktree-relative
 dependency directories and concrete build files. It runs no tools, install,
 build or tests, and never executes a validation command, shell or substitution.
 Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
@@ -61,7 +66,13 @@ declared `/opt/pnpm/bin`. Unsupported substitutions (for example
 `PATH=$(find-tools) pnpm test`), other variables/parameter operations, unquoted
 tilde/globs, escapes, malformed quotes and wrapped/later/multiple PATH assignments
 produce `input-preparation`, `fix_back_eligible:false` rather than an inherited
-PATH success. Use the declared PATH and already prepared build prerequisites
+PATH success. Wrapped env resets (`env -u PATH pnpm test`,
+`env --unset=PATH pnpm test`, `env -i pnpm test`, and the `--unset PATH`,
+`-uPATH`, `--ignore-environment` and `env -` forms) also produce that typed block.
+They cannot use declared or inherited tools to infer success.
+`pnpm 'env -u PATH' '-i'` and `env -u OTHER pnpm 'PATH='` remain ordinary
+non-PATH-modifying contexts.
+Use the declared PATH and already prepared build prerequisites
 for focused commands. CI-only checks remain pending remote checks, never local
 PASS. Missing items and their commands are input-preparation blocks with
 `fix_back_eligible:false`; the lead repairs the environment before redispatch,

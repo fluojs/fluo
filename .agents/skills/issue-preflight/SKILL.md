@@ -183,6 +183,11 @@ inherited PATH for executable regular files. Leading `PATH=... cmd` and
 unquoted or double-quoted `$PATH`/`${PATH}` expands inherited PATH at its
 position, while single quotes keep it literal. Relative/empty entries resolve
 from the assigned worktree.
+The non-export form supports one simple command only. Reject
+`PATH=/cmd-tools pnpm --version && node check.mjs`; use
+`export PATH=/cmd-tools; pnpm --version && node check.mjs` for persistence.
+Unquoted command boundaries are unsupported in the non-export form; quoted
+operators such as `pnpm '&&' ';'` remain literal arguments.
 Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
 `export PATH="/opt/node/bin:/opt/pnpm/bin:$PATH"; pnpm test:node`.
 Wrong: `PATH=/opt/node/bin pnpm test:node` with pnpm only in inherited PATH or
@@ -192,6 +197,11 @@ command/backtick substitutions (`PATH=$(find-tools) pnpm test`), other
 variables/parameter operations, unquoted tilde/globs, escapes, malformed quotes
 and wrapped/later/multiple PATH assignments block with `kind:"input-preparation"`,
 `fix_back_eligible:false`; inherited PATH cannot justify success.
+Wrapped env resets (`env -u PATH pnpm test`, `env --unset=PATH pnpm test`,
+`env -i pnpm test`, and the `--unset PATH`, `-uPATH`, `--ignore-environment`
+and `env -` forms) also produce that typed block rather than using declared or
+inherited tools. `pnpm 'env -u PATH' '-i'` and
+`env -u OTHER pnpm 'PATH='` retain their ordinary argument behavior.
 A CI-only entry is `{validation,kind:"ci-only",check,reason}` and cannot claim
 local success. Legacy artifacts keep `validation:string[]`, unchanged digests
 and policy when requirements are absent.

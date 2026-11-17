@@ -151,11 +151,12 @@ function finalizePreflight(input) {
 }
 
 // Classify literal shell words without evaluating assignments or substitutions.
-function changesPath(source) {
+function changesPath(source, simpleCommand = false) {
   let context = 'command';
   const words = /(?:'[^']*'|"(?:\\.|[^"\\])*"|\\[\s\S]|[^\s;&|(){}'"\\])+|[;&|(){}\n]/gu;
   for (const [raw] of source.matchAll(words)) {
     if (/^[;&|(){}\n]$/u.test(raw)) {
+      if (simpleCommand) return true;
       context = 'command';
       continue;
     }
@@ -164,12 +165,23 @@ function changesPath(source) {
         ? escaped : double.replace(/\\([$`"\\\n])/gu, '$1')));
     if (/^PATH(?:\+)?=/u.test(word)
       && (context !== 'arguments' || /^PATH(?:\+)?=/u.test(raw))) return true;
+    if (context === 'environment') {
+      if (['-i', '--ignore-environment', '-', '--unset=PATH', '-uPATH'].includes(word)) return true;
+      if (word === '-u' || word === '--unset') {
+        context = 'environment-unset';
+        continue;
+      }
+    }
     switch (context) {
       case 'arguments':
       case 'assignment':
         break;
       case 'unset':
         if (word === 'PATH') return true;
+        break;
+      case 'environment-unset':
+        if (word === 'PATH') return true;
+        context = 'environment';
         break;
       case 'shell':
         if (changesPath(word)) return true;
@@ -241,7 +253,7 @@ function commandPath(command) {
   const remainder = command.slice(offset);
   const next = assignment[1] ? /^[ \t]*;[ \t]*(\S[\s\S]*)$/u.exec(remainder)
     : /^[ \t]+([^;&|][\s\S]*)$/u.exec(remainder);
-  if (!next || changesPath(next[1])) unsupported();
+  if (!next || changesPath(next[1], !assignment[1])) unsupported();
   return value.split(delimiter);
 }
 

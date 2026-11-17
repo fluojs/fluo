@@ -848,7 +848,9 @@ for (const scenario of [
     writeFileSync(join(value.toolDir, 'pnpm'), `#!/bin/sh\nprintf ran > "${directories.marker}"\nexit 99\n`);
     chmodSync(join(value.toolDir, 'pnpm'), 0o755);
     directories.declared = value.toolDir;
-    const command = `${scenario.path(directories)} pnpm ${scenario.argument ?? 'test'}; /bin/sh -c 'printf ran > "${directories.marker}"'`;
+    const prefix = scenario.path(directories);
+    const command = `${prefix} pnpm ${scenario.argument ?? 'test'}`
+      + (prefix.startsWith('PATH=') ? '' : `; /bin/sh -c 'printf ran > "${directories.marker}"'`);
     const requirements = structuredClone(value.wrapper.contract.validation_requirements);
     requirements[0].command = command;
     requirements[0].prerequisites.tools = [{ name: 'pnpm', path_dirs: scenario.declared === false ? [] : [value.toolDir] }];
@@ -879,6 +881,72 @@ for (const scenario of [
     }
   });
 }
+
+function commandPathFixture(t, buildCommand) {
+  const value = implementation(t);
+  const marker = join(value.input.artifact_root, 'executed');
+  for (const name of ['pnpm', 'node']) {
+    writeFileSync(join(value.toolDir, name), `#!/bin/sh\nprintf ran > "${marker}"\nexit 99\n`);
+    chmodSync(join(value.toolDir, name), 0o755);
+  }
+  const command = buildCommand(value.toolDir, marker);
+  const requirements = structuredClone(value.wrapper.contract.validation_requirements);
+  requirements[0].command = command;
+  requirements[0].prerequisites.tools = ['pnpm', 'node'].map((name) => ({ name, path_dirs: [value.toolDir] }));
+  value.wrapper.contract = createPreflight({ ...value.wrapper.contract, validation_requirements: requirements });
+  value.wrapper.input.preflight_sha256 = value.wrapper.contract.sha256;
+  writeFileSync(value.wrapper.accepted_contract_path, JSON.stringify(value.wrapper.contract));
+  return { ...value, command, marker };
+}
+
+function assertUnsupportedCommandPath(value) {
+  const result = cli(value, 'implement', value.wrapper);
+
+  assert.equal(existsSync(value.marker), false, 'preparation must execute neither command nor tool');
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.equal(result.stdout, '');
+  const output = JSON.parse(result.stderr);
+  assert.equal(output.kind, 'input-preparation');
+  assert.equal(output.fix_back_eligible, false);
+  assert.match(output.error, /unsupported command PATH/u);
+  assert.ok(output.error.includes(value.command));
+}
+
+test('#4150 PATH lifetime: non-export compound commands -> typed nonexecuting block', (t) => {
+  for (const operator of ['&&', '||', ';', '|', '&', '\n']) {
+    const value = commandPathFixture(t, (directory, marker) =>
+      `PATH=${directory} pnpm --version ${operator} node check.mjs; /bin/sh -c 'printf ran > "${marker}"'`);
+
+    assertUnsupportedCommandPath(value);
+  }
+});
+
+test('#4150 env resets: wrapped PATH removal -> typed nonexecuting block', (t) => {
+  for (const options of ['-u PATH', '--unset=PATH', '-i', '--unset PATH', '-uPATH', '--ignore-environment', '-']) {
+    const value = commandPathFixture(t, (_directory, marker) =>
+      `/usr/bin/env ${options} pnpm test; /bin/sh -c 'printf ran > "${marker}"'`);
+
+    assertUnsupportedCommandPath(value);
+  }
+});
+
+test('#4150 PATH lifetime: export compound and quoted operators -> resolved nonexecuting controls', (t) => {
+  for (const buildCommand of [
+    (directory, marker) => `export PATH=${directory}; pnpm --version && node check.mjs; /bin/sh -c 'printf ran > "${marker}"'`,
+    (directory) => `PATH=${directory} pnpm '&&' "||" ';' '|' '&' '(' ')' '{' '}'`,
+    () => `env -u OTHER pnpm 'PATH=' '--unset=PATH' '-i'`,
+    () => `pnpm 'env -u PATH' '--unset=PATH' '-i'`,
+  ]) {
+    const value = commandPathFixture(t, buildCommand);
+
+    const result = cli(value, 'implement', value.wrapper);
+
+    assert.equal(existsSync(value.marker), false, 'preparation must execute neither command nor tool');
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).prerequisites.local[0].tools.map((tool) => tool.path),
+      ['pnpm', 'node'].map((name) => join(value.toolDir, name)));
+  }
+});
 
 test('#4129 implement prerequisites: missing tools and build artifacts -> every missing item names its command', (t) => {
   const value = implementation(t);

@@ -79,7 +79,13 @@ absolute `path_dirs` then inherited PATH for executable regular files. Leading
 in order; `path_dirs` does not augment it. Literal single/double quotes are
 supported; unquoted or double-quoted `$PATH`/`${PATH}` expands inherited PATH at
 that position, while single quotes preserve it literally. Relative/empty entries
-resolve from the assigned worktree. Worktree-relative dependency directories
+resolve from the assigned worktree.
+The non-export form is limited to one simple command; unquoted command
+boundaries are unsupported. For example, reject
+`PATH=/cmd-tools pnpm --version && node check.mjs`; use
+`export PATH=/cmd-tools; pnpm --version && node check.mjs` for persistence.
+Quoted operators such as `pnpm '&&' ';'` remain literal arguments.
+Worktree-relative dependency directories
 and concrete build files are checked for existence and kind. The lead supplies
 the declared PATH and completes install/build prerequisites before dispatch.
 Preparation never executes tools, commands, install, build or tests. Missing
@@ -99,6 +105,11 @@ parameter operations, unquoted tilde/globs, escapes, malformed quotes and
 wrapped/later/multiple PATH assignments block as `input-preparation` with
 `fix_back_eligible:false`; for example `PATH=$(find-tools) pnpm test` cannot pass
 by finding an inherited pnpm.
+Wrapped env resets (`env -u PATH pnpm test`, `env --unset=PATH pnpm test`,
+`env -i pnpm test`, and the `--unset PATH`, `-uPATH`, `--ignore-environment`
+and `env -` forms) also produce that typed block. They cannot use declared or
+inherited tools to infer success. `pnpm 'env -u PATH' '-i'` and
+`env -u OTHER pnpm 'PATH='` retain their ordinary argument behavior.
 
 ## Authority and completion
 

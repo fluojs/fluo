@@ -230,6 +230,13 @@ Unquoted or double-quoted `$PATH` (also `${PATH}`) expands inherited PATH exactl
 at that position; single-quoted `$PATH` stays literal. Relative/empty PATH entries
 resolve from the assigned worktree.
 
+The non-export form supports one simple command only. A following unquoted
+command boundary (`&&`, `||`, `;`, `|`, `&`, newline or grouping) is unsupported:
+`PATH=/cmd-tools pnpm --version && node check.mjs` cannot apply that PATH to
+both tools. Use `export PATH=/cmd-tools; pnpm --version && node check.mjs`
+for a persistent PATH. Quoted operator arguments such as `pnpm '&&' ';'`
+remain ordinary literals.
+
 Good: `PATH=/opt/node/bin:/opt/pnpm/bin:$PATH pnpm test:node` or
 `export PATH="/opt/node/bin:/opt/pnpm/bin:$PATH"; pnpm test:node`.
 Good literal replacement: `PATH='/opt/node/bin:/opt/pnpm/bin:/usr/bin' pnpm test:node`.
@@ -240,6 +247,12 @@ Command/backtick substitution, other variables/parameter operations, unquoted
 tilde/glob expansion, escapes, malformed quotes, wrapped/later or multiple PATH
 assignments are unsupported and produce `kind:"input-preparation"`,
 `fix_back_eligible:false`, not an inherited-PATH success.
+The same block applies to wrapped env resets: `env -u PATH pnpm test`,
+`env --unset=PATH pnpm test` and `env -i pnpm test` (including `--unset PATH`,
+`-uPATH`, `--ignore-environment` and `env -`). These cannot fall back to
+declared or inherited tools. Ordinary arguments such as
+`pnpm 'env -u PATH' '-i'` and `env -u OTHER pnpm 'PATH='` remain ordinary
+non-PATH-modifying contexts.
 
 This is filesystem inspection and static string parsing only: the preparer
 checks executable regular files and artifact existence/kind without running the
