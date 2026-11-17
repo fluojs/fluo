@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +53,38 @@ import {
   migrationGuideSnapshotsFromGit,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
+
+describe('declared production-input runner enforcement', () => {
+  it('fails the actual governance command when the shared declaration guard rejects evidence', () => {
+    const guard = new URL('./package-production-inputs.mjs', import.meta.url).href;
+    const runner = fileURLToPath(new URL('./verify-platform-consistency-governance.mjs', import.meta.url));
+    const driver = `
+import { registerHooks } from 'node:module';
+import { pathToFileURL } from 'node:url';
+registerHooks({
+  load(url, context, nextLoad) {
+    if (url === ${JSON.stringify(guard)}) return {
+      format: 'module', shortCircuit: true,
+      source: "export function enforcePackageProductionInputs() { throw new TypeError('DECLARED_PRODUCTION_INPUT_REJECTED'); }",
+    };
+    return nextLoad(url, context);
+  },
+});
+process.argv[1] = ${JSON.stringify(runner)};
+await import(pathToFileURL(process.argv[1]).href);
+`;
+
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', driver], {
+      cwd: repoRoot, env: process.env, encoding: 'utf8', timeout: 30_000,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.signal).toBeNull();
+    expect(result.stderr).toContain('DECLARED_PRODUCTION_INPUT_REJECTED');
+    expect(result.stdout).not.toContain('Platform consistency governance checks passed.');
+  });
+});
 
 describe('HTTP byte-range contract governance', () => {
   it.each([

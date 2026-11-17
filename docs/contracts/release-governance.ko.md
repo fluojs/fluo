@@ -67,6 +67,29 @@ changeset에 없는 패키지는 해당 릴리스에서 version이 올라가거�
 
 Prerelease workflow는 Changesets prerelease mode(`changeset pre enter <tag>`)를 사용합니다. 필요할 때 dedicated branch에서 prerelease mode에 진입하고, stable 릴리스 전에 `changeset pre exit`로 종료합니다.
 
+## Production Input Declarations
+
+**범위와 소유자.** 소비자에게 보이는 변경의 Changeset 의무는 tarball에 직접 들어가는 파일뿐 아니라 배포 파일을 생성하거나 런타임에서 읽는 저장소 입력에도 적용됩니다. 내부 선언은 [`tooling/governance/package-production-inputs.json`](../../tooling/governance/package-production-inputs.json)이 소유하며, 이 절이 선언·신뢰·유지보수 계약을 정합니다. 각 공개 패키지와 producer의 `owner`는 입력 완전성을 검토할 책임자입니다. 초기 소유자는 `.github/CODEOWNERS`의 `@ayden94`를 따릅니다. 이 내부 계약 도입만으로 package runtime/API/publish 설정이나 버전을 바꾸지 않습니다.
+
+**선언 형식.** 닫힌 version `1` 자료형은 `packages`, `producers`, `manifests`, `nonProduction`을 가집니다. 패키지는 생산 입력과 비배포 범위를, producer는 소비 공개 패키지와 build/generation/runtime reader의 전이 입력 및 실행 코드·설정 정의를 기록합니다. root/tooling/sibling consumer도 포함합니다. 경로는 저장소 상대 exact file 또는 `/`로 끝나는 directory prefix이며 glob, 상위 경로 이동, 중복과 없는 경로는 거부합니다. directory 입력의 `excludeTests`는 `.test.*`, 선택적인 `excludeTestFixtures`는 `.test-fixture.*` module에만 적용되는 명시적 규칙이고, `excludeDirectories`는 해당 입력 아래 존재하는 literal directory prefix만 허용합니다. 비배포 규칙의 `testsOnly`가 `true`이면 같은 test module 범위로 제한됩니다.
+
+**판정 순서와 실패.** 공유 검증기 [`package-production-inputs.mjs`](../../tooling/governance/package-production-inputs.mjs)는 실제 issue head와 비교 base의 Git object를 읽습니다. 패키지 경계나 테스트·fixture·Markdown 이름보다 declared production 입력을 먼저 조회합니다. 개별 생산 입력이나 다른 producer의 입력 선언은 directory/test 제외와 `nonProduction`을 덮어씁니다. packed dist/bin/assets, manifest/runtime metadata, package-root README/LICENSE 및 starter/template의 소비자 영향도 유지합니다. 유효한 비배포 근거가 없는 변경은 보수적으로 consumer-visible입니다. 누락·잘못된 선언, public package inventory 불일치, 읽기 실패, 지원하지 않는 packaging 근거와 stale 정의는 면제 근거가 아니며 governance 검증도 nonzero로 실패합니다.
+
+**유지보수와 한계.** 구조 검사는 임의 프로그램의 입력 완전성이나 비의존성을 증명하지 않습니다. package/build 소유자는 새 reader, 복사, import, 동적 경로 계산 또는 directory discovery가 실제 읽는 exact path나 충분한 directory 범위를 선언하고 검토해야 합니다. 문자열 검색 무일치, 테스트 이름, 외부 파일 부재 또는 선언 자체를 그 증명으로 사용하지 않습니다. 실행·설정 파일은 실제 bytes의 SHA-256으로, root/workspace manifest는 명령과 runtime layout의 의미 있는 projection으로 freshness를 확인합니다. 새 manifest나 생산 명령·lifecycle 연결, producer/config 정의가 바뀌면 근거를 갱신하고 소유자가 재검토합니다. payload, package version, dependency version 값만 바뀌어도 모든 producer 정의를 다시 고정하도록 만들지는 않습니다.
+
+기존 입력·producer·consumer·정의의 삭제나 축소로 release impact를 지우지 않습니다. classifier는 비교 base의 근거도 유지하고, governance는 유효한 이전 선언이 있으면 제거·축소를 거부합니다. 새로운 선언이 없는 old base는 비배포의 증거가 아닙니다. 최초 선언의 구조 검증 성공도 old-base diff 면제를 뜻하지 않습니다. 그런 제외가 필요하면 merge 이후 유효한 선언이 있는 새 main에 대해 정식으로 재-preflight하며, Changeset 검사를 피하려고 진행 중인 lane의 고정 base나 engine을 바꾸지 않습니다.
+
+선택적인 `definitionScopes`는 실행 코드·설정 정의만 담는 literal directory prefix를 지정합니다. 그 안에 새 tracked 파일이 생기면 실제 digest 항목이 없을 때 검증이 실패합니다. 현재 workflow 정의 inventory도 이 범위로 유지합니다. payload와 version 데이터는 `inputs`에 두며 이 정의 snapshot 범위에 넣지 않습니다.
+
+**실행 근거.** plan은 build나 임의 선언 코드를 실행하지 않습니다. 기존 `pnpm verify:platform-consistency-governance`가 동일 검증기를 호출합니다.
+
+```bash
+node tooling/governance/package-production-inputs.mjs
+pnpm verify:platform-consistency-governance
+```
+
+[`package-production-inputs.test.ts`](../../tooling/governance/package-production-inputs.test.ts)는 구조·경로·inventory·freshness·생산 우선순위·이전 입력 보존을 검증하고, [`verify-platform-consistency-governance.test.ts`](../../tooling/governance/verify-platform-consistency-governance.test.ts)는 실제 runner의 거부 전파를 검증합니다. CLI의 Git/worktree 회귀는 실제 monorepo의 비배포 테스트와 base부터 존재하는 계산된 root/sibling consumer, test 모양 입력의 산출물과 Changeset 전이를 함께 확인합니다. 새 reader와 그 입력·근거를 함께 갱신하는 것이 올바른 변경이며, `files` 밖이거나 `.test.mjs`라는 이유만으로 생산 입력을 면제하는 것은 잘못된 변경입니다.
+
 ## Deno deprecation advisory and registry metadata
 
 Deno 지원은 제거되었습니다. `@fluojs/platform-deno`, `@fluojs/websockets/deno`, CLI Deno 대상을 [#3938](https://github.com/fluojs/fluo/issues/3938)에 따라 활성 워크스페이스에서 삭제했으며 아래 publish catalog에서도 `@fluojs/platform-deno`를 제거합니다. README URL은 아카이브 안내로 남고 이전 구현은 Git history와 npm tarball에 보존됩니다. [Canonical 이전 가이드](../getting-started/migrate-from-deno.ko.md)를 따르세요.

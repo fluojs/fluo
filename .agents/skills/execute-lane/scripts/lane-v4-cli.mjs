@@ -38,6 +38,7 @@ import {
 	validateReceiptEvidence,
 } from "../../../../tooling/ci/local-verification.mjs";
 import { collectIdentity } from "../../../../tooling/ci/verify-local.mjs";
+import { productionInputClassifier } from "../../../../tooling/governance/package-production-inputs.mjs";
 import { assertPredictedConflicts } from "../../../workflow-contracts/contracts.mjs";
 import {
 	evaluatePreflight,
@@ -598,99 +599,13 @@ export const validateLocalCheckFact = (
 	};
 };
 
-// Release impact includes payload and production inputs; exclusion needs
-// evidence from the issue head (docs/contracts/release-governance.md).
-//
-// EXCEPTION the .md blanket exclusion got wrong (caught by a reviewer on
-// #3347): npm auto-includes package-root README* and LICENSE/LICENCE* in the
-// tarball regardless of the manifest `files` field, so those ARE shipped
-// package content. `npm pack --dry-run` on @fluojs/testing (files:["dist"])
-// showed README.md and README.ko.md in the tarball. Root-level only — npm's
-// auto-include does not apply to nested paths — and CHANGELOG is not in npm's
-// auto-include set.
-const packageRootAlwaysPacked =
-	/^packages\/[^/]+\/(?:README|LICEN[SC]E)[^/]*$/i;
-
+// Read declarations and producer evidence from the observed Git objects, not
+// the engine checkout. The shared owner contract precedes filename exclusions.
 export const isConsumerVisibleFile = (file, {
 	root = resolve(fileURLToPath(new URL("../../../../", import.meta.url))),
 	head = "HEAD",
-} = {}) => {
-	if (packageRootAlwaysPacked.test(file)) {
-		return true;
-	}
-	if (!/^packages\/[^/]+\//.test(file)) {
-		return false;
-	}
-	const packagePath = file.match(/^packages\/[^/]+\//)[0];
-	const withinPackage = file.slice(packagePath.length);
-	const read = (path) => run(root, "git", ["show", `${head}:${path}`], false);
-	const manifestBytes = read(`${packagePath}package.json`);
-	let manifest;
-	try {
-		manifest = manifestBytes === null ? null : JSON.parse(manifestBytes);
-	} catch (error) {
-		if (!(error instanceof SyntaxError)) throw error;
-		return true;
-	}
-	// Only literal package paths prove exclusion. Unsupported pack rules or
-	// absent/deleted metadata never establish that an input is development-only.
-	const files = manifest?.files;
-	const literalFiles = Array.isArray(files) && files.every((path) =>
-		typeof path === "string" && /^(?:\.\/)?[\w-]+(?:\/[\w.-]+)*\/?$/.test(path) &&
-		!path.split("/").some((part) => part === ".." || part === "."));
-	const packed = literalFiles && files.some((path) => {
-		const normalized = path.replace(/^\.\//, "").replace(/\/$/, "");
-		return withinPackage === normalized || withinPackage.startsWith(`${normalized}/`);
-	});
-	if (packed || /^(?:dist|bin)\//.test(withinPackage) || withinPackage === "package.json") {
-		return true;
-	}
-	if (!literalFiles) {
-		return true;
-	}
-	if (withinPackage.includes("/templates/")) {
-		return true;
-	}
-	if (/\.(test|test-fixture)\.[cm]?[tj]s$/.test(file)) {
-		return false;
-	}
-	if (withinPackage.startsWith("fixtures/")) {
-		return false;
-	}
-	if (/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(withinPackage)) {
-		return false;
-	}
-	const developmentScript = withinPackage.startsWith("scripts/");
-	const rootMarkdown = file.endsWith(".md") && !withinPackage.includes("/");
-	if (developmentScript || rootMarkdown) {
-		// Absence of a filename reference cannot prove isolation from arbitrary
-		// build/runtime code. Exclude only when the entire observed repository
-		// is closed over this development-only package; external files are unknown.
-		if (read(file) === null || (manifest.scripts !== undefined &&
-			(manifest.scripts === null || typeof manifest.scripts !== "object" ||
-				Array.isArray(manifest.scripts)))) return true;
-		if (Object.keys(manifest).some((key) =>
-			!["name", "version", "description", "private", "license", "files", "scripts"].includes(key))) return true;
-		const development = /^(?:pre|post)?(?:test|sandbox|lint|typecheck|check|bench|benchmark|dev)(?::|$)/;
-		const entries = Object.entries(manifest.scripts ?? {});
-		if (entries.some(([name, command]) =>
-			!development.test(name) || typeof command !== "string")) return true;
-		if (developmentScript && !entries.some(([, command]) => command.includes(withinPackage))) return true;
-		const tracked = run(root, "git", ["ls-tree", "-r", "--name-only", "-z", head], false);
-		if (tracked === null) return true;
-		for (const path of tracked.split("\0").filter(Boolean)) {
-			if (!path.startsWith(packagePath)) return true;
-			const relativePath = path.slice(packagePath.length);
-			if (path === file || relativePath === "package.json" ||
-				(relativePath.endsWith(".md") && !relativePath.includes("/")) ||
-				(relativePath.startsWith("scripts/") &&
-					entries.some(([, command]) => command.includes(relativePath)))) continue;
-			return true;
-		}
-		return false;
-	}
-	return true;
-};
+	base = head,
+} = {}) => productionInputClassifier(root, head, base)(file);
 
 export const isChangesetFile = (file) =>
 	/^\.changeset\/.+\.md$/.test(file) && !file.endsWith("README.md");
@@ -969,9 +884,8 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 			return null;
 		}
 	})();
-	const publicPackagesTouched = (changedFiles ?? []).some(
-		(file) => isConsumerVisibleFile(file, { root, head: headSha }),
-	);
+	const consumerInput = productionInputClassifier(root, headSha, baseSha ?? headSha);
+	const publicPackagesTouched = (changedFiles ?? []).some(consumerInput);
 	const changesetPresent = (changedFiles ?? []).some(isChangesetFile);
 
 	let pr = null;

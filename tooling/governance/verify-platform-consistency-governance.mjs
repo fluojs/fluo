@@ -36,6 +36,7 @@ import { enforceNextjsPublicImports, nextjsRecipePaths } from './nextjs-public-i
 import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 import { enforcePassportCookiePresetContract } from './passport-cookie-preset-contract.mjs';
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
+import { enforcePackageProductionInputs } from './package-production-inputs.mjs';
 import { enforcePrismaNestjsMigrationDocs } from './prisma-nestjs-migration-docs.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactNavigationPayloadContract } from './react-navigation-payload-contract.mjs';
@@ -4690,6 +4691,7 @@ export function enforceNotificationsQueueCancellationDocumentationContract(readT
 }
 
 export async function main() {
+  enforcePackageProductionInputs();
   const changedFiles = changedFilesFromGit();
   const behavioralChanges = behavioralChangedFiles(
     changedFiles,
