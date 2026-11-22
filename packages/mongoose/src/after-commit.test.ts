@@ -43,7 +43,9 @@ function fixture(mode: 'manual' | 'delegated') {
           await session.abortTransaction();
           throw error;
         } finally {
-          await session.endSession();
+          // Mirrors the installed Mongoose peer: the delegate fires endSession() from its
+          // finally without awaiting the returned cleanup promise.
+          void Promise.resolve(session.endSession()).catch(() => undefined);
         }
       },
     };

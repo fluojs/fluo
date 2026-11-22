@@ -113,7 +113,9 @@ describe('Prisma afterCommit', () => {
     const commitStarted = barrier();
     const commitReleased = barrier();
     const continuationReleased = barrier();
+    const freshReleased = barrier();
     let continuation: Promise<void> | undefined;
+    let freshContinuation: Promise<void> | undefined;
     let nativeCalls = 0;
     const events: string[] = [];
     const root = {
@@ -128,12 +130,12 @@ describe('Prisma afterCommit', () => {
       },
     };
     const prisma = new PrismaService(root);
-    let registerLate = () => {};
     const transaction = prisma.transaction(async () => {
-      registerLate = () => prisma.afterCommit(() => { events.push('late'); });
       continuation = continuationReleased.promise.then(async () => {
+        expect(() => prisma.afterCommit(() => { events.push('late'); })).toThrow('active transaction callback');
         expect(prisma.current()).toBe(root);
-        expect(registerLate).toThrow('active transaction callback');
+      });
+      freshContinuation = freshReleased.promise.then(async () => {
         await prisma.transaction(async () => {
           prisma.afterCommit(() => { events.push('fresh'); });
         });
@@ -142,17 +144,21 @@ describe('Prisma afterCommit', () => {
     });
     try {
       await commitStarted.promise;
-      expect(registerLate).toThrow('active transaction callback');
-      commitReleased.release();
-      await transaction;
       continuationReleased.release();
       await continuation;
+      expect(events).toEqual([]);
+      commitReleased.release();
+      await transaction;
+      expect(events).toEqual(['first']);
+      freshReleased.release();
+      await freshContinuation;
       expect(nativeCalls).toBe(2);
       expect(events).toEqual(['first', 'fresh']);
     } finally {
       commitReleased.release();
       continuationReleased.release();
-      await Promise.allSettled([transaction, continuation]);
+      freshReleased.release();
+      await Promise.allSettled([transaction, continuation, freshContinuation]);
     }
   });
 
