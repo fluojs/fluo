@@ -352,7 +352,8 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       throw new Error('Mongoose document saves require an active transaction session.');
     }
 
-    return document.save(resolveSessionOptions(options, session) as TSaveOptions);
+    await document.save(resolveSessionOptions(options, session) as TSaveOptions);
+    return document;
   }
 
   /**

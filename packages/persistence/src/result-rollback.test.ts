@@ -60,6 +60,18 @@ describe('shared Result rollback policy', () => {
     await expect(boundary.recover(owner.rollbackOnly)).rejects.toBeInstanceOf(TransactionRollbackUnconfirmedError);
   });
 
+  it('rejects a truthy confirmation object from a malformed observer after its exact signal', async () => {
+    const root = { ok: false };
+    const confirmRollback = vi.fn(() => ({ confirmed: true }));
+    const owner: RollbackOwner = {};
+    Reflect.set(owner, 'observation', { confirmRollback });
+    const boundary = new ResultBoundary(owner, () => true);
+    boundary.evaluate(root);
+
+    await expect(boundary.recover(owner.rollbackOnly)).rejects.toBeInstanceOf(TransactionRollbackUnconfirmedError);
+    expect(confirmRollback).toHaveBeenCalledTimes(1);
+  });
+
   it('propagates an observed native rollback failure unchanged', async () => {
     const failure = new Error('native rollback failed');
     const owner: RollbackOwner = { observation: { confirmRollback: () => { throw failure; } } };

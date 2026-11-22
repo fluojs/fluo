@@ -196,21 +196,28 @@ Use service-layer `@Transaction()` for business operations. Nested `requestTrans
 
 The `MongooseConnection` provides `currentSession()` to access the ambient MongoDB session and `current()` to access the root connection handle. Use these as escape hatches when you need to pass sessions to external utilities or perform advanced manual plumbing.
 
+This example receives a `MongooseConnection<Connection>` wrapping an application-owned native `mongoose.Connection`. Register the `User` model with a `status` field on that same connection beforehand, and create native sessions from the same Mongoose installation. `current().model(...)` accesses the raw model, so it does not receive automatic session injection from the `conn.model(...)` facade.
+
 ```ts
 import { MongooseConnection } from '@fluojs/mongoose';
+import mongoose, { type Connection } from 'mongoose';
 
 export class AdvancedRepository {
-  constructor(private readonly conn: MongooseConnection) {}
+  constructor(private readonly conn: MongooseConnection<Connection>) {}
 
   async customOperation() {
     const session = this.conn.currentSession();
+    if (session !== undefined && !(session instanceof mongoose.mongo.ClientSession)) {
+      throw new TypeError('Expected a native Mongoose ClientSession.');
+    }
+
     const User = this.conn.current().model('User');
-    
-    // Explicitly passing the session
-    return User.find({ status: 'active' }).session(session || null);
+    return User.find({ status: 'active' }).session(session ?? null);
   }
 }
 ```
+
+An active native session is passed to the query as the same object. Without a session, passing `null` queries active users outside a transaction. An active session that is not a native `ClientSession` is rejected before the query executes rather than switching to sessionless execution.
 
 Use `conn.transaction()` for manual transaction blocks:
 
