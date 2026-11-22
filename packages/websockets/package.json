@@ -78,6 +78,7 @@
     "@fluojs/platform-bun": "workspace:^",
     "@fluojs/platform-cloudflare-workers": "workspace:^",
     "@fluojs/runtime": "workspace:^",
+    "@types/ws": "^8.18.1",
     "ws": "^8.21.0"
   },
   "devDependencies": {
@@ -85,7 +86,6 @@
     "@fluojs/platform-fastify": "workspace:^",
     "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/testing": "workspace:^",
-    "@types/ws": "^8.18.1",
     "vitest": "^4.1.11"
   }
 }
