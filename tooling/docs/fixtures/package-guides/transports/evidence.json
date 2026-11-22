@@ -21,12 +21,12 @@
     "compositions": [
       "@fluojs/websockets + @fluojs/websockets/node: root-authored @WebSocketGateway/@OnMessage gateway registered as providers; NodeWebSocketModule.forRoot() supplies upgrade handling, limits, heartbeat, and shutdown on the real Node HTTP adapter (FluoFactory.create + NodeHttpApplicationAdapter.create({ port: 0 }))",
       "@fluojs/websockets + @fluojs/core DI: ChatGateway injects ChatAudit through constructor DI; handler args (payload, socket, request, socketId) expose the stable connection identity used for room joins",
-      "@fluojs/websockets rooms: PresenceService wraps WebSocketRoomService backed by the container-resolved NodeWebSocketGatewayLifecycleService; joinRoom/broadcastToRoom frames reach the connected client as { event, data }, and membership is released after app.close() completes disconnect cleanup",
+      "@fluojs/websockets rooms: registered application provider PresenceService injects the public NodeWebSocketGatewayLifecycleService token exported by NodeWebSocketModule.forRoot(), typed as WebSocketRoomService; joinRoom/broadcastToRoom frames reach the connected client as { event, data }, and membership is released after app.close() completes disconnect cleanup",
       "replies contract: default returns-ignored behavior with explicit socket.send pong, and opt-in replies.mode 'event-envelope' echoing a returned { event, data } envelope",
       "upgrade guard: allow (true) completes a 101 handshake via raw socket probe; reject ({ status: 401, body }) answers before the handshake with 'Authentication required.'"
     ],
     "verifiedCommands": [
-      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/transports --maxWorkers=1 — exit 0, websockets-guide.test.ts 4/4 passed (Node v24.20.0); full suite repeated 3x consecutively",
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/transports/websockets-guide.test.ts tooling/governance/websocket-room-injection-backpressure-discoverability.test.ts tooling/governance/verify-platform-consistency-governance.test.ts --maxWorkers=1 — exit 0, 3 files and 543 tests passed, websockets-guide.test.ts 4/4 passed (2026-11-22, issue-4161, Node v24.21.0, pnpm 10.4.1)",
       "pnpm exec tsc -p tooling/docs/fixtures/package-guides/transports/tsconfig.json --noEmit — exit 0, 0 errors for this workstream's files (see typecheck note in README)"
     ],
     "unexecuted": [
