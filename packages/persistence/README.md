@@ -62,6 +62,12 @@ After successful outer commit and associated cleanup settlement, every hook is a
 Rollback, failed commit, and discarded retry attempts never run their hooks.
 Hook failures do not undo commit or trigger native retry.
 
+`AfterCommitError` snapshots the input array and each settlement record at construction.
+Changing the original records or reordering or clearing the original array leaves all FIFO
+`results` and the failure order in `errors` intact. Rejection reasons in both fields retain
+their original object identity and are neither deep-cloned nor frozen. This adds no runtime
+immutability guarantee for the returned `results` or `errors`.
+
 ORM packages own native observers, callback attempt lifetimes, connections/sessions, shutdown admission and drain.
 The Mongoose observer's `connection?` supplies session-owning connection context;
 `AfterCommitCleanupError` remains a Mongoose-owned direct `AggregateError` subclass.

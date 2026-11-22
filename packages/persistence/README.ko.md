@@ -62,6 +62,12 @@ After-commit 등록은 열린 동일 native callback scope에서 동기적으로
 Rollback·실패한 commit·폐기된 retry attempt의 hook은 실행하지 않습니다.
 Hook 실패는 commit을 취소하거나 native retry를 유발하지 않습니다.
 
+`AfterCommitError`는 생성 시점의 입력 배열과 각 settlement 레코드를 스냅샷으로 보관합니다.
+원본 레코드를 변경하거나 원본 배열을 재정렬·비워도 `results`의 모든 FIFO 결과와
+`errors`의 실패 순서는 유지됩니다. 두 필드의 rejection reason은 원래 객체 identity를
+보존하며 깊은 복사하거나 동결하지 않습니다. 반환된 `results`와 `errors`를 runtime에서
+불변으로 만드는 보장은 추가하지 않습니다.
+
 ORM은 native observer, callback attempt 수명, connection/session, shutdown admission과 drain을 소유합니다.
 Mongoose observer의 `connection?`은 session-owning connection 문맥이며
 `AfterCommitCleanupError`는 Mongoose-owned `AggregateError` 직접 하위 클래스입니다.
