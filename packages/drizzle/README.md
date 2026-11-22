@@ -236,6 +236,8 @@ Use the `shouldRollback` example below with this configuration. Existing wrapper
 - `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>` returns only independently confirmed rollback success and reports failure/uncertainty by throwing. Do not implement it using sentinel identity or a no-op.
 - `TransactionRollbackUnconfirmedError`: positive native rollback confirmation is absent, so a normal Result cannot be returned.
 
+On a directly connected `Client`, a rejected `BEGIN` releases the observer's claim automatically, so the next independent observation scope reuses the same client for `BEGIN` and `COMMIT` without a manual release, `ROLLBACK`, or observer recreation. While that first `BEGIN` is still pending, an overlapped `BEGIN` from another observation scope is rejected before the underlying query and does not release the pending owner. A rejected `BEGIN` itself is never positive rollback confirmation.
+
 
 `shouldRollback` is an opt-in synchronous predicate for a callback's normal return value. This complete consumer helper accepts a registered Node PostgreSQL wrapper. `persist` performs DB work through that same wrapper's `current()` or facade. `Result` is consumer-defined; Fluo introduces no global result shape.
 
