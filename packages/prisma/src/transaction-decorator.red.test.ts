@@ -864,6 +864,120 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
     }
   });
 
+  it('rejects a null explicit accessor without falling back to another registered service', async () => {
+    const usersEvents: string[] = [];
+    const bodyEvents: string[] = [];
+
+    const usersTransactionClient = {
+      user: {
+        async create(input: { data: { email: string } }) {
+          usersEvents.push(`tx:create:${input.data.email}`);
+          return { email: input.data.email, id: 'tx-user' };
+        },
+      },
+    };
+
+    const usersClient = {
+      async $connect() { usersEvents.push('users:connect'); },
+      async $disconnect() { usersEvents.push('users:disconnect'); },
+      async $transaction<T>(callback: (value: typeof usersTransactionClient) => Promise<T>): Promise<T> {
+        usersEvents.push('users:transaction:start');
+        const result = await callback(usersTransactionClient);
+        usersEvents.push('users:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(getPrismaServiceToken('users'))
+    class NullAccessorService {
+      maybePrisma: PrismaService<typeof usersClient> | null = null;
+
+      constructor(private readonly usersPrisma: PrismaService<typeof usersClient>) {}
+
+      @Transaction((self: NullAccessorService) => self.maybePrisma as PrismaService<typeof usersClient>)
+      async write() {
+        bodyEvents.push('body:start');
+        return 'unreachable';
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ name: 'users', client: usersClient })],
+      providers: [NullAccessorService],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const service = await app.container.resolve(NullAccessorService);
+
+      await expect(service.write()).rejects.toThrow('@Transaction() accessor returned no PrismaService');
+      expect(bodyEvents).toEqual([]);
+      expect(usersEvents).toEqual(['users:connect']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects an undefined explicit accessor without falling back to another registered service', async () => {
+    const usersEvents: string[] = [];
+    const bodyEvents: string[] = [];
+
+    const usersTransactionClient = {
+      user: {
+        async create(input: { data: { email: string } }) {
+          usersEvents.push(`tx:create:${input.data.email}`);
+          return { email: input.data.email, id: 'tx-user' };
+        },
+      },
+    };
+
+    const usersClient = {
+      async $connect() { usersEvents.push('users:connect'); },
+      async $disconnect() { usersEvents.push('users:disconnect'); },
+      async $transaction<T>(callback: (value: typeof usersTransactionClient) => Promise<T>): Promise<T> {
+        usersEvents.push('users:transaction:start');
+        const result = await callback(usersTransactionClient);
+        usersEvents.push('users:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(getPrismaServiceToken('users'))
+    class UndefinedAccessorService {
+      maybePrisma: PrismaService<typeof usersClient> | undefined;
+
+      constructor(private readonly usersPrisma: PrismaService<typeof usersClient>) {}
+
+      @Transaction((self: UndefinedAccessorService) => self.maybePrisma as PrismaService<typeof usersClient>)
+      async write() {
+        bodyEvents.push('body:start');
+        return 'unreachable';
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ name: 'users', client: usersClient })],
+      providers: [UndefinedAccessorService],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const service = await app.container.resolve(UndefinedAccessorService);
+
+      await expect(service.write()).rejects.toThrow('@Transaction() accessor returned no PrismaService');
+      expect(bodyEvents).toEqual([]);
+      expect(usersEvents).toEqual(['users:connect']);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('rejects new service @Transaction() boundaries once shutdown starts', async () => {
     const events: string[] = [];
     let releaseDisconnect!: () => void;
