@@ -199,21 +199,28 @@ export class RequestTransactionBoundary implements Interceptor {
 
 `MongooseConnection`은 활성 MongoDB 세션에 접근하기 위한 `currentSession()`과 루트 연결 handle에 접근하기 위한 `current()` 메서드를 제공합니다. 외부 유틸리티에 세션을 전달하거나 복잡한 수동 처리가 필요한 경우 escape hatch로 사용하세요.
 
+이 예제는 애플리케이션이 소유한 native `mongoose.Connection`을 래핑한 `MongooseConnection<Connection>`을 받습니다. 같은 연결에 `status` 필드를 가진 `User` model을 미리 등록하고, native session은 같은 Mongoose 설치본에서 생성해야 합니다. `current().model(...)`은 raw model 접근이므로 `conn.model(...)` facade의 자동 세션 주입을 받지 않습니다.
+
 ```ts
 import { MongooseConnection } from '@fluojs/mongoose';
+import mongoose, { type Connection } from 'mongoose';
 
 export class AdvancedRepository {
-  constructor(private readonly conn: MongooseConnection) {}
+  constructor(private readonly conn: MongooseConnection<Connection>) {}
 
   async customOperation() {
     const session = this.conn.currentSession();
+    if (session !== undefined && !(session instanceof mongoose.mongo.ClientSession)) {
+      throw new TypeError('Expected a native Mongoose ClientSession.');
+    }
+
     const User = this.conn.current().model('User');
-    
-    // 명시적으로 세션 전달
-    return User.find({ status: 'active' }).session(session || null);
+    return User.find({ status: 'active' }).session(session ?? null);
   }
 }
 ```
+
+활성 native session이 있으면 같은 객체를 쿼리에 전달합니다. Session이 없으면 `null`을 전달해 트랜잭션 밖에서 active user를 조회합니다. 활성 세션이 native `ClientSession`이 아니면 쿼리를 실행하기 전에 거부하며 세션 없는 실행으로 전환하지 않습니다.
 
 수동 트랜잭션 블록에는 `conn.transaction()`을 사용하세요:
 

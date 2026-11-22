@@ -1112,6 +1112,48 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       ]);
     });
 
+    it('saveDocument() waits for a distinct native save result and returns the input document', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const conn = new MongooseConnection(createFakeConnection(events, session));
+      let finishSave: (result: SavedDocument) => void;
+      const nativeSave = new Promise<SavedDocument>((resolve) => {
+        finishSave = resolve;
+      });
+      const saves: { receiver: SavedDocument; options?: TestMongooseDocumentSaveOptions }[] = [];
+      class SavedDocument {
+        save(options?: TestMongooseDocumentSaveOptions): Promise<SavedDocument> {
+          saves.push({ receiver: this, options });
+          return nativeSave;
+        }
+      }
+      Object.freeze(SavedDocument.prototype);
+      const document = Object.freeze(new SavedDocument());
+      const nativeResult = new SavedDocument();
+
+      const saved = await conn.transaction(async () => {
+        const pending = conn.saveDocument(document, { timestamps: false, validateBeforeSave: false });
+        try {
+          const state = await Promise.race([
+            pending.then(() => 'saved'),
+            Promise.resolve().then(() => 'pending'),
+          ]);
+          expect(state).toBe('pending');
+        } finally {
+          finishSave(nativeResult);
+        }
+        return pending;
+      });
+
+      expect(saved).toBe(document);
+      expect(saves).toHaveLength(1);
+      expect(saves[0]?.receiver).toBe(document);
+      expect(saves[0]?.options?.session).toBe(session);
+      expect(saves[0]?.options).toEqual({
+        session, timestamps: false, validateBeforeSave: false,
+      });
+    });
+
     it('saveDocument() fails closed without an ambient transaction session', async () => {
       const events: string[] = [];
       const session = createFakeSession(events);
@@ -1143,7 +1185,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await expect(conn.transaction(() => conn.saveDocument(document))).rejects.toBe(validationError);
     });
 
-    it('saveDocument() rejects an explicit session that conflicts with the ambient transaction', async () => {
+    it.each(['null', 'different'] as const)('saveDocument() rejects a %s explicit session that conflicts with the ambient transaction', async (kind) => {
       const events: string[] = [];
       const session = createFakeSession(events);
       const differentSession = { ...createFakeSession(events), id: 'session-2' };
@@ -1156,8 +1198,10 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       };
 
       await expect(
-        conn.transaction(() => conn.saveDocument(document, { session: differentSession })),
-      ).rejects.toThrow('Explicit session conflicts with ambient transaction session');
+        conn.transaction(() => conn.saveDocument(document, { session: kind === 'null' ? null : differentSession })),
+      ).rejects.toThrow(kind === 'null'
+        ? 'Explicit session: null conflicts with ambient transaction session'
+        : 'Explicit session conflicts with ambient transaction session');
       expect(events).not.toContain('document:save');
     });
   });

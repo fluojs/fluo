@@ -1,3 +1,5 @@
+import { once } from 'node:events';
+import { createServer, Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
@@ -383,6 +385,130 @@ describe('@fluojs/websockets/node', () => {
     } finally {
       disconnectRelease.resolve();
       await app.close();
+    }
+  });
+
+  it('closes accepted clients and awaits disconnect cleanup when a later dedicated listener fails (#4196)', async () => {
+    const secondListen = createDeferred<Server>();
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+    const listenError = new Error('Second dedicated listener failed');
+    let disconnectCount = 0;
+
+    @WebSocketGateway({ path: '/first', serverBacked: { port: 0 } })
+    class FirstGateway {
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectCount += 1;
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+      }
+    }
+
+    @WebSocketGateway({ path: '/second', serverBacked: { port: 0 } })
+    class SecondGateway {}
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        NodeWebSocketModule.forRoot({ shutdown: { timeoutMs: 2_000 } }),
+      ],
+      providers: [FirstGateway, SecondGateway],
+    });
+
+    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const listen = Server.prototype.listen;
+    let firstServer: Server | undefined;
+    let secondServer: Server | undefined;
+    const listenSpy = vi.spyOn(Server.prototype, 'listen')
+      .mockImplementation(function (this: Server, ...args) {
+        if (!firstServer) {
+          firstServer = this;
+          return Reflect.apply(listen, this, args);
+        }
+
+        secondServer = this;
+        secondListen.resolve(this);
+        return this;
+      });
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      deadlineTimer = setTimeout(
+        () =>
+          reject(
+            new Error('Partial startup cleanup did not complete'),
+          ),
+        4_000,
+      );
+    });
+    const bounded = <T>(promise: Promise<T>): Promise<T> =>
+      Promise.race([promise, deadline]);
+    let bootstrapSettled = false;
+    const bootstrap = FluoFactory.create(AppModule, { adapter }).then(
+      async (app) => {
+        bootstrapSettled = true;
+        await app.close();
+        return undefined;
+      },
+      (error: unknown) => {
+        bootstrapSettled = true;
+        return error;
+      },
+    );
+    const rebound = createServer();
+    let socket: WebSocket | undefined;
+
+    try {
+      const failingServer = await bounded(secondListen.promise);
+      const port = getBoundPort(firstServer);
+      socket = new WebSocket(`ws://127.0.0.1:${String(port)}/first`);
+      await bounded(onceOpen(socket));
+      const closed = once(socket, 'close');
+
+      failingServer.emit('error', listenError);
+
+      const outcome = await bounded(Promise.race([
+        closed.then(([code]) => ({ code, event: 'close' })),
+        bootstrap.then(() => ({ event: 'bootstrap-settled' })),
+      ]));
+      expect(outcome).toEqual({ code: 1001, event: 'close' });
+      await bounded(disconnectStarted.promise);
+      expect(disconnectCount).toBe(1);
+      expect(bootstrapSettled).toBe(false);
+
+      disconnectRelease.resolve();
+      expect(await bounded(bootstrap)).toBe(listenError);
+      expect(disconnectCount).toBe(1);
+
+      listenSpy.mockRestore();
+      const listening = once(rebound, 'listening');
+      rebound.listen(port);
+      await bounded(listening);
+      expect(getBoundPort(rebound)).toBe(port);
+    } finally {
+      disconnectRelease.resolve();
+      if (secondServer?.listenerCount('error')) {
+        secondServer.emit('error', listenError);
+      }
+      if (socket && socket.readyState !== WebSocket.CLOSED) {
+        const closed = onceClosed(socket);
+        socket.terminate();
+        await closed;
+      }
+      await bootstrap;
+      await Promise.all(
+        [firstServer, secondServer, rebound].map((server) =>
+          new Promise<void>((resolve) => {
+            if (server) {
+              server.close(() => resolve());
+            } else {
+              resolve();
+            }
+          })
+        ),
+      );
+      listenSpy.mockRestore();
+      clearTimeout(deadlineTimer);
     }
   });
 

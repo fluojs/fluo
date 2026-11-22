@@ -6,11 +6,9 @@
  * - `ChatGateway` answers `ping` messages with an explicit `pong` reply frame,
  *   echoes the stable `socketId` for `join`, and injects `ChatAudit` through
  *   normal constructor DI (same-module provider visibility).
- * - `PresenceService` wraps the room contract. The Node runtime module binds
- *   `NodeWebSocketGatewayLifecycleService` for its own upgrade/dispatch work
- *   and does not export the token, so application code resolves it from the
- *   application container and hands it to this service (see the guide's
- *   "Rooms and broadcast" section for the visibility boundary).
+ * - `PresenceService` injects the Node runtime module's exported
+ *   `NodeWebSocketGatewayLifecycleService` token through constructor DI,
+ *   typed against the shared room contract.
  *
  * The module registers the gateway and its collaborators as providers and
  * imports `NodeWebSocketModule.forRoot()` for the runtime wiring. The HTTP
@@ -18,14 +16,8 @@
  * from the adapter plus `NodeWebSocketModule` defaults.
  */
 import { Inject, Module } from '@fluojs/core';
-import {
-  OnConnect,
-  OnDisconnect,
-  OnMessage,
-  WebSocketGateway,
-  type WebSocketRoomService,
-} from '@fluojs/websockets';
-import { NodeWebSocketModule } from '@fluojs/websockets/node';
+import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway, type WebSocketRoomService } from '@fluojs/websockets';
+import { NodeWebSocketGatewayLifecycleService, NodeWebSocketModule } from '@fluojs/websockets/node';
 
 /** Minimal structural view of the runtime socket a reply needs. */
 export interface ChatSocket {
@@ -48,12 +40,7 @@ export class ChatGateway {
   }
 
   @OnMessage('join')
-  handleJoin(
-    _payload: unknown,
-    socket: ChatSocket,
-    _request: unknown,
-    socketId: string,
-  ): void {
+  handleJoin(_payload: unknown, socket: ChatSocket, _request: unknown, socketId: string): void {
     this.audit.joins.push(socketId);
     socket.send(JSON.stringify({ event: 'joined', data: { socketId } }));
   }
@@ -70,9 +57,10 @@ export class ChatGateway {
 }
 
 /**
- * Application-side room operations. Constructed with the container-resolved
- * lifecycle service, typed against the shared `WebSocketRoomService` contract.
+ * Application-side room operations using the injected lifecycle service,
+ * typed against the shared `WebSocketRoomService` contract.
  */
+@Inject(NodeWebSocketGatewayLifecycleService)
 export class PresenceService {
   constructor(private readonly rooms: WebSocketRoomService) {}
 
@@ -91,6 +79,6 @@ export class PresenceService {
 
 @Module({
   imports: [NodeWebSocketModule.forRoot()],
-  providers: [ChatAudit, ChatGateway],
+  providers: [ChatAudit, ChatGateway, PresenceService],
 })
 export class AppModule {}
