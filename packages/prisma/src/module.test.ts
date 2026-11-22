@@ -237,6 +237,79 @@ describe('@fluojs/prisma', () => {
     ]);
   });
 
+  it('forwards same-named serviceOptions delegates through the injected facade', async () => {
+    const rootDelegateCalls: Array<{ label: string; receiver: unknown }> = [];
+    const transactionDelegateCalls: Array<{ label: string; receiver: unknown }> = [];
+    const transactionClient = {
+      serviceOptions(label: string) {
+        transactionDelegateCalls.push({ label, receiver: this });
+        return { scope: 'transaction' };
+      },
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+      serviceOptions(label: string) {
+        rootDelegateCalls.push({ label, receiver: this });
+        return { scope: 'root' };
+      },
+      transaction: vi.fn(() => 'client-owned-transaction-property'),
+    };
+
+    @Inject(PrismaService)
+    class OptionsDelegateRepository {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      currentHandle() {
+        return this.prisma.current();
+      }
+
+      readOutsideBoundary(label: string) {
+        return this.prisma.serviceOptions(label);
+      }
+
+      async readInsideBoundary() {
+        return this.prisma.transaction(async () => ({
+          current: this.prisma.current(),
+          value: await this.prisma.serviceOptions('inside'),
+        }));
+      }
+    }
+
+    const prismaModule = PrismaModule.forRoot<typeof client, typeof transactionClient>({ client });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [prismaModule],
+      providers: [OptionsDelegateRepository],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const repository = await app.container.resolve(OptionsDelegateRepository);
+
+      expect(repository.currentHandle()).toBe(client);
+      expect(repository.readOutsideBoundary('outside')).toEqual({ scope: 'root' });
+      expect(rootDelegateCalls).toEqual([{ label: 'outside', receiver: client }]);
+      expect(transactionDelegateCalls).toEqual([]);
+
+      const inside = await repository.readInsideBoundary();
+      expect(inside.current).toBe(transactionClient);
+      expect(inside.value).toEqual({ scope: 'transaction' });
+      expect(transactionDelegateCalls).toEqual([{ label: 'inside', receiver: transactionClient }]);
+      expect(rootDelegateCalls).toEqual([{ label: 'outside', receiver: client }]);
+
+      expect(client.transaction).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('supports manual defineModule composition via PrismaModule.forRoot imports', async () => {
     const events: string[] = [];
     const client = {
@@ -1762,6 +1835,66 @@ describe('PrismaModule.forRootAsync', () => {
     }
 
     expect(events).toEqual(['connect', 'disconnect']);
+  });
+
+  it('forwards same-named serviceOptions delegates through async registrations', async () => {
+    const delegateCalls: Array<{ label: string; receiver: unknown; scope: string }> = [];
+    const transactionClient = {
+      serviceOptions(label: string) {
+        delegateCalls.push({ label, receiver: this, scope: 'transaction' });
+        return { label, scope: 'transaction' };
+      },
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+      serviceOptions(label: string) {
+        delegateCalls.push({ label, receiver: this, scope: 'root' });
+        return { label, scope: 'root' };
+      },
+    };
+
+    @Inject(PrismaService)
+    class OptionsDelegateRepository {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      readOutsideBoundary(label: string) {
+        return this.prisma.serviceOptions(label);
+      }
+
+      readInsideBoundary(label: string) {
+        return this.prisma.transaction(async () => this.prisma.serviceOptions(label));
+      }
+    }
+
+    const prismaModule = PrismaModule.forRootAsync<typeof client, typeof transactionClient>({
+      useFactory: () => ({ client }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [prismaModule],
+      providers: [OptionsDelegateRepository],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const repository = await app.container.resolve(OptionsDelegateRepository);
+
+      expect(repository.readOutsideBoundary('outside')).toEqual({ label: 'outside', scope: 'root' });
+      await expect(repository.readInsideBoundary('inside')).resolves.toEqual({ label: 'inside', scope: 'transaction' });
+      expect(delegateCalls).toEqual([
+        { label: 'outside', receiver: client, scope: 'root' },
+        { label: 'inside', receiver: transactionClient, scope: 'transaction' },
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('resolves async options independently for each application container', async () => {

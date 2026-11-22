@@ -9,6 +9,7 @@ import {
   Transaction as PrismaTransaction,
   TransactionRollbackCapabilityError as PrismaRollbackCapabilityError,
   TransactionRollbackOnlyError as PrismaRollbackOnlyError,
+  TransactionRollbackUnconfirmedError as PrismaUnconfirmedError,
   type TransactionBoundaryOptions as PrismaBoundaryOptions,
 } from '@fluojs/prisma';
 import {
@@ -813,16 +814,111 @@ for (const adapter of adapters) {
   });
 }
 
+type NativeRollbackAttempt = { readonly errors: unknown[] };
+
+/**
+ * Fixture-internal pass-through observation of the public Prisma adapter seam.
+ *
+ * @remarks Every real factory, adapter, interactive transaction, SQL ROLLBACK,
+ * and cleanup call keeps its original receiver, arguments, return value, and
+ * rejection. Only the rejections of ROLLBACK-classified `executeRaw` calls and
+ * `rollback` cleanup are recorded per native attempt, mirroring the public
+ * observer contract, without faking the native rollback, injecting errors, or
+ * patching private driver/engine methods.
+ */
+function observeNativeRollbackRejections(factory: PrismaPg): {
+  readonly factory: PrismaPg;
+  readonly attempts: readonly NativeRollbackAttempt[];
+} {
+  const attempts: NativeRollbackAttempt[] = [];
+  const observeTransaction = (transaction: object, attempt: NativeRollbackAttempt): object => new Proxy(transaction, {
+    get(target, key) {
+      const value: unknown = Reflect.get(target, key, target);
+      if (typeof value !== 'function') return value;
+      const invoke = value as (...args: unknown[]) => unknown;
+      if (key !== 'executeRaw' && key !== 'rollback') return invoke.bind(target);
+      return async (...args: unknown[]) => {
+        const query = args[0];
+        const isRollbackCall = key === 'rollback' || (typeof query === 'object' && query !== null
+          && /^\s*ROLLBACK\s*;?\s*$/i.test(String(Reflect.get(query, 'sql'))));
+        try {
+          return await invoke.apply(target, args);
+        } catch (error) {
+          if (isRollbackCall) attempt.errors.push(error);
+          throw error;
+        }
+      };
+    },
+  });
+  const observeAdapter = (adapter: object): object => new Proxy(adapter, {
+    get(target, key) {
+      const value: unknown = Reflect.get(target, key, target);
+      if (typeof value !== 'function') return value;
+      const invoke = value as (...args: unknown[]) => unknown;
+      if (key !== 'startTransaction') return invoke.bind(target);
+      return async (...args: unknown[]) => {
+        const transaction: unknown = await invoke.apply(target, args);
+        if (typeof transaction !== 'object' || transaction === null) return transaction;
+        const attempt: NativeRollbackAttempt = { errors: [] };
+        attempts.push(attempt);
+        return observeTransaction(transaction, attempt);
+      };
+    },
+  });
+  const observed = new Proxy(factory, {
+    get(target, key) {
+      const value: unknown = Reflect.get(target, key, target);
+      if (typeof value !== 'function') return value;
+      const invoke = value as (...args: unknown[]) => unknown;
+      if (key !== 'connect') return invoke.bind(target);
+      return async (...args: unknown[]) => {
+        const adapter: unknown = await invoke.apply(target, args);
+        if (typeof adapter !== 'object' || adapter === null) return adapter;
+        return observeAdapter(adapter);
+      };
+    },
+  });
+  return { factory: observed, attempts };
+}
+
+/**
+ * Asserts the caller rejection preserves the actually observed native adapter
+ * rollback/cleanup error objects: the identical object when one error was
+ * observed, or an `AggregateError.errors` entry for each observed object in
+ * encounter order when several were. A `TransactionRollbackUnconfirmedError`
+ * or an unrelated error fails this judgment; message/name equality is not
+ * object preservation.
+ */
+function assertObservedRollbackErrorPreserved(rejection: unknown, observed: readonly unknown[]): void {
+  assert.ok(observed.length > 0, 'The native attempt must have rejected an actual adapter rollback/cleanup call.');
+  if (observed.length === 1) {
+    assert.equal(rejection, observed[0], 'The caller rejection must preserve the observed adapter rollback error object.');
+    return;
+  }
+  assert.ok(rejection instanceof AggregateError, 'Multiple observed adapter errors require the observer-contract AggregateError.');
+  assert.equal(rejection.errors.length, observed.length);
+  for (const [index, error] of observed.entries()) {
+    assert.equal(rejection.errors[index], error, 'AggregateError.errors must preserve each observed adapter error object in order.');
+  }
+}
+
 describe('native Result rollback completion and failures', { concurrency: false }, () => {
-  it('reports Prisma SQL rollback failure hidden by its interactive runner', { timeout: 20_000 }, async () => {
+  it('preserves the observed Prisma SQL rollback error hidden by its interactive runner', { timeout: 20_000 }, async () => {
+    // Given: a fixture-internal pass-through observation of the public adapter
+    // seam. The real factory, adapter, interactive transaction, SQL ROLLBACK,
+    // and cleanup calls keep their original receiver, arguments, returns, and
+    // rejections; only those rejections are recorded, so the judgment below
+    // compares the caller rejection with the objects the adapter actually
+    // rejected. No fake rollback, injected error, or private driver patching.
     const disconnected = Promise.withResolvers<void>();
-    const nativeErrors: Error[] = [];
-    const observation = createPrismaRollbackObserver(new PrismaPg({ connectionString: databaseUrl, max: 1 }, {
+    const connectionErrors: Error[] = [];
+    const rollback = observeNativeRollbackRejections(new PrismaPg({ connectionString: databaseUrl, max: 1 }, {
       onConnectionError(error) {
-        nativeErrors.push(error);
+        connectionErrors.push(error);
         disconnected.resolve();
       },
     }));
+    const observation = createPrismaRollbackObserver(rollback.factory);
     const native = new PrismaClient({ adapter: observation.adapter });
     const wrapper = new PrismaService(native, { strictTransactions: true, rollbackObserver: observation.rollbackObserver });
     const id = 'Prisma-native-hidden-rollback-error';
@@ -836,17 +932,38 @@ describe('native Result rollback completion and failures', { concurrency: false 
         assert.ok(backend);
         wrapper.afterCommit(() => { hooks++; });
         await pool.query('SELECT pg_terminate_backend($1)', [backend.pid]);
+        // The connection-close notification synchronizes this callback only;
+        // it is not evidence that the rollback error reached the caller.
         await disconnected.promise;
         finished = true;
         return failure;
       }, undefined, resultBoundary), (error: unknown) => {
+        const observed = rollback.attempts.flatMap((attempt) => attempt.errors);
+        // The preservation judgment on this actual native case: the caller
+        // rejection must preserve the observed adapter rollback/cleanup error
+        // object itself, or the observer-contract AggregateError carrying
+        // exactly those objects in order. Message or name equality is not
+        // preservation, and notification arrays cannot substitute for it.
+        assertObservedRollbackErrorPreserved(error, observed);
         assert.ok(error instanceof Error);
         assert.equal(error instanceof PrismaRollbackOnlyError, false);
-        console.log('NATIVE_PRISMA_ROLLBACK_ERROR', JSON.stringify({ name: error.name, message: error.message }));
+        // Sensitivity of that same judgment with the same observed errors: a
+        // substituted observation failure and an unrelated generic error must
+        // both fail it, so the judgment above cannot pass on the wrong value.
+        assert.throws(() => assertObservedRollbackErrorPreserved(new PrismaUnconfirmedError(), observed));
+        assert.throws(() => assertObservedRollbackErrorPreserved(new Error('unrelated generic rejection'), observed));
+        console.log('NATIVE_PRISMA_ROLLBACK_ERROR_PRESERVED', JSON.stringify({
+          attempts: rollback.attempts.length,
+          observed: observed.length,
+          preserved: observed.length === 1 ? error === observed[0] : error instanceof AggregateError,
+          name: error.name,
+          message: error.message,
+          contrastsRejected: ['TransactionRollbackUnconfirmedError', 'unrelated Error'],
+        }));
         return true;
       });
       assert.equal(finished, true);
-      assert.ok(nativeErrors.length > 0);
+      assert.ok(connectionErrors.length > 0);
       assert.equal(hooks, 0);
       assert.equal(await client.receipt.findUnique({ where: { id } }), null);
     } finally {

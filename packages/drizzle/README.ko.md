@@ -236,6 +236,8 @@ export function resultTransactions(databaseUrl: string) {
 - `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>`는 독립적으로 확인한 rollback 성공만 반환하고 실패/불확실성은 오류로 보고합니다. Sentinel 일치나 no-op 함수로 구현하지 마세요.
 - `TransactionRollbackUnconfirmedError`: 양의 native rollback 확인이 없어 정상 Result를 반환할 수 없음을 나타냅니다.
 
+직접 연결된 `Client`에서 `BEGIN`이 거부되면 observer의 관찰 범위가 자동으로 해제되어, 다음 독립 관찰 호출이 같은 client에서 수동 release, `ROLLBACK`, observer 재생성 없이 `BEGIN`과 `COMMIT`을 다시 실행합니다. 첫 `BEGIN`이 아직 진행 중일 때 다른 관찰 범위의 겹친 `BEGIN`은 하부 query 전에 거부되며 그 거절이 진행 중인 소유자의 관찰 범위를 해제하지 않습니다. 거부된 `BEGIN` 자체는 양의 rollback 확인 증거로 인정되지 않습니다.
+
 
 `shouldRollback`은 callback의 정상 반환값에 대한 동기 opt-in predicate입니다. 다음은 등록된 Node PostgreSQL wrapper를 받는 완전한 소비자 helper입니다. `persist`는 같은 wrapper의 `current()` 또는 facade로 DB 작업을 수행합니다. `Result`는 소비자 정의이며 Fluo는 전역 결과 형태를 도입하지 않습니다.
 

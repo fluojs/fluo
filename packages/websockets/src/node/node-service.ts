@@ -333,8 +333,8 @@ export class NodeWebSocketGatewayLifecycleServiceImplementation
       this.attachConnectionHandlersToServers(group.attachmentsByPath);
     }
 
-    await this.attachGatewayServers(attachmentGroups);
     this.attachments = Array.from(attachmentGroups.values()).flatMap((group) => Array.from(group.attachmentsByPath.values()));
+    await this.attachGatewayServers(attachmentGroups);
   }
 
   private async attachGatewayServers(
