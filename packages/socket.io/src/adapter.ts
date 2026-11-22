@@ -395,27 +395,6 @@ export class SocketIoLifecycleService
       .then(() => {
         this.io = io;
         return io;
-      })
-      .catch(async (error: unknown) => {
-        this.io = undefined;
-        this.bunEngine = undefined;
-
-        const cleanupResults = await Promise.allSettled([
-          Promise.resolve().then(() => runtime.capability.bindingInstallation.install(undefined)),
-          this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs()),
-        ]);
-        const cleanupErrors = cleanupResults.flatMap((result) =>
-          result.status === 'rejected' ? [result.reason] : [],
-        );
-
-        if (cleanupErrors.length > 0) {
-          throw new AggregateError(
-            [error, ...cleanupErrors],
-            'Socket.IO Bun initialization failed and partial resource cleanup did not complete.',
-          );
-        }
-
-        throw error;
       });
     this.serverInitializationPromise = initialization;
 
@@ -630,8 +609,44 @@ export class SocketIoLifecycleService
 
     const BunEngineServer = await loadBunEngineServer();
     const engine = new BunEngineServer(this.createBunEngineOptions());
-    io.bind(engine);
-    runtime.capability.bindingInstallation.install(this.createBunSocketIoBinding(engine));
+    let engineBound = false;
+    let bindingInstallationAttempted = false;
+
+    try {
+      io.bind(engine);
+      engineBound = true;
+      const binding = this.createBunSocketIoBinding(engine);
+      bindingInstallationAttempted = true;
+      runtime.capability.bindingInstallation.install(binding);
+    } catch (error: unknown) {
+      const cleanupResults = await Promise.allSettled([
+        Promise.resolve().then(() => {
+          if (bindingInstallationAttempted) {
+            runtime.capability.bindingInstallation.install(undefined);
+          }
+        }),
+        Promise.resolve().then(async () => {
+          if (engineBound) {
+            await this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs());
+          } else {
+            engine.close();
+          }
+        }),
+      ]);
+      const cleanupErrors = cleanupResults.flatMap((result) =>
+        result.status === 'rejected' ? [result.reason] : [],
+      );
+
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          'Socket.IO Bun initialization failed and partial resource cleanup did not complete.',
+        );
+      }
+
+      throw error;
+    }
+
     this.realtimeBindingInstallation = runtime.capability.bindingInstallation;
     this.bunEngine = engine;
   }

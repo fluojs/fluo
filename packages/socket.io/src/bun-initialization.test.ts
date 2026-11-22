@@ -1,14 +1,13 @@
 import { Container } from '@fluojs/di';
-import {
-  createFetchStyleHttpAdapterRealtimeCapability,
-  type Dispatcher,
-  type HttpApplicationAdapter,
-} from '@fluojs/http';
+import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http';
 import type { ApplicationLogger } from '@fluojs/runtime';
+import { BunHttpApplicationAdapter, type BunWebSocketBinding } from '@fluojs/platform-bun';
+import { Server as BunEngineServer } from '@socket.io/bun-engine';
 import { Server } from 'socket.io';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SocketIoLifecycleService } from './adapter.js';
+import type { SocketIoModuleOptions } from './types.js';
 
 class TestBunBindingError extends Error {
   readonly name = 'TestBunBindingError';
@@ -69,15 +68,12 @@ class TestBunAdapter implements HttpApplicationAdapter {
   }
 
   getRealtimeCapability() {
-    return createFetchStyleHttpAdapterRealtimeCapability(
-      'Test adapter supports Bun-style Socket.IO binding.',
-      {
-        bindingInstallation: {
-          install: (binding) => this.setRealtimeBinding(binding),
-        },
-        support: 'supported',
+    return createFetchStyleHttpAdapterRealtimeCapability('Test adapter supports Bun-style Socket.IO binding.', {
+      bindingInstallation: {
+        install: (binding) => this.setRealtimeBinding(binding),
       },
-    );
+      support: 'supported',
+    });
   }
 
   listen(_dispatcher: Dispatcher): void {}
@@ -90,24 +86,97 @@ const silentLogger: ApplicationLogger = {
   warn() {},
 };
 
-function createLifecycleService(adapter: TestBunAdapter): SocketIoLifecycleService {
-  return new SocketIoLifecycleService(new Container(), [], silentLogger, adapter, {});
+function createLifecycleService(adapter: HttpApplicationAdapter, options: SocketIoModuleOptions = {}): SocketIoLifecycleService {
+  return new SocketIoLifecycleService(new Container(), [], silentLogger, adapter, options);
 }
 
 describe('SocketIoLifecycleService Bun initialization', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('preserves the official Bun host binding when CORS validation rejects before acquisition', async () => {
+    vi.useFakeTimers();
+    const adapter = BunHttpApplicationAdapter.create({});
+    const binding: BunWebSocketBinding = {
+      fetch: () => undefined,
+      websocket: { open() {}, message() {}, close() {} },
+    };
+    const capability = adapter.getRealtimeCapability();
+    const installation = capability.bindingInstallation;
+    if (!installation) {
+      throw new Error('Expected Bun binding installation capability.');
+    }
+    installation.install(binding);
+    const install = vi.spyOn(installation, 'install');
+    vi.spyOn(adapter, 'getRealtimeCapability').mockReturnValue(capability);
+    const close = vi.spyOn(Server.prototype, 'close');
+    const service = createLifecycleService(adapter, {
+      cors: (_request, callback) => callback(null, {}),
+    });
+
+    const failure = service.getServerAsync().catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(Reflect.get(adapter, 'realtimeBinding')).toBe(binding);
+    expect(install).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    await expect(failure).resolves.toMatchObject({
+      message: expect.stringContaining('does not support CORS delegate functions'),
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('reports initialization and asynchronous close failures together without touching an unacquired host binding', async () => {
+    vi.useFakeTimers();
+    const adapter = new TestBunAdapter(false, false);
+    const service = createLifecycleService(adapter);
+    const initializationFailure = new Error('Engine handler failed.');
+    const cleanupFailure = new Error('Engine close failed.');
+    vi.spyOn(BunEngineServer.prototype, 'handler').mockImplementationOnce(() => {
+      throw initializationFailure;
+    });
+    const close = vi.spyOn(BunEngineServer.prototype, 'close').mockImplementationOnce(() => {
+      throw cleanupFailure;
+    });
+    const install = vi.spyOn(adapter, 'setRealtimeBinding');
+
+    const resultsPromise = Promise.allSettled([service.getServerAsync(), service.getServerAsync()]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(install).not.toHaveBeenCalled();
+    const results = await resultsPromise;
+    const first = results[0];
+    const second = results[1];
+    expect(first?.status).toBe('rejected');
+    expect(second?.status).toBe('rejected');
+    if (first?.status !== 'rejected' || second?.status !== 'rejected') {
+      throw new Error('Expected shared initialization failure.');
+    }
+    expect(first.reason).toBeInstanceOf(AggregateError);
+    expect(first.reason.errors).toHaveLength(2);
+    expect(first.reason.errors[0]).toBe(initializationFailure);
+    expect(first.reason.errors[1]).toBe(cleanupFailure);
+    expect(second.reason).toBe(first.reason);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('shares a Bun binding failure with concurrent server callers', async () => {
     // Given
     const adapter = new TestBunAdapter();
     const service = createLifecycleService(adapter);
 
     // When
-    const results = await Promise.allSettled([
-      service.getServerAsync(),
-      service.getServerAsync(),
-    ]);
+    const results = await Promise.allSettled([service.getServerAsync(), service.getServerAsync()]);
 
     // Then
     expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected']);
+    if (results[0]?.status === 'rejected' && results[1]?.status === 'rejected') {
+      expect(results[0].reason).toBeInstanceOf(TestBunBindingError);
+      expect(results[1].reason).toBe(results[0].reason);
+    }
     expect(adapter.attempts).toBe(1);
   });
 
@@ -124,6 +193,7 @@ describe('SocketIoLifecycleService Bun initialization', () => {
     expect(server).toBeInstanceOf(Server);
     expect(adapter.attempts).toBe(2);
     expect(adapter.clears).toBe(1);
+    await service.onApplicationShutdown();
   });
 
   it('clears a Bun server initialized while application shutdown is in progress', async () => {
