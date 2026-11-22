@@ -18,7 +18,14 @@
 import type { AddressInfo } from 'node:net';
 
 import { Module } from '@fluojs/core';
-import { type SocketIoModuleOptions, SocketIoModule } from '@fluojs/socket.io';
+import {
+  SOCKETIO_ROOM_SERVICE,
+  SOCKETIO_SERVER,
+  type SocketIoLifecycleService,
+  type SocketIoModuleOptions,
+  type SocketIoRoomService,
+  SocketIoModule,
+} from '@fluojs/socket.io';
 import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
@@ -274,7 +281,7 @@ class SocketIoWireClient {
 }
 
 describe('socket.io guide fixtures', () => {
-  it('connects to the /chat namespace, acks a room join, and receives a room broadcast', async () => {
+  it('keeps room helper namespace selection and snapshots correct outside /chat handlers', async () => {
     const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
@@ -282,6 +289,8 @@ describe('socket.io guide fixtures', () => {
       logger: createConsoleApplicationLogger(),
     });
     const announcements = await app.container.resolve(AnnouncementService);
+    const rooms = await app.container.resolve<SocketIoRoomService>(SOCKETIO_ROOM_SERVICE);
+    const server = await app.container.resolve<ReturnType<SocketIoLifecycleService['getServer']>>(SOCKETIO_SERVER);
     let client: SocketIoWireClient | undefined;
 
     try {
@@ -292,6 +301,28 @@ describe('socket.io guide fixtures', () => {
 
       const ack = await client.emitWithAck('chat:join', { room: 'chat:lobby' });
       expect(ack).toEqual({ joined: 'chat:lobby' });
+
+      const [socketId] = server.of('/chat').sockets.keys();
+      if (socketId === undefined) {
+        throw new Error('Expected the real /chat connection to have a server socket ID.');
+      }
+      const beforeJoin = rooms.getRooms(socketId);
+      expect(beforeJoin).toEqual(new Set([socketId, 'chat:lobby']));
+
+      rooms.joinRoom(socketId, 'fixture:outside');
+      const afterJoin = rooms.getRooms(socketId);
+      expect(afterJoin).toEqual(new Set([socketId, 'chat:lobby', 'fixture:outside']));
+      expect(beforeJoin).toEqual(new Set([socketId, 'chat:lobby']));
+      expect(rooms.getRooms('fixture:unregistered')).toEqual(new Set());
+      expect(() => rooms.broadcastToRoom('fixture:outside', 'helper:notice', 'missing namespace')).toThrow(/namespace/i);
+
+      const helperNotice = client.waitForEvent('helper:notice');
+      rooms.broadcastToRoom('fixture:outside', 'helper:notice', { text: 'explicit namespace' }, '/chat');
+      await expect(helperNotice).resolves.toEqual([{ text: 'explicit namespace' }]);
+
+      rooms.leaveRoom(socketId, 'fixture:outside');
+      expect(rooms.getRooms(socketId)).toEqual(new Set([socketId, 'chat:lobby']));
+      expect(afterJoin).toEqual(new Set([socketId, 'chat:lobby', 'fixture:outside']));
 
       const notice = client.waitForEvent('notice');
       announcements.broadcastToLobby('notice', { text: 'hello lobby' });

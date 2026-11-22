@@ -70,7 +70,18 @@ this.rooms.joinRoom(socket.id, 'room:123');
 this.rooms.broadcastToRoom('room:123', 'event', data);
 ```
 
-Room helpers follow the shared `WebSocketRoomService` contract and add Socket.IO namespace awareness. Inside a gateway handler the current `@WebSocketGateway({ path })` namespace is inferred automatically. When room helpers run outside gateway handler context, pass the namespace path explicitly so room operations target the intended Socket.IO namespace instead of a same-named room elsewhere.
+Room helpers follow the shared `WebSocketRoomService` contract. Namespace selection depends on the method:
+
+| Method | Namespace selection | Missing target |
+| --- | --- | --- |
+| `broadcastToRoom(room, event, data, namespacePath?)` | Explicit managed namespace first; otherwise the current gateway handler namespace | Throws if neither resolves; never automatically falls back to `/` |
+| `joinRoom(socketId, room, namespacePath?)` | Explicit namespace first, then handler namespace; if neither is supplied, finds the socket by ID and uses its namespace | Throws if no namespace or socket can be resolved |
+| `leaveRoom(socketId, room, namespacePath?)` | Same selection as `joinRoom` | Same failure condition as `joinRoom` |
+| `getRooms(socketId)` | Reads `socketRegistry` by ID independently of handler context; accepts no `namespacePath` | Returns an empty set for an unregistered ID |
+
+Once an explicit or handler namespace is selected, `joinRoom` and `leaveRoom` target that namespace without falling back to a socket with the same ID in another namespace. `getRooms` returns a copy of the registered socket's room set without an additional connection-state check. Its `ReadonlySet<string>` return type does not freeze the set at runtime.
+
+Outside a gateway handler, `broadcastToRoom` requires an explicit namespace path. You can also pass it to `joinRoom` and `leaveRoom` to select the intended namespace:
 
 ```typescript
 this.rooms.broadcastToRoom('room:123', 'event', data, '/chat');
@@ -175,7 +186,7 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 - `SocketIoModule.forRoot({ global, auth, cors, engine, ... })`: Configures provider visibility, namespace/message guards, explicit CORS, and Engine.IO payload bounds.
 - `SOCKETIO_SERVER`: Token to inject the raw Socket.IO `Server`.
 - `SOCKETIO_ROOM_SERVICE`: Token to inject the `SocketIoRoomService`.
-- `SocketIoRoomService`: Shared room contract plus Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, and `getRooms` helpers.
+- `SocketIoRoomService`: Shared room contract with optional trailing `namespacePath` on `joinRoom(socketId, room, namespacePath?)`, `leaveRoom(socketId, room, namespacePath?)`, and `broadcastToRoom(room, event, data, namespacePath?)`; `getRooms(socketId)` is a context-independent registry lookup with no namespace argument. See Room Management for selection and failure conditions.
 - `SocketIoLifecycleService`: Lifecycle-backed implementation behind the server and room-service tokens; application code should usually inject `SOCKETIO_SERVER` or `SOCKETIO_ROOM_SERVICE` instead.
 - Types: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
