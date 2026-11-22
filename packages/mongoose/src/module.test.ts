@@ -28,6 +28,10 @@ function createFakeSession(events: string[]): MongooseSessionLike {
   };
 }
 
+type ModelOnlyConnection = {
+  model(name: string): { readonly resolved: string };
+};
+
 describe('@fluojs/mongoose', () => {
   it('exposes current connection, session, and transaction callbacks with optional disposal', async () => {
     const events: string[] = [];
@@ -593,8 +597,88 @@ describe('@fluojs/mongoose', () => {
     ]);
   });
 
+  it('registers concrete model-only connections without connection type assertions', async () => {
+    const events: string[] = [];
+    const modelReceivers: unknown[] = [];
+
+    type ConcreteModelOnlyConnection = {
+      model(name: string): { readonly resolved: string };
+    };
+
+    const connection: ConcreteModelOnlyConnection = {
+      model(name) {
+        modelReceivers.push(this);
+        events.push(`model:${name}`);
+        return { resolved: `model:${name}` };
+      },
+    };
+
+    const direct = new MongooseConnection(connection, undefined, { strictTransactions: false });
+
+    await expect(direct.transaction(async () => 'direct-fallback')).resolves.toBe('direct-fallback');
+    await expect(direct.requestTransaction(async () => 'direct-request')).resolves.toBe('direct-request');
+    expect(direct.current()).toBe(connection);
+    expect(direct.model('User')).toEqual({ resolved: 'model:User' });
+    expect(direct.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        sessionStrategy: 'none',
+        supportsConnectionTransaction: false,
+        supportsStartSession: false,
+      },
+      readiness: { status: 'ready' },
+    });
+
+    const mongooseModule = MongooseModule.forRoot({
+      connection,
+      dispose(disposed) {
+        events.push(`dispose:${disposed === connection}`);
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [mongooseModule] });
+
+    const app = await FluoFactory.create(AppModule);
+    const mongoose = await app.container.resolve(MongooseConnection<ConcreteModelOnlyConnection>);
+
+    try {
+      await expect(mongoose.transaction(async () => 'module-fallback')).resolves.toBe('module-fallback');
+      await expect(mongoose.requestTransaction(async () => 'module-request')).resolves.toBe('module-request');
+      expect(mongoose.current()).toBe(connection);
+      expect(mongoose.model('Article')).toEqual({ resolved: 'model:Article' });
+    } finally {
+      await app.close();
+    }
+
+    const asyncModule = MongooseModule.forRootAsync({
+      useFactory: () => Promise.resolve({ connection }),
+    });
+
+    class AsyncAppModule {}
+
+    defineModule(AsyncAppModule, { imports: [asyncModule] });
+
+    const asyncApp = await FluoFactory.create(AsyncAppModule);
+    const asyncMongoose = await asyncApp.container.resolve(MongooseConnection<ConcreteModelOnlyConnection>);
+
+    try {
+      await expect(asyncMongoose.transaction(async () => 'async-fallback')).resolves.toBe('async-fallback');
+      expect(asyncMongoose.current()).toBe(connection);
+    } finally {
+      await asyncApp.close();
+    }
+
+    expect(events).toEqual(['model:User', 'model:Article', 'dispose:true']);
+    expect(modelReceivers).toEqual([connection, connection]);
+  });
+
   it('defaults strictTransactions to false for sync and async module entrypoints', async () => {
-    const connection = {};
+    const connection: ModelOnlyConnection = {
+      model(name) {
+        return { resolved: `model:${name}` };
+      },
+    };
 
     const SyncModule = MongooseModule.forRoot({
       connection,
@@ -659,7 +743,11 @@ describe('@fluojs/mongoose', () => {
 
   it('awaits async dispose hooks registered through module entrypoints', async () => {
     const events: string[] = [];
-    const connection = {};
+    const connection: ModelOnlyConnection = {
+      model(name) {
+        return { resolved: `model:${name}` };
+      },
+    };
     let signalDisposeStarted!: () => void;
     let releaseDispose!: () => void;
 
@@ -703,9 +791,14 @@ describe('@fluojs/mongoose', () => {
   });
 
   it('enforces strictTransactions for sync and async module builders', async () => {
-    const connection = {};
+    const events: string[] = [];
+    const connection: ModelOnlyConnection = {
+      model(name) {
+        return { resolved: `model:${name}` };
+      },
+    };
 
-    const StrictSyncModule = MongooseModule.forRoot({
+    const StrictSyncModule = MongooseModule.forRoot<ModelOnlyConnection>({
       connection,
       strictTransactions: true,
     });
@@ -719,9 +812,15 @@ describe('@fluojs/mongoose', () => {
     const syncApp = await FluoFactory.create(StrictSyncAppModule);
     const syncMongoose = await syncApp.container.resolve(MongooseConnection<typeof connection>);
 
-    await expect(syncMongoose.transaction(async () => 'ok')).rejects.toThrow(
+    await expect(
+      syncMongoose.transaction(async () => {
+        events.push('sync-callback-ran');
+        return 'ok';
+      }),
+    ).rejects.toThrow(
       'Transaction not supported: Mongoose connection does not implement startSession.',
     );
+    expect(events).toEqual([]);
 
     await syncApp.close();
 
@@ -741,9 +840,15 @@ describe('@fluojs/mongoose', () => {
     const asyncApp = await FluoFactory.create(StrictAsyncAppModule);
     const asyncMongoose = await asyncApp.container.resolve(MongooseConnection<typeof connection>);
 
-    await expect(asyncMongoose.requestTransaction(async () => 'ok')).rejects.toThrow(
+    await expect(
+      asyncMongoose.requestTransaction(async () => {
+        events.push('async-callback-ran');
+        return 'ok';
+      }),
+    ).rejects.toThrow(
       'Transaction not supported: Mongoose connection does not implement startSession.',
     );
+    expect(events).toEqual([]);
 
     await asyncApp.close();
   });
@@ -1312,7 +1417,11 @@ describe('@fluojs/mongoose', () => {
     const callbackReleased = new Promise<void>((resolve) => {
       releaseCallback = resolve;
     });
-    const connection: MongooseConnectionLike = {};
+    const connection: ModelOnlyConnection = {
+      model(name) {
+        return { resolved: `model:${name}` };
+      },
+    };
     const mongoose = new MongooseConnection<typeof connection>(connection, () => {
       events.push(`dispose:activeRequests=${mongoose.createPlatformStatusSnapshot().details.activeRequestTransactions}`);
     });
@@ -1736,11 +1845,12 @@ describe('@fluojs/mongoose', () => {
   it('handles connection without startSession gracefully', async () => {
     const events: string[] = [];
 
-    const connection = {
-      someOtherMethod: async () => {
-        events.push('other:method');
+    const connection: ModelOnlyConnection = {
+      model(name) {
+        events.push(`model:${name}`);
+        return { resolved: `model:${name}` };
       },
-    } as unknown as MongooseConnectionLike;
+    };
 
     const mongoose = new MongooseConnection<typeof connection>(connection);
 
@@ -1759,11 +1869,11 @@ describe('@fluojs/mongoose', () => {
       releaseTransaction = resolve;
     });
 
-    const connection = {
-      model() {
-        return {};
+    const connection: ModelOnlyConnection = {
+      model(name) {
+        return { resolved: `model:${name}` };
       },
-    } as MongooseConnectionLike;
+    };
 
     const mongooseModule = MongooseModule.forRoot<typeof connection>({
       connection,
