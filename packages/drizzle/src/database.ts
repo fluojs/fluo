@@ -297,10 +297,6 @@ export class DrizzleDatabase<
       if (!capable) {
         throw new AfterCommitCapabilityError();
       }
-
-      if (current && !current.transactionBoundaryOwner.closed) {
-        current.transactionBoundaryOwner.requireAfterCommit = true;
-      }
     }
 
     if (current) {
@@ -558,6 +554,10 @@ export class DrizzleDatabase<
       throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
     }
 
+    if (boundary?.requireAfterCommit) {
+      owner.requireAfterCommit = true;
+    }
+
     const callback = Promise.resolve().then(() => this.runTransactionCallback(
       async () => evaluateResult(owner, await fn(), boundary?.shouldRollback),
     ));
@@ -579,6 +579,10 @@ export class DrizzleDatabase<
   ): Promise<T> {
     if (options !== undefined) {
       throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
+    }
+
+    if (boundary?.requireAfterCommit) {
+      current.transactionBoundaryOwner.requireAfterCommit = true;
     }
 
     const fallbackTransactionOwner = current.fallbackTransactionOwner;
