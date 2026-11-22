@@ -327,6 +327,7 @@ export class SocketIoLifecycleService
   private bunEngine: BunEngineServer | undefined;
   private readonly inFlightGatewayWork = new Set<Promise<void>>();
   private io: Server | undefined;
+  private lateInitializationCleanupPromise: Promise<void> | undefined;
   private namespaceContext: AsyncLocalStorage<string> | undefined;
   private namespaceContextPromise: Promise<AsyncLocalStorage<string>> | undefined;
   private realtimeBindingInstallation: HttpAdapterRealtimeBindingInstallation | undefined;
@@ -465,6 +466,10 @@ export class SocketIoLifecycleService
    */
   async retryShutdown(): Promise<void> {
     await this.shutdown();
+
+    if (this.io && this.lateInitializationCleanupPromise) {
+      await this.lateInitializationCleanupPromise;
+    }
 
     if (!this.io) {
       return;
@@ -1276,7 +1281,7 @@ export class SocketIoLifecycleService
   }
 
   private cleanupLateInitialization(initialization: Promise<Server>): void {
-    void initialization.then(
+    this.lateInitializationCleanupPromise = initialization.then(
       async (io) => {
         try {
           await this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs());

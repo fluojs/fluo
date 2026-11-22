@@ -386,6 +386,84 @@ describe('SocketIoLifecycleService Bun initialization', () => {
     expect(adapter.currentBinding).toBeUndefined();
   });
 
+  it.each([
+    'success',
+    'failure',
+  ] as const)('shares pending late cleanup with overlapping deliberate retries before retrying retained state after cleanup %s', async (outcome) => {
+    // Given
+    const adapter = new TestBunAdapter(false, false);
+    const cleanupFailures: unknown[] = [];
+    const service = createLifecycleService(
+      adapter,
+      {
+        shutdown: { timeoutMs: 100 },
+      },
+      {
+        ...silentLogger,
+        error(_message: string, error?: unknown) {
+          cleanupFailures.push(error);
+        },
+      },
+    );
+    const { getCapturedServer, initializationStarted, releaseInitialization } = gateInitialization(service);
+    const initialization = service.getServerAsync();
+    await initializationStarted;
+    vi.useFakeTimers();
+    const shutdown = service.onApplicationShutdown();
+    const destroy = service.onModuleDestroy();
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.all([shutdown, destroy]);
+    vi.useRealTimers();
+
+    const lateServer = getCapturedServer();
+    if (!lateServer) {
+      throw new Error('Expected the gated Bun initialization to capture its server.');
+    }
+    let markCloseStarted = (): void => undefined;
+    const closeStarted = new Promise<void>((resolve) => {
+      markCloseStarted = resolve;
+    });
+    let releaseClose = (): void => undefined;
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    const originalClose = lateServer.close.bind(lateServer);
+    const close = vi.spyOn(lateServer, 'close').mockImplementationOnce(async (callback) => {
+      markCloseStarted();
+      await closeGate;
+      if (outcome === 'failure') {
+        throw new TestBunBindingError('Late cleanup close failed.');
+      }
+      return originalClose(callback);
+    });
+    releaseInitialization();
+    await initialization;
+    await closeStarted;
+
+    // When
+    let retriesSettled = false;
+    const retries = Promise.all([service.retryShutdown(), service.retryShutdown()]).then(() => {
+      retriesSettled = true;
+    });
+    await Promise.all([service.onModuleDestroy(), service.onApplicationShutdown()]);
+
+    // Then
+    try {
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(retriesSettled).toBe(false);
+      expect(adapter.currentBinding).toBeDefined();
+    } finally {
+      releaseClose();
+      await retries;
+    }
+
+    expect(close).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 2);
+    expect(cleanupFailures).toHaveLength(outcome === 'success' ? 0 : 1);
+    expect(adapter.currentBinding).toBeUndefined();
+    expect(() => service.getServer()).toThrow();
+    await expect(service.getServerAsync()).rejects.toThrow();
+  });
+
   it('does not reinstall gateway state from a late bootstrap continuation', async () => {
     // Given
     const adapter = new TestBunAdapter(false, false);
