@@ -639,6 +639,46 @@ describe('@fluojs/prisma', () => {
     }
   });
 
+  it('executes transaction and request callbacks directly and stays ready without ALS or a native runner in non-strict mode', async () => {
+    const originalAsyncLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
+    const getBuiltinModuleSpy = vi.spyOn(process, 'getBuiltinModule').mockReturnValue(undefined);
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async read(value: string) {
+        return { value };
+      },
+    };
+
+    Reflect.set(globalThis, 'AsyncLocalStorage', undefined);
+
+    try {
+      const prisma = new PrismaService(client);
+      await prisma.onModuleInit();
+
+      const snapshot = prisma.createPlatformStatusSnapshot();
+      const transactionResult = await prisma.transaction(async () => prisma.current().read('manual'));
+      const requestResult = await prisma.requestTransaction(async () => prisma.current().read('request'));
+
+      expect(snapshot.details).toMatchObject({
+        strictTransactions: false,
+        supportsTransaction: false,
+        transactionContext: 'unavailable',
+      });
+      expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
+      expect(transactionResult).toEqual({ value: 'manual' });
+      expect(requestResult).toEqual({ value: 'request' });
+    } finally {
+      if (originalAsyncLocalStorage) {
+        Object.defineProperty(globalThis, 'AsyncLocalStorage', originalAsyncLocalStorage);
+      } else {
+        Reflect.deleteProperty(globalThis, 'AsyncLocalStorage');
+      }
+
+      getBuiltinModuleSpy.mockRestore();
+    }
+  });
+
   it('treats throwing AsyncLocalStorage host lookup as unavailable transaction context', async () => {
     const host = globalThis as typeof globalThis & { AsyncLocalStorage?: unknown };
     const originalAsyncLocalStorage = host.AsyncLocalStorage;
