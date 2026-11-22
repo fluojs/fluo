@@ -24,25 +24,29 @@ export type ActiveRequestTransactionHandle = {
 };
 
 /**
- * Create request abort context.
+ * Creates an independently cancellable request context that forwards caller cancellation.
  *
- * @param signal The signal.
- * @returns The create request abort context result.
+ * @param signal Optional caller signal whose cancellation is forwarded with the same reason object.
+ * @returns A local controller and its signal, plus idempotent cleanup that stops further caller forwarding.
+ * @remarks Earlier caller listeners cannot suppress forwarding by stopping event propagation.
+ * Local cancellation never aborts the caller signal, and cleanup does not abort either signal.
  */
 export function createRequestAbortContext(signal?: AbortSignal): RequestAbortContext {
   const controller = new AbortController();
-  const forwardAbort = () => controller.abort(signal?.reason);
+  // Observe a private dependent signal so caller listeners cannot suppress our abort event.
+  const forwardingSignal = signal && AbortSignal.any([signal]);
+  const forwardAbort = () => controller.abort(forwardingSignal?.reason);
 
-  if (signal?.aborted) {
+  if (forwardingSignal?.aborted) {
     forwardAbort();
   } else {
-    signal?.addEventListener('abort', forwardAbort, { once: true });
+    forwardingSignal?.addEventListener('abort', forwardAbort, { once: true });
   }
 
   return {
     controller,
     cleanup: () => {
-      signal?.removeEventListener('abort', forwardAbort);
+      forwardingSignal?.removeEventListener('abort', forwardAbort);
     },
     signal: controller.signal,
   };

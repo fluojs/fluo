@@ -31,6 +31,13 @@ These portable primitives declare no package-wide `engines.node` and do not broa
 `evaluateResult`, `observeRollback`, and `settleAfterCommitCallbacks` for first-party ORM composition.
 Application transaction execution APIs remain in each ORM package.
 
+`createRequestAbortContext(signal?)` forwards an already aborted or subsequently aborted input
+to the returned signal with the same reason object. Forwarding survives earlier caller listeners
+stopping event propagation, and later cancellation never replaces the first reason.
+Local cancellation through the returned controller never aborts the caller signal; omitting the input creates an independent context.
+`cleanup()` removes the forwarding listener and is safe to repeat. Cleanup itself aborts neither signal,
+and subsequent caller cancellation is not forwarded to a returned signal that is still active.
+
 ## Usage example
 
 This service fragment assumes an existing Prisma wrapper. Follow the

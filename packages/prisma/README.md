@@ -100,12 +100,19 @@ Use service-layer `@Transaction()` for business operations. When a complete requ
 See [Migrate Prisma Registration](../../docs/getting-started/migrate-prisma-registration.md) for facade and interceptor migration details.
 
 When request-wide atomicity is genuinely required, make the boundary and cancellation input visible in application code:
+This controller fragment assumes the application's `./orders.service` provides an async `checkout(input: { readonly orderId: string })` method. `@RequestDto(CheckoutInput)` and `@FromBody('orderId')` bind the request body to the first argument.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { Controller, FromBody, Post, RequestDto, type RequestContext } from '@fluojs/http';
 import { PrismaService } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
+import { OrdersService } from './orders.service';
+
+class CheckoutInput {
+  @FromBody('orderId')
+  orderId = '';
+}
 
 @Inject(PrismaService, OrdersService)
 @Controller('/orders')
@@ -116,6 +123,7 @@ export class OrdersController {
   ) {}
 
   @Post('/checkout')
+  @RequestDto(CheckoutInput)
   checkout(input: CheckoutInput, context: RequestContext) {
     const { request } = context;
     return this.prisma.requestTransaction(
@@ -300,10 +308,10 @@ try {
 - `health.status` is `degraded` while open request, manual, or service transaction boundaries are draining during shutdown and `unhealthy` after disconnect.
 - `details.activeRequestTransactions`, `details.activeTransactionBoundaries`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, and `details.transactionAbortSignalSupport` describe the current transaction and transaction-capability state.
 - `details.activeTransactionBoundaries` counts currently open outer `transaction(...)` and service `@Transaction()` boundaries that shutdown drains before `$disconnect()`. It excludes request-only `requestTransaction(...)` activity, which remains visible separately through `details.activeRequestTransactions`.
-- `details.transactionContext: 'als'` identifies the async-local transaction context used by request and service transaction boundaries. `details.transactionContext: 'unavailable'` indicates the host runtime did not expose a usable `AsyncLocalStorage`, so `transaction()` and `requestTransaction()` reject before opening a Prisma transaction.
+- `details.transactionContext: 'als'` identifies the async-local transaction context used by request and service transaction boundaries. `details.transactionContext: 'unavailable'` indicates the host runtime did not expose a usable `AsyncLocalStorage`. If the client supports interactive `$transaction`, `transaction()` and `requestTransaction()` reject before opening a Prisma transaction. If the client has no native runner, `strictTransactions` is `false` (the default), and neither `shouldRollback` nor `requireAfterCommit` is requested, both APIs execute the callback directly without opening a transaction, even without ALS. After initialization, readiness is `ready` while `details.transactionContext` remains `unavailable`.
 - `ownership.externallyManaged: false` and `ownership.ownsResources: true` mean the package owns the registered client's `$connect()` / `$disconnect()` lifecycle hooks inside the fluo application lifecycle.
 
-When `details.transactionContext` is `unavailable`, the package does not fall back to a synchronous stack-based context because that would lose `current()` across async boundaries. The application owns the fallback boundary: callers that still need database access without a transaction context must invoke the raw `PrismaClient` directly (for example through the `PRISMA_CLIENT` token) and manage their own consistency semantics, or run on a host runtime that provides `AsyncLocalStorage` (Node.js `>=24.0.0 <27` is the documented path). Treat the `unavailable` readiness state as operationally actionable — surface it in health checks and route traffic away from transaction-dependent handlers until the host provides ALS or the application switches to a non-transactional access path.
+When `details.transactionContext` is `unavailable`, the package does not fall back to a synchronous stack-based context because that would lose `current()` across async boundaries. The application owns the fallback boundary: callers using an interactive-transaction-capable client that still need database access without a transaction context must invoke the raw `PrismaClient` directly (for example through the `PRISMA_CLIENT` token) and manage their own consistency semantics, or run on a host runtime that provides `AsyncLocalStorage` (Node.js `>=24.0.0 <27` is the documented path). The non-strict, no-runner direct-execution path above provides no transaction or atomicity guarantee; the application owns its consistency semantics too. When ALS is unavailable and the client supports interactive transactions, treat `not-ready` as operationally actionable: surface it in health checks and route traffic away from transaction-dependent handlers until the host provides ALS or the application switches to a non-transactional access path.
 
 ### Async Configuration and Isolation
 
@@ -324,7 +332,7 @@ PrismaModule.forRootAsync({
 
 Within one compiled application, downstream providers share the same resolved `PrismaService`, ALS transaction context, and lifecycle-managed client. Separate application containers receive independent factory results, so `$connect` / `$disconnect` ownership and request transaction state remain isolated.
 
-Transaction boundaries require host-provided `AsyncLocalStorage` support. The package manifest declares `engines.node >=24.0.0 <27`, and the root wrapper is the documented Node.js `>=24.0.0 <27` Prisma integration path. `@fluojs/prisma` resolves ALS through `globalThis.AsyncLocalStorage` when a runtime exposes one, or through the host's `process.getBuiltinModule('node:async_hooks')` boundary on Node.js. If neither path is available or the host builtin lookup fails, `transaction()` and `requestTransaction()` reject before opening a Prisma transaction instead of using a synchronous stack fallback that would lose `current()` across async boundaries; `createPlatformStatusSnapshot().details.transactionContext` reports `unavailable` in that state.
+Native transaction boundaries require host-provided `AsyncLocalStorage` support. The package manifest declares `engines.node >=24.0.0 <27`, and the root wrapper is the documented Node.js `>=24.0.0 <27` Prisma integration path. `@fluojs/prisma` resolves ALS through `globalThis.AsyncLocalStorage` when a runtime exposes one, or through the host's `process.getBuiltinModule('node:async_hooks')` boundary on Node.js. If neither path is available or the host builtin lookup fails, `createPlatformStatusSnapshot().details.transactionContext` reports `unavailable`. With an interactive-transaction-capable client, `transaction()` and `requestTransaction()` reject before opening a Prisma transaction instead of using a synchronous stack fallback that would lose `current()` across async boundaries. Without a native runner, the non-strict direct-execution path remains available when neither `shouldRollback` nor `requireAfterCommit` is requested; initialization leaves readiness `ready` even though the context is `unavailable`.
 
 ### Manual Module Composition
 
@@ -405,7 +413,8 @@ Injectable token for the raw `PrismaClient` instance.
 
 ### `PRISMA_OPTIONS` (Token)
 
-Injectable token for the public runtime options consumed by `PrismaService`, currently `{ strictTransactions: boolean }`.
+Injectable token for the public runtime options consumed by `PrismaService`: `{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }`.
+When a `rollbackObserver` is registered, the resolved options expose that exact observer object by reference; when no observer is registered, the `rollbackObserver` key is omitted from the resolved options.
 This is intentionally narrower than the package's internal normalized module-options token, which also carries registration
 identity, client ownership, and visibility metadata and is not part of the public API.
 
@@ -420,6 +429,7 @@ identity, client ownership, and visibility metadata and is not part of the publi
 - `getPrismaServiceToken(name?)`
 
 These helpers return the default unnamed token when `name` is omitted and a registration-specific token when `name` is provided.
+`getPrismaOptionsToken(name?)` resolves the same public option shape as `PRISMA_OPTIONS` - `{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }` with a registered observer exposed by reference and the key omitted when no observer is registered.
 They are the public way to target named registrations; internal implementation tokens such as the normalized module-options
 token are deliberately not exported.
 
