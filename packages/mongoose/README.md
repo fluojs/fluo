@@ -70,6 +70,8 @@ class AppModule {}
 
 `MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. Use the exported `MongooseAsyncModuleOptions<TConnection>` type when sharing async registration helpers across modules. Pass `global` on the top-level async registration when the providers should be visible globally. The resolved options are reused within one application container, so connection setup and disposal hooks stay consistent across that container's providers. Reusing the same async module definition across tests or multi-app processes resolves fresh options per application container instead of sharing a memoized connection.
 
+Registration accepts the concrete connection shape the application already owns. A model-only connection without `startSession()` or `connection.transaction(...)` registers through `forRoot(...)`, `forRootAsync(...)`, or direct `MongooseConnection` construction without a connection type assertion, and `current()` plus `dispose(connection)` keep that concrete type. Transaction capability is optional: when neither API is present, the fail-open behavior documented under [Manual Transactions and currentSession()](#manual-transactions-and-currentsession) applies.
+
 ## Lifecycle and Shutdown
 
 `MongooseModule` registers `MongooseConnection` with the fluo application lifecycle. The package does not create or own the raw Mongoose connection for you; pass a concrete Mongoose connection object/function as `connection`, keep connection-string, pool, plugin, and model compilation ownership in the application, and provide a `dispose` hook when the application should close that external connection during shutdown.

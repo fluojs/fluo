@@ -72,6 +72,8 @@ class AppModule {}
 
 `MongooseModule.forRootAsync(...)`는 주입된 의존성과 동기 또는 비동기로 옵션을 반환하는 `useFactory`를 지원합니다. 여러 모듈에서 async 등록 helper를 공유할 때는 export된 `MongooseAsyncModuleOptions<TConnection>` 타입을 사용하세요. provider를 전역으로 노출해야 할 때는 최상위 async 등록 옵션에 `global`을 전달하세요. 해석된 옵션은 하나의 애플리케이션 container 안에서 재사용되므로 해당 container의 모든 provider에서 연결 설정과 dispose hook이 일관되게 유지됩니다. 테스트나 multi-app 프로세스에서 같은 async module definition을 재사용해도 memoize된 연결을 공유하지 않고 애플리케이션 container마다 새 옵션을 해석합니다.
 
+등록은 애플리케이션이 이미 소유한 구체 연결 형태를 그대로 받아들입니다. `startSession()`이나 `connection.transaction(...)` 없이 `model(...)`만 노출하는 연결도 연결 타입 단언 없이 `forRoot(...)`, `forRootAsync(...)`, 직접 `MongooseConnection` 생성으로 등록할 수 있으며 `current()`와 `dispose(connection)`는 해당 구체 타입을 유지합니다. Transaction capability는 선택 사항이며, 두 API 모두 없을 때는 [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)에 문서화된 fail-open 동작이 적용됩니다.
+
 ## 라이프사이클과 종료
 
 `MongooseModule`은 `MongooseConnection`을 fluo 애플리케이션 라이프사이클에 등록합니다. 이 패키지는 원본 Mongoose 연결을 직접 생성하거나 소유하지 않습니다. `connection`에는 concrete Mongoose connection object/function을 전달하고, 연결 문자열, pool, plugin, model compilation ownership은 애플리케이션에 남겨두며, 애플리케이션 종료 시 외부 연결을 닫아야 한다면 `dispose` 훅을 전달하세요.

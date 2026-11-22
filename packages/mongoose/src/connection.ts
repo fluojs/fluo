@@ -66,10 +66,6 @@ type MongooseRuntimeOptions = {
   rollbackObserver?: TransactionRollbackObserver;
 };
 
-type MongooseModelFactoryConnection = MongooseConnectionLike & {
-  model?(name: string, ...args: unknown[]): MongooseModelFacade;
-};
-
 const MODEL_OPERATIONS_WITH_OPTIONS = new Set<PropertyKey>(['aggregate', 'bulkWrite', 'create', 'find', 'findOne']);
 const MODEL_OPERATIONS_WITH_PROJECTION = new Set<PropertyKey>(['find', 'findOne']);
 function isObjectLike(value: unknown): value is object {
@@ -175,14 +171,12 @@ async function raceWithAbortAndDrainCallback<T>(
   }
 }
 
-function resolveModelFactory(connection: MongooseConnectionLike): MongooseModelFactoryConnection['model'] | undefined {
+function resolveModelFactory(connection: MongooseConnectionLike): MongooseConnectionLike['model'] | undefined {
   if (!isObjectLike(connection)) {
     return undefined;
   }
 
-  const modelConnection = connection as MongooseModelFactoryConnection;
-
-  return modelConnection.model;
+  return connection.model;
 }
 
 function assertRollbackSessionCapability(session: MongooseSessionLike): void {
@@ -331,7 +325,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       throw new Error('Mongoose connection does not implement model().');
     }
 
-    const model = modelFactory.call(this.connection, name, ...args);
+    const model = modelFactory.call(this.connection, name, ...args) as MongooseModelFacade;
     const ambient = this.currentSession();
 
     return ambient ? createAmbientSessionModelFacade(model, ambient) : model;
