@@ -31,6 +31,13 @@ Package-wide `engines.node`를 선언하지 않는 portable primitive이며, 구
 `RollbackOwner`, `evaluateResult`, `observeRollback`, `settleAfterCommitCallbacks`를 제공합니다.
 Application의 transaction 실행 API는 각 ORM 패키지에 남습니다.
 
+`createRequestAbortContext(signal?)`은 입력이 이미 취소되었거나 나중에 취소되면 반환된
+signal에 같은 reason 객체를 전달합니다. 먼저 등록된 caller listener가 이벤트 전파를 중단해도
+취소는 전달되며, 첫 취소 reason은 이후 취소로 바뀌지 않습니다.
+반환된 controller의 로컬 취소는 caller signal로 역전파되지 않고, 입력을 생략하면 독립적인 context를 만듭니다.
+`cleanup()`은 전달 listener를 해제하며 반복 호출해도 안전합니다. Cleanup 자체는 어느 signal도
+취소하지 않으며, cleanup 뒤의 caller 취소는 아직 취소되지 않은 반환 signal에 전달되지 않습니다.
+
 ## 사용 예
 
 기존 Prisma wrapper를 전달받는 service fragment입니다. 구체 client 및 rollback observer 등록은
