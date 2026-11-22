@@ -18,6 +18,7 @@ export class CloudflareWorkersWebSocketModule {
     class CloudflareWorkersWebSocketRuntimeModule extends CloudflareWorkersWebSocketModule {}
 
     return defineModule(CloudflareWorkersWebSocketRuntimeModule, {
+      exports: [CloudflareWorkersWebSocketGatewayLifecycleService],
       providers: [
         {
           provide: WEBSOCKET_OPTIONS_INTERNAL,

@@ -148,9 +148,16 @@ One wiring detail to know before testing: guards attach to namespaces created fr
 
 ### Rooms
 
-`SocketIoRoomService` implements the shared `WebSocketRoomService` contract - `joinRoom`, `leaveRoom`, `broadcastToRoom`, `getRooms` - with Socket.IO semantics and one addition over the raw contract: every helper takes an optional trailing `namespacePath`.
+`SocketIoRoomService` implements the shared `WebSocketRoomService` contract with Socket.IO semantics. Only `broadcastToRoom`, `joinRoom`, and `leaveRoom` take an optional trailing `namespacePath`:
 
-Inside a gateway handler, the namespace is inferred from AsyncLocalStorage context, so `this.rooms.joinRoom(socket.id, room)` targets the gateway's own namespace. Outside handler context (an HTTP controller, a cron job), the current namespace is unknown and room helpers require the explicit namespace path - `broadcastToRoom(room, event, data, '/chat')` - or they throw. Pass it whenever a helper runs outside a gateway.
+| Method | Namespace and result |
+| --- | --- |
+| `broadcastToRoom(room, event, data, namespacePath?)` | Uses the explicit managed namespace, otherwise the current gateway handler namespace. Throws if neither resolves, with no automatic fallback to `/`. Outside handlers, pass a path such as `'/chat'`. |
+| `joinRoom(socketId, room, namespacePath?)` | Selects the explicit namespace first, then the handler namespace. With neither supplied, finds the socket by ID and uses its namespace; throws if no socket can be found either. |
+| `leaveRoom(socketId, room, namespacePath?)` | Uses the same namespace selection and failure conditions as `joinRoom`. |
+| `getRooms(socketId)` | Accepts only the socket ID. Reads `socketRegistry` independently of handler context and returns a copy of the registered socket's room set, or an empty set for an unregistered ID. |
+
+Inside a gateway handler, namespace context makes `this.rooms.joinRoom(socket.id, room)` target the gateway's own namespace. Once an explicit or handler namespace is selected, `joinRoom` and `leaveRoom` do not fall back to a same-ID socket in another namespace. `getRooms` performs no additional connection-state check; its `ReadonlySet<string>` type does not make the returned set immutable at runtime.
 
 ### Defaults and bounded options
 
@@ -191,7 +198,9 @@ Static gateway namespaces are owned by fluo's discovery, and Socket.IO's `cleanu
 | `@WebSocketGateway({ serverBacked })` rejected at bootstrap | Dedicated listeners are a raw-websockets feature | Remove the option; expose the namespace through the app listener |
 | Message guard "does nothing" in a test | The module registered guards but no gateway, so no attachment (and no guard) was bound | Register a gateway on the guarded namespace |
 | Rejected message seems invisible | Message rejections surface only via ACK `{ error, data }` | Provide an ack callback from the client or emit errors yourself |
-| Room helper throws outside handlers | No current namespace without handler context | Pass the trailing `namespacePath` argument |
+| `broadcastToRoom` throws outside handlers | Neither an explicit managed namespace nor a handler namespace resolves | Pass `namespacePath` as the fourth argument; `/` is not an automatic fallback |
+| `joinRoom` / `leaveRoom` throws without a path or handler context | The socket ID cannot be found either | Use a resolvable socket ID or pass a managed `namespacePath` as the third argument |
+| `getRooms(socketId)` returns an empty set | The ID is absent from `socketRegistry`; handler context is irrelevant | Use a registered socket ID; this method accepts no namespace argument |
 | Cross-origin client cannot connect | Default CORS is deny-by-default | Set `cors: { origin: [...] }` explicitly |
 | `Error: ... must be a positive integer` | `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, or `shutdown.timeoutMs` was not a positive integer | Fix the option; validation runs at `forRoot` |
 
