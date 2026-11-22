@@ -5,6 +5,65 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { getPrismaServiceToken, PrismaModule, PrismaService, type PrismaServiceFacade, Transaction } from './index.js';
 
+type ObservableTransactionBoundary = {
+  settled: PromiseLike<void>;
+};
+
+function isObservableTransactionBoundary(value: unknown): value is ObservableTransactionBoundary {
+  if (typeof value !== 'object' || value === null || !('settled' in value)) {
+    return false;
+  }
+
+  const { settled } = value;
+
+  return typeof settled === 'object' && settled !== null && 'then' in settled;
+}
+
+type BoundaryDrainObserver = {
+  drainStarted: Promise<void>;
+  restore(): void;
+};
+
+function observeActiveTransactionBoundaryDrain(prisma: object): BoundaryDrainObserver {
+  const activeTransactionBoundaries = Reflect.get(prisma, 'activeTransactionBoundaries');
+
+  if (!(activeTransactionBoundaries instanceof Set) || activeTransactionBoundaries.size !== 1) {
+    throw new Error('Expected exactly one active transaction boundary before shutdown.');
+  }
+
+  const [activeTransactionBoundary] = activeTransactionBoundaries;
+
+  if (!isObservableTransactionBoundary(activeTransactionBoundary)) {
+    throw new Error('Expected the active transaction boundary to expose its settlement promise.');
+  }
+
+  let markDrainStarted!: () => void;
+  const drainStarted = new Promise<void>((resolve) => {
+    markDrainStarted = resolve;
+  });
+  const settled = activeTransactionBoundary.settled;
+
+  activeTransactionBoundary.settled = new Proxy(settled, {
+    get(target, property) {
+      if (property === 'then') {
+        return (...args: Parameters<PromiseLike<void>['then']>) => {
+          markDrainStarted();
+          return target.then(...args);
+        };
+      }
+
+      return Reflect.get(target, property);
+    },
+  });
+
+  return {
+    drainStarted,
+    restore() {
+      activeTransactionBoundary.settled = settled;
+    },
+  };
+}
+
 describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
     // TODO: RED - will pass after Task 7 implementation
@@ -1014,6 +1073,10 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
     const serviceStarted = new Promise<void>((resolve) => {
       markServiceStarted = resolve;
     });
+    let markDisconnectObserved: () => void = () => undefined;
+    const disconnectObserved = new Promise<void>((resolve) => {
+      markDisconnectObserved = resolve;
+    });
     const transactionClient = {
       kind: 'transaction' as const,
     };
@@ -1023,6 +1086,7 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       },
       async $disconnect() {
         events.push('disconnect');
+        markDisconnectObserved();
       },
       async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
         events.push('transaction:start');
@@ -1059,15 +1123,30 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
 
     const app = await FluoFactory.create(AppModule);
 
+    let openTransaction: Promise<string> | undefined;
+    let boundaryDrainObserver: BoundaryDrainObserver | undefined;
+
     try {
       const service = await app.container.resolve(UserService);
-      const openTransaction = service.holdOpen();
+      openTransaction = service.holdOpen();
 
       await serviceStarted;
+      const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+      boundaryDrainObserver = observeActiveTransactionBoundaryDrain(prisma);
       const shutdown = app.close();
-      await vi.waitFor(() => expect(events).toEqual(['connect', 'transaction:start', 'service:start']));
 
-      expect(events).not.toContain('disconnect');
+      const shutdownOutcome = await Promise.race([
+        boundaryDrainObserver.drainStarted.then(() => 'boundary-drain-started' as const),
+        disconnectObserved.then(() => 'disconnected-before-boundary-drain' as const),
+      ]);
+
+      expect(
+        shutdownOutcome,
+        `expected app.close() to enter the Prisma shutdown drain of the open @Transaction() boundary before $disconnect; events: ${events.join(', ')}`,
+      ).toBe('boundary-drain-started');
+
+      expect(events).toEqual(['connect', 'transaction:start', 'service:start']);
+
       releaseTransaction();
 
       await expect(openTransaction).resolves.toBe('settled');
@@ -1083,6 +1162,8 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       ]);
     } finally {
       releaseTransaction();
+      await openTransaction?.catch(() => undefined);
+      boundaryDrainObserver?.restore();
       await app.close();
     }
   });
