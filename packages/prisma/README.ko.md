@@ -100,12 +100,19 @@ export class UserService {
 facade와 interceptor 마이그레이션 세부 사항은 [Prisma 등록 마이그레이션](../../docs/getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
 
 요청 전체 원자성이 정말 필요한 경우에는 application code에서 boundary와 cancellation input을 명시적으로 드러내세요.
+이 controller fragment는 애플리케이션의 `./orders.service`가 `checkout(input: { readonly orderId: string })` 비동기 메서드를 제공한다고 가정합니다. `@RequestDto(CheckoutInput)`과 `@FromBody('orderId')`가 요청 본문을 첫 번째 인자에 바인딩합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { Controller, FromBody, Post, RequestDto, type RequestContext } from '@fluojs/http';
 import { PrismaService } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
+import { OrdersService } from './orders.service';
+
+class CheckoutInput {
+  @FromBody('orderId')
+  orderId = '';
+}
 
 @Inject(PrismaService, OrdersService)
 @Controller('/orders')
@@ -116,6 +123,7 @@ export class OrdersController {
   ) {}
 
   @Post('/checkout')
+  @RequestDto(CheckoutInput)
   checkout(input: CheckoutInput, context: RequestContext) {
     const { request } = context;
     return this.prisma.requestTransaction(
@@ -300,10 +308,10 @@ try {
 - `health.status`는 종료 중 열린 요청, 수동 또는 서비스 트랜잭션 경계를 drain하는 동안 `degraded`, disconnect 이후 `unhealthy`입니다.
 - `details.activeRequestTransactions`, `details.activeTransactionBoundaries`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, `details.transactionAbortSignalSupport`는 현재 트랜잭션과 트랜잭션 capability 상태를 설명합니다.
 - `details.activeTransactionBoundaries`는 shutdown이 `$disconnect()` 전에 drain하는 현재 열린 바깥 `transaction(...)` 및 service `@Transaction()` boundary 수를 나타냅니다. 요청 전용 `requestTransaction(...)` activity는 포함하지 않으며, 해당 activity는 `details.activeRequestTransactions`에서 별도로 확인할 수 있습니다.
-- `details.transactionContext: 'als'`는 요청 및 서비스 트랜잭션 경계가 사용하는 async-local transaction context를 식별합니다. `details.transactionContext: 'unavailable'`은 호스트 런타임이 사용 가능한 `AsyncLocalStorage`를 노출하지 않았음을 나타내며, 이 경우 `transaction()`과 `requestTransaction()`은 Prisma 트랜잭션을 열기 전에 예외를 던집니다.
+- `details.transactionContext: 'als'`는 요청 및 서비스 트랜잭션 경계가 사용하는 async-local transaction context를 식별합니다. `details.transactionContext: 'unavailable'`은 호스트 런타임이 사용 가능한 `AsyncLocalStorage`를 노출하지 않았음을 나타냅니다. 클라이언트가 interactive `$transaction`을 지원하면 `transaction()`과 `requestTransaction()`은 Prisma 트랜잭션을 열기 전에 예외를 던집니다. native runner가 없고 `strictTransactions`가 `false`(기본값)이며 `shouldRollback`과 `requireAfterCommit`을 요구하지 않으면, ALS가 없어도 두 API는 트랜잭션을 열지 않고 callback을 직접 실행합니다. 초기화 후 readiness는 `ready`이며 `details.transactionContext`는 `unavailable`로 유지됩니다.
 - `ownership.externallyManaged: false`와 `ownership.ownsResources: true`는 패키지가 fluo 애플리케이션 라이프사이클 안에서 등록된 클라이언트의 `$connect()` / `$disconnect()` lifecycle hook을 소유한다는 의미입니다.
 
-`details.transactionContext`가 `unavailable`이면 패키지는 동기 stack 기반 컨텍스트로 fallback하지 않습니다. async boundary 사이에서 `current()`를 잃기 때문입니다. fallback boundary는 애플리케이션이 소유합니다. 트랜잭션 컨텍스트 없이도 데이터베이스 접근이 필요한 호출자는 (예: `PRISMA_CLIENT` 토큰을 통해) 원시 `PrismaClient`를 직접 호출하고 자체 일관성 semantics를 관리하거나, `AsyncLocalStorage`를 제공하는 호스트 런타임(Node.js `>=24.0.0 <27`가 문서화된 경로)에서 실행해야 합니다. `unavailable` readiness 상태는 운영적으로 실행 가능한 신호로 취급하세요. health check에 노출하고, 호스트가 ALS를 제공하거나 애플리케이션이 비트랜잭션 접근 경로로 전환할 때까지 트랜잭션 의존 handler로 트래픽을 라우팅하지 마세요.
+`details.transactionContext`가 `unavailable`이면 패키지는 동기 stack 기반 컨텍스트로 fallback하지 않습니다. async boundary 사이에서 `current()`를 잃기 때문입니다. fallback boundary는 애플리케이션이 소유합니다. interactive transaction을 지원하는 클라이언트를 사용하면서 트랜잭션 컨텍스트 없이도 데이터베이스 접근이 필요한 호출자는 (예: `PRISMA_CLIENT` 토큰을 통해) 원시 `PrismaClient`를 직접 호출하고 자체 일관성 semantics를 관리하거나, `AsyncLocalStorage`를 제공하는 호스트 런타임(Node.js `>=24.0.0 <27`가 문서화된 경로)에서 실행해야 합니다. 위의 비엄격·runner 없는 직접 실행 경로도 트랜잭션이나 원자성을 보장하지 않으며, 일관성 semantics는 애플리케이션이 소유합니다. ALS가 없고 클라이언트가 interactive transaction을 지원할 때는 `not-ready`를 운영적으로 실행 가능한 신호로 취급하세요. health check에 노출하고, 호스트가 ALS를 제공하거나 애플리케이션이 비트랜잭션 접근 경로로 전환할 때까지 트랜잭션 의존 handler로 트래픽을 라우팅하지 마세요.
 
 ### 비동기 설정과 격리
 
@@ -324,7 +332,7 @@ PrismaModule.forRootAsync({
 
 하나의 컴파일된 애플리케이션 안에서는 하위 provider가 동일하게 resolve된 `PrismaService`, ALS 트랜잭션 컨텍스트, 라이프사이클 관리 대상 클라이언트를 공유합니다. 서로 다른 애플리케이션 컨테이너는 독립된 factory 결과를 받으므로 `$connect` / `$disconnect` 소유권과 요청 트랜잭션 상태가 격리됩니다.
 
-트랜잭션 경계에는 호스트가 제공하는 `AsyncLocalStorage` 지원이 필요합니다. 패키지 manifest는 `engines.node >=24.0.0 <27`을 선언하며, root wrapper는 문서화된 Node.js `>=24.0.0 <27` Prisma 통합 경로입니다. `@fluojs/prisma`는 런타임이 노출하는 `globalThis.AsyncLocalStorage` 또는 Node.js의 `process.getBuiltinModule('node:async_hooks')` 호스트 경계를 통해 ALS를 resolve합니다. 두 경로 모두 사용할 수 없거나 host builtin lookup이 실패하면 동기 stack fallback으로 async boundary 사이의 `current()`를 잃는 대신, Prisma 트랜잭션을 열기 전에 `transaction()`과 `requestTransaction()`이 예외를 던집니다. 이 상태는 `createPlatformStatusSnapshot().details.transactionContext`에 `unavailable`로 보고됩니다.
+native 트랜잭션 경계에는 호스트가 제공하는 `AsyncLocalStorage` 지원이 필요합니다. 패키지 manifest는 `engines.node >=24.0.0 <27`을 선언하며, root wrapper는 문서화된 Node.js `>=24.0.0 <27` Prisma 통합 경로입니다. `@fluojs/prisma`는 런타임이 노출하는 `globalThis.AsyncLocalStorage` 또는 Node.js의 `process.getBuiltinModule('node:async_hooks')` 호스트 경계를 통해 ALS를 resolve합니다. 두 경로 모두 사용할 수 없거나 host builtin lookup이 실패하면 `createPlatformStatusSnapshot().details.transactionContext`에 `unavailable`로 보고됩니다. interactive transaction을 지원하는 클라이언트에서는 동기 stack fallback으로 async boundary 사이의 `current()`를 잃는 대신, Prisma 트랜잭션을 열기 전에 `transaction()`과 `requestTransaction()`이 예외를 던집니다. native runner가 없으면 `shouldRollback`과 `requireAfterCommit`을 요구하지 않는 비엄격 직접 실행 경로는 계속 사용할 수 있으며, 초기화 후 컨텍스트가 `unavailable`이어도 readiness는 `ready`입니다.
 
 ### 수동 모듈 조합
 
@@ -405,7 +413,8 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 
 ### `PRISMA_OPTIONS` (Token)
 
-`PrismaService`가 소비하는 공개 런타임 옵션을 위한 주입 토큰이며, 현재 형태는 `{ strictTransactions: boolean }`입니다.
+`PrismaService`가 소비하는 공개 런타임 옵션을 위한 주입 토큰이며, 공개 형태는 `{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }`입니다.
+`rollbackObserver`를 등록하면 resolve된 옵션이 등록한 observer 객체를 참조 그대로 노출하고, 등록하지 않으면 `rollbackObserver` key를 아예 생략합니다.
 이는 등록 identity, client ownership, visibility metadata까지 담는 패키지 내부 정규화 모듈 옵션 토큰보다 의도적으로 좁은 표면이며, 그 내부 토큰은 공개 API가 아닙니다.
 
 ### 플랫폼 status
@@ -419,6 +428,7 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `getPrismaServiceToken(name?)`
 
 이 헬퍼들은 `name`이 없으면 기본 이름 없는 토큰을 반환하고, `name`이 있으면 해당 등록 전용 토큰을 반환합니다.
+`getPrismaOptionsToken(name?)`은 `PRISMA_OPTIONS`와 같은 공개 형태(`{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }`, 등록한 observer 객체의 참조 노출과 미등록 시 key 생략 포함)를 resolve합니다.
 이 헬퍼가 이름 있는 등록을 대상으로 삼는 공개 방법이며, 정규화 모듈 옵션 토큰 같은 내부 구현 토큰은 의도적으로 export하지 않습니다.
 
 ### 관련 export 타입

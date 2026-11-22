@@ -580,6 +580,48 @@ describe('Drizzle afterCommit', { timeout: 2_000 }, () => {
     },
   );
 
+  it.each(['transaction', 'requestTransaction'] as const)(
+    'does not let a rejected %s child with native options change the owner cancel outcome',
+    async (entry) => {
+      // Given: the outer request handled a rejected nested options requirement and returned 9.
+      const commitEntered = deferred();
+      const commitRelease = deferred();
+      const controller = new AbortController();
+      const { drizzle, events } = nativeFixture(async () => {
+        commitEntered.resolve();
+        await commitRelease.promise;
+      });
+      let childCalls = 0;
+      const nestedOptions = { isolationLevel: 'serializable' } as const;
+      const run = drizzle.requestTransaction(async () => {
+        const child = entry === 'transaction'
+          ? drizzle.transaction(async () => { childCalls += 1; }, nestedOptions, { requireAfterCommit: true })
+          : drizzle.requestTransaction(async () => { childCalls += 1; }, undefined, nestedOptions, { requireAfterCommit: true });
+        await expect(child).rejects.toThrow('Nested Drizzle transaction options are not supported');
+        return 9;
+      }, controller.signal);
+      let settled = false;
+      const observed = Promise.allSettled([run]).finally(() => { settled = true; });
+      try {
+        await commitEntered.promise;
+
+        // When: cancellation arrives while the native driver is committing successfully.
+        controller.abort(new Error('aborted during native commit'));
+        expect(settled).toBe(false);
+        commitRelease.resolve();
+        const [outcome] = await observed;
+
+        // Then: the rejected child never ran and the no-requirement cancel outcome is unchanged.
+        expect(childCalls).toBe(0);
+        expect(outcome).toMatchObject({ status: 'rejected', reason: { name: 'AbortError' } });
+        expect(events).toEqual(['begin:1', 'commit:1']);
+      } finally {
+        commitRelease.resolve();
+        await observed;
+      }
+    },
+  );
+
   it.each([
     ['transaction', 'transaction'],
     ['transaction', 'requestTransaction'],

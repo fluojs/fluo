@@ -639,6 +639,46 @@ describe('@fluojs/prisma', () => {
     }
   });
 
+  it('executes transaction and request callbacks directly and stays ready without ALS or a native runner in non-strict mode', async () => {
+    const originalAsyncLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
+    const getBuiltinModuleSpy = vi.spyOn(process, 'getBuiltinModule').mockReturnValue(undefined);
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async read(value: string) {
+        return { value };
+      },
+    };
+
+    Reflect.set(globalThis, 'AsyncLocalStorage', undefined);
+
+    try {
+      const prisma = new PrismaService(client);
+      await prisma.onModuleInit();
+
+      const snapshot = prisma.createPlatformStatusSnapshot();
+      const transactionResult = await prisma.transaction(async () => prisma.current().read('manual'));
+      const requestResult = await prisma.requestTransaction(async () => prisma.current().read('request'));
+
+      expect(snapshot.details).toMatchObject({
+        strictTransactions: false,
+        supportsTransaction: false,
+        transactionContext: 'unavailable',
+      });
+      expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
+      expect(transactionResult).toEqual({ value: 'manual' });
+      expect(requestResult).toEqual({ value: 'request' });
+    } finally {
+      if (originalAsyncLocalStorage) {
+        Object.defineProperty(globalThis, 'AsyncLocalStorage', originalAsyncLocalStorage);
+      } else {
+        Reflect.deleteProperty(globalThis, 'AsyncLocalStorage');
+      }
+
+      getBuiltinModuleSpy.mockRestore();
+    }
+  });
+
   it('treats throwing AsyncLocalStorage host lookup as unavailable transaction context', async () => {
     const host = globalThis as typeof globalThis & { AsyncLocalStorage?: unknown };
     const originalAsyncLocalStorage = host.AsyncLocalStorage;
@@ -821,6 +861,69 @@ describe('@fluojs/prisma', () => {
     } finally {
       releaseRollback();
       await Promise.allSettled([openTransaction, shutdownPromise]);
+    }
+  });
+
+  it.each([true, false])('settles the runner callback before its commit branch (caller cancelled: %s)', async (cancel) => {
+    const events: string[] = [];
+    const transactionClient = {};
+    let notifyCallbackEntered = () => {};
+    const callbackEntered = new Promise<void>((resolve) => {
+      notifyCallbackEntered = resolve;
+    });
+    let releaseCallback = () => {};
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        try {
+          const value = await callback(transactionClient);
+          events.push('runner:commit');
+          return value;
+        } catch (error) {
+          events.push('runner:rejected');
+          throw error;
+        } finally {
+          events.push('runner:settled');
+        }
+      },
+    };
+    const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+    const caller = new AbortController();
+    caller.signal.addEventListener('abort', (event) => event.stopImmediatePropagation(), { once: true });
+    const pending = prisma.requestTransaction(async () => {
+      notifyCallbackEntered();
+      await callbackBarrier;
+      return 'completed';
+    }, caller.signal);
+    const outcome = cancel
+      ? expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+      : expect(pending).resolves.toBe('completed');
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      const deadline = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Request callback did not settle before the deadline.')), 2_000);
+      });
+      await Promise.race([callbackEntered, deadline]);
+      expect(events).toEqual([]);
+      if (cancel) {
+        caller.abort({});
+      } else {
+        releaseCallback();
+      }
+      await Promise.race([outcome, deadline]);
+
+      expect(events).toEqual(cancel
+        ? ['runner:rejected', 'runner:settled']
+        : ['runner:commit', 'runner:settled']);
+    } finally {
+      clearTimeout(timeout);
+      releaseCallback();
+      await Promise.allSettled([pending, outcome]);
     }
   });
 

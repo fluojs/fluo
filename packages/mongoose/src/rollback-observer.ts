@@ -121,7 +121,9 @@ export function createMongooseRollbackObserver(client: object): TransactionRollb
       }
     },
     beginAttempt(session, connection) {
-      const getClient = record(connection)?.getClient;
+      const getClient: unknown = ((typeof connection === 'object' && connection !== null) || typeof connection === 'function')
+        ? Reflect.get(connection, 'getClient')
+        : undefined;
       if (typeof getClient !== 'function' || Reflect.apply(getClient, connection, []) !== client) {
         throw new TransactionRollbackCapabilityError();
       }

@@ -2,9 +2,11 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import type {
   MongooseAsyncModuleOptions,
+  MongooseConnection,
   MongooseConnectionLike,
   MongooseHandleProvider,
   MongooseModelFacade,
+  MongooseModuleOptions,
   MongoosePlatformStatusSnapshotInput,
 } from './index.js';
 import * as mongoosePublicApi from './index.js';
@@ -44,6 +46,18 @@ describe('@fluojs/mongoose public API surface', () => {
     expect(mongoosePublicApi).not.toHaveProperty('createMongooseProvidersAsync');
     expect(mongoosePublicApi).not.toHaveProperty('createMongooseProviders');
     expect(mongoosePublicApi).not.toHaveProperty('MongooseTransactionInterceptor');
+  });
+
+  it('keeps concrete model-only connections registrable with concrete handle types', () => {
+    type ModelOnlyConnection = {
+      model(name: string): UserModelFacade;
+    };
+
+    expectTypeOf<MongooseModuleOptions<ModelOnlyConnection>>().toHaveProperty('connection');
+    expectTypeOf<MongooseAsyncModuleOptions<ModelOnlyConnection>>().toHaveProperty('useFactory');
+    expectTypeOf<MongooseConnection<ModelOnlyConnection>['current']>().toEqualTypeOf<() => ModelOnlyConnection>();
+    expectTypeOf<MongooseHandleProvider<ModelOnlyConnection>['current']>()
+      .toEqualTypeOf<() => ModelOnlyConnection>();
   });
 
   it('keeps documented type-only inputs importable from the root barrel', () => {
