@@ -258,4 +258,148 @@ describe('SocketIoLifecycleService shutdown state retention', () => {
     expect(Reflect.get(service, 'io')).toBeUndefined();
     expect(closeCallbacks).toHaveLength(2);
   });
+
+  it('bounds pending initialization inside the shared shutdown deadline', async () => {
+    vi.useFakeTimers();
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]) as never,
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return { kind: 'server-backed', server: {} };
+        },
+      } as never,
+      { shutdown: { timeoutMs: 100 } },
+    );
+    const initializationGate = createDeferred();
+
+    Reflect.set(service, 'serverInitializationPromise', initializationGate.promise);
+
+    let destroySettled = false;
+    void service.onModuleDestroy().then(() => {
+      destroySettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    let applicationShutdownSettled = false;
+    void service.onApplicationShutdown().then(() => {
+      applicationShutdownSettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(49);
+
+    expect(destroySettled).toBe(false);
+    expect(applicationShutdownSettled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(destroySettled).toBe(true);
+    expect(applicationShutdownSettled).toBe(true);
+  });
+
+  it('grants graceful close only the budget remaining after pending initialization settles', async () => {
+    vi.useFakeTimers();
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]) as never,
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return { kind: 'server-backed', server: {} };
+        },
+      } as never,
+      { shutdown: { timeoutMs: 100 } },
+    );
+    const initializationGate = createDeferred();
+    const closeCallbacks: Array<() => void> = [];
+    let forceDisconnectCount = 0;
+    const io = {
+      close(callback?: () => void) {
+        if (callback) {
+          closeCallbacks.push(callback);
+        }
+      },
+      disconnectSockets() {
+        forceDisconnectCount += 1;
+      },
+    };
+
+    Reflect.set(service, 'io', io);
+    Reflect.set(service, 'serverInitializationPromise', initializationGate.promise);
+
+    let shutdownSettled = false;
+    void service.onApplicationShutdown().then(() => {
+      shutdownSettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(70);
+    initializationGate.resolve();
+    await vi.advanceTimersByTimeAsync(29);
+
+    expect(closeCallbacks).toHaveLength(1);
+    expect(shutdownSettled).toBe(false);
+    expect(forceDisconnectCount).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(shutdownSettled).toBe(true);
+    expect(forceDisconnectCount).toBe(1);
+    expect(Reflect.get(service, 'io')).toBeUndefined();
+  });
+
+  it('grants gateway work drain only the budget remaining after initialization and close', async () => {
+    vi.useFakeTimers();
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]) as never,
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return { kind: 'server-backed', server: {} };
+        },
+      } as never,
+      { shutdown: { timeoutMs: 100 } },
+    );
+    const initializationGate = createDeferred();
+    const gatewayWork = createDeferred();
+    const closeCallbacks: Array<() => void> = [];
+    const io = {
+      close(callback?: () => void) {
+        void Reflect.get(service, 'trackGatewayWork').call(service, gatewayWork.promise);
+        if (callback) {
+          closeCallbacks.push(callback);
+        }
+      },
+      disconnectSockets() {},
+    };
+    const retainedAttachment = { path: '/chat' };
+
+    Reflect.set(service, 'io', io);
+    Reflect.set(service, 'attachments', [retainedAttachment]);
+    Reflect.set(service, 'serverInitializationPromise', initializationGate.promise);
+
+    let shutdownSettled = false;
+    void service.onApplicationShutdown().then(() => {
+      shutdownSettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(70);
+    initializationGate.resolve();
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(closeCallbacks).toHaveLength(1);
+    closeCallbacks[0]?.();
+    await vi.advanceTimersByTimeAsync(9);
+
+    expect(shutdownSettled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(shutdownSettled).toBe(true);
+    expect(Reflect.get(service, 'io')).toBe(io);
+    expect(Reflect.get(service, 'attachments')).toEqual([retainedAttachment]);
+
+    gatewayWork.resolve();
+  });
 });

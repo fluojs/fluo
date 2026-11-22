@@ -450,6 +450,11 @@ export class SocketIoLifecycleService
     this.assertNoServerBackedGatewayOptIn(descriptors);
 
     const io = await this.getServerAsync();
+
+    if (this.shutdownStarted) {
+      return;
+    }
+
     const attachments = this.prepareNamespaceAttachments(io, descriptors);
 
     for (const attachment of attachments) {
@@ -1194,9 +1199,16 @@ export class SocketIoLifecycleService
   }
 
   private async runShutdownLifecycle(): Promise<void> {
+    const timeoutMs = this.resolveShutdownTimeoutMs();
+    const deadline = Date.now() + timeoutMs;
+
     const initialization = this.serverInitializationPromise;
-    if (initialization) {
-      await Promise.allSettled([initialization]);
+    if (
+      initialization !== undefined
+      && !(await this.awaitSettledWithinDeadline(initialization, deadline))
+    ) {
+      this.cleanupLateInitialization(initialization);
+      return;
     }
 
     const io = this.io;
@@ -1207,11 +1219,10 @@ export class SocketIoLifecycleService
     }
 
     let shouldClearManagedState = false;
-    const timeoutMs = this.resolveShutdownTimeoutMs();
-    const deadline = Date.now() + timeoutMs;
+    const closeBudgetMs = Math.max(deadline - Date.now(), 0);
 
     try {
-      const result = await this.closeServerWithTimeout(io, timeoutMs);
+      const result = await this.closeServerWithTimeout(io, closeBudgetMs);
       shouldClearManagedState = await this.drainGatewayWork(deadline);
 
       if (!shouldClearManagedState) {
@@ -1240,29 +1251,55 @@ export class SocketIoLifecycleService
     }
   }
 
+  private cleanupLateInitialization(initialization: Promise<Server>): void {
+    void initialization.then(
+      async (io) => {
+        try {
+          await this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs());
+          this.clearManagedState();
+        } catch (error) {
+          this.logger.error(
+            'Socket.IO Bun initialization completed after the shared shutdown deadline and its late cleanup failed; retaining managed Socket.IO state for a deliberate shutdown retry.',
+            error,
+            'SocketIoLifecycleService',
+          );
+        }
+      },
+      () => {
+        // Late initialization failures keep their existing cleanup path inside getServerAsync().
+      },
+    );
+  }
+
+  private awaitSettledWithinDeadline(pending: Promise<unknown>, deadline: number): Promise<boolean> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    return Promise.race([
+      Promise.allSettled([pending]).then(() => true),
+      new Promise<false>((resolve) => {
+        timeout = setTimeout(() => resolve(false), Math.max(deadline - Date.now(), 0));
+      }),
+    ]).finally(() => {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+    });
+  }
+
   private closeServerWithTimeout(io: Server, timeoutMs: number): Promise<SocketIoCloseResult> {
     return closeSocketIoServerWithTimeout(io, timeoutMs);
   }
 
   private async drainGatewayWork(deadline: number): Promise<boolean> {
     while (this.inFlightGatewayWork.size > 0) {
-      const remainingMs = deadline - Date.now();
-
-      if (remainingMs <= 0) {
+      if (deadline - Date.now() <= 0) {
         return false;
       }
 
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      const drained = await Promise.race([
-        Promise.allSettled([...this.inFlightGatewayWork]).then(() => true),
-        new Promise<false>((resolve) => {
-          timeout = setTimeout(() => resolve(false), remainingMs);
-        }),
-      ]);
-
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
+      const drained = await this.awaitSettledWithinDeadline(
+        Promise.allSettled([...this.inFlightGatewayWork]),
+        deadline,
+      );
 
       if (!drained) {
         return false;
