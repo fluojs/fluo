@@ -100,12 +100,19 @@ Use service-layer `@Transaction()` for business operations. When a complete requ
 See [Migrate Prisma Registration](../../docs/getting-started/migrate-prisma-registration.md) for facade and interceptor migration details.
 
 When request-wide atomicity is genuinely required, make the boundary and cancellation input visible in application code:
+This controller fragment assumes the application's `./orders.service` provides an async `checkout(input: { readonly orderId: string })` method. `@RequestDto(CheckoutInput)` and `@FromBody('orderId')` bind the request body to the first argument.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { Controller, FromBody, Post, RequestDto, type RequestContext } from '@fluojs/http';
 import { PrismaService } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
+import { OrdersService } from './orders.service';
+
+class CheckoutInput {
+  @FromBody('orderId')
+  orderId = '';
+}
 
 @Inject(PrismaService, OrdersService)
 @Controller('/orders')
@@ -116,6 +123,7 @@ export class OrdersController {
   ) {}
 
   @Post('/checkout')
+  @RequestDto(CheckoutInput)
   checkout(input: CheckoutInput, context: RequestContext) {
     const { request } = context;
     return this.prisma.requestTransaction(
@@ -405,7 +413,8 @@ Injectable token for the raw `PrismaClient` instance.
 
 ### `PRISMA_OPTIONS` (Token)
 
-Injectable token for the public runtime options consumed by `PrismaService`, currently `{ strictTransactions: boolean }`.
+Injectable token for the public runtime options consumed by `PrismaService`: `{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }`.
+When a `rollbackObserver` is registered, the resolved options expose that exact observer object by reference; when no observer is registered, the `rollbackObserver` key is omitted from the resolved options.
 This is intentionally narrower than the package's internal normalized module-options token, which also carries registration
 identity, client ownership, and visibility metadata and is not part of the public API.
 
@@ -420,6 +429,7 @@ identity, client ownership, and visibility metadata and is not part of the publi
 - `getPrismaServiceToken(name?)`
 
 These helpers return the default unnamed token when `name` is omitted and a registration-specific token when `name` is provided.
+`getPrismaOptionsToken(name?)` resolves the same public option shape as `PRISMA_OPTIONS` - `{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }` with a registered observer exposed by reference and the key omitted when no observer is registered.
 They are the public way to target named registrations; internal implementation tokens such as the normalized module-options
 token are deliberately not exported.
 

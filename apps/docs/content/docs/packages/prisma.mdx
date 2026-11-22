@@ -169,9 +169,10 @@ definition, not a reusable singleton module. Call it inline in `imports`:
 The unnamed registration exports four tokens: the `PrismaService` class token,
 its `getPrismaServiceToken()` alias, and the raw `PRISMA_CLIENT` /
 `PRISMA_OPTIONS` symbols. `PRISMA_OPTIONS` resolves the public runtime options
-(`{ strictTransactions: boolean }`); normalized module internals are
-deliberately not exported. Named registrations export only the matching named
-tokens.
+(`{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }`; a registered observer
+is exposed by reference and the key is omitted when no observer is registered);
+normalized module internals are deliberately not exported. Named registrations
+export only the matching named tokens.
 
 ### The injected service is a transaction-aware facade
 
