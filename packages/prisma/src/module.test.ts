@@ -1458,6 +1458,163 @@ describe('@fluojs/prisma', () => {
     }
   });
 
+  it('keeps fallback request transactions tracked until the real callback settles before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseCallback: () => void = () => undefined;
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let markCallbackStarted: () => void = () => undefined;
+    const callbackStarted = new Promise<void>((resolve) => {
+      markCallbackStarted = resolve;
+    });
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot<typeof client>({ client, strictTransactions: false })],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const openTransaction = prisma.requestTransaction(async () => {
+        events.push('request:callback-start');
+        markCallbackStarted();
+        await callbackBarrier;
+        events.push('request:callback-settled');
+        return 'settled';
+      });
+
+      await callbackStarted;
+      const shutdown = app.close();
+
+      await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 1,
+        lifecycleState: 'shutting-down',
+      });
+      expect(events).toEqual(['connect', 'request:callback-start']);
+
+      releaseCallback();
+
+      await shutdown;
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 0,
+        lifecycleState: 'stopped',
+      });
+      expect(events).toEqual(['connect', 'request:callback-start', 'request:callback-settled', 'disconnect']);
+    } finally {
+      releaseCallback();
+      await app.close();
+    }
+  });
+
+  it('keeps externally aborted fallback request transactions tracked until the callback settles before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseCallback: () => void = () => undefined;
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let markCallbackStarted: () => void = () => undefined;
+    const callbackStarted = new Promise<void>((resolve) => {
+      markCallbackStarted = resolve;
+    });
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot<typeof client>({ client, strictTransactions: false })],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const requestAbortController = new AbortController();
+      const openTransaction = prisma.requestTransaction(async () => {
+        events.push('request:callback-start');
+        markCallbackStarted();
+        await callbackBarrier;
+        events.push('request:callback-settled');
+        throw new Error('callback rejected after abort');
+      }, requestAbortController.signal);
+
+      await callbackStarted;
+      const rejected = expect(openTransaction).rejects.toThrow('request aborted');
+      requestAbortController.abort(new Error('request aborted'));
+      await rejected;
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 1,
+        lifecycleState: 'ready',
+      });
+
+      const shutdown = app.close();
+
+      releaseCallback();
+
+      await shutdown;
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 0,
+        lifecycleState: 'stopped',
+      });
+      expect(events).toEqual(['connect', 'request:callback-start', 'request:callback-settled', 'disconnect']);
+    } finally {
+      releaseCallback();
+      await app.close();
+    }
+  });
+
+  it('cleans up fallback request tracking for already-aborted signals and preserves callback error identity', async () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    const prisma = new PrismaService<typeof client>(client, { strictTransactions: false });
+
+    const requestAbortController = new AbortController();
+    requestAbortController.abort(new Error('too late'));
+    let callbackRuns = 0;
+
+    await expect(
+      prisma.requestTransaction(async () => {
+        callbackRuns += 1;
+        return 'never';
+      }, requestAbortController.signal),
+    ).rejects.toThrow('too late');
+    expect(callbackRuns).toBe(0);
+    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+
+    const callbackError = new Error('fallback callback failed');
+    await expect(
+      prisma.requestTransaction(async () => {
+        throw callbackError;
+      }),
+    ).rejects.toBe(callbackError);
+    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+  });
+
   it('rejects new request transactions while shutdown is draining or stopped', async () => {
     let releaseDisconnect!: () => void;
     const disconnectReady = new Promise<void>((resolve) => {
