@@ -58,8 +58,18 @@ export function closeSocketIoServerWithTimeout(io: SocketIoCloseTarget, timeoutM
 
     detachAdapterOwnedHttpServer(io);
 
+    const fail = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    };
+
     try {
-      io.close(() => {
+      const closing = io.close(() => {
         if (settled) {
           return;
         }
@@ -68,10 +78,9 @@ export function closeSocketIoServerWithTimeout(io: SocketIoCloseTarget, timeoutM
         clearTimeout(timeout);
         resolve({ kind: 'closed' });
       });
+      void Promise.resolve(closing).catch(fail);
     } catch (error) {
-      settled = true;
-      clearTimeout(timeout);
-      reject(error);
+      fail(error);
     }
   });
 }

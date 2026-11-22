@@ -2,7 +2,7 @@ import { observeRollback, type TransactionRollbackObserver } from './result-roll
 import { settleAfterCommitCallbacks } from '@fluojs/persistence/internal';
 import { markMongooseConnectionHandle } from './connection-brand.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { Inject } from '@fluojs/core';
+import { Inject, type MaybePromise } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown } from '@fluojs/core';
 import { raceWithAbort } from '@fluojs/runtime';
@@ -192,6 +192,46 @@ function assertRollbackSessionCapability(session: MongooseSessionLike): void {
   }
 }
 
+// The native delegate owns session cleanup; Fluo only observes the settlement of the
+// endSession() attempt it fires from its own finally block, which it does not await.
+type DelegatedSessionCleanup = {
+  settled(): Promise<void>;
+  release(): void;
+};
+
+function observeDelegatedSessionCleanup(session: MongooseSessionLike): DelegatedSessionCleanup {
+  if (!isObjectLike(session) || typeof Reflect.get(session, 'endSession') !== 'function') {
+    return { settled: () => Promise.resolve(), release: () => undefined };
+  }
+
+  const target = session as MongooseSessionLike & { endSession(...args: unknown[]): MaybePromise<void> };
+  const original = target.endSession;
+  const originalOwn = Object.getOwnPropertyDescriptor(target, 'endSession');
+  let cleanup: Promise<void> | undefined;
+
+  const observed = (...args: unknown[]): MaybePromise<void> => {
+    const returned = Reflect.apply(original, target, args);
+    cleanup = Promise.resolve(returned).then(
+      () => undefined,
+      () => undefined,
+    );
+    return returned;
+  };
+
+  Object.defineProperty(target, 'endSession', { value: observed, writable: true, enumerable: false, configurable: true });
+
+  return {
+    settled: () => cleanup ?? Promise.resolve(),
+    release: () => {
+      if (originalOwn) {
+        Object.defineProperty(target, 'endSession', originalOwn);
+      } else {
+        delete (target as { endSession?: unknown }).endSession;
+      }
+    },
+  };
+}
+
 async function executeSessionTransaction<T>(
   session: MongooseSessionLike,
   fn: () => Promise<T>,
@@ -312,7 +352,8 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       throw new Error('Mongoose document saves require an active transaction session.');
     }
 
-    return document.save(resolveSessionOptions(options, session) as TSaveOptions);
+    await document.save(resolveSessionOptions(options, session) as TSaveOptions);
+    return document;
   }
 
   /**
@@ -676,6 +717,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     const activeSession = this.trackActiveSession();
     let owner: TransactionOwner | undefined;
     let resultBoundary: ResultBoundary<T> | undefined;
+    let delegatedCleanup: DelegatedSessionCleanup | undefined;
 
     try {
       if (typeof this.connection.transaction !== 'function') {
@@ -688,6 +730,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
           if (owner) {
             owner.callbacks.length = 0;
           }
+          delegatedCleanup ??= observeDelegatedSessionCleanup(session);
           const attempt: TransactionOwner = {
             callbacks: [],
             afterCommitEnabled: boundary?.requireAfterCommit === true,
@@ -704,9 +747,11 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
           );
         }));
       } catch (error) {
+        await delegatedCleanup?.settled();
         if (resultBoundary) return await resultBoundary.recover(error);
         throw error;
       }
+      await delegatedCleanup?.settled();
       if (owner?.afterCommitEnabled) {
         activeSession.confirmCommit();
         confirmCommit?.();
@@ -714,6 +759,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       }
       return result;
     } finally {
+      delegatedCleanup?.release();
       if (owner) {
         owner.open = false;
         owner.callbacks.length = 0;
