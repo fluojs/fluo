@@ -69,7 +69,18 @@ this.rooms.joinRoom(socket.id, 'room:123');
 this.rooms.broadcastToRoom('room:123', 'event', data);
 ```
 
-Room helper는 공유 `WebSocketRoomService` 계약을 따르면서 Socket.IO namespace 인식을 추가합니다. gateway handler 안에서는 현재 `@WebSocketGateway({ path })` namespace를 자동으로 추론합니다. gateway handler 밖에서 room helper를 실행할 때는 같은 이름의 room이 다른 Socket.IO namespace에 존재할 수 있으므로 대상 namespace path를 명시적으로 전달하세요.
+Room helper는 공유 `WebSocketRoomService` 계약을 따릅니다. Namespace 선택 방식은 메서드마다 다릅니다.
+
+| 메서드 | Namespace 선택 | 대상을 찾지 못한 경우 |
+| --- | --- | --- |
+| `broadcastToRoom(room, event, data, namespacePath?)` | 명시한 managed namespace를 우선하고, 없으면 현재 gateway handler namespace 사용 | 둘 다 resolve되지 않으면 예외 발생; `/`로 자동 fallback하지 않음 |
+| `joinRoom(socketId, room, namespacePath?)` | 명시한 namespace, handler namespace 순으로 선택; 둘 다 제공되지 않으면 ID로 소켓을 찾아 해당 소켓의 namespace 사용 | Namespace나 소켓을 resolve하지 못하면 예외 발생 |
+| `leaveRoom(socketId, room, namespacePath?)` | `joinRoom`과 같은 선택 방식 | `joinRoom`과 같은 실패 조건 |
+| `getRooms(socketId)` | Handler context와 무관하게 ID로 `socketRegistry` 조회; `namespacePath` 인자 없음 | 미등록 ID에는 빈 집합 반환 |
+
+명시 경로나 handler namespace가 선택되면 `joinRoom`과 `leaveRoom`은 해당 namespace를 대상으로 하며, 다른 namespace에 같은 ID의 소켓이 있어도 fallback하지 않습니다. `getRooms`는 연결 상태를 추가로 검사하지 않고 등록된 소켓의 room 집합을 복사해 반환합니다. 반환 타입 `ReadonlySet<string>`은 런타임에서 집합을 freeze하지 않습니다.
+
+Gateway handler 밖에서 `broadcastToRoom`을 호출하려면 namespace path가 필요합니다. `joinRoom`과 `leaveRoom`에도 경로를 전달해 대상 namespace를 선택할 수 있습니다.
 
 ```ts
 this.rooms.broadcastToRoom('room:123', 'event', data, '/chat');
@@ -173,7 +184,7 @@ Socket.IO 등록은 소유 모듈의 import 경로에서 구성하여 namespace/
 - `SocketIoModule.forRoot({ global, auth, cors, engine, ... })`: provider visibility, namespace/message guard, 명시적 CORS, Engine.IO payload bound를 구성합니다.
 - `SOCKETIO_SERVER`: raw Socket.IO `Server`를 주입하기 위한 토큰입니다.
 - `SOCKETIO_ROOM_SERVICE`: `SocketIoRoomService`를 주입하기 위한 토큰입니다.
-- `SocketIoRoomService`: 공유 room 계약에 Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, `getRooms` helper를 더한 타입입니다.
+- `SocketIoRoomService`: 공유 room 계약에 `joinRoom(socketId, room, namespacePath?)`, `leaveRoom(socketId, room, namespacePath?)`, `broadcastToRoom(room, event, data, namespacePath?)`의 optional trailing `namespacePath`를 더한 타입입니다. `getRooms(socketId)`는 namespace 인자 없이 context와 무관하게 registry를 조회합니다. 선택 방식과 실패 조건은 Room 관리를 참고하세요.
 - `SocketIoLifecycleService`: server와 room-service token 뒤에서 동작하는 lifecycle 기반 구현입니다. 애플리케이션 코드는 일반적으로 `SOCKETIO_SERVER` 또는 `SOCKETIO_ROOM_SERVICE`를 주입하세요.
 - 타입: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
