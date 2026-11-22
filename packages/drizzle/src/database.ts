@@ -615,7 +615,17 @@ export class DrizzleDatabase<
       const abortSignalView = createRequestAbortSignalView(current.requestAbortSignal, signal);
 
       try {
-        const result = await raceWithAbort(runCallback, abortSignalView.signal);
+        const result = await this.transactions.run(
+          {
+            database: current.database,
+            deferredRequestTransactionSettlements: current.deferredRequestTransactionSettlements,
+            fallbackTransactionOwner: current.fallbackTransactionOwner,
+            inheritedRequestAbortSignal: current.inheritedRequestAbortSignal,
+            requestAbortSignal: abortSignalView.signal,
+            transactionBoundaryOwner: current.transactionBoundaryOwner,
+          },
+          () => raceWithAbort(runCallback, abortSignalView.signal),
+        );
 
         this.throwIfRequestAborted(abortSignalView.signal);
 
