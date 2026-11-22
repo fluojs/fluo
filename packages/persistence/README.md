@@ -66,6 +66,12 @@ After successful outer commit and associated cleanup settlement, every hook is a
 Rollback, failed commit, and discarded retry attempts never run their hooks.
 Hook failures do not undo commit or trigger native retry.
 
+`AfterCommitError` snapshots the input array and each settlement record at construction.
+Changing the original records or reordering or clearing the original array leaves all FIFO
+`results` and the failure order in `errors` intact. Rejection reasons in both fields retain
+their original object identity and are neither deep-cloned nor frozen. This adds no runtime
+immutability guarantee for the returned `results` or `errors`.
+
 Mongoose's manual-session cleanup is the one cleanup identity exception. After a confirmed commit, an owner
 that registered no hooks and required no `requireAfterCommit` still receives the original `endSession()`
 failure as the same object; omitting `requireAfterCommit` or passing `false` preserves this branch.
