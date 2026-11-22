@@ -100,12 +100,19 @@ Use service-layer `@Transaction()` for business operations. When a complete requ
 See [Migrate Prisma Registration](../../docs/getting-started/migrate-prisma-registration.md) for facade and interceptor migration details.
 
 When request-wide atomicity is genuinely required, make the boundary and cancellation input visible in application code:
+This controller fragment assumes the application's `./orders.service` provides an async `checkout(input: { readonly orderId: string })` method. `@RequestDto(CheckoutInput)` and `@FromBody('orderId')` bind the request body to the first argument.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { Controller, FromBody, Post, RequestDto, type RequestContext } from '@fluojs/http';
 import { PrismaService } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
+import { OrdersService } from './orders.service';
+
+class CheckoutInput {
+  @FromBody('orderId')
+  orderId = '';
+}
 
 @Inject(PrismaService, OrdersService)
 @Controller('/orders')
@@ -116,6 +123,7 @@ export class OrdersController {
   ) {}
 
   @Post('/checkout')
+  @RequestDto(CheckoutInput)
   checkout(input: CheckoutInput, context: RequestContext) {
     const { request } = context;
     return this.prisma.requestTransaction(

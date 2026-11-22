@@ -100,12 +100,19 @@ export class UserService {
 facade와 interceptor 마이그레이션 세부 사항은 [Prisma 등록 마이그레이션](../../docs/getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
 
 요청 전체 원자성이 정말 필요한 경우에는 application code에서 boundary와 cancellation input을 명시적으로 드러내세요.
+이 controller fragment는 애플리케이션의 `./orders.service`가 `checkout(input: { readonly orderId: string })` 비동기 메서드를 제공한다고 가정합니다. `@RequestDto(CheckoutInput)`과 `@FromBody('orderId')`가 요청 본문을 첫 번째 인자에 바인딩합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { Controller, FromBody, Post, RequestDto, type RequestContext } from '@fluojs/http';
 import { PrismaService } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
+import { OrdersService } from './orders.service';
+
+class CheckoutInput {
+  @FromBody('orderId')
+  orderId = '';
+}
 
 @Inject(PrismaService, OrdersService)
 @Controller('/orders')
@@ -116,6 +123,7 @@ export class OrdersController {
   ) {}
 
   @Post('/checkout')
+  @RequestDto(CheckoutInput)
   checkout(input: CheckoutInput, context: RequestContext) {
     const { request } = context;
     return this.prisma.requestTransaction(
