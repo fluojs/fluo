@@ -694,3 +694,131 @@ describe('Mongoose afterCommit ownership and public API', () => {
     expect(error.errors).toEqual([reason]);
   });
 });
+
+describe('Mongoose @Transaction requireAfterCommit owner preflight', () => {
+  it.each(['unbranded', 'incomplete'] as const)(
+    'rejects a query-isolated copy-B decorator %s owner lookalike that supplies a callable afterCommit',
+    async (kind) => {
+      const copyB = await import(`${new URL('./transaction.ts', import.meta.url).href}?copy-b-negative`);
+      let transactionCalls = 0;
+      let methodCalls = 0;
+      let afterCommitCalls = 0;
+      let hookCalls = 0;
+      const target = {
+        afterCommit(callback: () => void) { afterCommitCalls += 1; callback(); },
+        createPlatformStatusSnapshot() { return {}; },
+        current() { return {}; },
+        currentSession() { return undefined; },
+        model() { return {}; },
+        requestTransaction<T>(callback: () => Promise<T>) { return callback(); },
+        transaction<T>(callback: () => Promise<T>) { transactionCalls += 1; return callback(); },
+      };
+      if (kind === 'incomplete') {
+        Object.defineProperty(target, Symbol.for('@fluojs/mongoose/MongooseConnection.owner'), { value: 1 });
+        Reflect.deleteProperty(target, 'currentSession');
+      }
+      class Service {
+        @copyB.Transaction(() => target, { requireAfterCommit: true })
+        async run() {
+          methodCalls += 1;
+          target.afterCommit(() => { hookCalls += 1; });
+          return 'ran';
+        }
+      }
+
+      await expect(new Service().run()).rejects.toBeInstanceOf(AfterCommitCapabilityError);
+      expect({ transactionCalls, methodCalls, afterCommitCalls, hookCalls }).toEqual({
+        afterCommitCalls: 0,
+        hookCalls: 0,
+        methodCalls: 0,
+        transactionCalls: 0,
+      });
+    },
+  );
+
+  it.each(['omitted', 'disabled'] as const)(
+    'keeps the legacy copy-B lookalike allowed path when the requirement is %s',
+    async (mode) => {
+      const copyB = await import(`${new URL('./transaction.ts', import.meta.url).href}?copy-b-compat`);
+      const received: unknown[] = [];
+      let methodCalls = 0;
+      const result = { ok: true };
+      const target = {
+        afterCommit() {},
+        createPlatformStatusSnapshot() { return {}; },
+        current() { return {}; },
+        currentSession() { return undefined; },
+        model() { return {}; },
+        requestTransaction<T>(callback: () => Promise<T>) { return callback(); },
+        transaction<T>(callback: () => Promise<T>, boundary?: unknown) {
+          received.push(boundary);
+          return callback();
+        },
+      };
+      let receiver: Service | undefined;
+      let receivedArgs: number[] | undefined;
+      class Service {
+        @copyB.Transaction(() => target, mode === 'omitted' ? undefined : { requireAfterCommit: false })
+        async run(value: number) {
+          receiver = this;
+          receivedArgs = [value];
+          methodCalls += 1;
+          return result;
+        }
+      }
+
+      const service = new Service();
+      expect(await service.run(7)).toBe(result);
+      expect(receiver).toBe(service);
+      expect(receivedArgs).toEqual([7]);
+      expect(methodCalls).toBe(1);
+      expect(received).toEqual(mode === 'omitted' ? [undefined] : [{ requireAfterCommit: false }]);
+    },
+  );
+
+  it('runs a copy-A healthy owner through the copy-B decorator only after commit and session cleanup', async () => {
+    const copyA = await import(`${new URL('./connection.ts', import.meta.url).href}?copy-a-owner`);
+    const copyB = await import(`${new URL('./transaction.ts', import.meta.url).href}?copy-b-decorator`);
+    const commitEntered = barrier();
+    const commitRelease = barrier();
+    const events: string[] = [];
+    const owner = new copyA.MongooseConnection({
+      async startSession() {
+        return {
+          startTransaction() { events.push('start'); },
+          async commitTransaction() {
+            commitEntered.release();
+            await commitRelease.promise;
+            events.push('commit');
+          },
+          abortTransaction() { events.push('abort'); },
+          async endSession() { events.push('end'); },
+        };
+      },
+    });
+    class Service {
+      readonly owner = owner;
+
+      @copyB.Transaction((self: Service) => self.owner, { requireAfterCommit: true })
+      async save() {
+        this.owner.afterCommit(() => { events.push('hook'); });
+        return 'saved';
+      }
+    }
+
+    const run = new Service().save();
+    let settled = false;
+    const observed = run.finally(() => { settled = true; });
+    try {
+      await commitEntered.promise;
+      expect(events).toEqual(['start']);
+      expect(settled).toBe(false);
+      commitRelease.release();
+      await expect(observed).resolves.toBe('saved');
+      expect(events).toEqual(['start', 'commit', 'end', 'hook']);
+    } finally {
+      commitRelease.release();
+      await Promise.allSettled([observed]);
+    }
+  });
+});
