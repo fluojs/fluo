@@ -404,7 +404,8 @@ Injectable token for the raw `PrismaClient` instance.
 
 ### `PRISMA_OPTIONS` (Token)
 
-Injectable token for the public runtime options consumed by `PrismaService`, currently `{ strictTransactions: boolean }`.
+Injectable token for the public runtime options consumed by `PrismaService`: `{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }`.
+When a `rollbackObserver` is registered, the resolved options expose that exact observer object by reference; when no observer is registered, the `rollbackObserver` key is omitted from the resolved options.
 This is intentionally narrower than the package's internal normalized module-options token, which also carries registration
 identity, client ownership, and visibility metadata and is not part of the public API.
 
@@ -419,6 +420,7 @@ identity, client ownership, and visibility metadata and is not part of the publi
 - `getPrismaServiceToken(name?)`
 
 These helpers return the default unnamed token when `name` is omitted and a registration-specific token when `name` is provided.
+`getPrismaOptionsToken(name?)` resolves the same public option shape as `PRISMA_OPTIONS` - `{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }` with a registered observer exposed by reference and the key omitted when no observer is registered.
 They are the public way to target named registrations; internal implementation tokens such as the normalized module-options
 token are deliberately not exported.
 
