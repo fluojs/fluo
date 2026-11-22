@@ -72,6 +72,7 @@ describe('@fluojs/socket.io public surface', () => {
       data: unknown,
       namespacePath?: string,
     ]>();
+    expectTypeOf<Parameters<SocketIoRoomService['getRooms']>>().toEqualTypeOf<[socketId: string]>();
     expectTypeOf<Parameters<SocketIoRoomService['broadcastToRoom']>[0]>().toEqualTypeOf<string>();
   });
 

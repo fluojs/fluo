@@ -139,4 +139,41 @@ describe('shared active transaction work', () => {
     expect(settled).toBe(true);
     expect(active.size).toBe(0);
   });
+
+  it('untracks only the selected handle in multi-handle isolation', async () => {
+    const active = new Set<ActiveRequestTransaction>();
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const firstHandle = trackActiveRequestTransaction(active, firstController);
+    const secondHandle = trackActiveRequestTransaction(active, secondController);
+    let firstSettled = false;
+    let secondSettled = false;
+    const observedFirst = firstHandle.active.settled.then(() => {
+      firstSettled = true;
+    });
+    const observedSecond = secondHandle.active.settled.then(() => {
+      secondSettled = true;
+    });
+
+    untrackActiveRequestTransaction(active, firstHandle);
+
+    await observedFirst;
+    expect(firstSettled).toBe(true);
+    expect(active.has(firstHandle.active)).toBe(false);
+    expect(
+      active.has(secondHandle.active),
+      'second handle must remain tracked after the first is untracked',
+    ).toBe(true);
+    await Promise.resolve();
+    expect(secondSettled, 'second handle must stay pending until its own untrack').toBe(false);
+
+    untrackActiveRequestTransaction(active, secondHandle);
+
+    await observedSecond;
+    expect(secondSettled, 'second handle must settle after its own untrack').toBe(true);
+    expect(active.has(secondHandle.active), 'second handle must be removed by its own untrack').toBe(
+      false,
+    );
+    expect(active.size).toBe(0);
+  });
 });

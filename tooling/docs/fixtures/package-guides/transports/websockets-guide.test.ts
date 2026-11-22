@@ -12,14 +12,10 @@ import { createConnection } from 'node:net';
 import type { AddressInfo } from 'node:net';
 
 import { Module } from '@fluojs/core';
-import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
+import { createConsoleApplicationLogger, NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { FluoFactory } from '@fluojs/runtime';
 import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
-import {
-  NodeWebSocketGatewayLifecycleService,
-  NodeWebSocketModule,
-  type WebSocketModuleOptions,
-} from '@fluojs/websockets/node';
+import { NodeWebSocketModule, type WebSocketModuleOptions } from '@fluojs/websockets/node';
 import { describe, expect, it } from 'vitest';
 
 import { AppModule, ChatAudit, ChatGateway, PresenceService } from './websockets-guide-app';
@@ -123,27 +119,22 @@ async function readUpgradeResponseHead(port: number, request: string): Promise<s
 }
 
 function createUpgradeRequest(path: string, headers = ''): string {
-  return `GET ${path} HTTP/1.1\r\n`
-    + 'Host: 127.0.0.1\r\n'
-    + 'Connection: Upgrade\r\n'
-    + 'Upgrade: websocket\r\n'
-    + 'Sec-WebSocket-Version: 13\r\n'
-    + 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
-    + `${headers}\r\n`;
+  return (
+    `GET ${path} HTTP/1.1\r\n` +
+    'Host: 127.0.0.1\r\n' +
+    'Connection: Upgrade\r\n' +
+    'Upgrade: websocket\r\n' +
+    'Sec-WebSocket-Version: 13\r\n' +
+    'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+    `${headers}\r\n`
+  );
 }
 
 describe('websockets guide fixtures', () => {
   it('delivers replies, gateway DI, room broadcast, and disconnect cleanup', async () => {
     const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
-    const app = await FluoFactory.create(AppModule, {
-      adapter,
-      cors: false,
-      logger: createConsoleApplicationLogger(),
-    });
+    const app = await FluoFactory.create(AppModule, { adapter, cors: false, logger: createConsoleApplicationLogger() });
     const audit = await app.container.resolve(ChatAudit);
-    // The runtime module binds the lifecycle service for its own dispatch work;
-    // application services receive it through container resolution.
-    const presence = new PresenceService(await app.container.resolve(NodeWebSocketGatewayLifecycleService));
     let appClosed = false;
     const closeApp = async (): Promise<void> => {
       if (!appClosed) {
@@ -155,6 +146,7 @@ describe('websockets guide fixtures', () => {
     let socket: WebSocket | undefined;
 
     try {
+      const presence = await app.container.resolve(PresenceService);
       await app.listen();
       const port = getBoundPort(adapter);
 
@@ -266,10 +258,7 @@ describe('websockets guide fixtures', () => {
       handlePing(): void {}
     }
 
-    @Module({
-      imports: [NodeWebSocketModule.forRoot(guardOptions)],
-      providers: [GuardedGateway],
-    })
+    @Module({ imports: [NodeWebSocketModule.forRoot(guardOptions)], providers: [GuardedGateway] })
     class GuardedAppModule {}
 
     const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
