@@ -98,7 +98,7 @@ sleep이나 driver 대체 없이 `finally`에서 failpoint를 해제합니다.
 더 넓은 동시성, lifecycle, retry, 오류 행렬은 결정적인 unit suite가 담당합니다.
 이 fixture는 실제 driver와 native commit 경계의 실행 증거를 제공합니다.
 
-이 fixture는 Result root/nested 성공·실패, ignored failure, 임의 기본 반환값, 잡힌 예외, native commit 오류를 각 wrapper의 세 공개 진입점에서 검증하고 독립 owner 동시성도 실제 DB에서 확인합니다. Prisma의 public adapter factory observer는 SQL rollback과 cleanup을 함께 확인하며, PostgreSQL backend 종료로 native runner가 숨기는 rollback 오류가 정상 Result 대신 전파됨을 확인합니다. Drizzle도 실제 SQL rollback rejection을 검증합니다. Mongo는 session/transaction/request/connection별 command 이벤트로 성공한 abort를 확인하고 일회성 서버 abort 오류가 driver 내부에서 숨겨져도 정상 Result를 반환하지 않음을 검증합니다. 관찰 불가능한 구성이나 불충분한 증거를 성공한 native rollback으로 간주하지 않습니다. [엄격한 공유 계약](../../../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따릅니다.
+이 fixture는 Result root/nested 성공·실패, ignored failure, 임의 기본 반환값, 잡힌 예외, native commit 오류를 각 wrapper의 세 공개 진입점에서 검증하고 독립 owner 동시성도 실제 DB에서 확인합니다. Prisma의 public adapter factory observer는 SQL rollback과 cleanup을 함께 확인하며, PostgreSQL backend 종료로 native runner가 숨기는 rollback 오류가 정상 Result 대신 전파됨을 확인합니다. 같은 사례는 public adapter factory에 대한 fixture 내부 통과 관측으로 해당 시도의 SQL `ROLLBACK`과 rollback cleanup 호출이 실제 거부한 오류 객체를 기록합니다. 실제 호출은 원래 receiver·인자·반환값·거부값을 그대로 유지하며 fake rollback, 오류 주입, private driver/engine 패칭을 사용하지 않습니다. 호출자 거부값은 관측된 객체를 보존해야 합니다. 오류가 하나면 동일 객체여야 하고, 여러 개면 `AggregateError.errors`에 관측된 객체가 발생 순서대로 담겨야 합니다. 같은 보존 판정에 `TransactionRollbackUnconfirmedError`나 무관한 일반 `Error`를 대입한 대조는 반드시 실패하므로, 메시지·name 일치나 연결 종료 통지가 보존을 대신할 수 없습니다. Drizzle도 실제 SQL rollback rejection을 검증합니다. Mongo는 session/transaction/request/connection별 command 이벤트로 성공한 abort를 확인하고 일회성 서버 abort 오류가 driver 내부에서 숨겨져도 정상 Result를 반환하지 않음을 검증합니다. 관찰 불가능한 구성이나 불충분한 증거를 성공한 native rollback으로 간주하지 않습니다. [엄격한 공유 계약](../../../../docs/architecture/transactions.ko.md#반환값-기반-롤백)을 따릅니다.
 
 ## 증거와 정리
 
@@ -106,7 +106,10 @@ sleep이나 driver 대체 없이 `finally`에서 failpoint를 해제합니다.
 공개 import 경로, Node TAP 결과를 출력합니다. `commands.json`에는 각 명령,
 출력, 종료 코드가 기록됩니다. 컨테이너 로그와 `result.json`에는 readiness,
 이미지 식별 정보, 정리 결과가 보존됩니다. 성공하려면 테스트 프로세스와 정리가
-모두 성공해야 합니다. Docker가 없다고 검증을 건너뛰지는 않습니다.
+모두 성공해야 합니다. Docker가 없다고 검증을 건너뛰지는 않습니다. Prisma의
+rollback 오류 보존 관계와 기각된 unconfirmed·무관 오류 대조는 실제 TAP 출력에
+`NATIVE_PRISMA_ROLLBACK_ERROR_PRESERVED`로 남습니다. 이 문서 자체는 실행 성공
+증거가 아니므로 receipt의 TAP와 `result.json`을 확인해야 합니다.
 
 Runner는 자신이 생성에 성공한 컨테이너 이름과 해당 anonymous volume만
 `finally`에서 제거합니다. 공유 컨테이너, 이미지, workspace 파일, 다른 실행의
