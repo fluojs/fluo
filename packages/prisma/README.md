@@ -164,6 +164,7 @@ export class MultiDatabaseService {
 }
 ```
 
+If an explicit accessor returns `null` or `undefined`, the decorated method rejects before any transaction runner or method body starts. The decorator does not fall back to automatic discovery and never substitutes another registered Prisma service for an empty accessor result.
 
 ### Manual Transactions and current()
 
@@ -382,7 +383,7 @@ Use `PrismaService<TClient>` when a provider only needs wrapper methods such as 
 
 ### `Transaction`
 
-- `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target form. The accessor selects the Prisma wrapper, native options remain separate, and Fluo policy is last. Existing options-only, no-argument, and accessor-plus-boundary calls remain legacy compatibility overloads.
+- `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target form. The accessor selects the Prisma wrapper, native options remain separate, and Fluo policy is last. An accessor returning `null` or `undefined` is rejected before the transaction runner or decorated method body starts; automatic service discovery is never used as a fallback for an empty accessor result. Existing options-only, no-argument, and accessor-plus-boundary calls remain legacy compatibility overloads.
 
 - Standard TC39 method decorator for service-layer transaction boundaries. Normal code supplies an accessor; automatic service/facade discovery is retained only for existing single-target services.
 

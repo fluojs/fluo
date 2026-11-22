@@ -26,16 +26,22 @@ export class AfterCommitError extends AggregateError {
   /** The native transaction committed successfully before these hook results were collected. */
   readonly committed = true as const;
 
+  /** Creation-time snapshot of all FIFO hook outcomes, preserving rejection reason identity. */
+  readonly results: readonly PromiseSettledResult<void>[];
+
   /**
-   * Collects all hook outcomes in registration order.
+   * Snapshots the input array and each settlement record in registration order.
+   * Rejection reasons retain their original identity and are not cloned or frozen.
    *
    * @param results Settled results for every registered callback, including successes.
    */
-  constructor(readonly results: readonly PromiseSettledResult<void>[]) {
+  constructor(results: readonly PromiseSettledResult<void>[]) {
+    const snapshot = results.map((result) => ({ ...result }));
     super(
-      results.flatMap((result) => result.status === 'rejected' ? [result.reason] : []),
+      snapshot.flatMap((result) => result.status === 'rejected' ? [result.reason] : []),
       'Transaction committed, but one or more afterCommit hooks failed.',
     );
+    this.results = snapshot;
     this.name = 'AfterCommitError';
   }
 }

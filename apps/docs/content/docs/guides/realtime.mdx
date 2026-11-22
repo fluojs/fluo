@@ -188,7 +188,11 @@ this.rooms.joinRoom(socket.id, 'room:123');
 this.rooms.broadcastToRoom('room:123', 'event', data);
 ```
 
-Inside a gateway handler, the current `@WebSocketGateway({ path })` namespace is inferred. Outside gateway handler context, pass the namespace path explicitly.
+`broadcastToRoom(room, event, data, namespacePath?)` uses the explicit managed namespace first, otherwise the current gateway handler namespace. If neither resolves it throws, without automatically falling back to `/`; outside a handler, pass the namespace path explicitly.
+
+`joinRoom(socketId, room, namespacePath?)` and `leaveRoom(socketId, room, namespacePath?)` also prefer an explicit namespace over handler context. With neither supplied, they find the socket by ID and use its namespace, throwing if the socket cannot be found either. Once an explicit or handler namespace is selected, they do not fall back to a same-ID socket in another namespace.
+
+`getRooms(socketId)` takes no namespace argument and reads `socketRegistry` independently of handler context. It returns a copy of a registered socket's room set, or an empty set for an unregistered ID, without checking connection state separately. The `ReadonlySet<string>` return type does not freeze the set at runtime.
 
 ```ts
 this.rooms.broadcastToRoom('room:123', 'event', data, '/chat');

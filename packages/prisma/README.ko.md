@@ -164,6 +164,8 @@ export class MultiDatabaseService {
 }
 ```
 
+명시적 accessor가 `null` 또는 `undefined`를 반환하면 데코레이터가 적용된 메서드는 어떤 트랜잭션 러너나 메서드 본문도 시작하기 전에 거부됩니다. 이 데코레이터는 자동 탐색으로 폴백하지 않으며, 비어 있는 accessor 반환값을 다른 등록된 Prisma 서비스로 대체하지 않습니다.
+
 ### 수동 트랜잭션과 current()
 
 `PrismaService`는 트랜잭션 범위 내에 있으면 자동으로 트랜잭션용 클라이언트를, 그렇지 않으면 루트 클라이언트를 반환하는 `current()` 메서드를 제공합니다. 외부 라이브러리에 클라이언트를 전달하거나 복잡한 수동 트랜잭션 처리가 필요한 경우 escape hatch로 사용하세요.
@@ -381,7 +383,7 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 
 ### `Transaction`
 
-- `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target 형식입니다. Accessor가 Prisma wrapper를 선택하고 native 옵션과 Fluo policy를 분리해 마지막에 둡니다. 기존 options-only, 무인자, accessor-plus-boundary 호출은 legacy 호환 overload로 남습니다.
+- `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target 형식입니다. Accessor가 Prisma wrapper를 선택하고 native 옵션과 Fluo policy를 분리해 마지막에 둡니다. Accessor가 `null` 또는 `undefined`를 반환하면 트랜잭션 러너와 데코레이터가 적용된 메서드 본문이 시작되기 전에 거부되며, 비어 있는 accessor 반환값에 대해 자동 service 탐색이 폴백으로 사용되지 않습니다. 기존 options-only, 무인자, accessor-plus-boundary 호출은 legacy 호환 overload로 남습니다.
 
 - 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 일반 코드는 accessor를 전달하며 자동 service/facade 탐색은 기존 단일 target 서비스에만 호환 동작으로 남습니다.
 
