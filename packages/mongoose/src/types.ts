@@ -9,9 +9,14 @@ export type { AfterCommitCallback, TransactionBoundaryOptions } from '@fluojs/pe
  *
  * @remarks
  * Fluo can open transaction helpers through either `connection.transaction(...)` or `startSession()`;
- * plain connection usage still works without either API.
+ * plain connection usage still works without either API. Concrete connections whose only Mongoose
+ * surface is `model(...)` satisfy this seam directly, so module registration and direct wrapper
+ * construction accept them without a connection type assertion; missing transaction capability
+ * is diagnosed at runtime instead of the type level.
  */
 export interface MongooseConnectionLike {
+  /** Resolves a model handle from the underlying Mongoose connection. */
+  model?(name: string, ...args: unknown[]): unknown;
   startSession?(): Promise<MongooseSessionLike>;
   transaction?<T>(fn: (session: MongooseSessionLike) => Promise<T>): Promise<T>;
 }
