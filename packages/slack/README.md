@@ -231,7 +231,7 @@ Behavioral contract notes:
 
 ### Template rendering and merge precedence
 
-Provide a `SlackTemplateRenderer` when notification templates should turn shared `@fluojs/notifications` envelopes into Slack-specific text, blocks, or attachments. `SlackService.sendNotification(...)` calls `renderer.render(input)` only when both `notification.template` and `SlackModuleOptions.renderer` are present. The render input includes `template`, `payload`, optional `subject`, optional `locale`, and optional dispatch `metadata`.
+Provide a `SlackTemplateRenderer` when notification templates should turn shared `@fluojs/notifications` envelopes into Slack-specific text, blocks, or attachments. `SlackService.sendNotification(...)` calls `renderer.render(input)` only when both `notification.template` and `SlackModuleOptions.renderer` are present. The render input includes `template`, `payload`, optional `subject`, optional `locale`, and optional dispatch `metadata`. When the caller passes an abort signal, `sendNotification(...)` forwards that same signal to the renderer as the optional render-input `signal`, so renderers can cooperate with in-flight cancellation; if the signal aborts during rendering, delivery rejects with `AbortError` before any transport call.
 
 ```typescript
 import type { SlackTemplateRenderer } from '@fluojs/slack';

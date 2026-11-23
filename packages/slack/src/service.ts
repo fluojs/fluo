@@ -481,6 +481,7 @@ export class SlackService implements OnModuleInit, OnApplicationShutdown {
       locale: notification.locale,
       metadata: notification.metadata,
       payload: notification.payload,
+      signal,
       subject: notification.subject,
       template: notification.template,
     });
