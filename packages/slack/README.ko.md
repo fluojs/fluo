@@ -379,4 +379,8 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `packages/slack/src/status.test.ts`: health/readiness 계약 예제.
 ## 호환되는 서비스 사본
 
-`SlackService`와 `SlackChannel`은 호환 사본 class injection을 지원하며 Slack channel token은 격리된 상태를 유지합니다.
+`SlackService`와 `SlackChannel`은 호환 사본 class injection을 지원합니다.
+
+공개 `SLACK_CHANNEL` 토큰은 `Symbol.for('fluo.slack.channel')`을 사용하므로 같은 symbol registry를 사용하는 호환 패키지 사본은 하나의 DI key를 공유합니다. 같은 조회 범위에서는 어느 사본에서 토큰을 가져오는지로 등록된 채널을 선택할 수 없습니다. 이 key 공유가 별도 애플리케이션 컨테이너의 채널 인스턴스까지 공유한다는 뜻은 아닙니다.
+
+`global: false`는 토큰 identity가 아니라 module 가시성을 바꿉니다. 여러 Slack client가 필요하면 [모듈 visibility와 migration boundary](#모듈-visibility와-migration-boundary)의 안내에 따라 서로 다른 `SlackTransport` 인스턴스를 감싸는 앱 소유 module/provider를 조합하세요. 런타임 동작은 바뀌지 않으며 마이그레이션은 필요하지 않습니다.

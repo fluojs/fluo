@@ -379,4 +379,8 @@ These limitations are part of the package contract so runtime choice, provider c
 - `packages/slack/src/status.test.ts`: Health/readiness contract examples.
 ## Compatible service copies
 
-`SlackService` and `SlackChannel` support compatible-copy class injection; Slack channel tokens remain isolated.
+`SlackService` and `SlackChannel` support compatible-copy class injection.
+
+The public `SLACK_CHANNEL` token uses `Symbol.for('fluo.slack.channel')`, so compatible package copies using the same symbol registry share one DI key. Within the same lookup scope, importing the token from a different copy cannot select a different registered channel. Sharing this key does not mean that separate application containers share channel instances.
+
+`global: false` changes module visibility, not token identity. For multiple Slack clients, compose app-owned modules/providers around distinct `SlackTransport` instances as described in [Module visibility and migration boundaries](#module-visibility-and-migration-boundaries). Runtime behavior is unchanged, and no migration is required.
