@@ -116,6 +116,25 @@ const drizzleProvider: Drizzle.DrizzleHandleProvider<DrizzleNative, NativeHandle
 const mongooseProvider: Mongoose.MongooseHandleProvider = mongoose;
 declare const prismaFacade: Prisma.PrismaServiceFacade<PrismaNative>;
 declare const drizzleFacade: Drizzle.DrizzleDatabaseFacade<DrizzleNative, NativeHandle, NativeOptions>;
+interface ModelOnlyMongooseConnection {
+  model(name: string): { readonly resolved: string };
+}
+declare const mongooseModelOnly: ModelOnlyMongooseConnection;
+const mongooseConcrete = new Mongoose.MongooseConnection(mongooseModelOnly);
+exact<Equal<ReturnType<typeof mongooseConcrete.current>, ModelOnlyMongooseConnection>>();
+const mongooseConcreteProvider: Mongoose.MongooseHandleProvider<ModelOnlyMongooseConnection> = mongooseConcrete;
+const mongooseConcreteRegistration: Mongoose.MongooseModuleOptions<ModelOnlyMongooseConnection> = {
+  connection: mongooseModelOnly,
+  dispose(connection) {
+    exact<Equal<typeof connection, ModelOnlyMongooseConnection>>();
+  },
+};
+const mongooseConcreteAsync: Mongoose.MongooseAsyncModuleOptions<ModelOnlyMongooseConnection> = {
+  useFactory: () => ({ connection: mongooseModelOnly }),
+};
+Mongoose.MongooseModule.forRoot({ connection: mongooseModelOnly });
+Mongoose.MongooseModule.forRootAsync({ useFactory: () => ({ connection: mongooseModelOnly }) });
+Mongoose.MongooseModule.forRootAsync({ useFactory: () => Promise.resolve({ connection: mongooseModelOnly }) });
 `;
 
 const surfaces = [

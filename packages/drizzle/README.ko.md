@@ -236,6 +236,8 @@ export function resultTransactions(databaseUrl: string) {
 - `TransactionRollbackObservation`: `confirmRollback(): true | Promise<true>`는 독립적으로 확인한 rollback 성공만 반환하고 실패/불확실성은 오류로 보고합니다. Sentinel 일치나 no-op 함수로 구현하지 마세요.
 - `TransactionRollbackUnconfirmedError`: 양의 native rollback 확인이 없어 정상 Result를 반환할 수 없음을 나타냅니다.
 
+직접 연결된 `Client`에서 `BEGIN`이 거부되면 observer의 관찰 범위가 자동으로 해제되어, 다음 독립 관찰 호출이 같은 client에서 수동 release, `ROLLBACK`, observer 재생성 없이 `BEGIN`과 `COMMIT`을 다시 실행합니다. 첫 `BEGIN`이 아직 진행 중일 때 다른 관찰 범위의 겹친 `BEGIN`은 하부 query 전에 거부되며 그 거절이 진행 중인 소유자의 관찰 범위를 해제하지 않습니다. 거부된 `BEGIN` 자체는 양의 rollback 확인 증거로 인정되지 않습니다.
+
 
 `shouldRollback`은 callback의 정상 반환값에 대한 동기 opt-in predicate입니다. 다음은 등록된 Node PostgreSQL wrapper를 받는 완전한 소비자 helper입니다. `persist`는 같은 wrapper의 `current()` 또는 facade로 DB 작업을 수행합니다. `Result`는 소비자 정의이며 Fluo는 전역 결과 형태를 도입하지 않습니다.
 
@@ -375,7 +377,7 @@ non-global이며 ALS transaction context, shutdown drain, disposal, status를 �
 
 애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 열린 요청 및 수동 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 여기에는 `database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`일 때의 fail-open 수동 `transaction(...)` callback도 포함되므로, 직접 실행 fallback도 pool이나 외부 관리 리소스를 닫기 전에 drain됩니다.
 상속한 owner가 settle된 뒤 새 boundary를 시작하는 transaction continuation은 닫힌 transaction handle을 더 이상 재사용하지 않습니다. 이 continuation은 독립적으로 tracking되는 root가 되며, shutdown은 disposal 전에 해당 continuation root를 기다립니다.
-기존 요청 boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 활성 Drizzle transaction을 재사용하면서도 ambient request abort signal을 관찰합니다. 기존 수동 transaction boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 두 번째 Drizzle transaction을 열지 않고 shutdown settlement tracking에 참여하며, 해당 settlement handle은 바깥 수동 transaction이 settle될 때까지 tracking에 남아 shutdown이 `dispose(database)`를 실행하기 전에 그 바깥 경계까지 drain하게 합니다. 단, platform status activity count는 더 짧게 유지됩니다. 중첩 request callback이 settle되는 즉시, 바깥 수동 transaction이 계속 실행 중이어도 `details.activeRequestTransactions`는 감소합니다.
+기존 요청 boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 활성 Drizzle transaction을 재사용하면서도 ambient request abort signal을 관찰합니다. 중첩 호출이 자체 `AbortSignal`을 전달하면 합성된 신호가 해당 중첩 callback의 ambient context에도 설치됩니다. 그 callback이 이후에 여는 `requestTransaction(...)` 호출은 자체 신호 여부와 무관하게 같은 합성 취소를 관찰합니다. 따라서 중첩 신호만 취소하면 해당 중첩 호출과 그 후손이 같은 중첩 취소 사유로 reject되고, 바깥 요청 신호, 독립된 sibling 요청 작업, 재사용 중인 활성 transaction handle은 그대로 유지됩니다. 이 전파는 fail-open boundary에 rollback 원자성을 추가하지 않으며 이미 실행 중인 사용자 작업을 중단하지도 않습니다. 기존 수동 transaction boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 두 번째 Drizzle transaction을 열지 않고 shutdown settlement tracking에 참여하며, 해당 settlement handle은 바깥 수동 transaction이 settle될 때까지 tracking에 남아 shutdown이 `dispose(database)`를 실행하기 전에 그 바깥 경계까지 drain하게 합니다. 단, platform status activity count는 더 짧게 유지됩니다. 중첩 request callback이 settle되는 즉시, 바깥 수동 transaction이 계속 실행 중이어도 `details.activeRequestTransactions`는 감소합니다.
 종료가 시작된 뒤 새 `transaction(...)` 및 `requestTransaction(...)` 호출은 거부되므로, 종료 boundary를 지난 뒤 시작되는 늦은 트랜잭션보다 dispose가 먼저 실행되는 상황을 방지합니다.
 등록된 hook이 없고 소유 경계의 `requireAfterCommit` 요구도 없는 기존 경계에서, 요청 callback이 완료된 뒤 underlying Drizzle transaction runner가 commit 또는 rollback을 끝내기 전에 request signal이 abort되면, `requestTransaction(...)`은 먼저 해당 runner가 settle될 때까지 기다린 다음 abort reason으로 reject합니다. 이 동작은 Drizzle cleanup을 request cancellation과 직렬화하면서, 완료된 callback 결과를 반환하는 대신 늦은 request abort를 caller에게 드러냅니다.
 

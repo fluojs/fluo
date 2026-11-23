@@ -31,6 +31,13 @@ Package-wide `engines.node`를 선언하지 않는 portable primitive이며, 구
 `RollbackOwner`, `evaluateResult`, `observeRollback`, `settleAfterCommitCallbacks`를 제공합니다.
 Application의 transaction 실행 API는 각 ORM 패키지에 남습니다.
 
+`createRequestAbortContext(signal?)`은 입력이 이미 취소되었거나 나중에 취소되면 반환된
+signal에 같은 reason 객체를 전달합니다. 먼저 등록된 caller listener가 이벤트 전파를 중단해도
+취소는 전달되며, 첫 취소 reason은 이후 취소로 바뀌지 않습니다.
+반환된 controller의 로컬 취소는 caller signal로 역전파되지 않고, 입력을 생략하면 독립적인 context를 만듭니다.
+`cleanup()`은 전달 listener를 해제하며 반복 호출해도 안전합니다. Cleanup 자체는 어느 signal도
+취소하지 않으며, cleanup 뒤의 caller 취소는 아직 취소되지 않은 반환 signal에 전달되지 않습니다.
+
 ## 사용 예
 
 기존 Prisma wrapper를 전달받는 service fragment입니다. 구체 client 및 rollback observer 등록은
@@ -55,12 +62,31 @@ Callback과 반환 타입·native option 위치는 바뀌지 않습니다.
 두 option은 기본적으로 생략됩니다. Failure-shaped 값만으로 rollback을 추론하지 않습니다.
 Predicate가 실패값을 선택하면 nested owner는 첫 실패값을 sticky rollback-only로 유지합니다.
 Root 실패값 복구에는 정확한 owner signal과 양의 native rollback 확인이 모두 필요합니다.
-Native commit·rollback·cleanup 오류는 원래 identity로 전파합니다.
+Native commit·rollback 오류는 원래 identity로 전파합니다.
+Result rollback 경로에서 transaction 실패와 abort 또는 session cleanup 실패가 겹치면 원본 단일 오류의
+identity 보존으로 일반화하지 않는 별도 경로입니다. `AggregateError.errors`에 원래 실패들을 보존하고
+`cause`에 앞선 실패를 두며, native 실패를 정상 Result나 `TransactionRollbackOnlyError`로 가리지 않습니다.
 
 After-commit 등록은 열린 동일 native callback scope에서 동기적으로 이루어집니다.
 성공한 outer commit과 해당 cleanup settlement 뒤, 종료된 ALS 밖에서 FIFO 순서로 모든 hook을 await합니다.
 Rollback·실패한 commit·폐기된 retry attempt의 hook은 실행하지 않습니다.
 Hook 실패는 commit을 취소하거나 native retry를 유발하지 않습니다.
+
+`AfterCommitError`는 생성 시점의 입력 배열과 각 settlement 레코드를 스냅샷으로 보관합니다.
+원본 레코드를 변경하거나 원본 배열을 재정렬·비워도 `results`의 모든 FIFO 결과와
+`errors`의 실패 순서는 유지됩니다. 두 필드의 rejection reason은 원래 객체 identity를
+보존하며 깊은 복사하거나 동결하지 않습니다. 반환된 `results`와 `errors`를 runtime에서
+불변으로 만드는 보장은 추가하지 않습니다.
+
+Mongoose 수동 session의 cleanup이 유일한 cleanup identity 예외입니다. Commit 성공을 확인한 뒤에도 hook 등록도
+없고 `requireAfterCommit` 요구도 없는 owner는 원본 `endSession()` 오류를 동일 객체로 전달받습니다.
+`requireAfterCommit` 생략 또는 `false`는 이 기존 분기를 보존합니다. Hook을 등록했거나 root 또는 nested
+boundary에서 `requireAfterCommit: true`를 요구한 수동 session owner는 cleanup이 실패하면 모든 hook을 종료된
+ALS 밖에서 시도한 뒤 `@fluojs/mongoose` root export인 `AfterCommitCleanupError`로 보고합니다.
+`AggregateError`의 직접 하위 클래스이며 `AfterCommitError`의 하위 클래스는 아닙니다.
+`committed === true`이고 `cause === cleanupFailure`입니다. `results`는 hook 결과만 FIFO로 담고 `errors`는
+cleanup 실패 다음에 실패한 hook 이유를 등록 순서대로 담습니다. Hook이 없는 opt-in이나 모든 hook이 성공한
+경우에도 cleanup 실패를 보고합니다.
 
 ORM은 native observer, callback attempt 수명, connection/session, shutdown admission과 drain을 소유합니다.
 Mongoose observer의 `connection?`은 session-owning connection 문맥이며

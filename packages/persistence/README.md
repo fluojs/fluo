@@ -31,6 +31,13 @@ These portable primitives declare no package-wide `engines.node` and do not broa
 `evaluateResult`, `observeRollback`, and `settleAfterCommitCallbacks` for first-party ORM composition.
 Application transaction execution APIs remain in each ORM package.
 
+`createRequestAbortContext(signal?)` forwards an already aborted or subsequently aborted input
+to the returned signal with the same reason object. Forwarding survives earlier caller listeners
+stopping event propagation, and later cancellation never replaces the first reason.
+Local cancellation through the returned controller never aborts the caller signal; omitting the input creates an independent context.
+`cleanup()` removes the forwarding listener and is safe to repeat. Cleanup itself aborts neither signal,
+and subsequent caller cancellation is not forwarded to a returned signal that is still active.
+
 ## Usage example
 
 This service fragment assumes an existing Prisma wrapper. Follow the
@@ -55,12 +62,33 @@ Callback/return typing and native option positions do not change.
 Both options are omitted by default. Failure-shaped values never imply rollback.
 When a predicate rejects a value, the nested owner keeps its first failure sticky rollback-only.
 Recovering a root failure requires both its exact owner signal and positive native rollback confirmation.
-Native commit, rollback, and cleanup errors propagate with their original identity.
+Native commit and rollback errors propagate with their original identity.
+In the Result rollback path, a transaction failure overlapped by a failed abort or a failed session cleanup
+follows a separate branch instead of single-identity propagation: the original failures are preserved in
+`AggregateError.errors` with the earlier failure as `cause`, and native failures are never masked as a
+normal result or `TransactionRollbackOnlyError`.
 
 After-commit registration is synchronous within the same open native callback scope.
 After successful outer commit and associated cleanup settlement, every hook is awaited FIFO outside ended ALS.
 Rollback, failed commit, and discarded retry attempts never run their hooks.
 Hook failures do not undo commit or trigger native retry.
+
+`AfterCommitError` snapshots the input array and each settlement record at construction.
+Changing the original records or reordering or clearing the original array leaves all FIFO
+`results` and the failure order in `errors` intact. Rejection reasons in both fields retain
+their original object identity and are neither deep-cloned nor frozen. This adds no runtime
+immutability guarantee for the returned `results` or `errors`.
+
+Mongoose's manual-session cleanup is the one cleanup identity exception. After a confirmed commit, an owner
+that registered no hooks and required no `requireAfterCommit` still receives the original `endSession()`
+failure as the same object; omitting `requireAfterCommit` or passing `false` preserves this branch.
+An owner that registered hooks or required `requireAfterCommit: true` at a root or nested boundary has every
+hook attempted outside the ended ALS once cleanup fails, and the boundary then reports the `@fluojs/mongoose`
+root-exported `AfterCommitCleanupError`, a direct `AggregateError` subclass rather than an `AfterCommitError`
+subclass, with `committed === true` and `cause === cleanupFailure`.
+Its `results` holds hook outcomes FIFO only, while `errors` holds the cleanup failure followed by failed hook
+reasons in registration order; cleanup failure stays reportable with no hooks when opted in, and when every
+hook succeeds.
 
 ORM packages own native observers, callback attempt lifetimes, connections/sessions, shutdown admission and drain.
 The Mongoose observer's `connection?` supplies session-owning connection context;

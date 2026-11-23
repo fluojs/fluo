@@ -297,7 +297,9 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 		if (event.kind !== "review") continue;
 		const envelopes = Array.isArray(event.data?.reviews)
 			? event.data.reviews
-			: [event.data];
+			: [event.data && Object.hasOwn(event.data, "envelope")
+				? event.data.envelope
+				: event.data];
 		for (const envelope of envelopes) {
 			if (!envelope || !Array.isArray(envelope.blockers)) {
 				unstructuredReviewEventIds.add(event.eventId);

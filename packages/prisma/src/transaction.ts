@@ -87,6 +87,8 @@ function isBoundaryOptions<TResult>(value: unknown): value is TransactionBoundar
  * service before forwarding Prisma-native options and Fluo boundary policy as separate inputs. `@Transaction()` and
  * options-only calls remain compatibility forms for existing single-target services, with boundary policy second.
  * Without an accessor, a third argument is rejected rather than silently discarding policy.
+ * An explicit accessor that returns `null` or `undefined` is rejected before any transaction runner or decorated method
+ * body starts; automatic service discovery is never used as a fallback for an empty accessor result.
  * Calls made while a transaction context is already active reuse the existing Prisma transaction through `PrismaService`.
  * Passing Prisma transaction options to a nested call is rejected by `PrismaService.transaction(...)` so option intent is not
  * silently ignored.
@@ -129,12 +131,16 @@ export function Transaction<THost, TOptions = unknown, TResult = unknown>(
     }
 
     return async function wrappedTransactionMethod(this: THost, ...args: TArgs): Promise<TReturn> {
-      const prisma = accessor?.(this) ?? resolveDefaultPrismaService(this);
+      const prisma = accessor === undefined ? resolveDefaultPrismaService(this) : accessor(this);
+
+      if (prisma === null || prisma === undefined) {
+        throw new Error('The @Transaction() accessor returned no PrismaService.');
+      }
 
       if (transactionBoundary?.shouldRollback && !isCompatiblePrismaServiceHandle(prisma)) {
         throw new TransactionRollbackCapabilityError();
       }
-      if (transactionBoundary?.requireAfterCommit && typeof readProperty(prisma, 'afterCommit') !== 'function') {
+      if (transactionBoundary?.requireAfterCommit && !isCompatiblePrismaServiceHandle(prisma)) {
         throw new AfterCommitCapabilityError();
       }
 

@@ -529,8 +529,13 @@ describe('@fluojs/drizzle', () => {
     const database = {};
     const descendantStarted = createDeferred();
     const descendantBarrier = createDeferred();
-    const drizzle = new DrizzleDatabase<typeof database>(database, () => {
-      events.push('dispose');
+    const disposeStarted = createDeferred();
+    const disposeBarrier = createDeferred();
+    const drizzle = new DrizzleDatabase<typeof database>(database, async () => {
+      events.push('dispose:start');
+      disposeStarted.resolve();
+      await disposeBarrier.promise;
+      events.push('dispose:end');
     });
     let lateRequestTransaction: Promise<void> | undefined;
     let shutdown: Promise<void> | undefined;
@@ -548,6 +553,9 @@ describe('@fluojs/drizzle', () => {
       events.push('outer:end');
     });
 
+    let descendantReleased = false;
+    let disposeReleased = false;
+
     try {
       await outerTransaction;
       await descendantStarted.promise;
@@ -563,24 +571,46 @@ describe('@fluojs/drizzle', () => {
 
       // When: shutdown starts after the descendant becomes independently active.
       shutdown = drizzle.onApplicationShutdown();
-      await Promise.resolve();
+
+      // The shutdown abort interrupts the late request transaction while its callback is still blocked
+      // on the descendant barrier; until that barrier releases, disposal must not begin.
+      await lateRequestRejection;
       expect(events).toEqual(['outer:end', 'descendant:start']);
 
+      descendantReleased = true;
       descendantBarrier.resolve();
-      await lateRequestRejection;
-      const shutdownOutcome = await Promise.race([
-        shutdown.then(() => 'settled'),
-        new Promise<'pending'>((resolve) => setImmediate(() => resolve('pending'))),
-      ]);
 
-      // Then: shutdown drains the late callback and disposes without waiting on stale owner state.
-      expect(shutdownOutcome).toBe('settled');
-      expect(events).toEqual(['outer:end', 'descendant:start', 'descendant:end', 'dispose']);
+      // Then: the drained descendant callback ends before disposal begins.
+      await disposeStarted.promise;
+      expect(events.indexOf('descendant:end')).toBeLessThan(events.indexOf('dispose:start'));
+
+      // Disposal entry and completion are distinct: while the dispose barrier holds the async
+      // dispose callback open, shutdown stays incomplete instead of finishing without it.
+      expect(drizzle.createPlatformStatusSnapshot().details.lifecycleState).toBe('shutting-down');
+
+      disposeReleased = true;
+      disposeBarrier.resolve();
+
+      // Awaiting shutdown has no completion deadline: an implementation that never settles is
+      // caught by the test's overall timeout rather than by a raced timer assertion.
+      await shutdown;
+      expect(events).toEqual(['outer:end', 'descendant:start', 'descendant:end', 'dispose:start', 'dispose:end']);
+      expect(drizzle.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopped');
     } finally {
-      descendantBarrier.resolve();
+      if (!descendantReleased) {
+        descendantReleased = true;
+        descendantBarrier.resolve();
+      }
+
+      if (!disposeReleased) {
+        disposeReleased = true;
+        disposeBarrier.resolve();
+      }
+
       await Promise.allSettled([
         outerTransaction,
         lateRequestTransaction ?? Promise.resolve(),
+        shutdown ?? Promise.resolve(),
       ]);
     }
   });
@@ -1430,6 +1460,150 @@ describe('@fluojs/drizzle', () => {
       expect(transactionCalls).toBe(1);
     } finally {
       nestedBarrier.resolve();
+      await Promise.allSettled([requestTransaction]);
+    }
+  });
+
+  it('propagates a nested request abort signal to descendant request transactions', async () => {
+    const transactionDatabase = {};
+    let transactionCalls = 0;
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionDatabase);
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
+    const rootController = new AbortController();
+    const nestedController = new AbortController();
+    const nestedContinuation = createDeferred();
+    const nestedRejectionObserved = createDeferred();
+    const descendantObserved = createDeferred();
+    let descendantCalls = 0;
+    let intermediateError: Error | undefined;
+    let descendantError: Error | undefined;
+    let siblingResult: string | undefined;
+    let siblingHandle: unknown;
+
+    const requestTransaction = drizzle.requestTransaction(
+      async () => {
+        try {
+          await drizzle.requestTransaction(async () => {
+            nestedController.abort(new Error('nested request aborted'));
+            await nestedContinuation.promise;
+            try {
+              await drizzle.requestTransaction(async () => {
+                descendantCalls += 1;
+                return 'descendant-unreachable';
+              });
+            } catch (error) {
+              descendantError = error as Error;
+            }
+            descendantObserved.resolve();
+            return 'nested-unreachable';
+          }, nestedController.signal);
+        } catch (error) {
+          intermediateError = error as Error;
+        }
+        nestedRejectionObserved.resolve();
+        siblingResult = await drizzle.requestTransaction(async () => {
+          siblingHandle = drizzle.current();
+          return 'sibling-ok';
+        });
+        return 'root-ok';
+      },
+      rootController.signal,
+    );
+
+    try {
+      await nestedRejectionObserved.promise;
+      expect(rootController.signal.aborted).toBe(false);
+
+      nestedContinuation.resolve();
+      await descendantObserved.promise;
+
+      await expect(requestTransaction).resolves.toBe('root-ok');
+
+      expect(descendantCalls).toBe(0);
+      expect(intermediateError?.name).toBe('AbortError');
+      expect(intermediateError?.message).toBe('nested request aborted');
+      expect(descendantError?.name).toBe('AbortError');
+      expect(descendantError?.message).toBe(intermediateError?.message);
+      expect(rootController.signal.aborted).toBe(false);
+      expect(nestedController.signal.aborted).toBe(true);
+      expect(transactionCalls).toBe(1);
+      expect(siblingResult).toBe('sibling-ok');
+      expect(siblingHandle).toBe(transactionDatabase);
+    } finally {
+      nestedContinuation.resolve();
+      await Promise.allSettled([requestTransaction]);
+    }
+  });
+
+  it('propagates a nested fail-open request abort signal to descendant request transactions', async () => {
+    const database = {};
+    const drizzle = new DrizzleDatabase<typeof database>(database);
+    const rootController = new AbortController();
+    const nestedController = new AbortController();
+    const nestedContinuation = createDeferred();
+    const nestedRejectionObserved = createDeferred();
+    const descendantObserved = createDeferred();
+    let descendantCalls = 0;
+    let intermediateError: Error | undefined;
+    let descendantError: Error | undefined;
+    let siblingResult: string | undefined;
+    let siblingHandle: unknown;
+
+    const requestTransaction = drizzle.requestTransaction(
+      async () => {
+        try {
+          await drizzle.requestTransaction(async () => {
+            nestedController.abort(new Error('nested fail-open request aborted'));
+            await nestedContinuation.promise;
+            try {
+              await drizzle.requestTransaction(async () => {
+                descendantCalls += 1;
+                return 'descendant-unreachable';
+              });
+            } catch (error) {
+              descendantError = error as Error;
+            }
+            descendantObserved.resolve();
+            return 'nested-unreachable';
+          }, nestedController.signal);
+        } catch (error) {
+          intermediateError = error as Error;
+        }
+        nestedRejectionObserved.resolve();
+        siblingResult = await drizzle.requestTransaction(async () => {
+          siblingHandle = drizzle.current();
+          return 'sibling-ok';
+        });
+        return 'root-ok';
+      },
+      rootController.signal,
+    );
+
+    try {
+      await nestedRejectionObserved.promise;
+      expect(rootController.signal.aborted).toBe(false);
+
+      nestedContinuation.resolve();
+      await descendantObserved.promise;
+
+      await expect(requestTransaction).resolves.toBe('root-ok');
+
+      expect(descendantCalls).toBe(0);
+      expect(intermediateError?.name).toBe('AbortError');
+      expect(intermediateError?.message).toBe('nested fail-open request aborted');
+      expect(descendantError?.name).toBe('AbortError');
+      expect(descendantError?.message).toBe(intermediateError?.message);
+      expect(rootController.signal.aborted).toBe(false);
+      expect(nestedController.signal.aborted).toBe(true);
+      expect(siblingResult).toBe('sibling-ok');
+      expect(siblingHandle).toBe(database);
+    } finally {
+      nestedContinuation.resolve();
       await Promise.allSettled([requestTransaction]);
     }
   });

@@ -72,6 +72,8 @@ class AppModule {}
 
 `MongooseModule.forRootAsync(...)`는 주입된 의존성과 동기 또는 비동기로 옵션을 반환하는 `useFactory`를 지원합니다. 여러 모듈에서 async 등록 helper를 공유할 때는 export된 `MongooseAsyncModuleOptions<TConnection>` 타입을 사용하세요. provider를 전역으로 노출해야 할 때는 최상위 async 등록 옵션에 `global`을 전달하세요. 해석된 옵션은 하나의 애플리케이션 container 안에서 재사용되므로 해당 container의 모든 provider에서 연결 설정과 dispose hook이 일관되게 유지됩니다. 테스트나 multi-app 프로세스에서 같은 async module definition을 재사용해도 memoize된 연결을 공유하지 않고 애플리케이션 container마다 새 옵션을 해석합니다.
 
+등록은 애플리케이션이 이미 소유한 구체 연결 형태를 그대로 받아들입니다. `startSession()`이나 `connection.transaction(...)` 없이 `model(...)`만 노출하는 연결도 연결 타입 단언 없이 `forRoot(...)`, `forRootAsync(...)`, 직접 `MongooseConnection` 생성으로 등록할 수 있으며 `current()`와 `dispose(connection)`는 해당 구체 타입을 유지합니다. Transaction capability는 선택 사항이며, 두 API 모두 없을 때는 [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)에 문서화된 fail-open 동작이 적용됩니다.
+
 ## 라이프사이클과 종료
 
 `MongooseModule`은 `MongooseConnection`을 fluo 애플리케이션 라이프사이클에 등록합니다. 이 패키지는 원본 Mongoose 연결을 직접 생성하거나 소유하지 않습니다. `connection`에는 concrete Mongoose connection object/function을 전달하고, 연결 문자열, pool, plugin, model compilation ownership은 애플리케이션에 남겨두며, 애플리케이션 종료 시 외부 연결을 닫아야 한다면 `dispose` 훅을 전달하세요.
@@ -199,21 +201,28 @@ export class RequestTransactionBoundary implements Interceptor {
 
 `MongooseConnection`은 활성 MongoDB 세션에 접근하기 위한 `currentSession()`과 루트 연결 handle에 접근하기 위한 `current()` 메서드를 제공합니다. 외부 유틸리티에 세션을 전달하거나 복잡한 수동 처리가 필요한 경우 escape hatch로 사용하세요.
 
+이 예제는 애플리케이션이 소유한 native `mongoose.Connection`을 래핑한 `MongooseConnection<Connection>`을 받습니다. 같은 연결에 `status` 필드를 가진 `User` model을 미리 등록하고, native session은 같은 Mongoose 설치본에서 생성해야 합니다. `current().model(...)`은 raw model 접근이므로 `conn.model(...)` facade의 자동 세션 주입을 받지 않습니다.
+
 ```ts
 import { MongooseConnection } from '@fluojs/mongoose';
+import mongoose, { type Connection } from 'mongoose';
 
 export class AdvancedRepository {
-  constructor(private readonly conn: MongooseConnection) {}
+  constructor(private readonly conn: MongooseConnection<Connection>) {}
 
   async customOperation() {
     const session = this.conn.currentSession();
+    if (session !== undefined && !(session instanceof mongoose.mongo.ClientSession)) {
+      throw new TypeError('Expected a native Mongoose ClientSession.');
+    }
+
     const User = this.conn.current().model('User');
-    
-    // 명시적으로 세션 전달
-    return User.find({ status: 'active' }).session(session || null);
+    return User.find({ status: 'active' }).session(session ?? null);
   }
 }
 ```
+
+활성 native session이 있으면 같은 객체를 쿼리에 전달합니다. Session이 없으면 `null`을 전달해 트랜잭션 밖에서 active user를 조회합니다. 활성 세션이 native `ClientSession`이 아니면 쿼리를 실행하기 전에 거부하며 세션 없는 실행으로 전환하지 않습니다.
 
 수동 트랜잭션 블록에는 `conn.transaction()`을 사용하세요:
 

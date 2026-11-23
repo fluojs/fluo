@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { NotificationsService } from './service.js';
 import type {
@@ -81,7 +81,221 @@ class SelectiveFailureQueueAdapter implements NotificationsQueueAdapter {
   }
 }
 
+function createByteNotification() {
+  const buffer = new Uint8Array([1, 2, 3]).buffer;
+  const payload: Record<string, unknown> = {
+    buffer,
+    dataView: new DataView(buffer, 0, 2),
+    view: new Uint8Array(buffer, 1, 2),
+  };
+  payload.self = payload;
+
+  return { channel: 'email', payload };
+}
+
+function mutateNotificationBytes(notification: NotificationDispatchRequest): void {
+  const { buffer, dataView, view, self } = notification.payload;
+  expect(buffer).toBeInstanceOf(ArrayBuffer);
+  expect(dataView).toBeInstanceOf(DataView);
+  expect(view).toBeInstanceOf(Uint8Array);
+  expect(self).toBe(notification.payload);
+
+  if (!(view instanceof Uint8Array) || !(dataView instanceof DataView)) {
+    throw new TypeError('Expected native notification byte views.');
+  }
+
+  expect(view.buffer).toBe(buffer);
+  expect(dataView.buffer).toBe(buffer);
+  expect(view.byteOffset).toBe(1);
+  expect(view.byteLength).toBe(2);
+  expect(dataView.byteOffset).toBe(0);
+  expect(dataView.byteLength).toBe(2);
+  view[0] = 9;
+  expect(Array.from(view)).toEqual([9, 3]);
+  expect(dataView.getUint8(1)).toBe(9);
+}
+
 describe('NotificationsService lifecycle snapshots', () => {
+  it.each([false, true])(
+    'dispatchMany rejects the entire batch before any side effect when a later payload has an accessor (queue: %s)',
+    async (queue) => {
+      const publish = vi.fn(async () => {});
+      const send = vi.fn(async () => ({ externalId: 'delivered:email' }));
+      const enqueue = vi.fn(async () => 'queued:email');
+      const enqueueMany = vi.fn(async () => ['queued:first', 'queued:second']);
+      const channel: NotificationChannel = { channel: 'email', send };
+      const service = new NotificationsService(
+        {
+          channels: [channel],
+          events: { publishLifecycleEvents: true, publisher: { publish } },
+          queue: { adapter: { enqueue, enqueueMany }, bulkThreshold: 10 },
+        },
+        [channel],
+      );
+      const getter = vi.fn(() => 'unsafe');
+      const payload: Record<string, unknown> = {};
+      Object.defineProperty(payload, 'template', { enumerable: true, get: getter });
+
+      await expect(
+        service.dispatchMany(
+          [
+            { channel: 'email', payload: { template: 'first' } },
+            { channel: 'email', payload },
+          ],
+          { continueOnError: true, queue },
+        ),
+      ).rejects.toThrow(TypeError);
+
+      expect(getter).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(enqueueMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['delivered', 'queued', 'failed'] as const)(
+    'dispatch preserves admission snapshots and fallback identity after channel adapter byte mutation (%s)',
+    async (status) => {
+      const events: NotificationLifecycleEvent[] = [];
+      const deliveries: NotificationDispatchRequest[] = [];
+      const channel: NotificationChannel = {
+        channel: 'email',
+        async send(notification) {
+          deliveries.push(notification);
+          mutateNotificationBytes(notification);
+          if (status === 'failed') {
+            throw new Error('provider failed after byte mutation');
+          }
+
+          return { status };
+        },
+      };
+      const service = new NotificationsService(
+        {
+          channels: [channel],
+          events: {
+            publishLifecycleEvents: true,
+            publisher: {
+              async publish(event) {
+                events.push(event);
+              },
+            },
+          },
+        },
+        [channel],
+      );
+      const notification = createByteNotification();
+
+      const dispatch = service.dispatch(notification);
+
+      if (status === 'failed') {
+        await expect(dispatch).rejects.toThrow('provider failed after byte mutation');
+      } else {
+        const controlChannel: NotificationChannel = {
+          channel: 'email',
+          async send() {
+            return { status };
+          },
+        };
+        const control = new NotificationsService({ channels: [controlChannel] }, [controlChannel]);
+        const expected = await control.dispatch(createByteNotification());
+        const result = await dispatch;
+        expect(result.deliveryId).toBe(expected.deliveryId);
+        expect(result.status).toBe(status);
+      }
+
+      expect(deliveries).toHaveLength(1);
+      expect(deliveries[0]?.payload).not.toBe(notification.payload);
+      expect(notification.payload.buffer).toEqual(new Uint8Array([1, 2, 3]).buffer);
+      expect(events.map((event) => event.name)).toEqual([
+        'notification.dispatch.requested',
+        `notification.dispatch.${status}`,
+      ]);
+      for (const event of events) {
+        expect(event.notification.payload).toMatchObject({
+          buffer: { kind: 'ArrayBuffer', bytes: [1, 2, 3] },
+          dataView: { kind: 'ArrayBufferView', view: 'DataView', bytes: [1, 2] },
+          view: { kind: 'ArrayBufferView', view: 'Uint8Array', bytes: [2, 3] },
+        });
+      }
+    },
+  );
+
+  it.each(['single', 'native batch', 'sequential batch'] as const)(
+    'dispatch preserves admission snapshots and queue return IDs after queue adapter byte mutation (%s)',
+    async (mode) => {
+      const events: NotificationLifecycleEvent[] = [];
+      const jobs: NotificationsQueueJob[] = [];
+      const handoffs: string[] = [];
+      const queue: NotificationsQueueAdapter = {
+        async enqueue(job) {
+          handoffs.push('enqueue');
+          jobs.push(job);
+          mutateNotificationBytes(job.notification);
+
+          return `queue:${jobs.length}`;
+        },
+        ...(mode === 'native batch' ? {
+          async enqueueMany(batch: readonly NotificationsQueueJob[]) {
+            handoffs.push('enqueueMany');
+            jobs.push(...batch);
+            return batch.map((job, index) => {
+              mutateNotificationBytes(job.notification);
+
+              return `queue:${index + 1}`;
+            });
+          },
+        } : {}),
+      };
+      const channel: NotificationChannel = {
+        channel: 'email',
+        async send() {
+          throw new Error('queued dispatch must not send directly');
+        },
+      };
+      const service = new NotificationsService(
+        {
+          channels: [channel],
+          events: {
+            publishLifecycleEvents: true,
+            publisher: {
+              async publish(event) {
+                events.push(event);
+              },
+            },
+          },
+          queue: { adapter: queue, bulkThreshold: 2 },
+        },
+        [channel],
+      );
+      const notifications = [createByteNotification(), createByteNotification()] as const;
+
+      const results = mode === 'single'
+        ? [await service.dispatch(notifications[0], { queue: true })]
+        : (await service.dispatchMany(notifications)).results;
+
+      const count = mode === 'single' ? 1 : 2;
+      expect(results.map((result) => result.deliveryId)).toEqual(
+        mode === 'single' ? ['queue:1'] : ['queue:1', 'queue:2'],
+      );
+      expect(results.map((result) => result.status)).toEqual(Array(count).fill('queued'));
+      expect(handoffs).toEqual(mode === 'native batch' ? ['enqueueMany'] : Array(count).fill('enqueue'));
+      expect(jobs).toHaveLength(count);
+      expect(events.map((event) => event.name)).toEqual([
+        ...Array(count).fill('notification.dispatch.requested'),
+        ...Array(count).fill('notification.dispatch.queued'),
+      ]);
+      for (const event of events) {
+        expect(event.notification.payload).toMatchObject({
+          buffer: { kind: 'ArrayBuffer', bytes: [1, 2, 3] },
+          dataView: { kind: 'ArrayBufferView', view: 'DataView', bytes: [1, 2] },
+          view: { kind: 'ArrayBufferView', view: 'Uint8Array', bytes: [2, 3] },
+        });
+      }
+    },
+  );
+
   it('isolates requested and delivered event snapshots from caller and observer mutations', async () => {
     const publisher = new MutatingLifecyclePublisher();
     const deliveries: NotificationLifecycleEvent['notification'][] = [];
@@ -818,12 +1032,13 @@ describe('NotificationsService lifecycle snapshots', () => {
     });
     const prototypeAccessorPayload = Object.create(prototype) as Record<string, unknown>;
 
-    await expect(
-      service.dispatch({ channel: 'email', payload: ownAccessorPayload }),
-    ).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
-    await expect(
-      service.dispatch({ channel: 'email', payload: prototypeAccessorPayload }),
-    ).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
+    const ownAccessorDispatch = service.dispatch({ channel: 'email', payload: ownAccessorPayload });
+    const prototypeAccessorDispatch = service.dispatch({ channel: 'email', payload: prototypeAccessorPayload });
+
+    await expect(ownAccessorDispatch).rejects.toThrow(TypeError);
+    await expect(ownAccessorDispatch).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
+    await expect(prototypeAccessorDispatch).rejects.toThrow(TypeError);
+    await expect(prototypeAccessorDispatch).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
 
     expect(ownAccessorReads).toBe(0);
     expect(prototypeAccessorReads).toBe(0);

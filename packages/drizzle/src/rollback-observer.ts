@@ -13,6 +13,8 @@ type Attempt = { claimed: boolean; rolledBack: boolean; released: boolean; error
  * @remarks Construct Drizzle with the returned client/pool proxy and register the paired
  * `rollbackObserver` in Fluo options. Only promise-based node-postgres transactions are supported.
  * Other Drizzle drivers require their own positive native observation capability.
+ * A rejected `BEGIN` on a directly connected client releases the observation claim, so the next
+ * independent observation scope reuses the same client without a manual release or `ROLLBACK`.
  * @param client Public node-postgres Pool or connected Client used to construct Drizzle.
  * @returns The type-preserving client proxy and paired rollback observer.
  */
@@ -75,7 +77,8 @@ export function createDrizzleRollbackObserver<TClient extends object>(client: TC
             const query = args[0];
             const text = typeof query === 'string' ? query : typeof query === 'object' && query !== null
               ? String(Reflect.get(query, 'text')) : '';
-            if (/^\s*begin\b/i.test(text)) {
+            const begin = /^\s*begin\b/i.test(text);
+            if (begin) {
               if (activeScope && activeScope !== scope) throw new TransactionRollbackCapabilityError();
               activeScope = scope;
               attempt = { claimed: false, rolledBack: false, released: !pooled, errors: [] };
@@ -92,6 +95,13 @@ export function createDrizzleRollbackObserver<TClient extends object>(client: TC
                 return outcome;
               }, (error: unknown) => {
                 if (rollback) current?.errors.push(error);
+                // A rejected BEGIN leaves no open transaction on a directly connected
+                // client: release the observation claim so an independent scope can
+                // reuse the client, without counting the failure as rollback evidence.
+                if (begin && !pooled && activeScope === scope && attempt === current) {
+                  activeScope = undefined;
+                  attempt = undefined;
+                }
                 throw error;
               });
             } catch (error) {

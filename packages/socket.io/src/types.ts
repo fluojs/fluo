@@ -27,7 +27,8 @@ export interface SocketIoRoomService extends WebSocketRoomService {
    * @param room Room identifier that should receive the event.
    * @param event Socket.IO event name emitted to room members.
    * @param data Payload delivered with the event.
-   * @param namespacePath Optional namespace path when broadcasting outside the default namespace.
+   * @param namespacePath Explicit managed namespace path; when omitted, uses the current gateway handler namespace.
+   * @throws If neither the explicit path nor handler context resolves a managed namespace; no automatic fallback to `/`.
    */
   broadcastToRoom(room: string, event: string, data: unknown, namespacePath?: string): void;
 
@@ -36,7 +37,10 @@ export interface SocketIoRoomService extends WebSocketRoomService {
    *
    * @param socketId Socket identifier to move into the room.
    * @param room Room identifier to join.
-   * @param namespacePath Optional namespace path when targeting a non-default namespace.
+   * @param namespacePath Explicit namespace path, taking precedence over the current gateway handler namespace.
+   * @remarks With neither a path nor handler context, finds the socket by ID and uses its namespace.
+   * A selected namespace does not fall back to a same-ID socket in another namespace.
+   * @throws If no namespace or socket can be resolved.
    */
   joinRoom(socketId: string, room: string, namespacePath?: string): void;
 
@@ -45,15 +49,20 @@ export interface SocketIoRoomService extends WebSocketRoomService {
    *
    * @param socketId Socket identifier to remove from the room.
    * @param room Room identifier to leave.
-   * @param namespacePath Optional namespace path when targeting a non-default namespace.
+   * @param namespacePath Explicit namespace path, taking precedence over the current gateway handler namespace.
+   * @remarks With neither a path nor handler context, finds the socket by ID and uses its namespace.
+   * A selected namespace does not fall back to a same-ID socket in another namespace.
+   * @throws If no namespace or socket can be resolved.
    */
   leaveRoom(socketId: string, room: string, namespacePath?: string): void;
 
   /**
-   * Returns a snapshot of rooms currently joined by one connected socket.
+   * Returns a copy of the room set for one registered socket, independently of handler context.
    *
    * @param socketId Socket identifier to inspect.
-   * @returns Current room names for the socket, or an empty set when the socket is not registered.
+   * @returns A copy of the registered socket's rooms, or an empty set when the socket is not registered.
+   * @remarks Reads the socket registry without an additional connection-state check.
+   * Accepts no namespace argument. The readonly return type does not freeze the set at runtime.
    */
   getRooms(socketId: string): ReadonlySet<string>;
 }

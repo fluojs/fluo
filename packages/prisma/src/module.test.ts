@@ -237,6 +237,79 @@ describe('@fluojs/prisma', () => {
     ]);
   });
 
+  it('forwards same-named serviceOptions delegates through the injected facade', async () => {
+    const rootDelegateCalls: Array<{ label: string; receiver: unknown }> = [];
+    const transactionDelegateCalls: Array<{ label: string; receiver: unknown }> = [];
+    const transactionClient = {
+      serviceOptions(label: string) {
+        transactionDelegateCalls.push({ label, receiver: this });
+        return { scope: 'transaction' };
+      },
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+      serviceOptions(label: string) {
+        rootDelegateCalls.push({ label, receiver: this });
+        return { scope: 'root' };
+      },
+      transaction: vi.fn(() => 'client-owned-transaction-property'),
+    };
+
+    @Inject(PrismaService)
+    class OptionsDelegateRepository {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      currentHandle() {
+        return this.prisma.current();
+      }
+
+      readOutsideBoundary(label: string) {
+        return this.prisma.serviceOptions(label);
+      }
+
+      async readInsideBoundary() {
+        return this.prisma.transaction(async () => ({
+          current: this.prisma.current(),
+          value: await this.prisma.serviceOptions('inside'),
+        }));
+      }
+    }
+
+    const prismaModule = PrismaModule.forRoot<typeof client, typeof transactionClient>({ client });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [prismaModule],
+      providers: [OptionsDelegateRepository],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const repository = await app.container.resolve(OptionsDelegateRepository);
+
+      expect(repository.currentHandle()).toBe(client);
+      expect(repository.readOutsideBoundary('outside')).toEqual({ scope: 'root' });
+      expect(rootDelegateCalls).toEqual([{ label: 'outside', receiver: client }]);
+      expect(transactionDelegateCalls).toEqual([]);
+
+      const inside = await repository.readInsideBoundary();
+      expect(inside.current).toBe(transactionClient);
+      expect(inside.value).toEqual({ scope: 'transaction' });
+      expect(transactionDelegateCalls).toEqual([{ label: 'inside', receiver: transactionClient }]);
+      expect(rootDelegateCalls).toEqual([{ label: 'outside', receiver: client }]);
+
+      expect(client.transaction).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('supports manual defineModule composition via PrismaModule.forRoot imports', async () => {
     const events: string[] = [];
     const client = {
@@ -566,6 +639,46 @@ describe('@fluojs/prisma', () => {
     }
   });
 
+  it('executes transaction and request callbacks directly and stays ready without ALS or a native runner in non-strict mode', async () => {
+    const originalAsyncLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
+    const getBuiltinModuleSpy = vi.spyOn(process, 'getBuiltinModule').mockReturnValue(undefined);
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async read(value: string) {
+        return { value };
+      },
+    };
+
+    Reflect.set(globalThis, 'AsyncLocalStorage', undefined);
+
+    try {
+      const prisma = new PrismaService(client);
+      await prisma.onModuleInit();
+
+      const snapshot = prisma.createPlatformStatusSnapshot();
+      const transactionResult = await prisma.transaction(async () => prisma.current().read('manual'));
+      const requestResult = await prisma.requestTransaction(async () => prisma.current().read('request'));
+
+      expect(snapshot.details).toMatchObject({
+        strictTransactions: false,
+        supportsTransaction: false,
+        transactionContext: 'unavailable',
+      });
+      expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
+      expect(transactionResult).toEqual({ value: 'manual' });
+      expect(requestResult).toEqual({ value: 'request' });
+    } finally {
+      if (originalAsyncLocalStorage) {
+        Object.defineProperty(globalThis, 'AsyncLocalStorage', originalAsyncLocalStorage);
+      } else {
+        Reflect.deleteProperty(globalThis, 'AsyncLocalStorage');
+      }
+
+      getBuiltinModuleSpy.mockRestore();
+    }
+  });
+
   it('treats throwing AsyncLocalStorage host lookup as unavailable transaction context', async () => {
     const host = globalThis as typeof globalThis & { AsyncLocalStorage?: unknown };
     const originalAsyncLocalStorage = host.AsyncLocalStorage;
@@ -748,6 +861,69 @@ describe('@fluojs/prisma', () => {
     } finally {
       releaseRollback();
       await Promise.allSettled([openTransaction, shutdownPromise]);
+    }
+  });
+
+  it.each([true, false])('settles the runner callback before its commit branch (caller cancelled: %s)', async (cancel) => {
+    const events: string[] = [];
+    const transactionClient = {};
+    let notifyCallbackEntered = () => {};
+    const callbackEntered = new Promise<void>((resolve) => {
+      notifyCallbackEntered = resolve;
+    });
+    let releaseCallback = () => {};
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        try {
+          const value = await callback(transactionClient);
+          events.push('runner:commit');
+          return value;
+        } catch (error) {
+          events.push('runner:rejected');
+          throw error;
+        } finally {
+          events.push('runner:settled');
+        }
+      },
+    };
+    const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+    const caller = new AbortController();
+    caller.signal.addEventListener('abort', (event) => event.stopImmediatePropagation(), { once: true });
+    const pending = prisma.requestTransaction(async () => {
+      notifyCallbackEntered();
+      await callbackBarrier;
+      return 'completed';
+    }, caller.signal);
+    const outcome = cancel
+      ? expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+      : expect(pending).resolves.toBe('completed');
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      const deadline = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Request callback did not settle before the deadline.')), 2_000);
+      });
+      await Promise.race([callbackEntered, deadline]);
+      expect(events).toEqual([]);
+      if (cancel) {
+        caller.abort({});
+      } else {
+        releaseCallback();
+      }
+      await Promise.race([outcome, deadline]);
+
+      expect(events).toEqual(cancel
+        ? ['runner:rejected', 'runner:settled']
+        : ['runner:commit', 'runner:settled']);
+    } finally {
+      clearTimeout(timeout);
+      releaseCallback();
+      await Promise.allSettled([pending, outcome]);
     }
   });
 
@@ -1282,6 +1458,163 @@ describe('@fluojs/prisma', () => {
     }
   });
 
+  it('keeps fallback request transactions tracked until the real callback settles before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseCallback: () => void = () => undefined;
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let markCallbackStarted: () => void = () => undefined;
+    const callbackStarted = new Promise<void>((resolve) => {
+      markCallbackStarted = resolve;
+    });
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot<typeof client>({ client, strictTransactions: false })],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const openTransaction = prisma.requestTransaction(async () => {
+        events.push('request:callback-start');
+        markCallbackStarted();
+        await callbackBarrier;
+        events.push('request:callback-settled');
+        return 'settled';
+      });
+
+      await callbackStarted;
+      const shutdown = app.close();
+
+      await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 1,
+        lifecycleState: 'shutting-down',
+      });
+      expect(events).toEqual(['connect', 'request:callback-start']);
+
+      releaseCallback();
+
+      await shutdown;
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 0,
+        lifecycleState: 'stopped',
+      });
+      expect(events).toEqual(['connect', 'request:callback-start', 'request:callback-settled', 'disconnect']);
+    } finally {
+      releaseCallback();
+      await app.close();
+    }
+  });
+
+  it('keeps externally aborted fallback request transactions tracked until the callback settles before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseCallback: () => void = () => undefined;
+    const callbackBarrier = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let markCallbackStarted: () => void = () => undefined;
+    const callbackStarted = new Promise<void>((resolve) => {
+      markCallbackStarted = resolve;
+    });
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot<typeof client>({ client, strictTransactions: false })],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const requestAbortController = new AbortController();
+      const openTransaction = prisma.requestTransaction(async () => {
+        events.push('request:callback-start');
+        markCallbackStarted();
+        await callbackBarrier;
+        events.push('request:callback-settled');
+        throw new Error('callback rejected after abort');
+      }, requestAbortController.signal);
+
+      await callbackStarted;
+      const rejected = expect(openTransaction).rejects.toThrow('request aborted');
+      requestAbortController.abort(new Error('request aborted'));
+      await rejected;
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 1,
+        lifecycleState: 'ready',
+      });
+
+      const shutdown = app.close();
+
+      releaseCallback();
+
+      await shutdown;
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 0,
+        lifecycleState: 'stopped',
+      });
+      expect(events).toEqual(['connect', 'request:callback-start', 'request:callback-settled', 'disconnect']);
+    } finally {
+      releaseCallback();
+      await app.close();
+    }
+  });
+
+  it('cleans up fallback request tracking for already-aborted signals and preserves callback error identity', async () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    const prisma = new PrismaService<typeof client>(client, { strictTransactions: false });
+
+    const requestAbortController = new AbortController();
+    requestAbortController.abort(new Error('too late'));
+    let callbackRuns = 0;
+
+    await expect(
+      prisma.requestTransaction(async () => {
+        callbackRuns += 1;
+        return 'never';
+      }, requestAbortController.signal),
+    ).rejects.toThrow('too late');
+    expect(callbackRuns).toBe(0);
+    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+
+    const callbackError = new Error('fallback callback failed');
+    await expect(
+      prisma.requestTransaction(async () => {
+        throw callbackError;
+      }),
+    ).rejects.toBe(callbackError);
+    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+  });
+
   it('rejects new request transactions while shutdown is draining or stopped', async () => {
     let releaseDisconnect!: () => void;
     const disconnectReady = new Promise<void>((resolve) => {
@@ -1605,6 +1938,66 @@ describe('PrismaModule.forRootAsync', () => {
     }
 
     expect(events).toEqual(['connect', 'disconnect']);
+  });
+
+  it('forwards same-named serviceOptions delegates through async registrations', async () => {
+    const delegateCalls: Array<{ label: string; receiver: unknown; scope: string }> = [];
+    const transactionClient = {
+      serviceOptions(label: string) {
+        delegateCalls.push({ label, receiver: this, scope: 'transaction' });
+        return { label, scope: 'transaction' };
+      },
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+      serviceOptions(label: string) {
+        delegateCalls.push({ label, receiver: this, scope: 'root' });
+        return { label, scope: 'root' };
+      },
+    };
+
+    @Inject(PrismaService)
+    class OptionsDelegateRepository {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      readOutsideBoundary(label: string) {
+        return this.prisma.serviceOptions(label);
+      }
+
+      readInsideBoundary(label: string) {
+        return this.prisma.transaction(async () => this.prisma.serviceOptions(label));
+      }
+    }
+
+    const prismaModule = PrismaModule.forRootAsync<typeof client, typeof transactionClient>({
+      useFactory: () => ({ client }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [prismaModule],
+      providers: [OptionsDelegateRepository],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const repository = await app.container.resolve(OptionsDelegateRepository);
+
+      expect(repository.readOutsideBoundary('outside')).toEqual({ label: 'outside', scope: 'root' });
+      await expect(repository.readInsideBoundary('inside')).resolves.toEqual({ label: 'inside', scope: 'transaction' });
+      expect(delegateCalls).toEqual([
+        { label: 'outside', receiver: client, scope: 'root' },
+        { label: 'inside', receiver: transactionClient, scope: 'transaction' },
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('resolves async options independently for each application container', async () => {
