@@ -43,7 +43,7 @@ function createReadiness(input: SlackStatusAdapterInput): PlatformReadinessRepor
   if (input.lifecycleState === 'failed') {
     return {
       critical: true,
-      reason: 'Slack transport failed to initialize.',
+      reason: 'Slack transport failed.',
       status: 'not-ready',
     };
   }

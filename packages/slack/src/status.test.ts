@@ -24,7 +24,7 @@ describe('createSlackPlatformStatusSnapshot', () => {
     });
   });
 
-  it('marks failed transport startup as not-ready and unhealthy', () => {
+  it('marks failed transport lifecycle as not-ready and unhealthy', () => {
     const snapshot = createSlackPlatformStatusSnapshot({
       channelName: 'slack',
       defaultChannelConfigured: false,
@@ -34,7 +34,11 @@ describe('createSlackPlatformStatusSnapshot', () => {
       verifiedOnModuleInit: false,
     });
 
-    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Slack transport failed.',
+      status: 'not-ready',
+    });
     expect(snapshot.health.status).toBe('unhealthy');
     expect(snapshot.ownership.externallyManaged).toBe(true);
   });

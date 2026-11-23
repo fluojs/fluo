@@ -114,7 +114,7 @@ Behavioral contract notes:
 - Direct and notification-backed delivery require the lifecycle to be `ready`; calls before `onModuleInit()` finishes, after initialization failure, or during shutdown fail with `SlackLifecycleError` instead of lazily creating or reusing transports.
 - Shutdown rejects new deliveries, waits for the shared bootstrap initialization promise—including any in-flight factory-owned transport creation and `verify()` call—to settle, drains active deliveries, and then closes the owned transport before completion.
 - Factory-owned transport cleanup is serialized across bootstrap-failure cleanup and application shutdown, so the same owned transport is closed at most once even when those paths race.
-- `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
+- `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options. In the `failed` state, readiness reports `not-ready` with the neutral reason `Slack transport failed.` for both initialization and shutdown failures.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
 ### Bootstrap verification with `verifyOnModuleInit`
