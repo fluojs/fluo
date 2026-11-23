@@ -296,7 +296,8 @@ Behavioral contract 메모:
 
 - `fetch`를 명시적으로 전달하는 방식이 portable path이며 모든 지원 런타임에서 권장됩니다. 하위 호환성을 위해 `fetch`를 생략하면 ambient runtime API인 `globalThis.fetch`가 있을 때 이를 폴백으로 사용합니다. `globalThis.fetch`가 없는 런타임에서는 `SlackConfigurationError`로 빠르게 실패합니다.
 - 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 실패 응답의 본문을 소비한 뒤 bounded exponential backoff로 재시도하고, 재시도가 모두 소진된 뒤에만 호출자에게 에러를 노출합니다.
-- Abort signal은 주입된 `fetch` 경계로 전달되며, retry backoff를 취소할 때 `AbortError`를 `SlackTransportError`로 감싸지 않습니다.
+- Abort signal은 주입된 `fetch` 경계로 전달되며, 응답 본문을 읽는 도중 취소가 발생하면 원래 오류를 그대로 전파하고, retry backoff를 취소할 때 `AbortError`를 `SlackTransportError`로 감싸지 않습니다.
+- 요청 JSON 본문은 첫 `fetch` 호출 전에 한 번만 직렬화됩니다. 직렬화할 수 없는 `metadata` 값 같은 로컬 직렬화 실패는 webhook에 요청하거나 backoff를 기다리지 않고 `SlackTransportError`로 즉시 거부됩니다.
 - 호출자에게 보이는 `SlackTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
 
 ### 의도적인 제한 사항
