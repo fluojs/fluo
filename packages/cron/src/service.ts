@@ -6,19 +6,19 @@ import type {
   CompiledModule,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
-import { Cron as CronValidator } from 'croner';
 
 import { CronDistributedLockManager } from './distributed-lock-manager.js';
+import { assertValidCronExpression, createTimerSchedule } from './scheduler.js';
 import { createCronPlatformStatusSnapshot } from './status.js';
 import {
   assertValidSchedulingTaskName,
   createLockKey,
   discoverCronTaskDescriptors,
+  type CronTaskInvocationDescriptor,
 } from './task-discovery.js';
 import { CronTaskRunner } from './task-runner.js';
 import { CRON_OPTIONS } from './tokens.js';
 import type {
-  CronTaskDescriptor,
   DynamicCronTaskOptions,
   DynamicIntervalTaskOptions,
   DynamicTimeoutTaskOptions,
@@ -35,7 +35,7 @@ interface RuntimeScheduledTask {
 
 interface RuntimeTaskState {
   activeScheduleToken: object | undefined;
-  descriptor: CronTaskDescriptor;
+  descriptor: CronTaskInvocationDescriptor;
   enabled: boolean;
   pendingStopHandles: Set<RuntimeScheduledTask>;
   running: boolean;
@@ -52,14 +52,6 @@ function assertValidLockTtlMs(lockTtlMs: number): void {
 function assertValidMs(ms: number, context: string): void {
   if (!Number.isFinite(ms) || !Number.isInteger(ms) || ms <= 0) {
     throw new Error(`${context}: ms must be a positive integer.`);
-  }
-}
-
-function assertValidCronExpression(expression: string): void {
-  try {
-    new CronValidator(expression, { maxRuns: 0 });
-  } catch {
-    throw new Error(`@Cron(): invalid cron expression "${expression}".`);
   }
 }
 
@@ -591,14 +583,17 @@ export class CronLifecycleService
   }
 
   private registerDecoratorTasks(): void {
-    const descriptors = discoverCronTaskDescriptors(this.compiledModules, this.options, this.logger);
+    const descriptors = discoverCronTaskDescriptors(this.runtimeContainer, this.compiledModules, {
+      options: this.options,
+      logger: this.logger,
+    });
 
     for (const descriptor of descriptors) {
       this.registerTask(descriptor, 'decorator');
     }
   }
 
-  private registerTask(descriptor: CronTaskDescriptor, source: 'decorator' | 'dynamic'): void {
+  private registerTask(descriptor: CronTaskInvocationDescriptor, source: 'decorator' | 'dynamic'): void {
     assertValidSchedulingTaskName(descriptor.taskName);
     this.assertTaskNameAvailable(descriptor.taskName);
 
@@ -691,27 +686,27 @@ export class CronLifecycleService
     }
 
     if (task.descriptor.kind === 'interval') {
-      const timer = setInterval(() => {
+      const timer = createTimerSchedule(ms, () => {
         void this.handleTaskTick(taskName, token);
-      }, ms);
+      }, true);
 
       return {
         stop: () => {
-          clearInterval(timer);
+          timer.stop();
         },
         token,
       };
     }
 
-    const timer = setTimeout(() => {
+    const timer = createTimerSchedule(ms, () => {
       void this.handleTaskTick(taskName, token).finally(() => {
         this.completeTimeoutTask(taskName, token);
       });
-    }, ms);
+    }, false);
 
     return {
       stop: () => {
-        clearTimeout(timer);
+        timer.stop();
       },
       token,
     };
@@ -797,24 +792,24 @@ export class CronLifecycleService
   }
 
   private async runTaskTick(
-    descriptor: CronTaskDescriptor,
+    descriptor: CronTaskInvocationDescriptor,
     taskState: RuntimeTaskState,
     token: object,
   ): Promise<void> {
     if (!this.shouldUseDistributedExecution(descriptor)) {
-      await this.executeTask(descriptor, taskState);
+      await this.taskRunner.executeTask(descriptor);
       return;
     }
 
     await this.runDistributedTaskTick(descriptor, taskState, token);
   }
 
-  private shouldUseDistributedExecution(descriptor: CronTaskDescriptor): boolean {
+  private shouldUseDistributedExecution(descriptor: CronTaskInvocationDescriptor): boolean {
     return this.options.distributed.enabled && descriptor.distributed && this.distributedLocks.resolvedClient !== undefined;
   }
 
   private async runDistributedTaskTick(
-    descriptor: CronTaskDescriptor,
+    descriptor: CronTaskInvocationDescriptor,
     taskState: RuntimeTaskState,
     token: object,
   ): Promise<void> {
@@ -839,12 +834,12 @@ export class CronLifecycleService
     );
 
     try {
-      await this.executeTask(descriptor, taskState, async () => {
-        lockRenewalMonitor.stop();
+      await this.taskRunner.executeTask(descriptor, async () => {
         return await lockRenewalMonitor.getPostRunError();
       });
     } finally {
       lockRenewalMonitor.stop();
+      await lockRenewalMonitor.getPostRunError();
       const runningLeaseCount = this.runningDistributedLeaseCounts.get(descriptor.lockKey);
 
       if (runningLeaseCount === 1) {
@@ -899,19 +894,6 @@ export class CronLifecycleService
     }
   }
 
-  private async executeTask(
-    descriptor: CronTaskDescriptor,
-    taskState: RuntimeTaskState,
-    postRunErrorProvider?: () => Error | Promise<Error | undefined> | undefined,
-  ): Promise<void> {
-    await this.taskRunner.executeTask(descriptor, postRunErrorProvider);
-
-    if (descriptor.kind === 'timeout') {
-      taskState.enabled = false;
-      taskState.scheduledHandle = undefined;
-      taskState.activeScheduleToken = undefined;
-    }
-  }
   private stopAllScheduledTasks(): boolean {
     let stopped = true;
 
