@@ -327,6 +327,7 @@ export class SocketIoLifecycleService
   private bunEngine: BunEngineServer | undefined;
   private readonly inFlightGatewayWork = new Set<Promise<void>>();
   private io: Server | undefined;
+  private lateInitializationCleanupPromise: Promise<void> | undefined;
   private namespaceContext: AsyncLocalStorage<string> | undefined;
   private namespaceContextPromise: Promise<AsyncLocalStorage<string>> | undefined;
   private realtimeBindingInstallation: HttpAdapterRealtimeBindingInstallation | undefined;
@@ -395,27 +396,6 @@ export class SocketIoLifecycleService
       .then(() => {
         this.io = io;
         return io;
-      })
-      .catch(async (error: unknown) => {
-        this.io = undefined;
-        this.bunEngine = undefined;
-
-        const cleanupResults = await Promise.allSettled([
-          Promise.resolve().then(() => runtime.capability.bindingInstallation.install(undefined)),
-          this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs()),
-        ]);
-        const cleanupErrors = cleanupResults.flatMap((result) =>
-          result.status === 'rejected' ? [result.reason] : [],
-        );
-
-        if (cleanupErrors.length > 0) {
-          throw new AggregateError(
-            [error, ...cleanupErrors],
-            'Socket.IO Bun initialization failed and partial resource cleanup did not complete.',
-          );
-        }
-
-        throw error;
       });
     this.serverInitializationPromise = initialization;
 
@@ -450,6 +430,11 @@ export class SocketIoLifecycleService
     this.assertNoServerBackedGatewayOptIn(descriptors);
 
     const io = await this.getServerAsync();
+
+    if (this.shutdownStarted) {
+      return;
+    }
+
     const attachments = this.prepareNamespaceAttachments(io, descriptors);
 
     for (const attachment of attachments) {
@@ -482,6 +467,10 @@ export class SocketIoLifecycleService
   async retryShutdown(): Promise<void> {
     await this.shutdown();
 
+    if (this.io && this.lateInitializationCleanupPromise) {
+      await this.lateInitializationCleanupPromise;
+    }
+
     if (!this.io) {
       return;
     }
@@ -500,11 +489,14 @@ export class SocketIoLifecycleService
   }
 
   /**
-   * Adds a socket to one room, using the current gateway namespace or an explicit namespace override.
+   * Adds a socket to one room, preferring an explicit namespace over the current gateway namespace.
    *
    * @param socketId Socket identifier to move into the room.
    * @param room Room identifier to join.
-   * @param namespacePath Optional namespace path required when the helper runs outside gateway handler context.
+   * @param namespacePath Explicit namespace path, taking precedence over the current gateway handler namespace.
+   * @remarks With neither a path nor handler context, finds the socket by ID and uses its namespace.
+   * A selected namespace does not fall back to a same-ID socket in another namespace.
+   * @throws If no namespace or socket can be resolved.
    */
   joinRoom(socketId: string, room: string, namespacePath?: string): void {
     const { namespace, socket } = this.resolveRoomOperationTarget(socketId, namespacePath);
@@ -518,11 +510,14 @@ export class SocketIoLifecycleService
   }
 
   /**
-   * Removes a socket from one room, using the current gateway namespace or an explicit namespace override.
+   * Removes a socket from one room, preferring an explicit namespace over the current gateway namespace.
    *
    * @param socketId Socket identifier to remove from the room.
    * @param room Room identifier to leave.
-   * @param namespacePath Optional namespace path required when the helper runs outside gateway handler context.
+   * @param namespacePath Explicit namespace path, taking precedence over the current gateway handler namespace.
+   * @remarks With neither a path nor handler context, finds the socket by ID and uses its namespace.
+   * A selected namespace does not fall back to a same-ID socket in another namespace.
+   * @throws If no namespace or socket can be resolved.
    */
   leaveRoom(socketId: string, room: string, namespacePath?: string): void {
     const { namespace, socket } = this.resolveRoomOperationTarget(socketId, namespacePath);
@@ -541,17 +536,20 @@ export class SocketIoLifecycleService
    * @param room Room identifier that should receive the event.
    * @param event Socket.IO event name emitted to the room.
    * @param data Payload delivered with the event.
-   * @param namespacePath Optional namespace path required when the helper runs outside gateway handler context.
+   * @param namespacePath Explicit managed namespace path; when omitted, uses the current gateway handler namespace.
+   * @throws If neither the explicit path nor handler context resolves a managed namespace; no automatic fallback to `/`.
    */
   broadcastToRoom(room: string, event: string, data: unknown, namespacePath?: string): void {
     this.resolveRequiredNamespace(namespacePath).to(room).emit(event, data);
   }
 
   /**
-   * Returns the current room set tracked for one connected socket.
+   * Returns a copy of the room set for one registered socket, independently of handler context.
    *
    * @param socketId Socket identifier to inspect.
-   * @returns A snapshot of the rooms currently joined by that socket.
+   * @returns A copy of the registered socket's rooms, or an empty set when the socket is not registered.
+   * @remarks Reads the socket registry without an additional connection-state check.
+   * Accepts no namespace argument. The readonly return type does not freeze the set at runtime.
    */
   getRooms(socketId: string): ReadonlySet<string> {
     const socket = this.socketRegistry.get(socketId);
@@ -630,8 +628,44 @@ export class SocketIoLifecycleService
 
     const BunEngineServer = await loadBunEngineServer();
     const engine = new BunEngineServer(this.createBunEngineOptions());
-    io.bind(engine);
-    runtime.capability.bindingInstallation.install(this.createBunSocketIoBinding(engine));
+    let engineBound = false;
+    let bindingInstallationAttempted = false;
+
+    try {
+      io.bind(engine);
+      engineBound = true;
+      const binding = this.createBunSocketIoBinding(engine);
+      bindingInstallationAttempted = true;
+      runtime.capability.bindingInstallation.install(binding);
+    } catch (error: unknown) {
+      const cleanupResults = await Promise.allSettled([
+        Promise.resolve().then(() => {
+          if (bindingInstallationAttempted) {
+            runtime.capability.bindingInstallation.install(undefined);
+          }
+        }),
+        Promise.resolve().then(async () => {
+          if (engineBound) {
+            await this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs());
+          } else {
+            engine.close();
+          }
+        }),
+      ]);
+      const cleanupErrors = cleanupResults.flatMap((result) =>
+        result.status === 'rejected' ? [result.reason] : [],
+      );
+
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          'Socket.IO Bun initialization failed and partial resource cleanup did not complete.',
+        );
+      }
+
+      throw error;
+    }
+
     this.realtimeBindingInstallation = runtime.capability.bindingInstallation;
     this.bunEngine = engine;
   }
@@ -1194,9 +1228,16 @@ export class SocketIoLifecycleService
   }
 
   private async runShutdownLifecycle(): Promise<void> {
+    const timeoutMs = this.resolveShutdownTimeoutMs();
+    const deadline = Date.now() + timeoutMs;
+
     const initialization = this.serverInitializationPromise;
-    if (initialization) {
-      await Promise.allSettled([initialization]);
+    if (
+      initialization !== undefined
+      && !(await this.awaitSettledWithinDeadline(initialization, deadline))
+    ) {
+      this.cleanupLateInitialization(initialization);
+      return;
     }
 
     const io = this.io;
@@ -1207,11 +1248,10 @@ export class SocketIoLifecycleService
     }
 
     let shouldClearManagedState = false;
-    const timeoutMs = this.resolveShutdownTimeoutMs();
-    const deadline = Date.now() + timeoutMs;
+    const closeBudgetMs = Math.max(deadline - Date.now(), 0);
 
     try {
-      const result = await this.closeServerWithTimeout(io, timeoutMs);
+      const result = await this.closeServerWithTimeout(io, closeBudgetMs);
       shouldClearManagedState = await this.drainGatewayWork(deadline);
 
       if (!shouldClearManagedState) {
@@ -1240,29 +1280,55 @@ export class SocketIoLifecycleService
     }
   }
 
+  private cleanupLateInitialization(initialization: Promise<Server>): void {
+    this.lateInitializationCleanupPromise = initialization.then(
+      async (io) => {
+        try {
+          await this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs());
+          this.clearManagedState();
+        } catch (error) {
+          this.logger.error(
+            'Socket.IO Bun initialization completed after the shared shutdown deadline and its late cleanup failed; retaining managed Socket.IO state for a deliberate shutdown retry.',
+            error,
+            'SocketIoLifecycleService',
+          );
+        }
+      },
+      () => {
+        // Late initialization failures keep their existing cleanup path inside getServerAsync().
+      },
+    );
+  }
+
+  private awaitSettledWithinDeadline(pending: Promise<unknown>, deadline: number): Promise<boolean> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    return Promise.race([
+      Promise.allSettled([pending]).then(() => true),
+      new Promise<false>((resolve) => {
+        timeout = setTimeout(() => resolve(false), Math.max(deadline - Date.now(), 0));
+      }),
+    ]).finally(() => {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+    });
+  }
+
   private closeServerWithTimeout(io: Server, timeoutMs: number): Promise<SocketIoCloseResult> {
     return closeSocketIoServerWithTimeout(io, timeoutMs);
   }
 
   private async drainGatewayWork(deadline: number): Promise<boolean> {
     while (this.inFlightGatewayWork.size > 0) {
-      const remainingMs = deadline - Date.now();
-
-      if (remainingMs <= 0) {
+      if (deadline - Date.now() <= 0) {
         return false;
       }
 
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      const drained = await Promise.race([
-        Promise.allSettled([...this.inFlightGatewayWork]).then(() => true),
-        new Promise<false>((resolve) => {
-          timeout = setTimeout(() => resolve(false), remainingMs);
-        }),
-      ]);
-
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
+      const drained = await this.awaitSettledWithinDeadline(
+        Promise.allSettled([...this.inFlightGatewayWork]),
+        deadline,
+      );
 
       if (!drained) {
         return false;

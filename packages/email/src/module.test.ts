@@ -664,6 +664,76 @@ describe('EmailModule', () => {
     });
   });
 
+  it('lets payload metadata override colliding notification metadata while derived template stays last', async () => {
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      renderer: {
+        async render() {
+          return {
+            subject: 'Rendered subject',
+            text: 'rendered text',
+          };
+        },
+      },
+      transport: createRecordingTransportFactory({ messagePrefix: 'metadata' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await service.sendNotification({
+      channel: 'email',
+      metadata: {
+        campaign: 'notification-campaign',
+        notificationOnly: 'notification-value',
+        template: 'notification-metadata-template',
+      },
+      payload: {
+        metadata: {
+          campaign: 'payload-campaign',
+          payloadOnly: 'payload-value',
+          template: 'payload-metadata-template',
+        },
+        text: 'payload text',
+      },
+      recipients: ['metadata-recipient@example.com'],
+      template: 'derived-template',
+    });
+
+    expect(transportState.sent[0]).toMatchObject({
+      metadata: {
+        campaign: 'payload-campaign',
+        notificationOnly: 'notification-value',
+        payloadOnly: 'payload-value',
+        template: 'derived-template',
+      },
+    });
+
+    await service.sendNotification({
+      channel: 'email',
+      metadata: {
+        campaign: 'notification-campaign',
+        template: 'notification-metadata-template',
+      },
+      payload: {
+        metadata: {
+          campaign: 'payload-campaign',
+          template: 'payload-metadata-template',
+        },
+        text: 'payload text',
+      },
+      recipients: ['metadata-recipient@example.com'],
+    });
+
+    expect(transportState.sent[1]).toMatchObject({
+      metadata: {
+        campaign: 'payload-campaign',
+        template: 'payload-metadata-template',
+      },
+    });
+  });
+
   it('uses rendered notification fallbacks when payload fields and notification subject are absent', async () => {
     const container = new Container();
     const moduleType = EmailModule.forRoot({
@@ -1557,12 +1627,10 @@ describe('EmailModule', () => {
 
   it('reports pending lazy factory rejection during shutdown as initialization failure', async () => {
     let rejectTransport!: (error: Error) => void;
-    const create = vi.fn(
-      () =>
-        new Promise<EmailTransport>((_resolve, reject) => {
-          rejectTransport = reject;
-        }),
-    );
+    const transportCreation = new Promise<EmailTransport>((_resolve, reject) => {
+      rejectTransport = reject;
+    });
+    const create = vi.fn(() => transportCreation);
     const container = new Container();
     const moduleType = EmailModule.forRoot({
       defaultFrom: 'noreply@example.com',
@@ -1593,8 +1661,165 @@ describe('EmailModule', () => {
       details: { lifecycleState: 'failed' },
       readiness: { status: 'not-ready' },
     });
+
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+    await expect(
+      service.send({ subject: 'After factory failure', text: 'hello', to: ['user@example.com'] }),
+    ).rejects.toBeInstanceOf(EmailLifecycleError);
+    await expect(
+      service.sendNotification({
+        channel: 'email',
+        payload: { text: 'hello' },
+        recipients: ['user@example.com'],
+      }),
+    ).rejects.toBeInstanceOf(EmailLifecycleError);
+    expect(service.onApplicationShutdown()).toBe(shutdown);
+    await expect(service.onApplicationShutdown()).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: 'provider create failed during shutdown' }),
+      message: 'Email transport failed to initialize.',
+    });
     expect(create).toHaveBeenCalledTimes(1);
   });
+
+  it('rejects send with AbortError when ready delivery is aborted at the final preparation boundary', async () => {
+    const controller = new AbortController();
+    const transport = new DelayedLifecycleTransport();
+    const container = new Container();
+    container.register(...moduleProviders(EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport,
+      verifyOnModuleInit: true,
+    })));
+    const service = await container.resolve(EmailService);
+    await service.onModuleInit();
+    // Queue cancellation at the post-acquisition signal check, before the final readiness await resumes.
+    const aborted = vi.spyOn(controller.signal, 'aborted', 'get')
+      .mockReturnValueOnce(false)
+      .mockImplementationOnce(() => {
+        queueMicrotask(() => controller.abort());
+        return false;
+      });
+
+    try {
+      await expect(
+        service.send({ text: 'hello', to: ['user@example.com'] }, { signal: controller.signal }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+      expect(transport.sendCalls).toBe(0);
+    } finally {
+      aborted.mockRestore();
+      await service.onApplicationShutdown();
+    }
+  });
+
+  it('rejects send with EmailLifecycleError when shutdown starts at the final ready preparation boundary', async () => {
+    const controller = new AbortController();
+    const transport = new DelayedLifecycleTransport();
+    const container = new Container();
+    container.register(...moduleProviders(EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: { create: async () => transport, ownsResources: true },
+      verifyOnModuleInit: true,
+    })));
+    const service = await container.resolve(EmailService);
+    await service.onModuleInit();
+    let shutdown: Promise<void> | undefined;
+    const aborted = vi.spyOn(controller.signal, 'aborted', 'get')
+      .mockReturnValueOnce(false)
+      .mockImplementationOnce(() => {
+        queueMicrotask(() => {
+          shutdown = service.onApplicationShutdown();
+        });
+        return false;
+      });
+
+    try {
+      await expect(
+        service.send({ text: 'hello', to: ['user@example.com'] }, { signal: controller.signal }),
+      ).rejects.toBeInstanceOf(EmailLifecycleError);
+      expect(transport.sendCalls).toBe(0);
+    } finally {
+      aborted.mockRestore();
+      await shutdown;
+    }
+    expect(transport.closeCalls).toBe(1);
+  });
+
+  for (const operation of ['send', 'verify'] as const) {
+    it.each(['resolve', 'reject', 'throw'] as const)(
+      `drains reentrant ${operation} before owned close when the provider will %s`,
+      async (completion) => {
+        const events: string[] = [];
+        const providerError = new Error(`${operation} provider failed`);
+        let releaseProvider = () => {};
+        let signalStarted = () => {};
+        const providerCompletion = new Promise<void>((resolve) => {
+          releaseProvider = resolve;
+        });
+        const providerStarted = new Promise<void>((resolve) => {
+          signalStarted = resolve;
+        });
+        let shutdown: Promise<void> | undefined;
+        const provider = () => {
+          shutdown = service.onApplicationShutdown();
+          signalStarted();
+          if (completion === 'throw') {
+            events.push('settled');
+            throw providerError;
+          }
+          return providerCompletion.then(() => {
+            events.push('settled');
+            if (completion === 'reject') {
+              throw providerError;
+            }
+            return { messageId: 'reentrant-4236' };
+          });
+        };
+        const close = vi.fn(() => {
+          events.push('close');
+        });
+        const transport: EmailTransport = {
+          close,
+          send: operation === 'send' ? provider : async () => ({ messageId: 'unused' }),
+          ...(operation === 'verify' ? { verify: () => provider().then(() => undefined) } : {}),
+        };
+        const container = new Container();
+        container.register(...moduleProviders(EmailModule.forRoot({
+          defaultFrom: 'noreply@example.com',
+          transport: { create: async () => transport, ownsResources: true },
+          verifyOnModuleInit: operation === 'verify',
+        })));
+        const service = await container.resolve(EmailService);
+
+        const outcome = operation === 'send'
+          ? service.send({ text: 'hello', to: ['user@example.com'] })
+          : service.onModuleInit();
+        const result = Promise.allSettled([outcome]);
+        await providerStarted;
+        await expect(service.send({ text: 'late', to: ['user@example.com'] }))
+          .rejects.toBeInstanceOf(EmailLifecycleError);
+        releaseProvider();
+        const [settled] = await result;
+        await shutdown;
+
+        if (completion === 'resolve') {
+          expect(settled.status).toBe('fulfilled');
+        } else if (operation === 'verify') {
+          expect(settled).toMatchObject({
+            status: 'rejected',
+            reason: { name: 'EmailLifecycleError', cause: providerError },
+          });
+        } else {
+          expect(settled).toMatchObject({ status: 'rejected', reason: providerError });
+        }
+        expect(events).toEqual(['settled', 'close']);
+        expect(close).toHaveBeenCalledOnce();
+        expect(service.onApplicationShutdown()).toBe(shutdown);
+        expect(service.createPlatformStatusSnapshot()).toMatchObject({
+          details: { lifecycleState: 'stopped' },
+        });
+      },
+    );
+  }
 
   it('blocks shutdown-time delivery from reusing or recreating transports', async () => {
     let resolveTransport!: (transport: DelayedLifecycleTransport) => void;

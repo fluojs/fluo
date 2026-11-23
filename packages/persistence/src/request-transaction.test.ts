@@ -9,7 +9,7 @@ import {
 describe('shared active transaction work', () => {
   it('forwards the exact abort reason and removes its registered listener', () => {
     const caller = new AbortController();
-    const remove = vi.spyOn(caller.signal, 'removeEventListener');
+    const remove = vi.spyOn(AbortSignal.prototype, 'removeEventListener');
     const context = createRequestAbortContext(caller.signal);
     const reason = {};
 
@@ -18,6 +18,23 @@ describe('shared active transaction work', () => {
 
     expect(context.signal.reason).toBe(reason);
     expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    remove.mockRestore();
+  });
+
+  it('forwards cancellation when an earlier caller listener stops immediate propagation', () => {
+    const caller = new AbortController();
+    caller.signal.addEventListener('abort', (event) => event.stopImmediatePropagation(), { once: true });
+    const context = createRequestAbortContext(caller.signal);
+    const reason = {};
+
+    try {
+      caller.abort(reason);
+
+      expect(context.signal.aborted).toBe(true);
+      expect(context.signal.reason).toBe(reason);
+    } finally {
+      context.cleanup();
+    }
   });
 
   it('forwards an already aborted input before work starts', () => {
@@ -32,14 +49,72 @@ describe('shared active transaction work', () => {
     context.cleanup();
   });
 
-  it('does not forward cancellation after listener cleanup', () => {
+  it.each([false, true])('does not forward cancellation after repeated cleanup (stopped event: %s)', (stopPropagation) => {
     const caller = new AbortController();
+    if (stopPropagation) {
+      caller.signal.addEventListener('abort', (event) => event.stopImmediatePropagation(), { once: true });
+    }
     const context = createRequestAbortContext(caller.signal);
     context.cleanup();
+    context.cleanup();
+    expect(caller.signal.aborted).toBe(false);
+    expect(context.signal.aborted).toBe(false);
 
     caller.abort({});
 
     expect(context.signal.aborted).toBe(false);
+  });
+
+  it('keeps local cancellation one-way and preserves its first reason', () => {
+    const caller = new AbortController();
+    const context = createRequestAbortContext(caller.signal);
+    const reason = {};
+
+    try {
+      context.controller.abort(reason);
+
+      expect(caller.signal.aborted).toBe(false);
+      expect(context.signal.aborted).toBe(true);
+      expect(context.signal.reason).toBe(reason);
+      caller.abort({});
+      expect(context.signal.reason).toBe(reason);
+    } finally {
+      context.cleanup();
+    }
+  });
+
+  it('preserves the caller reason when the local controller aborts later', () => {
+    const caller = new AbortController();
+    const context = createRequestAbortContext(caller.signal);
+    const reason = {};
+
+    try {
+      caller.abort(reason);
+      context.controller.abort({});
+
+      expect(context.signal.reason).toBe(reason);
+    } finally {
+      context.cleanup();
+    }
+  });
+
+  it('creates independent contexts without an input signal', () => {
+    const first = createRequestAbortContext();
+    const second = createRequestAbortContext();
+    const reason = {};
+
+    try {
+      first.cleanup();
+      first.cleanup();
+      first.controller.abort(reason);
+
+      expect(first.signal.aborted).toBe(true);
+      expect(first.signal.reason).toBe(reason);
+      expect(second.signal.aborted).toBe(false);
+    } finally {
+      first.cleanup();
+      second.cleanup();
+    }
   });
 
   it('keeps registered work pending until untrack removes and settles it', async () => {
@@ -62,6 +137,43 @@ describe('shared active transaction work', () => {
 
     await observed;
     expect(settled).toBe(true);
+    expect(active.size).toBe(0);
+  });
+
+  it('untracks only the selected handle in multi-handle isolation', async () => {
+    const active = new Set<ActiveRequestTransaction>();
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const firstHandle = trackActiveRequestTransaction(active, firstController);
+    const secondHandle = trackActiveRequestTransaction(active, secondController);
+    let firstSettled = false;
+    let secondSettled = false;
+    const observedFirst = firstHandle.active.settled.then(() => {
+      firstSettled = true;
+    });
+    const observedSecond = secondHandle.active.settled.then(() => {
+      secondSettled = true;
+    });
+
+    untrackActiveRequestTransaction(active, firstHandle);
+
+    await observedFirst;
+    expect(firstSettled).toBe(true);
+    expect(active.has(firstHandle.active)).toBe(false);
+    expect(
+      active.has(secondHandle.active),
+      'second handle must remain tracked after the first is untracked',
+    ).toBe(true);
+    await Promise.resolve();
+    expect(secondSettled, 'second handle must stay pending until its own untrack').toBe(false);
+
+    untrackActiveRequestTransaction(active, secondHandle);
+
+    await observedSecond;
+    expect(secondSettled, 'second handle must settle after its own untrack').toBe(true);
+    expect(active.has(secondHandle.active), 'second handle must be removed by its own untrack').toBe(
+      false,
+    );
     expect(active.size).toBe(0);
   });
 });

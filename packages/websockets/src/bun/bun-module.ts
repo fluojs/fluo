@@ -18,6 +18,7 @@ export class BunWebSocketModule {
     class BunWebSocketRuntimeModule extends BunWebSocketModule {}
 
     return defineModule(BunWebSocketRuntimeModule, {
+      exports: [BunWebSocketGatewayLifecycleService],
       providers: [
         {
           provide: WEBSOCKET_OPTIONS_INTERNAL,

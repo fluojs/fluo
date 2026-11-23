@@ -102,9 +102,7 @@ export function Transaction<THost, TBoundaryResult = unknown>(
       if (boundary?.shouldRollback && !isCompatibleMongooseConnectionHandle(connection)) {
         throw new TransactionRollbackCapabilityError();
       }
-      if (boundary?.requireAfterCommit && (
-        !('afterCommit' in connection) || typeof connection.afterCommit !== 'function'
-      )) {
+      if (boundary?.requireAfterCommit && !isCompatibleMongooseConnectionHandle(connection)) {
         throw new AfterCommitCapabilityError('Mongoose @Transaction() requires a target with afterCommit support.');
       }
 

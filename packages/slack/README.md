@@ -107,14 +107,14 @@ SlackModule.forRootAsync({
 
 Behavioral contract notes:
 
-- `SlackService.send(...)` resolves `defaultChannel` before delivery.
-- `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior; it collects ordinary provider failures only, while caller cancellation always rejects the batch.
-- `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff. An aborted signal or a transport `AbortError` takes precedence over `continueOnError`, and the same signal is propagated through notification channels to transport calls.
+- `SlackService.send(...)` resolves `defaultChannel` before delivery and returns the normalized negative receipt unchanged when the transport reports `ok: false`.
+- `SlackService.sendMany(...)` sends messages sequentially and treats an `ok: false` receipt as a `SlackTransportError`. By default, it rejects without sending the next message. With `continueOnError: true`, it collects ordinary provider failures once in `failures` with the original message and continues, including only successful receipts in `results` in input order. Validation and lifecycle errors always reject the batch immediately.
+- `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff. Batches also check the signal immediately after each delivery, including the final item. An aborted signal or a transport `AbortError` takes precedence over `continueOnError` and rejects the batch, and the same signal is propagated through notification channels to transport calls.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - Direct and notification-backed delivery require the lifecycle to be `ready`; calls before `onModuleInit()` finishes, after initialization failure, or during shutdown fail with `SlackLifecycleError` instead of lazily creating or reusing transports.
 - Shutdown rejects new deliveries, waits for the shared bootstrap initialization promise—including any in-flight factory-owned transport creation and `verify()` call—to settle, drains active deliveries, and then closes the owned transport before completion.
 - Factory-owned transport cleanup is serialized across bootstrap-failure cleanup and application shutdown, so the same owned transport is closed at most once even when those paths race.
-- `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
+- `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options. In the `failed` state, readiness reports `not-ready` with the neutral reason `Slack transport failed.` for both initialization and shutdown failures.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
 ### Bootstrap verification with `verifyOnModuleInit`
@@ -231,7 +231,7 @@ Behavioral contract notes:
 
 ### Template rendering and merge precedence
 
-Provide a `SlackTemplateRenderer` when notification templates should turn shared `@fluojs/notifications` envelopes into Slack-specific text, blocks, or attachments. `SlackService.sendNotification(...)` calls `renderer.render(input)` only when both `notification.template` and `SlackModuleOptions.renderer` are present. The render input includes `template`, `payload`, optional `subject`, optional `locale`, and optional dispatch `metadata`.
+Provide a `SlackTemplateRenderer` when notification templates should turn shared `@fluojs/notifications` envelopes into Slack-specific text, blocks, or attachments. `SlackService.sendNotification(...)` calls `renderer.render(input)` only when both `notification.template` and `SlackModuleOptions.renderer` are present. The render input includes `template`, `payload`, optional `subject`, optional `locale`, and optional dispatch `metadata`. When the caller passes an abort signal, `sendNotification(...)` forwards that same signal to the renderer as the optional render-input `signal`, so renderers can cooperate with in-flight cancellation; if the signal aborts during rendering, delivery rejects with `AbortError` before any transport call.
 
 ```typescript
 import type { SlackTemplateRenderer } from '@fluojs/slack';
@@ -379,4 +379,8 @@ These limitations are part of the package contract so runtime choice, provider c
 - `packages/slack/src/status.test.ts`: Health/readiness contract examples.
 ## Compatible service copies
 
-`SlackService` and `SlackChannel` support compatible-copy class injection; Slack channel tokens remain isolated.
+`SlackService` and `SlackChannel` support compatible-copy class injection.
+
+The public `SLACK_CHANNEL` token uses `Symbol.for('fluo.slack.channel')`, so compatible package copies using the same symbol registry share one DI key. Within the same lookup scope, importing the token from a different copy cannot select a different registered channel. Sharing this key does not mean that separate application containers share channel instances.
+
+`global: false` changes module visibility, not token identity. For multiple Slack clients, compose app-owned modules/providers around distinct `SlackTransport` instances as described in [Module visibility and migration boundaries](#module-visibility-and-migration-boundaries). Runtime behavior is unchanged, and no migration is required.

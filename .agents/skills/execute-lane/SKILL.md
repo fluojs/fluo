@@ -156,6 +156,13 @@ restarting commands, killing processes, auto-committing or inventing a Result.
 Observation failure is `input-preparation`, `fix_back_eligible:false`; restore
 observation before proceeding. The full interface is in operations.md.
 Preparation never installs, builds, tests, writes ledgers or dispatches children.
+Large review results retain bounded authenticated transfer files; small review
+CLI calls and JSON stay unchanged. Follow
+`../review-head/SKILL.md#bounded-complete-review-transfer` for the manifest,
+fixed byte/line and total limits, complete `review-read` consumption and
+non-fixable input-preparation failures. Every axis must consume the identical
+complete common/readable_index before judging; transfer never replaces existing
+admission or final freshness checks.
 Only `status: "prepared"` with a dispatch payload authorizes dispatch. Pass identical authenticated
 `common` evidence to all selected axes in one background wave; preparation
 failures are input blocks. Browser captures and diagnostics must claim a fresh

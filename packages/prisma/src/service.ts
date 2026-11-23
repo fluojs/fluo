@@ -38,6 +38,10 @@ const TRANSACTION_BOUNDARY_UNAVAILABLE_ERROR = 'Prisma transaction boundaries ar
 const TRANSACTION_CONTEXT_UNAVAILABLE_ERROR =
   'Prisma transaction context requires AsyncLocalStorage support from the host runtime.';
 
+// Wrapper-internal transaction option state is symbol-keyed so string-named Prisma client delegates
+// (for example a `serviceOptions` model delegate) are never shadowed by private wrapper state.
+const PRISMA_SERVICE_OPTIONS = Symbol('fluo.prisma.service-options');
+
 interface PrismaServiceOptions {
   strictTransactions: boolean;
   rollbackObserver?: TransactionRollbackObserver;
@@ -199,11 +203,14 @@ export class PrismaService<
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
   private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';
 
+  private readonly [PRISMA_SERVICE_OPTIONS]: PrismaServiceOptions;
+
   constructor(
     private readonly client: TClient,
-    private readonly serviceOptions: PrismaServiceOptions = { strictTransactions: false },
+    serviceOptions: PrismaServiceOptions = { strictTransactions: false },
   ) {
     markPrismaServiceHandle(this);
+    this[PRISMA_SERVICE_OPTIONS] = serviceOptions;
     this.installCurrentClientFacade();
   }
 
@@ -267,7 +274,7 @@ export class PrismaService<
   }
 
   private assertResultRollbackCapability(): void {
-    if (typeof this.client.$transaction !== 'function' || this.transactions.kind === 'unavailable' || !this.serviceOptions.rollbackObserver) {
+    if (typeof this.client.$transaction !== 'function' || this.transactions.kind === 'unavailable' || !this[PRISMA_SERVICE_OPTIONS].rollbackObserver) {
       throw new TransactionRollbackCapabilityError();
     }
   }
@@ -312,7 +319,7 @@ export class PrismaService<
 
     try {
       if (typeof this.client.$transaction !== 'function') {
-        if (this.serviceOptions.strictTransactions) {
+        if (this[PRISMA_SERVICE_OPTIONS].strictTransactions) {
           throw new Error('Transaction not supported: Prisma client does not implement $transaction.');
         }
 
@@ -326,11 +333,11 @@ export class PrismaService<
       let policy: ResultBoundary<T> | undefined;
 
       try {
-        const result = await observeRollback(this.serviceOptions.rollbackObserver, () => run(
+        const result = await observeRollback(this[PRISMA_SERVICE_OPTIONS].rollbackObserver, () => run(
           (transactionClient) => {
             if (owner) owner.hooks.length = 0;
             const attempt: TransactionContext<TTransactionClient>['owner'] = { closed: false, hooks: [] };
-            attempt.observation = this.serviceOptions.rollbackObserver?.beginAttempt(transactionClient);
+            attempt.observation = this[PRISMA_SERVICE_OPTIONS].rollbackObserver?.beginAttempt(transactionClient);
             const attemptPolicy = new ResultBoundary(attempt, boundary?.shouldRollback);
             owner = attempt;
             policy = attemptPolicy;
@@ -443,7 +450,7 @@ export class PrismaService<
       activeTransactionBoundaries: this.activeTransactionBoundaries.size,
       activeRequestTransactions: this.activeRequestTransactions.size,
       lifecycleState: this.lifecycleState,
-      strictTransactions: this.serviceOptions.strictTransactions,
+      strictTransactions: this[PRISMA_SERVICE_OPTIONS].strictTransactions,
       supportsConnect: typeof this.client.$connect === 'function',
       supportsDisconnect: typeof this.client.$disconnect === 'function',
       supportsTransaction: typeof this.client.$transaction === 'function',
@@ -483,7 +490,9 @@ export class PrismaService<
   }
 
   /**
-   * Opens an abort-aware request transaction boundary.
+   * Opens an abort-aware request transaction boundary. When the registered client has no native `$transaction`
+   * runner, cancellation rejects the caller immediately while the request stays tracked until the real callback
+   * settles, so shutdown drains the actual callback work before `$disconnect()`.
    *
    * @example
    * ```ts
@@ -526,12 +535,38 @@ export class PrismaService<
 
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
+    const fallbackExecution = !this.hasNativeTransactionRunner();
+    let callbackDrainPending = false;
+    let drainCallback: () => void = () => undefined;
+    const callbackDrained = new Promise<void>((resolve) => {
+      drainCallback = resolve;
+    });
+    const settleCallbackDrain = () => {
+      callbackDrainPending = false;
+      drainCallback();
+    };
+
+    // The abort race rejects callers before the fallback callback settles; tracking must follow the real callback so
+    // shutdown drains the actual work instead of the cancellation promise.
+    const runTrackedCallback = () => {
+      try {
+        const started = fn();
+        callbackDrainPending = true;
+        void Promise.resolve(started).then(settleCallbackDrain, settleCallbackDrain);
+
+        return started;
+      } catch (error) {
+        settleCallbackDrain();
+        throw error;
+      }
+    };
+
     let owner: TransactionContext<TTransactionClient>['owner'] | undefined;
     let policy: ResultBoundary<T> | undefined;
 
     try {
       const result = await this.runWithRequestTransactionClient<T>(
-        () => raceWithAbort(fn, abortContext.signal),
+        () => raceWithAbort(runTrackedCallback, abortContext.signal),
         (callback, transactionOptions) =>
           this.runRequestTransactionWithAbortSignal(callback, abortContext.signal, transactionOptions),
         options,
@@ -563,7 +598,12 @@ export class PrismaService<
         owner.hooks.length = 0;
       }
       abortContext.cleanup();
-      this.untrackActiveRequestTransaction(active);
+
+      if (fallbackExecution && callbackDrainPending) {
+        void callbackDrained.then(() => this.untrackActiveRequestTransaction(active));
+      } else {
+        this.untrackActiveRequestTransaction(active);
+      }
     }
   }
 
@@ -577,8 +617,8 @@ export class PrismaService<
     signal: AbortSignal,
     createAttempt: () => { owner: TransactionContext<TTransactionClient>['owner']; policy: ResultBoundary<T> },
   ): Promise<T> {
-    if (typeof this.client.$transaction !== 'function') {
-      if (this.serviceOptions.strictTransactions) {
+    if (!this.hasNativeTransactionRunner()) {
+      if (this[PRISMA_SERVICE_OPTIONS].strictTransactions) {
         throw new Error('Transaction not supported: Prisma client does not implement $transaction.');
       }
 
@@ -587,10 +627,10 @@ export class PrismaService<
 
     this.assertTransactionContextAvailable();
 
-    return observeRollback(this.serviceOptions.rollbackObserver, () => run(
+    return observeRollback(this[PRISMA_SERVICE_OPTIONS].rollbackObserver, () => run(
       (transactionClient) => {
         const { owner, policy } = createAttempt();
-        owner.observation = this.serviceOptions.rollbackObserver?.beginAttempt(transactionClient);
+        owner.observation = this[PRISMA_SERVICE_OPTIONS].rollbackObserver?.beginAttempt(transactionClient);
         return this.transactions.run({ client: transactionClient, requestAbortSignal: signal, owner }, async () => {
           try {
             const value = policy.evaluate(await fn());
@@ -640,6 +680,10 @@ export class PrismaService<
         this.untrackActiveRequestTransaction(active);
       }
     }
+  }
+
+  private hasNativeTransactionRunner(): boolean {
+    return typeof this.client.$transaction === 'function';
   }
 
   private assertRequestTransactionsAvailable(): void {

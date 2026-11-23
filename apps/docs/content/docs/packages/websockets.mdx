@@ -172,12 +172,14 @@ When omitted, the bounded defaults are:
 
 `WebSocketRoomService` is the shared room contract: `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, and `getRooms(socketId)`. The runtime lifecycle service implements it. `joinRoom` only accepts `socketId`s that identify a currently open, runtime-registered socket, and membership dies with the connection, so rooms never leak closed sockets.
 
-One boundary matters when you compose rooms with your own services. The runtime module registers the lifecycle service **for its own dispatch work and does not export the token**, so an application provider that declares `@Inject(NodeWebSocketGatewayLifecycleService)` fails module-graph validation with `ModuleVisibilityError` at bootstrap. Resolve the token from the application container instead and hand it to your service, typed against the shared contract:
+Import the runtime module's `forRoot()` registration and register your application service as a provider. The runtime module exports its public lifecycle token for constructor injection; type the parameter as `WebSocketRoomService`, which is a type-only contract:
 
 ```ts title="fragment: room-backed application service"
-import { NodeWebSocketGatewayLifecycleService } from '@fluojs/websockets/node';
+import { Inject, Module } from '@fluojs/core';
+import { NodeWebSocketGatewayLifecycleService, NodeWebSocketModule } from '@fluojs/websockets/node';
 import { type WebSocketRoomService } from '@fluojs/websockets';
 
+@Inject(NodeWebSocketGatewayLifecycleService)
 export class PresenceService {
   constructor(private readonly rooms: WebSocketRoomService) {}
 
@@ -186,11 +188,14 @@ export class PresenceService {
   }
 }
 
-// at composition time:
-const presence = new PresenceService(await app.container.resolve(NodeWebSocketGatewayLifecycleService));
+@Module({
+  imports: [NodeWebSocketModule.forRoot()],
+  providers: [PresenceService],
+})
+export class AppModule {}
 ```
 
-This is stricter than `packages/websockets/README.md`, which shows `@Inject(NodeWebSocketGatewayLifecycleService)` directly on an application class; as implemented, that pattern does not pass graph validation. Prefer the container-resolution shape above (or track the discrepancy in the package README's room section) rather than exporting the token through wrapper modules, which would freeze the runtime's current visibility decision into your own API.
+For Bun or Workers, import that runtime's module and matching lifecycle token from its subpath. Constructor injection and direct container resolution share the same lifecycle instance. Internal runtime options remain private to the runtime module.
 
 ### Dedicated listeners with `serverBacked`
 
@@ -236,7 +241,7 @@ Shutdown runs through the application lifecycle (`onApplicationShutdown` then `o
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `ModuleVisibilityError` naming `NodeWebSocketGatewayLifecycleService` at bootstrap | The lifecycle token is not exported by the runtime module (see [Rooms](#rooms-and-broadcast)) | Resolve it from `app.container` instead of constructor injection |
+| `ModuleVisibilityError` naming a WebSocket lifecycle token at bootstrap | The consumer module has not imported the matching runtime registration | Import the matching `WebSocketModule.forRoot()` and register the injecting service in `providers` (see [Rooms](#rooms-and-broadcast)) |
 | Gateway handlers never run | The class is decorated but not registered as a provider, or it is request/transient scoped | Add it to `providers`; keep gateways singleton |
 | Client gets 404 on upgrade | No gateway owns that path and no later listener claimed it | Register the gateway with the right `path` |
 | Client gets 429 on upgrade | `maxConnections` reached, including reservations held by pending async guards | Raise the limit or close stale connections |

@@ -70,6 +70,8 @@ class AppModule {}
 
 `MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. Use the exported `MongooseAsyncModuleOptions<TConnection>` type when sharing async registration helpers across modules. Pass `global` on the top-level async registration when the providers should be visible globally. The resolved options are reused within one application container, so connection setup and disposal hooks stay consistent across that container's providers. Reusing the same async module definition across tests or multi-app processes resolves fresh options per application container instead of sharing a memoized connection.
 
+Registration accepts the concrete connection shape the application already owns. A model-only connection without `startSession()` or `connection.transaction(...)` registers through `forRoot(...)`, `forRootAsync(...)`, or direct `MongooseConnection` construction without a connection type assertion, and `current()` plus `dispose(connection)` keep that concrete type. Transaction capability is optional: when neither API is present, the fail-open behavior documented under [Manual Transactions and currentSession()](#manual-transactions-and-currentsession) applies.
+
 ## Lifecycle and Shutdown
 
 `MongooseModule` registers `MongooseConnection` with the fluo application lifecycle. The package does not create or own the raw Mongoose connection for you; pass a concrete Mongoose connection object/function as `connection`, keep connection-string, pool, plugin, and model compilation ownership in the application, and provide a `dispose` hook when the application should close that external connection during shutdown.
@@ -196,21 +198,28 @@ Use service-layer `@Transaction()` for business operations. Nested `requestTrans
 
 The `MongooseConnection` provides `currentSession()` to access the ambient MongoDB session and `current()` to access the root connection handle. Use these as escape hatches when you need to pass sessions to external utilities or perform advanced manual plumbing.
 
+This example receives a `MongooseConnection<Connection>` wrapping an application-owned native `mongoose.Connection`. Register the `User` model with a `status` field on that same connection beforehand, and create native sessions from the same Mongoose installation. `current().model(...)` accesses the raw model, so it does not receive automatic session injection from the `conn.model(...)` facade.
+
 ```ts
 import { MongooseConnection } from '@fluojs/mongoose';
+import mongoose, { type Connection } from 'mongoose';
 
 export class AdvancedRepository {
-  constructor(private readonly conn: MongooseConnection) {}
+  constructor(private readonly conn: MongooseConnection<Connection>) {}
 
   async customOperation() {
     const session = this.conn.currentSession();
+    if (session !== undefined && !(session instanceof mongoose.mongo.ClientSession)) {
+      throw new TypeError('Expected a native Mongoose ClientSession.');
+    }
+
     const User = this.conn.current().model('User');
-    
-    // Explicitly passing the session
-    return User.find({ status: 'active' }).session(session || null);
+    return User.find({ status: 'active' }).session(session ?? null);
   }
 }
 ```
+
+An active native session is passed to the query as the same object. Without a session, passing `null` queries active users outside a transaction. An active session that is not a native `ClientSession` is rejected before the query executes rather than switching to sessionless execution.
 
 Use `conn.transaction()` for manual transaction blocks:
 

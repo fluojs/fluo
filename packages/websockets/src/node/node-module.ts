@@ -19,6 +19,7 @@ export class NodeWebSocketModule {
     class NodeWebSocketRuntimeModule extends NodeWebSocketModule {}
 
     return defineModule(NodeWebSocketRuntimeModule, {
+      exports: [NodeWebSocketGatewayLifecycleService],
       providers: [
         {
           provide: WEBSOCKET_OPTIONS_INTERNAL,

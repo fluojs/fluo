@@ -139,6 +139,8 @@ export interface SlackTemplateRenderInput<TPayload extends SlackNotificationPayl
   locale?: string;
   metadata?: Record<string, unknown>;
   payload: TPayload;
+  /** Caller abort signal forwarded by `SlackService.sendNotification(...)` so renderers can cooperate with in-flight cancellation. */
+  signal?: AbortSignal;
   subject?: string;
   template: string;
 }

@@ -1,8 +1,10 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
+import { resolveMultiContribution } from '@fluojs/di/internal';
 import type { ApplicationLogger } from '@fluojs/runtime';
 
 import type { CronTaskDescriptor } from './types.js';
+import type { CronTaskInvocationDescriptor } from './task-discovery.js';
 
 interface ResolvedTaskInvocation {
   callable: (this: unknown) => Promise<void>;
@@ -19,7 +21,7 @@ export class CronTaskRunner {
   ) {}
 
   async executeTask(
-    descriptor: CronTaskDescriptor,
+    descriptor: CronTaskInvocationDescriptor,
     postRunErrorProvider?: () => Error | Promise<Error | undefined> | undefined,
   ): Promise<unknown> {
     const taskInvocation = await this.resolveTaskInvocation(descriptor);
@@ -29,6 +31,7 @@ export class CronTaskRunner {
     }
 
     let taskError: unknown;
+    let failed = false;
 
     try {
       await this.runTaskBeforeHook(descriptor);
@@ -42,16 +45,19 @@ export class CronTaskRunner {
 
       await this.runTaskSuccessHook(descriptor);
     } catch (error) {
+      failed = true;
       taskError = error;
       this.logger.error(`Cron task ${descriptor.taskName} failed.`, error, 'CronLifecycleService');
     }
 
-    await this.runTaskErrorHook(descriptor, taskError);
+    if (failed) {
+      await this.runTaskErrorHook(descriptor, taskError);
+    }
     await this.runTaskAfterHook(descriptor);
     return taskError;
   }
 
-  private async resolveTaskInvocation(descriptor: CronTaskDescriptor): Promise<ResolvedTaskInvocation | undefined> {
+  private async resolveTaskInvocation(descriptor: CronTaskInvocationDescriptor): Promise<ResolvedTaskInvocation | undefined> {
     if (descriptor.callback) {
       return {
         callable: descriptor.callback as (this: unknown) => Promise<void>,
@@ -71,7 +77,9 @@ export class CronTaskRunner {
     let instance: unknown;
 
     try {
-      instance = await this.runtimeContainer.resolve(descriptor.token);
+      instance = descriptor.contributionIndex === undefined
+        ? await this.runtimeContainer.resolve(descriptor.token)
+        : await resolveMultiContribution(this.runtimeContainer, descriptor.token, descriptor.contributionIndex);
     } catch (error) {
       this.logger.error(
         `Failed to resolve cron task target ${descriptor.targetName} from module ${descriptor.moduleName}.`,
@@ -114,7 +122,7 @@ export class CronTaskRunner {
   }
 
   private async runTaskErrorHook(descriptor: CronTaskDescriptor, taskError: unknown): Promise<void> {
-    if (taskError && descriptor.onError) {
+    if (descriptor.onError) {
       try {
         await Promise.resolve(descriptor.onError(taskError));
       } catch (hookError) {

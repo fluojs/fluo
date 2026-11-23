@@ -169,9 +169,10 @@ definition, not a reusable singleton module. Call it inline in `imports`:
 The unnamed registration exports four tokens: the `PrismaService` class token,
 its `getPrismaServiceToken()` alias, and the raw `PRISMA_CLIENT` /
 `PRISMA_OPTIONS` symbols. `PRISMA_OPTIONS` resolves the public runtime options
-(`{ strictTransactions: boolean }`); normalized module internals are
-deliberately not exported. Named registrations export only the matching named
-tokens.
+(`{ strictTransactions: boolean; rollbackObserver?: TransactionRollbackObserver }`; a registered observer
+is exposed by reference and the key is omitted when no observer is registered);
+normalized module internals are deliberately not exported. Named registrations
+export only the matching named tokens.
 
 ### The injected service is a transaction-aware facade
 
@@ -423,9 +424,15 @@ export class SyncService {
   throw.
 - **Transaction context.** `AsyncLocalStorage` is resolved from
   `globalThis.AsyncLocalStorage` or `process.getBuiltinModule('node:async_hooks')`.
-  If neither is available, `transaction()` / `requestTransaction()` reject
-  before opening anything (there is no synchronous stack fallback), and
-  `details.transactionContext` reports `unavailable`.
+  If neither is available, `details.transactionContext` reports `unavailable`.
+  With an interactive `$transaction` runner, `transaction()` /
+  `requestTransaction()` reject before opening a Prisma transaction and
+  readiness is `not-ready`; there is no synchronous stack fallback. Without a
+  native runner, with `strictTransactions: false` (default) and neither
+  `shouldRollback` nor `requireAfterCommit` requested, both APIs execute the
+  callback directly without a transaction. After initialization, readiness is
+  `ready` while the context remains `unavailable`; direct execution provides
+  no atomicity guarantee.
 - **Shutdown order.** New transaction boundaries are rejected once shutdown
   begins; open request transactions are aborted and tracked until they settle;
   `afterCommit` hooks of committed boundaries drain; then `$disconnect()` runs.

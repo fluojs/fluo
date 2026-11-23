@@ -154,10 +154,15 @@ describe('public rollback observation capabilities', () => {
     },
   );
 
-  describe.each(['manual', 'delegated'] as const)('Mongo owning-client admission (%s)', (mode) => {
+  describe.each([
+    ['manual', 'object'],
+    ['manual', 'function'],
+    ['delegated', 'object'],
+    ['delegated', 'function'],
+  ] as const)('Mongo owning-client admission (%s, %s)', (mode, shape) => {
     for (const entry of ['transaction', 'requestTransaction'] as const) {
       for (const accepted of [true, false]) {
-        it.each(['same', 'foreign', 'missing'] as const)(
+        it.each(['same', 'foreign', 'missing', 'non-callable'] as const)(
           `%s client binding for ${entry} with accepted=${accepted}`, async (binding) => {
             const observedClient = Object.assign(new EventEmitter(), { options: { monitorCommands: true } });
             const otherClient = Object.assign(new EventEmitter(), { options: { monitorCommands: true } });
@@ -186,8 +191,13 @@ describe('public rollback observation capabilities', () => {
               abortTransaction() { acknowledge('abortTransaction', 2); },
               endSession() { cleanups++; },
             };
-            const native = {
-              ...(binding !== 'missing' && { getClient: () => sessionClient }),
+            const native = Object.assign(shape === 'function' ? () => {} : {}, {
+              client: sessionClient,
+              ...(binding !== 'missing' && {
+                getClient: binding === 'non-callable' ? 0 : function (this: { client: typeof sessionClient }) {
+                  return this.client;
+                },
+              }),
               startSession: async () => session,
               ...(mode === 'delegated' && {
                 async transaction<T>(fn: (handle: typeof session) => Promise<T>) {
@@ -204,7 +214,7 @@ describe('public rollback observation capabilities', () => {
                   }
                 },
               }),
-            };
+            });
             const wrapper = new MongooseConnection(native, undefined, {
               strictTransactions: true, rollbackObserver: observer,
             });

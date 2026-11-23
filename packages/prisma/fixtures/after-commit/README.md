@@ -100,7 +100,7 @@ its failpoint in `finally`, without sleeps or driver replacements.
 The deterministic unit suites own the broader concurrency, lifecycle, retry, and
 error matrix. This fixture is specifically the real-driver/native-commit seam.
 
-The fixture covers Result root/nested success and failure, ignored failure, arbitrary default values, caught throws, and native commit errors through all three public entry points, plus independent-owner concurrency on real databases. Prisma uses its public adapter-factory observer to confirm both SQL rollback and cleanup; PostgreSQL backend termination verifies that a rollback error hidden by the native runner propagates instead of a normal Result. Drizzle also verifies an actual SQL rollback rejection. Mongo confirms successful abort through correlated session/transaction/request/connection command events and verifies that a one-shot server abort error cannot become a normal Result even when hidden inside the driver. Unsupported configurations and insufficient evidence are not counted as successful native rollback. Follow the [strict shared contract](../../../../docs/architecture/transactions.md#result-based-rollback).
+The fixture covers Result root/nested success and failure, ignored failure, arbitrary default values, caught throws, and native commit errors through all three public entry points, plus independent-owner concurrency on real databases. Prisma uses its public adapter-factory observer to confirm both SQL rollback and cleanup; PostgreSQL backend termination verifies that a rollback error hidden by the native runner propagates instead of a normal Result. The same case records, through a fixture-internal pass-through observation of the public adapter factory, the actual error objects that attempt's SQL `ROLLBACK` and rollback cleanup calls reject — the real calls keep their original receiver, arguments, return values, and rejections, with no fake rollback, injected error, or private driver/engine patching. The caller rejection must preserve those observed objects: the identical object for a single error, or an `AggregateError.errors` entry for each observed object in encounter order for several. Substituting `TransactionRollbackUnconfirmedError` or an unrelated generic `Error` into the same preservation judgment must fail it, so message/name equality or connection-close notifications cannot stand in for preservation. Drizzle also verifies an actual SQL rollback rejection. Mongo confirms successful abort through correlated session/transaction/request/connection command events and verifies that a one-shot server abort error cannot become a normal Result even when hidden inside the driver. Unsupported configurations and insufficient evidence are not counted as successful native rollback. Follow the [strict shared contract](../../../../docs/architecture/transactions.md#result-based-rollback).
 
 ## Evidence and cleanup
 
@@ -109,7 +109,10 @@ ports/database, public import paths, and Node TAP results. `commands.json` recor
 each command, output, and exit code; container logs and `result.json` preserve
 readiness, image identities, and cleanup outcomes. Success requires the test
 process and cleanup to exit successfully. No result is skipped when Docker is
-unavailable.
+unavailable. The Prisma rollback preservation relationship and its rejected
+unconfirmed/unrelated contrasts print in the actual TAP output as
+`NATIVE_PRISMA_ROLLBACK_ERROR_PRESERVED`; this documentation is not itself
+evidence of passing execution — inspect the receipt's TAP and `result.json`.
 
 The runner removes only container names it successfully created, including their
 anonymous volumes, in `finally`. It never removes shared containers, images,
