@@ -94,6 +94,7 @@ export function discoverCronTaskDescriptors(
 ): CronTaskInvocationDescriptor[] {
   const { options, logger } = context;
   const descriptors: CronTaskInvocationDescriptor[] = [];
+  const seen = new Map<Function, Set<MetadataPropertyKey>>();
 
   for (const candidate of collectDiscoveryCandidates(container, compiledModules)) {
     const entries = getSchedulingTaskMetadataEntries(candidate.targetType.prototype);
@@ -110,6 +111,15 @@ export function discoverCronTaskDescriptors(
     }
 
     for (const entry of entries) {
+      if (candidate.contributionIndex === undefined) {
+        const methods = seen.get(candidate.targetType) ?? new Set<MetadataPropertyKey>();
+        if (methods.has(entry.propertyKey)) {
+          continue;
+        }
+        methods.add(entry.propertyKey);
+        seen.set(candidate.targetType, methods);
+      }
+
       const methodName = methodKeyToName(entry.propertyKey);
       const taskName = resolveSchedulingTaskName(
         buildDefaultTaskName(candidate.targetType.name, methodName),
