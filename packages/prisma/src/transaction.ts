@@ -136,7 +136,7 @@ export function Transaction<THost, TOptions = unknown, TResult = unknown>(
       if (transactionBoundary?.shouldRollback && !isCompatiblePrismaServiceHandle(prisma)) {
         throw new TransactionRollbackCapabilityError();
       }
-      if (transactionBoundary?.requireAfterCommit && typeof readProperty(prisma, 'afterCommit') !== 'function') {
+      if (transactionBoundary?.requireAfterCommit && !isCompatiblePrismaServiceHandle(prisma)) {
         throw new AfterCommitCapabilityError();
       }
 

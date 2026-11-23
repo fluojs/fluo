@@ -125,6 +125,25 @@ in `../../issue-preflight/SKILL.md` and `../../review-head/SKILL.md`; executable
 validation lives in the preparation source. Reuse the accepted contract and
 canonical `obs.preflightPolicy`; do not alter engine actions or ledgers.
 
+The unchanged `review <input.json>` command selects bounded file transfer when
+the actual inline output would exceed 49,999 UTF-8 bytes or 1,500 lines.
+Small inputs keep the original prepared JSON and need no new argument or
+decoder. For `kind:"review-transfer"`, preserve the returned transfer reference,
+binding and absolute artifact root and pass the identical transfer to all
+selected axes with their returned registered dispatch routes. Before dispatch,
+use `review-read` to authenticate the manifest and complete unit inventory.
+Each reviewer must read every ordered unit without clipping before judging.
+The complete protocol, fixed per-file/total limits, manifest authentication,
+reader input and reconstruction are in
+`../../review-head/SKILL.md#bounded-complete-review-transfer`.
+The CLI retains only transfer files, never lane facts or Git changes. It
+rechecks accepted contract and checkout/base freshness after retaining them.
+Transfer failures are non-fixable `input-preparation`, never product blockers
+or partial review success. Preserve the original accepted contract, canonical
+plan, source footprint and caller searches, complete authored diff,
+implementation/fix-back RED, required checks, receipt inventory, raw stdout/
+stderr and packed evidence admission; transfer does not replace any of them.
+
 Supply review preparation's required `implementation` context with mode
 `implement`, `fix-back`, or `resolve-conflict`, previous/current heads and the
 accepted contract digest. For fix-back use the actual implementer Result's

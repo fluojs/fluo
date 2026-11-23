@@ -93,8 +93,7 @@ export function Transaction<THost, TTransactionOptions = unknown, TResult = unkn
         throw new TransactionRollbackCapabilityError();
       }
 
-      if (boundary?.requireAfterCommit
-        && (!('afterCommit' in drizzleDatabase) || typeof drizzleDatabase.afterCommit !== 'function')) {
+      if (boundary?.requireAfterCommit && !isCompatibleDrizzleDatabaseHandle(drizzleDatabase)) {
         throw new AfterCommitCapabilityError();
       }
 

@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { buildReviewFact } from '../../review-head/scripts/contracts.mjs';
 import { observeReviewRetention } from './lane-v4-cli.mjs';
-import { prepareReviewInput, prepareSourceFootprint, sourceFootprintCategories } from './workflow-preparation.mjs';
+import { prepareReviewInput, prepareReviewTransfer, readReviewTransfer, reviewTransferLimits,
+  prepareSourceFootprint, sourceFootprintCategories } from './workflow-preparation.mjs';
 import * as preparation from './workflow-preparation.mjs';
 import { readRegisteredAgents, validateDispatchTarget } from './dispatch-targets.mjs';
 import { createCommandRunner } from '../../../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
@@ -2088,4 +2089,255 @@ test('authored diff guard mutation: removing byte comparison -> authenticated wr
       exit_code: error.status, stdout: error.stdout, stderr: error.stderr })}\n`);
     return true;
   });
+});
+
+function largeReviewFixture(t, reason = '한글🙂"\\\n'.repeat(3500)) {
+  const value = fixture(t);
+  value.footprintInput.categories.direct_callers.reason = reason;
+  value.input.footprint = prepareSourceFootprint(value.root, value.footprintInput);
+  return value;
+}
+
+test('#4231 transfer CLI: 179.4 KB single-line dispatch -> bounded complete delivery', (t) => {
+  const value = largeReviewFixture(t, 'x'.repeat(46000));
+  const original = prepareReviewInput(value.input);
+  assert.ok(Buffer.byteLength(JSON.stringify(original)) > 179400);
+
+  const result = cli(value, 'review', value.input);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(Buffer.byteLength(result.stdout) < 50000,
+    'every CLI dispatch must fit a single bounded tool read');
+  assert.equal(JSON.parse(result.stdout).kind, 'review-transfer');
+});
+
+function transferFixture(t, reason) {
+  const value = largeReviewFixture(t, reason);
+  const result = cli(value, 'review', value.input);
+  assert.equal(result.status, 0, result.stderr);
+  const envelope = JSON.parse(result.stdout);
+  assert.equal(envelope.kind, 'review-transfer');
+  const transfer = envelope.transfer;
+  const manifest = JSON.parse(readFileSync(join(value.input.artifact_root, transfer.manifest.path)));
+  return { ...value, envelope, transfer, manifest };
+}
+
+function retainTransferManifest(value) {
+  const unitBytes = value.manifest.units.reduce((sum, { reference }) => sum + reference.bytes, 0);
+  let bytes = Buffer.from(JSON.stringify(value.manifest));
+  while (value.manifest.total_bytes !== unitBytes + bytes.length) {
+    value.manifest.total_bytes = unitBytes + bytes.length;
+    bytes = Buffer.from(JSON.stringify(value.manifest));
+  }
+  writeFileSync(join(value.input.artifact_root, value.transfer.manifest.path), bytes);
+  value.transfer.manifest.bytes = bytes.length;
+  value.transfer.manifest.sha256 = hash(bytes);
+}
+
+function readerInput(value, index = null) {
+  return { version: 1, stage: 'review-read', artifact_root: value.input.artifact_root,
+    transfer: value.transfer, index };
+}
+
+test('#4231 transfer reader: UTF-8 escaped long value -> identical complete input on all axes', (t) => {
+  const value = transferFixture(t);
+  const expected = prepareReviewInput(value.input);
+  assert.deepEqual(value.envelope.reviewers.map(({ reviewer }) => reviewer),
+    ['contract', 'code', 'verification']);
+
+  for (const reviewer of value.envelope.reviewers) {
+    const restored = readReviewTransfer(value.input.artifact_root, reviewer.transfer);
+    assert.deepEqual(restored, expected);
+    assert.deepEqual(restored.reviewers.find(({ reviewer: axis }) => axis === reviewer.reviewer).input,
+      expected.common);
+  }
+  const manifestResult = cli(value, 'review-read', readerInput(value));
+  assert.equal(manifestResult.status, 0, manifestResult.stderr);
+  assert.deepEqual(JSON.parse(manifestResult.stdout), value.manifest);
+  const fragments = value.manifest.units.map(({ index, reference, lines }) => {
+    const result = cli(value, 'review-read', readerInput(value, index));
+    assert.equal(result.status, 0, result.stderr);
+    const actual = readFileSync(join(value.input.artifact_root, reference.path));
+    assert.equal(reference.bytes, actual.length);
+    assert.equal(reference.sha256, hash(actual));
+    assert.equal(lines, actual.toString().split('\n').length);
+    assert.ok(actual.length < 50000 && actual.toString().split('\n').length <= 1500);
+    assert.ok(Buffer.byteLength(result.stdout) < 50000 && result.stdout.split('\n').length <= 1500);
+    return JSON.parse(result.stdout).text;
+  });
+  const complete = Buffer.from(fragments.join(''));
+  assert.equal(complete.length, value.transfer.prepared.bytes);
+  assert.equal(hash(complete), value.transfer.prepared.sha256);
+  assert.deepEqual(JSON.parse(complete), expected);
+  const manifestBytes = readFileSync(join(value.input.artifact_root, value.transfer.manifest.path));
+  assert.ok(manifestBytes.length < 50000 && manifestBytes.toString().split('\n').length <= 1500);
+  assert.equal(value.manifest.total_bytes,
+    manifestBytes.length + value.manifest.units.reduce((sum, { reference }) => sum + reference.bytes, 0));
+});
+
+test('#4231 transfer CLI: small input -> original success JSON without decoder or new arguments', (t) => {
+  const value = fixture(t);
+  const expected = prepareReviewInput(value.input);
+
+  const result = cli(value, 'review', value.input);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), expected);
+  assert.deepEqual(prepareReviewTransfer(value.input), expected);
+});
+
+test('#4231 transfer CLI: one MB serialized dispatch -> supported complete delivery', (t) => {
+  const value = transferFixture(t, 'q'.repeat(280000));
+
+  const restored = readReviewTransfer(value.input.artifact_root, value.transfer);
+
+  assert.ok(value.transfer.prepared.bytes > 1024 * 1024);
+  assert.deepEqual(restored, prepareReviewInput(value.input));
+});
+
+test('#4231 transfer CLI: near total allowance -> bounded manifest and complete repeated delivery', (t) => {
+  const value = transferFixture(t, 's'.repeat(500000));
+
+  const repeated = cli(value, 'review', value.input);
+
+  assert.equal(repeated.status, 0, repeated.stderr);
+  assert.deepEqual(JSON.parse(repeated.stdout), value.envelope);
+  assert.deepEqual(readReviewTransfer(value.input.artifact_root, value.transfer), prepareReviewInput(value.input));
+  assert.ok(value.transfer.prepared.bytes <= reviewTransferLimits.prepared_bytes);
+  assert.ok(value.transfer.prepared.bytes > 2000000);
+  assert.ok(value.transfer.manifest.bytes < 50000);
+});
+
+test('#4231 transfer CLI: retained unit escaped via symlink -> reject without overwriting external bytes', (t) => {
+  const value = transferFixture(t, 'z'.repeat(46000));
+  const entry = value.manifest.units[0];
+  const path = join(value.input.artifact_root, entry.reference.path);
+  const bytes = readFileSync(path);
+  const external = join(value.root, 'external-unit.json');
+  writeFileSync(external, bytes);
+  rmSync(path);
+  symlinkSync(external, path);
+
+  const result = cli(value, 'review', value.input);
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(JSON.parse(result.stderr).kind, 'input-preparation');
+  assert.equal(JSON.parse(result.stderr).fix_back_eligible, false);
+  assert.match(JSON.parse(result.stderr).error, /escaped root/u);
+  assert.deepEqual(readFileSync(external), bytes);
+});
+
+test('#4231 transfer CLI: total allowance exceeded -> structured non-fixable rejection', (t) => {
+  const value = largeReviewFixture(t, 'q'.repeat(600000));
+
+  const result = cli(value, 'review', value.input);
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(JSON.parse(result.stderr).kind, 'input-preparation');
+  assert.equal(JSON.parse(result.stderr).fix_back_eligible, false);
+  assert.match(JSON.parse(result.stderr).error, /prepared size exceeds total allowance/u);
+});
+
+for (const defect of ['manifest-missing', 'manifest-truncated', 'manifest-altered', 'manifest-json', 'manifest-lines',
+  'unit-missing', 'unit-truncated', 'unit-altered', 'unit-json', 'duplicate', 'omitted', 'reordered', 'offset',
+  'unit-length', 'unit-bytes', 'unit-lines', 'unit-overflow', 'manifest-overflow', 'total',
+  'prepared-length', 'prepared-digest', 'binding', 'limits', 'escaped-reference']) {
+  test(`#4231 transfer reader: ${defect} -> input-preparation without partial output`, (t) => {
+    const value = transferFixture(t, 'r'.repeat(46000));
+    const entry = value.manifest.units[0];
+    const manifestPath = join(value.input.artifact_root, value.transfer.manifest.path);
+    const unitPath = join(value.input.artifact_root, entry.reference.path);
+    let retain = false;
+    if (defect === 'manifest-missing') rmSync(manifestPath);
+    if (defect === 'manifest-truncated') writeFileSync(manifestPath, '{}');
+    if (defect === 'manifest-altered') {
+      const bytes = readFileSync(manifestPath); bytes[10] ^= 1; writeFileSync(manifestPath, bytes);
+    }
+    if (defect === 'manifest-json') value.transfer.manifest = value.store('bad-manifest.json', '{');
+    if (defect === 'manifest-lines') {
+      const bytes = Buffer.from('\n'.repeat(1500) + JSON.stringify(value.manifest));
+      writeFileSync(manifestPath, bytes);
+      value.transfer.manifest.bytes = bytes.length; value.transfer.manifest.sha256 = hash(bytes);
+    }
+    if (defect === 'unit-missing') rmSync(unitPath);
+    if (defect === 'unit-truncated') writeFileSync(unitPath, '{}');
+    if (defect === 'unit-altered') {
+      const bytes = readFileSync(unitPath); bytes[10] ^= 1; writeFileSync(unitPath, bytes);
+    }
+    if (defect === 'unit-json') { entry.reference = value.store('bad-unit.json', '{'); retain = true; }
+    if (defect === 'duplicate') { value.manifest.units[1] = entry; retain = true; }
+    if (defect === 'omitted') { value.manifest.units.pop(); retain = true; }
+    if (defect === 'reordered') { value.manifest.units.reverse(); retain = true; }
+    if (defect === 'offset') { entry.offset += 1; retain = true; }
+    if (defect === 'unit-length') { entry.content_bytes -= 1; retain = true; }
+    if (defect === 'unit-bytes') { entry.reference.bytes -= 1; retain = true; }
+    if (defect === 'unit-lines') { entry.lines = 1501; retain = true; }
+    if (defect === 'unit-overflow') { entry.reference.bytes = 50000; retain = true; }
+    if (defect === 'manifest-overflow') value.transfer.manifest.bytes = 50000;
+    if (defect === 'total') { value.manifest.total_bytes = reviewTransferLimits.total_bytes + 1; }
+    if (defect === 'prepared-length') value.transfer.prepared.bytes -= 1;
+    if (defect === 'prepared-digest') value.transfer.prepared.sha256 = 'a'.repeat(64);
+    if (defect === 'binding') value.transfer.binding.policy_sha256 = value.transfer.binding.contract_sha256;
+    if (defect === 'limits') { value.manifest.limits.chunk_bytes += 1; retain = true; }
+    if (defect === 'escaped-reference') { entry.reference.path = '../outside.json'; retain = true; }
+    if (retain) retainTransferManifest(value);
+    else if (defect === 'total') {
+      const bytes = Buffer.from(JSON.stringify(value.manifest));
+      writeFileSync(manifestPath, bytes);
+      value.transfer.manifest.bytes = bytes.length; value.transfer.manifest.sha256 = hash(bytes);
+    }
+
+    assert.throws(() => readReviewTransfer(value.input.artifact_root, value.transfer), (error) =>
+      error.kind === 'input-preparation' && error.fix_back_eligible === false);
+    const result = cli(value, 'review-read', readerInput(value));
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stdout, '');
+    const block = JSON.parse(result.stderr);
+    assert.equal(block.kind, 'input-preparation');
+    assert.equal(block.fix_back_eligible, false);
+  });
+}
+
+test('#4231 transfer digest mutation: authenticated altered content -> regression detects removed comparison', (t) => {
+  const value = transferFixture(t, 'Ж'.repeat(23000));
+  for (const entry of value.manifest.units) {
+    const path = join(value.input.artifact_root, entry.reference.path);
+    const unit = JSON.parse(readFileSync(path));
+    unit.text = unit.text.replaceAll('Ж', 'Ф');
+    const bytes = Buffer.from(JSON.stringify(unit));
+    writeFileSync(path, bytes);
+    entry.reference.bytes = bytes.length; entry.reference.sha256 = hash(bytes);
+  }
+  retainTransferManifest(value);
+  assert.throws(() => readReviewTransfer(value.input.artifact_root, value.transfer),
+    /review transfer: prepared digest mismatch/u);
+  const source = readFileSync(modulePath, 'utf8');
+  const needle = "requireInput(sha256(bytes) === transfer.prepared.sha256,";
+  assert.equal(source.split(needle).length, 2);
+  const mutated = source.replace(needle, 'requireInput(true,');
+  const path = join(value.input.artifact_root, 'transfer-mutation.json');
+  writeFileSync(path, JSON.stringify(value.transfer));
+  const driver = `
+    import { registerHooks } from 'node:module';
+    import { pathToFileURL } from 'node:url';
+    import fs from 'node:fs';
+    import assert from 'node:assert/strict';
+    const target = pathToFileURL(${JSON.stringify(modulePath)}).href;
+    registerHooks({ load(url, context, next) {
+      if (url === target) return { format: 'module', source: ${JSON.stringify(mutated)}, shortCircuit: true };
+      return next(url, context);
+    } });
+    const { readReviewTransfer } = await import(target);
+    assert.throws(() => readReviewTransfer(${JSON.stringify(value.input.artifact_root)},
+      JSON.parse(fs.readFileSync(${JSON.stringify(path)}))), /review transfer: prepared digest mismatch/);
+  `;
+
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', driver], { encoding: 'utf8' });
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /Missing expected exception/u);
+  process.stdout.write(`${JSON.stringify({ kind: 'mutation-evidence', guard: 'review-transfer-prepared-sha256',
+    exit_code: result.status, stdout: result.stdout, stderr: result.stderr })}\n`);
 });
