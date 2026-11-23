@@ -387,6 +387,8 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 
 - `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target 형식입니다. Accessor가 Prisma wrapper를 선택하고 native 옵션과 Fluo policy를 분리해 마지막에 둡니다. Accessor가 `null` 또는 `undefined`를 반환하면 트랜잭션 러너와 데코레이터가 적용된 메서드 본문이 시작되기 전에 거부되며, 비어 있는 accessor 반환값에 대해 자동 service 탐색이 폴백으로 사용되지 않습니다. 기존 options-only, 무인자, accessor-plus-boundary 호출은 legacy 호환 overload로 남습니다.
 
+- 지원하는 호출은 `Transaction()`, `Transaction(nativeOptions)`, `Transaction(nativeOptions, boundary)`, `Transaction(accessor)`, `Transaction(accessor, nativeOptions, boundary)`, `Transaction(accessor, boundary)`입니다. Accessor 함수가 없으면 boundary policy는 둘째 인자에 둡니다. 세 번째 인자(명시적 `undefined` 포함)는 정책을 조용히 버리는 대신 strict TypeScript에서 거부하고, 런타임에서는 메서드 본문 실행 전 decorator 생성 시점에 `TypeError`를 던집니다.
+
 - 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 일반 코드는 accessor를 전달하며 자동 service/facade 탐색은 기존 단일 target 서비스에만 호환 동작으로 남습니다.
 
 ### 커밋 후 작업 export
