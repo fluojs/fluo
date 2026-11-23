@@ -1,7 +1,8 @@
 import { Container } from '@fluojs/di';
 import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http';
-import type { ApplicationLogger } from '@fluojs/runtime';
 import { BunHttpApplicationAdapter, type BunWebSocketBinding } from '@fluojs/platform-bun';
+import type { ApplicationLogger } from '@fluojs/runtime';
+import { WebSocketGateway } from '@fluojs/websockets';
 import { Server as BunEngineServer } from '@socket.io/bun-engine';
 import { Server } from 'socket.io';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -86,8 +87,42 @@ const silentLogger: ApplicationLogger = {
   warn() {},
 };
 
-function createLifecycleService(adapter: HttpApplicationAdapter, options: SocketIoModuleOptions = {}): SocketIoLifecycleService {
-  return new SocketIoLifecycleService(new Container(), [], silentLogger, adapter, options);
+function createLifecycleService(
+  adapter: HttpApplicationAdapter,
+  options: SocketIoModuleOptions = {},
+  logger: ApplicationLogger = silentLogger,
+): SocketIoLifecycleService {
+  return new SocketIoLifecycleService(new Container(), [], logger, adapter, options);
+}
+
+function gateInitialization(service: SocketIoLifecycleService): {
+  getCapturedServer(): Server | undefined;
+  initializationStarted: Promise<void>;
+  releaseInitialization(): void;
+} {
+  const installBinding = service['installBunSocketIoBinding'].bind(service);
+  let capturedServer: Server | undefined;
+  let markInitializationStarted = (): void => undefined;
+  let releaseInitialization = (): void => undefined;
+  const initializationStarted = new Promise<void>((resolve) => {
+    markInitializationStarted = resolve;
+  });
+  const initializationGate = new Promise<void>((resolve) => {
+    releaseInitialization = resolve;
+  });
+
+  service['installBunSocketIoBinding'] = async (runtime, io) => {
+    capturedServer = io;
+    markInitializationStarted();
+    await initializationGate;
+    await installBinding(runtime, io);
+  };
+
+  return {
+    getCapturedServer: () => capturedServer,
+    initializationStarted,
+    releaseInitialization,
+  };
 }
 
 describe('SocketIoLifecycleService Bun initialization', () => {
@@ -225,6 +260,276 @@ describe('SocketIoLifecycleService Bun initialization', () => {
     // Then
     expect(service['io']).toBeUndefined();
     expect(service['bunEngine']).toBeUndefined();
+    expect(adapter.currentBinding).toBeUndefined();
+  });
+
+  it('completes both runtime shutdown hooks at the shared deadline while Bun initialization is pending and cleans the late server', async () => {
+    // Given
+    const adapter = new TestBunAdapter(false, false);
+    let markBindingCleared = (): void => undefined;
+    const bindingCleared = new Promise<void>((resolve) => {
+      markBindingCleared = resolve;
+    });
+    const setRealtimeBinding = adapter.setRealtimeBinding.bind(adapter);
+    adapter.setRealtimeBinding = (binding: unknown | undefined) => {
+      if (binding === undefined) {
+        markBindingCleared();
+      }
+      setRealtimeBinding(binding);
+    };
+    const service = createLifecycleService(adapter, { shutdown: { timeoutMs: 100 } });
+    const { initializationStarted, releaseInitialization } = gateInitialization(service);
+    const initialization = service.getServerAsync();
+    await initializationStarted;
+    const bootstrap = service.onApplicationBootstrap();
+
+    // When
+    vi.useFakeTimers();
+    let destroySettled = false;
+    void service.onModuleDestroy().then(() => {
+      destroySettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    let applicationShutdownSettled = false;
+    void service.onApplicationShutdown().then(() => {
+      applicationShutdownSettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(49);
+
+    expect(destroySettled).toBe(false);
+    expect(applicationShutdownSettled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(destroySettled).toBe(true);
+    expect(applicationShutdownSettled).toBe(true);
+
+    vi.useRealTimers();
+    releaseInitialization();
+    await initialization;
+    await bootstrap;
+    await bindingCleared;
+
+    // Then
+    expect(service['io']).toBeUndefined();
+    expect(service['bunEngine']).toBeUndefined();
+    expect(adapter.currentBinding).toBeUndefined();
+    expect(() => service.getServer()).toThrow();
+    await expect(service.getServerAsync()).rejects.toThrow();
+  });
+
+  it('retains the late-initialized server for a deliberate retry when late cleanup fails', async () => {
+    // Given
+    const adapter = new TestBunAdapter(false, false);
+    const cleanupFailures: unknown[] = [];
+    let markCleanupFailure = (): void => undefined;
+    const lateCleanupFailed = new Promise<void>((resolve) => {
+      markCleanupFailure = resolve;
+    });
+    const service = createLifecycleService(
+      adapter,
+      { shutdown: { timeoutMs: 100 } },
+      {
+        ...silentLogger,
+        error(_message: string, error?: unknown) {
+          cleanupFailures.push(error);
+          markCleanupFailure();
+        },
+      },
+    );
+    const { getCapturedServer, initializationStarted, releaseInitialization } = gateInitialization(service);
+    const initialization = service.getServerAsync();
+    await initializationStarted;
+
+    // When
+    vi.useFakeTimers();
+    let applicationShutdownSettled = false;
+    void service.onApplicationShutdown().then(() => {
+      applicationShutdownSettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(applicationShutdownSettled).toBe(true);
+
+    vi.useRealTimers();
+    const lateServer = getCapturedServer();
+    if (!lateServer) {
+      throw new Error('Expected the gated Bun initialization to capture its server.');
+    }
+    let closeAttempts = 0;
+    const originalClose = lateServer.close.bind(lateServer) as (callback?: () => void) => unknown;
+    lateServer.close = ((callback?: () => void) => {
+      closeAttempts += 1;
+      if (closeAttempts === 1) {
+        throw new Error('late cleanup close failed');
+      }
+      return originalClose(callback);
+    }) as typeof lateServer.close;
+
+    releaseInitialization();
+    await initialization;
+    await lateCleanupFailed;
+
+    // Then
+    expect(closeAttempts).toBe(1);
+    expect(cleanupFailures[0]).toBeInstanceOf(Error);
+    expect(service['io']).toBe(lateServer);
+    expect(service['bunEngine']).toBeDefined();
+    expect(adapter.currentBinding).toBeDefined();
+
+    const retry = service.retryShutdown();
+    await retry;
+
+    expect(closeAttempts).toBe(2);
+    expect(service['io']).toBeUndefined();
+    expect(service['bunEngine']).toBeUndefined();
+    expect(adapter.currentBinding).toBeUndefined();
+  });
+
+  it.each([
+    'success',
+    'failure',
+  ] as const)('shares pending late cleanup with overlapping deliberate retries before retrying retained state after cleanup %s', async (outcome) => {
+    // Given
+    const adapter = new TestBunAdapter(false, false);
+    const cleanupFailures: unknown[] = [];
+    const service = createLifecycleService(
+      adapter,
+      {
+        shutdown: { timeoutMs: 100 },
+      },
+      {
+        ...silentLogger,
+        error(_message: string, error?: unknown) {
+          cleanupFailures.push(error);
+        },
+      },
+    );
+    const { getCapturedServer, initializationStarted, releaseInitialization } = gateInitialization(service);
+    const initialization = service.getServerAsync();
+    await initializationStarted;
+    vi.useFakeTimers();
+    const shutdown = service.onApplicationShutdown();
+    const destroy = service.onModuleDestroy();
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.all([shutdown, destroy]);
+    vi.useRealTimers();
+
+    const lateServer = getCapturedServer();
+    if (!lateServer) {
+      throw new Error('Expected the gated Bun initialization to capture its server.');
+    }
+    let markCloseStarted = (): void => undefined;
+    const closeStarted = new Promise<void>((resolve) => {
+      markCloseStarted = resolve;
+    });
+    let releaseClose = (): void => undefined;
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    const originalClose = lateServer.close.bind(lateServer);
+    const close = vi.spyOn(lateServer, 'close').mockImplementationOnce(async (callback) => {
+      markCloseStarted();
+      await closeGate;
+      if (outcome === 'failure') {
+        throw new TestBunBindingError('Late cleanup close failed.');
+      }
+      return originalClose(callback);
+    });
+    releaseInitialization();
+    await initialization;
+    await closeStarted;
+
+    // When
+    let retriesSettled = false;
+    const retries = Promise.all([service.retryShutdown(), service.retryShutdown()]).then(() => {
+      retriesSettled = true;
+    });
+    await Promise.all([service.onModuleDestroy(), service.onApplicationShutdown()]);
+
+    // Then
+    try {
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(retriesSettled).toBe(false);
+      expect(adapter.currentBinding).toBeDefined();
+    } finally {
+      releaseClose();
+      await retries;
+    }
+
+    expect(close).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 2);
+    expect(cleanupFailures).toHaveLength(outcome === 'success' ? 0 : 1);
+    expect(adapter.currentBinding).toBeUndefined();
+    expect(() => service.getServer()).toThrow();
+    await expect(service.getServerAsync()).rejects.toThrow();
+  });
+
+  it('does not reinstall gateway state from a late bootstrap continuation', async () => {
+    // Given
+    const adapter = new TestBunAdapter(false, false);
+    let markBindingCleared = (): void => undefined;
+    const bindingCleared = new Promise<void>((resolve) => {
+      markBindingCleared = resolve;
+    });
+    const setRealtimeBinding = adapter.setRealtimeBinding.bind(adapter);
+    adapter.setRealtimeBinding = (binding: unknown | undefined) => {
+      if (binding === undefined) {
+        markBindingCleared();
+      }
+      setRealtimeBinding(binding);
+    };
+
+    @WebSocketGateway({ path: '/chat' })
+    class LateBootstrapGateway {}
+
+    class LateBootstrapAppModule {}
+
+    const service = new SocketIoLifecycleService(
+      new Container(),
+      [
+        {
+          accessibleTokens: new Set(),
+          definition: { providers: [LateBootstrapGateway] },
+          exportedTokens: new Set(),
+          importedExportedTokens: new Set(),
+          providerTokens: new Set(),
+          type: LateBootstrapAppModule,
+        },
+      ] as never,
+      silentLogger,
+      adapter,
+      { shutdown: { timeoutMs: 100 } },
+    );
+    const { initializationStarted, releaseInitialization } = gateInitialization(service);
+    const bindCalls: unknown[] = [];
+
+    Reflect.set(service, 'bindNamespaceHandlers', (attachment: unknown) => {
+      bindCalls.push(attachment);
+    });
+
+    const initialization = service.getServerAsync();
+    await initializationStarted;
+    const bootstrap = service.onApplicationBootstrap();
+
+    // When
+    vi.useFakeTimers();
+    let applicationShutdownSettled = false;
+    void service.onApplicationShutdown().then(() => {
+      applicationShutdownSettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(applicationShutdownSettled).toBe(true);
+
+    vi.useRealTimers();
+    releaseInitialization();
+    await Promise.all([initialization, bootstrap, bindingCleared]);
+
+    // Then
+    expect(bindCalls).toHaveLength(0);
+    expect(service['wired']).toBe(false);
+    expect(service['attachments']).toEqual([]);
+    expect(service['io']).toBeUndefined();
     expect(adapter.currentBinding).toBeUndefined();
   });
 });
