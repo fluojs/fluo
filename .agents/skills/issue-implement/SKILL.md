@@ -62,6 +62,17 @@ must retain its exact digest in output and cannot change the contract, choose
 fewer review axes, or substitute a new preflight. Report scope conflicts to the
 lane instead of silently widening or narrowing the task.
 
+Before assigning a fix-back, the lead confirms the regression's supported
+runner, complete projected test/necessary-fixture patch, test-body assertion
+identity and first source file/positive line, and availability of real GREEN
+on the corrected head with the identical command/argv. Supported capture
+runners are the existing Node TAP runner and the canonical packages Vitest
+runner documented in `../review-head/SKILL.md`. Setup, hook, import or runtime
+failure is not assertion RED. A regression outside those boundaries returns
+to preparation; do not duplicate it in another runner merely to obtain a
+receipt. This check grants neither implementers nor reviewers lead capture
+authority.
+
 Before dispatch in either mode, the lead runs
 `../execute-lane/scripts/workflow-preparation.mjs implement <input.json>`.
 The wrapper is exactly `{version:1,stage:"implement",root,

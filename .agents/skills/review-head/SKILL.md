@@ -119,6 +119,71 @@ optionally with `--test-name-pattern=...`; use that same command and argv in the
 corrected head's passing focused receipt. Prepare tooling regression tests
 with this runner; do not substitute a shell command that prints a failure.
 
+Packages regressions may instead use this exact Vitest argv shape:
+
+```text
+[<node executable>, "node_modules/vitest/vitest.mjs", "run",
+ "--project=packages", <one projected packages test file>,
+ "--testNamePattern=<selection>",
+ "--reporter=<absolute approved fix-back-vitest-reporter.mjs>",
+ "--outputFile=.omo/fix-back-vitest.json", "--maxWorkers=1",
+ "--no-file-parallelism"]
+```
+
+The executable and installed entrypoint must resolve to the preparer's actual
+Node and installed Vitest. The reporter is the approved sibling of
+`workflow-preparation.mjs`, not a caller-selected replacement. No extra runner
+options, alternative entrypoints or shell wrappers are accepted. The command
+is the argv joined by spaces, using `node` or the absolute executable for its
+first token and single-quoting tokens outside `[\w./=:-]+` (embedded single
+quotes use shell `'\''` escaping). Retain this exact string and argv for GREEN.
+
+Before assigning fix-back, confirm that runner, the complete projected
+test/fixture patch, body assertion identity/first source location, and real
+same-command GREEN can be captured. Do not rewrite an unsupported regression
+in a different runner to manufacture RED.
+
+Vitest writes `.omo/fix-back-vitest.json` exclusively from its approved
+reporter; the output must not already exist. Retain that report as an
+authenticated `test_results` artifact in each RED/GREEN receipt. Copy it
+beside the receipt and retain its full bytes/hash; printing similar JSON or
+claiming exit 0 is insufficient. Remove or archive a previous ignored output
+before a separate GREEN capture. Capture rejects a pre-existing output and
+never overwrites it.
+
+The collector must reserve a separate pipe at runner fd 3
+(`stdio:["ignore","pipe","pipe","pipe"]`). After its exclusive file write,
+the approved reporter writes identical complete report bytes to that pipe.
+Capture requires both to match and keeps the pipe bytes as `test_results`.
+GREEN collectors use the same channel and equality check. Worker stdout or a
+worker-created report file cannot prove reporter completion: failure of the
+exclusive write leaves the private channel empty and capture rejects it.
+Retain complete stdout/stderr separately; they are not this private channel.
+The reporter admits only the isolated `packages` forks pool before workers
+start. Thread/custom pools are unsupported because worker threads can share
+the runner's file descriptors.
+
+The report binds the actual reporter implementation hash and complete runner
+outcome, modules, suites, unhandled errors and selected tests. Exactly one
+specified test must run once, with matching repository-relative file/name;
+other collected tests may only be skipped by selection. The selected test
+cannot be skipped/todo, retried, repeated or marked `fails`. RED requires one
+genuine assertion with its first valid source frame at the supplied file/line.
+Later matching frames cannot hide an earlier helper location. Module/setup,
+hook, runtime and unhandled failures are rejected, including hook assertions
+reported as test failures. Vitest batches final task state before replaying
+events, so hook-event `result().errors` is not proof of where an error arose;
+the report preserves terminal hook states and suite errors. Successful hooks
+and assertion expected/actual values containing error names remain valid.
+The reporter derives the unique `test.callback` invocation location from the
+actual installed runner and requires that call site in the unfiltered error
+stack. Unknown provenance, around-hook and test-finished hook assertions fail
+closed even when their source line matches. The first
+unfiltered source file must agree with the source-mapped first frame, so a
+later matching frame cannot hide a filtered helper.
+GREEN must show that same selected test actually passed with no remaining
+runner errors. Malformed/incomplete reports fail closed.
+
 The capture applies the patch to the reproduction index, executes argv, retains
 complete stdout/stderr and patch bytes in the new artifact directory, and emits
 `receipt.json` only for one named assertion failure at the supplied positive
@@ -139,6 +204,12 @@ complete patch and failure output, commit/tree/ancestry and issue/contract/head,
 and matches command/argv to a passing focused receipt. All axes receive the
 same `common.fix_back_red:{reference,receipt}`. A child's failed claim or
 producer string alone supplies no execution evidence.
+
+Vitest receipts add exactly `test_results:{path,sha256,bytes}` to these RED
+keys. Node TAP receipt keys and accepted argv remain unchanged. Preparation
+authenticates and rechecks the Vitest artifact along with the existing raw
+streams/patch/head/tree/contract bindings and shares it in the same common
+evidence/readable index with every active reviewer axis.
 
 `common.readable_index` is decoder-free machine metadata derived from those
 authenticated receipts and raw artifacts, with exact head/tree, distinct

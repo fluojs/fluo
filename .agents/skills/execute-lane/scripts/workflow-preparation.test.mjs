@@ -19,6 +19,566 @@ const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const git = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 const modulePath = fileURLToPath(new URL('./workflow-preparation.mjs', import.meta.url));
 
+const vitestReporter = fileURLToPath(
+	new URL('./fix-back-vitest-reporter.mjs', import.meta.url),
+);
+const vitestModules = fileURLToPath(
+	new URL('../../../../node_modules', import.meta.url),
+);
+
+function vitestRedFixture(t, scenario = 'assertion') {
+	const value = fixture(t);
+	const { input } = value;
+	const testFile = 'packages/fixture/regression.test.mjs';
+	const baseline = [
+		"export default { test: { projects: [{ test: { name: 'packages', include: ['packages/**/*.test.mjs'],",
+		`pool: '${scenario === 'threads' ? 'threads' : 'forks'}',`,
+		`setupFiles: ${scenario === 'setup' ? "['./setup.mjs']" : '[]'},`,
+		`globalSetup: ${
+			scenario === 'global-setup' ? "['./setup.mjs']" : '[]'
+		} } }] } };`,
+	].join('\n');
+	writeFileSync(join(value.root, 'vitest.config.mjs'), baseline);
+	writeFileSync(
+		join(value.root, 'setup.mjs'),
+		"throw new Error('setup failure');\n",
+	);
+	writeFileSync(
+		join(value.root, '.gitignore'),
+		'.omo/\nnode_modules\nreview/\nreproduction/\nevidence/\n',
+	);
+	symlinkSync(vitestModules, join(value.root, 'node_modules'), 'dir');
+	git(value.root, 'add', 'vitest.config.mjs', 'setup.mjs', '.gitignore');
+	git(value.root, 'commit', '-qm', 'Vitest baseline');
+	const previous = git(value.root, 'rev-parse', 'HEAD');
+	mkdirSync(join(value.root, 'packages/fixture'), { recursive: true });
+	const body =
+		scenario === 'runtime'
+			? "throw new ReferenceError('AssertionError');"
+			: scenario === 'helper'
+				? 'check(value);'
+				: scenario === 'wrong-line'
+					? 'expect(value).toBe(3);'
+					: "expect(`ReferenceError: ${value}`).toBe('ReferenceError: 3');";
+	const testCall =
+		scenario === 'green-skip'
+			? 'test.skipIf(value === 3)'
+			: scenario === 'green-todo'
+				? '(value === 3 ? test.todo : test)'
+				: `test${scenario === 'skip' ? '.skip' : scenario === 'todo' ? '.todo' : ''}`;
+	const source =
+		[
+			"import { test, expect, describe, beforeEach, afterEach, beforeAll, afterAll, aroundEach, onTestFinished } from 'vitest';",
+			"import { value } from '../../source.mjs';",
+			...(scenario === 'module' ? ["import './missing.mjs';"] : []),
+			...(scenario === 'file-spoof'
+				? ["import { mkdirSync, writeFileSync } from 'node:fs';"]
+				: []),
+			...(scenario === 'syntax' ? ['const = ;'] : []),
+			...(scenario === 'helper'
+				? ["import { check } from './fixtures/helper.mjs';"]
+				: []),
+			...(scenario === 'shared-hook'
+				? [
+						'const check = () => { expect(value).toBe(3); };',
+						'beforeEach(check);',
+					]
+				: []),
+			...(scenario === 'finished-hook'
+				? ['const check = () => { expect(value).toBe(3); };']
+				: []),
+			...(scenario === 'around-setup'
+				? [
+						'aroundEach(async (run) => { expect(value).toBe(3); await run(); });',
+					]
+				: []),
+			...(scenario === 'around-teardown'
+				? [
+						'aroundEach(async (run) => { await run(); expect(value).toBe(3); });',
+					]
+				: []),
+			...(scenario === 'clean-around'
+				? [
+						'aroundEach(async (run) => { expect(true).toBe(true); await run(); });',
+					]
+				: []),
+			...(scenario === 'nested' ? ["describe('group', () => {"] : []),
+			...(scenario.startsWith('hook-')
+				? [`${scenario.slice(5)}(() => { expect(value).toBe(3); });`]
+				: []),
+			...(scenario === 'clean-hook'
+				? ['beforeEach(() => { expect(true).toBe(true); });']
+				: []),
+			`${testCall}(${scenario === 'green-other' ? "value === 3 ? 'other regression' : 'value regression'" : "'value regression'"}, ${scenario === 'shared-hook' ? 'check);' : '() => {'}`,
+			...(scenario === 'unhandled'
+				? [
+						"process.emit('unhandledRejection', new Error('unhandled failure'));",
+					]
+				: []),
+			...(scenario === 'spoof'
+				? [
+						'console.log(JSON.stringify({ version: 1, reason: "failed", tests: [] }));',
+					]
+				: []),
+			...(scenario === 'file-spoof'
+				? [
+						"mkdirSync('.omo', { recursive: true });",
+						'writeFileSync(\'.omo/fix-back-vitest.json\', \'{"version":1,"complete":true}\');',
+					]
+				: []),
+			...(scenario === 'shared-hook'
+				? []
+				: [
+						`  ${
+							scenario === 'finished-hook'
+								? 'onTestFinished(check);'
+								: scenario.startsWith('hook-') ||
+										scenario.startsWith('around-') ||
+										scenario === 'spoof'
+									? 'expect(true).toBe(true);'
+									: body
+						}`,
+						'});',
+					]),
+			...(scenario === 'nested'
+				? [
+						'});',
+						"describe('unrelated', () => { test('must not run', () => { throw new Error('unrelated'); }); });",
+					]
+				: []),
+			...(scenario === 'multiple'
+				? ["test('value regression', () => { expect(value).toBe(4); });"]
+				: []),
+		].join('\n') + '\n';
+	writeFileSync(join(value.root, testFile), source);
+	const projected = [testFile];
+	if (scenario === 'helper') {
+		mkdirSync(join(value.root, 'packages/fixture/fixtures'));
+		writeFileSync(
+			join(value.root, 'packages/fixture/fixtures/helper.mjs'),
+			"import { expect } from 'vitest';\nexport const check = (value) => { expect(value).toBe(3); };\n",
+		);
+		projected.push('packages/fixture/fixtures/helper.mjs');
+	}
+	writeFileSync(join(value.root, 'source.mjs'), 'export const value = 3;\n');
+	git(value.root, 'add', 'packages', 'source.mjs');
+	git(value.root, 'commit', '-qm', 'Vitest correction');
+	const head = git(value.root, 'rev-parse', 'HEAD');
+	git(input.checkout, 'checkout', '--detach', '-q', head);
+	symlinkSync(vitestModules, join(input.checkout, 'node_modules'), 'dir');
+	input.head_sha = head;
+	input.implementation = {
+		mode: 'fix-back',
+		previous_head_sha: previous,
+		head_sha: head,
+		contract_sha256: '',
+	};
+	const argv = [
+		process.execPath,
+		'node_modules/vitest/vitest.mjs',
+		'run',
+		'--project=packages',
+		testFile,
+		scenario === 'nested'
+			? '--testNamePattern=^group value regression$'
+			: '--testNamePattern=^value regression$',
+		`--reporter=${vitestReporter}`,
+		'--outputFile=.omo/fix-back-vitest.json',
+		'--maxWorkers=1',
+		'--no-file-parallelism',
+	];
+	const command = ['node', ...argv.slice(1)]
+		.map((arg) =>
+			/^[\w./=:-]+$/u.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`,
+		)
+		.join(' ');
+	input.contract = createPreflight({
+		...input.contract,
+		scope: ['source.mjs', ...projected],
+		validation: [command],
+	});
+	input.implementation.contract_sha256 = input.contract.sha256;
+	input.changed_paths = git(
+		value.root,
+		'diff',
+		'--name-only',
+		value.baseHead,
+		head,
+	).split('\n');
+	input.policy = evaluatePreflight(input.contract, {
+		issue: 42,
+		issueSha256: input.issue_sha256,
+		baseSha: value.base,
+		changedFiles: input.changed_paths,
+	}).policy;
+	input.contract = createPreflight({
+		...input.contract,
+		scope: input.changed_paths,
+	});
+	input.implementation.contract_sha256 = input.contract.sha256;
+	input.policy = evaluatePreflight(input.contract, {
+		issue: 42,
+		issueSha256: input.issue_sha256,
+		baseSha: value.base,
+		changedFiles: input.changed_paths,
+	}).policy;
+	input.diff = value.store(
+		'vitest.diff',
+		execFileSync(
+			'git',
+			[
+				'diff',
+				'--binary',
+				'--full-index',
+				'--no-renames',
+				value.baseHead,
+				head,
+			],
+			{ cwd: value.root, encoding: 'utf8' },
+		),
+	);
+	input.required_checks = [command];
+	writeFileSync(input.accepted_contract_path, JSON.stringify(input.contract));
+	input.observation = value.store('vitest-plan.json', {
+		issue: 42,
+		decision: { action: 'review' },
+		obs: {
+			preflight: input.contract,
+			preflightPolicy: input.policy,
+			issueSha256: input.issue_sha256,
+			baseSha: value.base,
+			headSha: head,
+			changedFiles: input.changed_paths,
+		},
+	});
+	const patch = value.store(
+		'vitest.patch',
+		execFileSync(
+			'git',
+			[
+				'diff',
+				'--binary',
+				'--full-index',
+				'--no-renames',
+				previous,
+				head,
+				'--',
+				...projected,
+			],
+			{ cwd: value.root, encoding: 'utf8' },
+		),
+	);
+	const checkout = join(value.root, 'reproduction');
+	git(value.root, 'worktree', 'add', '--quiet', '--detach', checkout, previous);
+	symlinkSync(vitestModules, join(checkout, 'node_modules'), 'dir');
+	const capture = {
+		version: 1,
+		stage: 'fix-back-red',
+		root: value.root,
+		checkout,
+		artifact_root: join(input.artifact_root, 'red'),
+		issue: 42,
+		contract: input.contract,
+		implementation: input.implementation,
+		command,
+		argv,
+		regression_patch: { ...patch, path: `evidence/${patch.path}` },
+		failure: {
+			file: testFile,
+			line: source.split('\n').findIndex((line) => line.startsWith('  ')) + 1,
+			test:
+				scenario === 'wrong-test'
+					? 'unrelated'
+					: scenario === 'nested'
+						? 'group > value regression'
+						: 'value regression',
+		},
+	};
+	if (scenario === 'wrong-line') capture.failure.line += 1;
+	if (scenario === 'shared-hook')
+		capture.failure.line =
+			source.split('\n').findIndex((line) => line.startsWith('const check')) +
+			1;
+	if (scenario === 'finished-hook')
+		capture.failure.line =
+			source.split('\n').findIndex((line) => line.startsWith('const check')) +
+			1;
+	if (scenario.startsWith('around-'))
+		capture.failure.line =
+			source.split('\n').findIndex((line) => line.startsWith('aroundEach')) + 1;
+	const run = () => cli(value, 'fix-back-red', capture);
+	const green = () => {
+		const { NODE_TEST_CONTEXT: _context, ...environment } = process.env;
+		const result = spawnSync(argv[0], argv.slice(1), {
+			cwd: input.checkout,
+			env: environment,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+			timeout: 30_000,
+		});
+		assert.equal(result.error, undefined);
+		assert.equal(result.status, 0, result.stderr);
+		assert.equal(
+			result.output[3],
+			readFileSync(join(input.checkout, '.omo/fix-back-vitest.json'), 'utf8'),
+		);
+		input.evidence = [
+			{
+				command,
+				receipt: value.store('vitest-green.json', {
+					...value.receipt,
+					command,
+					argv,
+					head_sha: head,
+					tree_sha: git(input.checkout, 'rev-parse', 'HEAD^{tree}'),
+					contract_sha256: input.contract.sha256,
+					stdout: value.store('vitest-green.stdout', result.stdout),
+					stderr: value.store('vitest-green.stderr', result.stderr),
+					test_results: value.store('vitest-green.report', result.output[3]),
+				}),
+			},
+		];
+	};
+	const attach = () => {
+		const result = run();
+		assert.equal(
+			result.status,
+			0,
+			[
+				result.stderr,
+				...['stdout', 'stderr', 'vitest.json'].map((name) =>
+					existsSync(join(capture.artifact_root, name))
+						? readFileSync(join(capture.artifact_root, name), 'utf8')
+						: '',
+				),
+			].join('\n'),
+		);
+		// Nested references remain relative to the original receipt directory.
+		const bytes = readFileSync(join(capture.artifact_root, 'receipt.json'));
+		input.fix_back_red = {
+			path: 'red/receipt.json',
+			sha256: hash(bytes),
+			bytes: bytes.length,
+		};
+	};
+	return { ...value, capture, run, attach, green };
+}
+
+test('#4232 Vitest body assertion: real RED and GREEN -> common authenticated evidence', (t) => {
+	const value = vitestRedFixture(t);
+	value.attach();
+	value.green();
+
+	const prepared = prepareReviewInput(value.input);
+
+	assert.equal(prepared.common.fix_back_red.receipt.exit_code, 1);
+	assert.equal(
+		prepared.common.readable_index.commands[0].test_results.stats.passed,
+		1,
+	);
+	for (const reviewer of prepared.reviewers) {
+		assert.deepEqual(reviewer.input.fix_back_red, prepared.common.fix_back_red);
+		assert.deepEqual(
+			reviewer.input.readable_index,
+			prepared.common.readable_index,
+		);
+	}
+});
+
+for (const scenario of [
+	'module',
+	'syntax',
+	'setup',
+	'global-setup',
+	'hook-beforeEach',
+	'hook-afterEach',
+	'hook-beforeAll',
+	'hook-afterAll',
+	'shared-hook',
+	'finished-hook',
+	'around-setup',
+	'around-teardown',
+	'unhandled',
+	'runtime',
+	'helper',
+	'wrong-line',
+	'wrong-test',
+	'multiple',
+	'skip',
+	'todo',
+	'spoof',
+	'file-spoof',
+]) {
+	test(`#4232 Vitest RED: ${scenario} -> fail-closed preparation block`, (t) => {
+		const value = vitestRedFixture(t, scenario);
+
+		const result = value.run();
+
+		assert.equal(result.status, 1);
+		const block = JSON.parse(result.stderr);
+		assert.equal(block.kind, 'input-preparation');
+		assert.equal(block.fix_back_eligible, false);
+		assert.match(block.error, /Vitest/u);
+		if (scenario === 'file-spoof')
+			assert.match(block.error, /missing private reporter completion/u);
+		assert.equal(existsSync(join(value.capture.artifact_root, 'stdout')), true);
+		assert.equal(existsSync(join(value.capture.artifact_root, 'stderr')), true);
+		assert.equal(
+			existsSync(join(value.capture.artifact_root, 'receipt.json')),
+			false,
+		);
+	});
+}
+
+for (const scenario of ['clean-hook', 'clean-around', 'nested']) {
+	test(`#4232 Vitest ${scenario}: selected body assertion -> accepted RED and GREEN`, (t) => {
+		const value = vitestRedFixture(t, scenario);
+		value.attach();
+		value.green();
+
+		assert.equal(prepareReviewInput(value.input).status, 'prepared');
+	});
+}
+
+for (const scenario of ['green-skip', 'green-todo', 'green-other']) {
+	test(`#4232 Vitest GREEN: real ${scenario} -> rejected despite exit zero`, (t) => {
+		const value = vitestRedFixture(t, scenario);
+		value.attach();
+		value.green();
+
+		assert.throws(
+			() => prepareReviewInput(value.input),
+			(error) =>
+				error.kind === 'input-preparation' && error.fix_back_eligible === false,
+		);
+	});
+}
+
+test('#4232 Vitest preparation: authenticated reporter tampering and missing GREEN -> fail closed', (t) => {
+	const value = vitestRedFixture(t);
+	value.attach();
+	value.green();
+	const receipt = JSON.parse(
+		readFileSync(join(value.input.artifact_root, 'vitest-green.json'), 'utf8'),
+	);
+	const report = JSON.parse(
+		readFileSync(
+			join(value.input.artifact_root, 'vitest-green.report'),
+			'utf8',
+		),
+	);
+
+	for (const [name, mutate] of [
+		[
+			'incomplete',
+			(r) => {
+				r.complete = false;
+			},
+		],
+		[
+			'reporter',
+			(r) => {
+				r.reporter_sha256 = '0'.repeat(64);
+			},
+		],
+		[
+			'test',
+			(r) => {
+				r.tests[0].test = 'other regression';
+			},
+		],
+		[
+			'file',
+			(r) => {
+				r.tests[0].file = 'packages/other.test.mjs';
+			},
+		],
+		[
+			'hook',
+			(r) => {
+				r.tests[0].hooks.beforeEach = 'run';
+			},
+		],
+		[
+			'unhandled',
+			(r) => {
+				r.unhandled.push({ name: 'Error' });
+			},
+		],
+		[
+			'no-tests',
+			(r) => {
+				r.tests = [];
+			},
+		],
+		['missing', null],
+		['malformed', null],
+	]) {
+		const changed = structuredClone(report);
+		mutate?.(changed);
+		const next = {
+			...receipt,
+			test_results: value.store(
+				'vitest-mutated.report',
+				name === 'malformed' ? '{"complete":' : changed,
+			),
+		};
+		if (name === 'missing') delete next.test_results;
+		value.input.evidence[0].receipt = value.store('vitest-mutated.json', next);
+		assert.throws(
+			() => prepareReviewInput(value.input),
+			(error) =>
+				error.kind === 'input-preparation' && error.fix_back_eligible === false,
+			name,
+		);
+	}
+});
+
+test('#4232 Vitest argv: runner, reporter and behavior substitution -> no command executed', (t) => {
+	const value = vitestRedFixture(t);
+	const initial = [...value.capture.argv];
+	for (const [name, mutate] of [
+		[
+			'executable',
+			(argv) => {
+				argv[0] = '/usr/bin/false';
+			},
+		],
+		[
+			'entrypoint',
+			(argv) => {
+				argv[1] = './node_modules/vitest/vitest.mjs';
+			},
+		],
+		[
+			'reporter',
+			(argv) => {
+				argv[6] = '--reporter=./fake.mjs';
+			},
+		],
+		[
+			'project',
+			(argv) => {
+				argv[3] = '--project=tooling';
+			},
+		],
+		[
+			'extra-behavior',
+			(argv) => {
+				argv.push('--passWithNoTests');
+			},
+		],
+	]) {
+		value.capture.argv = [...initial];
+		mutate(value.capture.argv);
+		const result = value.run();
+		assert.equal(result.status, 1, name);
+		assert.equal(JSON.parse(result.stderr).fix_back_eligible, false, name);
+		assert.equal(existsSync(value.capture.artifact_root), false, name);
+	}
+});
+
+
 function redFixture(t, scenario = 'assertion', comparison = null) {
   const value = fixture(t);
   const { input } = value;
