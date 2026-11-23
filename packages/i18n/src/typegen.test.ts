@@ -176,12 +176,25 @@ export interface I18nCatalogTypedService {
     expect(output).toContain('Key extends AppI18nNamespaceKey<Namespace>,');
   });
 
-  it('compiles generated declarations for valid callsites and rejects invalid keys', async () => {
+  it.each([
+    {},
+    { keyTypeName: 'Key', namespaceTypeName: 'Namespace' },
+    { keyByNamespaceTypeName: 'Namespace', namespaceKeyTypeName: 'Key' },
+    { typedTranslateOptionsTypeName: 'Key', typedTranslateTypeName: 'Namespace' },
+    { typedServiceTypeName: 'Key', keyTypeName: 'Key_', namespaceTypeName: 'Namespace' },
+    { keyTypeName: 'Omit', keyByNamespaceTypeName: 'Record' },
+    { keyTypeName: 'intrinsic', namespaceTypeName: 'type', typedServiceTypeName: 'interfaceName' },
+  ] satisfies readonly I18nCatalogTypegenOptions[])('compiles declarations and consumers with custom names %j', async (options: I18nCatalogTypegenOptions) => {
     // Given: valid and invalid consumers import the declaration text emitted by the production type generator.
-    const declarations = generateI18nCatalogTypes([
+    const inputs = [
       { locale: 'en', messages: { dashboard: { title: 'Dashboard' } }, namespace: 'admin/common' },
       { locale: 'en', messages: { cancel: 'Cancel' }, namespace: 'common' },
-    ]);
+    ] as const satisfies readonly I18nCatalogTypegenInput[];
+    await writeCatalog('en', 'admin/common', inputs[0].messages);
+    await writeCatalog('en', 'common', inputs[1].messages);
+    const declarations = generateI18nCatalogTypes(inputs, options);
+    expect(await generateI18nCatalogTypesFromDirectory({ rootDir, ...options })).toBe(declarations);
+    const serviceName = options.typedServiceTypeName ?? 'I18nCatalogTypedService';
     const i18nModulePath = join(rootDir, 'i18n-module.d.ts');
     const validConsumerPath = join(rootDir, 'valid-consumer.ts');
     const invalidConsumerPath = join(rootDir, 'invalid-consumer.ts');
@@ -195,8 +208,8 @@ export interface I18nCatalogTypedService {
       writeFile(
         validConsumerPath,
         [
-          "import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';",
-          'declare const typedI18n: I18nCatalogTypedService;',
+          `import type { ${serviceName} } from './generated-i18n-catalog.d.ts';`,
+          `declare const typedI18n: ${serviceName};`,
           "typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });",
           "typedI18n.translate('common.cancel', { locale: 'en' });",
           "typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });",
@@ -207,8 +220,8 @@ export interface I18nCatalogTypedService {
       writeFile(
         invalidConsumerPath,
         [
-          "import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';",
-          'declare const typedI18n: I18nCatalogTypedService;',
+          `import type { ${serviceName} } from './generated-i18n-catalog.d.ts';`,
+          `declare const typedI18n: ${serviceName};`,
           "typedI18n.translate('admin/common.dashboard.missing', { locale: 'en' });",
           "typedI18n.translateInNamespace('common', 'dashboard.title', { locale: 'en' });",
         ].join('\n'),
@@ -216,18 +229,25 @@ export interface I18nCatalogTypedService {
       ),
     ]);
 
-    // When: one TypeScript program compiles both consumers with that exact generated declaration file.
-    const program = ts.createProgram({
-      options: {
+    // When: strict checking includes the generated declaration and all valid consumer diagnostics.
+    const compilerOptions: ts.CompilerOptions = {
         lib: ['lib.es5.d.ts'],
         module: ts.ModuleKind.ESNext,
         moduleResolution: ts.ModuleResolutionKind.Bundler,
         noEmit: true,
         strict: true,
+        skipLibCheck: false,
         target: ts.ScriptTarget.ES2022,
         types: [],
         verbatimModuleSyntax: true,
-      },
+    };
+    const validProgram = ts.createProgram({
+      options: compilerOptions,
+      rootNames: [i18nModulePath, join(rootDir, 'generated-i18n-catalog.d.ts'), validConsumerPath],
+    });
+    expect(ts.getPreEmitDiagnostics(validProgram)).toEqual([]);
+    const program = ts.createProgram({
+      options: compilerOptions,
       rootNames: [i18nModulePath, validConsumerPath, invalidConsumerPath],
     });
     const diagnostics = ts.getPreEmitDiagnostics(program);
@@ -253,6 +273,22 @@ export interface I18nCatalogTypedService {
     expect(first).toContain('export type I18nCatalogKey = "alpha" | "beta" | "nested.zeta";');
   });
 
+  it('compiles empty catalog declarations when custom names shadow utility types', async () => {
+    const options = { keyTypeName: 'Record', typedTranslateOptionsTypeName: 'Omit' };
+    const declarations = generateI18nCatalogTypes([], options);
+    expect(await generateI18nCatalogTypesFromDirectory({ rootDir, ...options })).toBe(declarations);
+    const declarationPath = join(rootDir, 'empty.d.ts');
+    const modulePath = join(rootDir, 'module.d.ts');
+    await writeFile(declarationPath, declarations);
+    await writeFile(modulePath, "declare module '@fluojs/i18n' { export interface I18nTranslateOptions { locale: string; namespace?: string; } }");
+
+    const program = ts.createProgram([declarationPath, modulePath], {
+      strict: true, skipLibCheck: false, noEmit: true, types: [], lib: ['lib.es5.d.ts'],
+    });
+
+    expect(ts.getPreEmitDiagnostics(program)).toEqual([]);
+  });
+
   it('rejects colliding final declaration identifiers', () => {
     expectI18nThrow(
       () =>
@@ -262,6 +298,30 @@ export interface I18nCatalogTypedService {
         }),
       'I18N_INVALID_OPTIONS',
     );
+  });
+
+  it.each([
+    'keyTypeName', 'namespaceTypeName', 'keyByNamespaceTypeName', 'namespaceKeyTypeName',
+    'typedTranslateOptionsTypeName', 'typedTranslateTypeName', 'typedServiceTypeName',
+  ] as const)('rejects reserved declaration names for %s through both entry points', async (option) => {
+    await writeCatalog('en', 'common', { title: 'Welcome' });
+
+    for (const name of ['class', 'string', 'void', 'null', 'await', 'as']) {
+      const options = { [option]: name };
+      expectI18nThrow(() => generateI18nCatalogTypes([], options), 'I18N_INVALID_OPTIONS');
+      await expectI18nRejection(() => generateI18nCatalogTypesFromDirectory({ rootDir, ...options }), 'I18N_INVALID_OPTIONS');
+    }
+  });
+
+  it.each([
+    { keyTypeName: 'Same', namespaceTypeName: 'Same' },
+    { keyTypeName: 'I18nCatalogNamespace' },
+    { namespaceKeyTypeName: 'not-valid-name' },
+  ])('rejects invalid or colliding directory output names %j', async (options) => {
+    await writeCatalog('en', 'common', { title: 'Welcome' });
+
+    expectI18nThrow(() => generateI18nCatalogTypes([], options), 'I18N_INVALID_OPTIONS');
+    await expectI18nRejection(() => generateI18nCatalogTypesFromDirectory({ rootDir, ...options }), 'I18N_INVALID_OPTIONS');
   });
 
   it('fails with stable errors for invalid inputs, catalogs, namespaces, and options', async () => {

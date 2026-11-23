@@ -14,6 +14,14 @@ const DEFAULT_TYPED_TRANSLATE_OPTIONS_TYPE_NAME = 'I18nCatalogTypedTranslateOpti
 const DEFAULT_TYPED_TRANSLATE_TYPE_NAME = 'I18nCatalogTypedTranslate';
 const DEFAULT_TYPED_SERVICE_TYPE_NAME = 'I18nCatalogTypedService';
 const IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+const RESERVED_TYPE_NAMES = new Set([
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else',
+  'enum', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof',
+  'new', 'null', 'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void',
+  'while', 'with', 'implements', 'interface', 'let', 'package', 'private', 'protected', 'public',
+  'static', 'yield', 'as', 'await', 'any', 'bigint', 'boolean', 'never', 'number', 'object', 'string',
+  'symbol', 'undefined', 'unknown',
+]);
 
 type CatalogEntry = {
   readonly locale: I18nLocale;
@@ -67,7 +75,7 @@ export interface I18nCatalogTypegenDirectoryOptions extends I18nCatalogTypegenOp
 
 function assertIdentifier(value: string | undefined, fallback: string, label: string): string {
   const name = value ?? fallback;
-  if (!IDENTIFIER_PATTERN.test(name)) {
+  if (!IDENTIFIER_PATTERN.test(name) || RESERVED_TYPE_NAMES.has(name)) {
     throw new I18nError(`${label} must be a valid TypeScript identifier.`, 'I18N_INVALID_OPTIONS');
   }
 
@@ -144,9 +152,9 @@ function unionLiteral(values: readonly string[]): string {
   return values.map((value) => JSON.stringify(value)).join(' | ');
 }
 
-function renderNamespaceMap(typeName: string, entries: ReadonlyMap<string, readonly string[]>): string[] {
+function renderNamespaceMap(typeName: string, entries: ReadonlyMap<string, readonly string[]>, identifiers: readonly string[]): string[] {
   if (entries.size === 0) {
-    return [`export type ${typeName} = Record<never, never>;`];
+    return [`export type ${typeName} = ${identifiers.includes('Record') ? '{ [Key in never]: never }' : 'Record<never, never>'};`];
   }
 
   const lines = [`export interface ${typeName} {`];
@@ -166,22 +174,34 @@ function renderTypedHelpers(names: {
   readonly typedTranslateTypeName: string;
   readonly typedServiceTypeName: string;
 }): string[] {
+  const identifiers = new Set(Object.values(names));
+  let keyParameter = 'Key';
+  let namespaceParameter = 'Namespace';
+  while (identifiers.has(keyParameter)) {
+    keyParameter += '_';
+  }
+  while (identifiers.has(namespaceParameter)) {
+    namespaceParameter += '_';
+  }
+  const translateOptions = identifiers.has('Omit')
+    ? "{ [Property in keyof import('@fluojs/i18n').I18nTranslateOptions as Property extends 'namespace' ? never : Property]: import('@fluojs/i18n').I18nTranslateOptions[Property] }"
+    : "Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>";
   return [
-    `export type ${names.namespaceKeyTypeName}<Namespace extends ${names.namespaceTypeName}> = ${names.keyByNamespaceTypeName}[Namespace];`,
-    `export type ${names.typedTranslateOptionsTypeName} = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;`,
-    `export type ${names.typedTranslateTypeName} = <Key extends ${names.keyTypeName}>(`,
-    '  key: Key,',
+    `export type ${names.namespaceKeyTypeName}<${namespaceParameter} extends ${names.namespaceTypeName}> = ${names.keyByNamespaceTypeName}[${namespaceParameter}];`,
+    `export type ${names.typedTranslateOptionsTypeName} = ${translateOptions};`,
+    `export type ${names.typedTranslateTypeName} = <${keyParameter} extends ${names.keyTypeName}>(`,
+    `  key: ${keyParameter},`,
     `  options: ${names.typedTranslateOptionsTypeName},`,
     ') => string;',
     `export interface ${names.typedServiceTypeName} {`,
     `  readonly translate: ${names.typedTranslateTypeName};`,
     '  readonly translateInNamespace: <',
-    `    Namespace extends ${names.namespaceTypeName},`,
-    `    Key extends ${names.namespaceKeyTypeName}<Namespace>,`,
+    `    ${namespaceParameter} extends ${names.namespaceTypeName},`,
+    `    ${keyParameter} extends ${names.namespaceKeyTypeName}<${namespaceParameter}>,`,
     '  >(',
-    '    namespace: Namespace,',
-    '    key: Key,',
-    "    options: Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>,",
+    `    namespace: ${namespaceParameter},`,
+    `    key: ${keyParameter},`,
+    `    options: ${translateOptions},`,
     '  ) => string;',
     '}',
   ];
@@ -311,7 +331,7 @@ export function generateI18nCatalogTypes(
     '',
     `export type ${keyTypeName} = ${unionLiteral([...keys].sort())};`,
     `export type ${namespaceTypeName} = ${unionLiteral([...namespaces].sort())};`,
-    ...renderNamespaceMap(keyByNamespaceTypeName, sortedNamespaceMap),
+    ...renderNamespaceMap(keyByNamespaceTypeName, sortedNamespaceMap, generatedIdentifiers),
     ...renderTypedHelpers({
       keyByNamespaceTypeName,
       keyTypeName,
