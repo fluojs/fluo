@@ -1399,6 +1399,338 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  describe.each(['direct', 'single queue', 'native bulk', 'sequential queue'] as const)(
+    'requested publication outcome: %s',
+    (path) => {
+      const requestedOutcomes = ['fulfilled', 'Error rejection', 'undefined rejection'] as const;
+
+      it.each(requestedOutcomes.flatMap((outcome) => [false, true].map((rejectFailed) => ({ outcome, rejectFailed }))))(
+        'preserves $outcome when delivery fails and failed publication rejection=$rejectFailed',
+        async ({ outcome, rejectFailed }) => {
+          const dispatchError = new Error('delivery failed');
+          const requestedError = new Error('requested publication failed');
+          const events: NotificationLifecycleEvent[] = [];
+          const rejectDelivery = async (): Promise<never> => {
+            throw dispatchError;
+          };
+          const container = new Container();
+          const moduleType = NotificationsModule.forRoot({
+            channels: [{ channel: 'email', send: rejectDelivery }],
+            queue: {
+              adapter: {
+                enqueue: rejectDelivery,
+                ...(path === 'native bulk' ? { enqueueMany: rejectDelivery } : {}),
+              },
+            },
+            events: {
+              publisher: {
+                async publish(event) {
+                  events.push(event);
+                  if (event.name === 'notification.dispatch.requested' && outcome !== 'fulfilled') {
+                    return Promise.reject(outcome === 'Error rejection' ? requestedError : undefined);
+                  }
+                  if (event.name === 'notification.dispatch.failed' && rejectFailed) {
+                    return Promise.reject();
+                  }
+                },
+              },
+            },
+          });
+          container.register(...moduleProviders(moduleType));
+          const service = await container.resolve(NotificationsService);
+          const notification = { channel: 'email', payload: {} };
+
+          const error = await (path === 'direct' || path === 'single queue'
+            ? service.dispatch(notification, { queue: path === 'single queue' })
+            : service.dispatchMany([notification], { queue: true })).catch((reason: unknown) => reason);
+
+          if (outcome === 'fulfilled' && !rejectFailed) {
+            expect(error).toBe(dispatchError);
+          } else {
+            expect(error).toBeInstanceOf(AggregateError);
+            if (!(error instanceof AggregateError)) {
+              throw new Error('Expected requested publication rejection to be preserved.');
+            }
+            expect(error.message).toBe(
+              'Notification dispatch failed, and failed lifecycle event publication also failed: delivery failed',
+            );
+            const expected = [
+              dispatchError,
+              ...(outcome === 'fulfilled' ? [] : [outcome === 'Error rejection' ? requestedError : undefined]),
+              ...(rejectFailed ? [undefined] : []),
+            ];
+            expect(error.errors).toHaveLength(expected.length);
+            expected.forEach((reason, index) => {
+              expect(error.errors[index]).toBe(reason);
+            });
+          }
+          expect(events.map((event) => event.name)).toEqual([
+            'notification.dispatch.requested',
+            'notification.dispatch.failed',
+          ]);
+        },
+      );
+
+      it.each(requestedOutcomes)('keeps successful delivery after %s', async (outcome) => {
+        const events: NotificationLifecycleEvent[] = [];
+        const acceptedJobs: NotificationsQueueJob[] = [];
+        const container = new Container();
+        const moduleType = NotificationsModule.forRoot({
+          channels: [{
+            channel: 'email',
+            async send() {
+              return { externalId: 'delivered:1' };
+            },
+          }],
+          queue: {
+            adapter: {
+              async enqueue(job) {
+                acceptedJobs.push(job);
+                return 'queued:1';
+              },
+              ...(path === 'native bulk' ? {
+                async enqueueMany(jobs: readonly NotificationsQueueJob[]) {
+                  acceptedJobs.push(...jobs);
+                  return ['queued:1'];
+                },
+              } : {}),
+            },
+          },
+          events: {
+            publisher: {
+              async publish(event) {
+                events.push(event);
+                if (event.name === 'notification.dispatch.requested' && outcome !== 'fulfilled') {
+                  return Promise.reject(outcome === 'Error rejection' ? new Error('requested failed') : undefined);
+                }
+                if (event.name !== 'notification.dispatch.requested') {
+                  return Promise.reject(new Error('terminal success publication failed'));
+                }
+              },
+            },
+          },
+        });
+        container.register(...moduleProviders(moduleType));
+        const service = await container.resolve(NotificationsService);
+        const notification = { channel: 'email', id: 'accepted-job', payload: {} };
+
+        const result = path === 'direct' || path === 'single queue'
+          ? await service.dispatch(notification, { queue: path === 'single queue' })
+          : await service.dispatchMany([notification], { queue: true });
+
+        const expected = {
+          channel: 'email',
+          deliveryId: path === 'direct' ? 'delivered:1' : 'queued:1',
+          status: path === 'direct' ? 'delivered' : 'queued',
+        };
+        expect(result).toMatchObject(path === 'direct' || path === 'single queue'
+          ? expected
+          : { failed: 0, failures: [], queued: 1, succeeded: 1, results: [expected] });
+        expect(acceptedJobs.map((job) => job.id)).toEqual(path === 'direct' ? [] : ['accepted-job']);
+        expect(events.map((event) => event.name)).toEqual([
+          'notification.dispatch.requested',
+          path === 'direct' ? 'notification.dispatch.delivered' : 'notification.dispatch.queued',
+        ]);
+      });
+    },
+  );
+
+  describe.each(['direct', 'native bulk', 'sequential queue'] as const)(
+    'mixed requested rejections: %s',
+    (path) => {
+      it.each([false, true])('preserves failure order with failed publication rejection=%s', async (rejectFailed) => {
+        const dispatchError = new Error('mixed delivery failed');
+        const requestedError = new Error('requested Error rejection');
+        const failedError = new Error('terminal Error rejection');
+        const events: NotificationLifecycleEvent[] = [];
+        const accepted: string[] = [];
+        const notifications = ['accepted', 'fulfilled', 'error', 'undefined'].map((id) => ({
+          channel: 'email',
+          id,
+          payload: {},
+        }));
+        const deliver = async (notification: NotificationDispatchRequest): Promise<string> => {
+          if (notification.id !== 'accepted') {
+            throw dispatchError;
+          }
+          accepted.push(notification.id);
+          return 'accepted:1';
+        };
+        const container = new Container();
+        const moduleType = NotificationsModule.forRoot({
+          channels: [{
+            channel: 'email',
+            async send(notification) {
+              return { externalId: await deliver(notification) };
+            },
+          }],
+          queue: {
+            adapter: {
+              async enqueue(job) {
+                return deliver(job.notification);
+              },
+              ...(path === 'native bulk' ? {
+                async enqueueMany() {
+                  throw dispatchError;
+                },
+              } : {}),
+            },
+          },
+          events: {
+            publisher: {
+              async publish(event) {
+                events.push(event);
+                const id = event.notification.id;
+                if (event.name === 'notification.dispatch.requested') {
+                  if (id === 'error' || id === 'accepted') {
+                    return Promise.reject(requestedError);
+                  }
+                  if (id === 'undefined') {
+                    return Promise.reject();
+                  }
+                }
+                if (rejectFailed && event.name === 'notification.dispatch.failed') {
+                  return Promise.reject(id === 'undefined' ? undefined : failedError);
+                }
+              },
+            },
+          },
+        });
+        container.register(...moduleProviders(moduleType));
+        const service = await container.resolve(NotificationsService);
+
+        const result = await service.dispatchMany(
+          path === 'native bulk' ? notifications.slice(1) : notifications,
+          { queue: path !== 'direct', continueOnError: true },
+        ).catch((reason: unknown) => reason instanceof Error ? reason : new Error('Unexpected non-Error dispatch rejection.'));
+
+        if (path === 'native bulk') {
+          expect(result).toBeInstanceOf(AggregateError);
+          if (!(result instanceof AggregateError)) {
+            throw new Error('Expected bulk requested publication rejections.');
+          }
+          const expected = [dispatchError, requestedError, undefined, ...(rejectFailed ? [failedError, failedError, undefined] : [])];
+          expect(result.errors).toHaveLength(expected.length);
+          expected.forEach((reason, index) => {
+            expect(result.errors[index]).toBe(reason);
+          });
+          expect(accepted).toEqual([]);
+        } else {
+          if (result instanceof Error) {
+            throw new Error('Expected partial dispatch results.');
+          }
+          expect(result).toMatchObject({
+            succeeded: 1,
+            failed: 3,
+            queued: path === 'direct' ? 0 : 1,
+            results: [{ deliveryId: 'accepted:1', status: path === 'direct' ? 'delivered' : 'queued' }],
+          });
+          expect(accepted).toEqual(['accepted']);
+          expect(result.failures.map((failure) => failure.notification.id)).toEqual(['fulfilled', 'error', 'undefined']);
+          result.failures.forEach((failure, index) => {
+            const expected = [
+              dispatchError,
+              ...(index === 1 ? [requestedError] : index === 2 ? [undefined] : []),
+              ...(rejectFailed ? [index === 2 ? undefined : failedError] : []),
+            ];
+            if (expected.length === 1) {
+              expect(failure.error).toBe(dispatchError);
+            } else {
+              expect(failure.error).toBeInstanceOf(AggregateError);
+              if (!(failure.error instanceof AggregateError)) {
+                throw new Error('Expected item-specific publication failures.');
+              }
+              const aggregate = failure.error;
+              expect(aggregate.errors).toHaveLength(expected.length);
+              expected.forEach((reason, errorIndex) => {
+                expect(aggregate.errors[errorIndex]).toBe(reason);
+              });
+            }
+          });
+        }
+        expect(events.filter((event) => event.name === 'notification.dispatch.failed')
+          .map((event) => event.notification.id)).toEqual(['fulfilled', 'error', 'undefined']);
+        expect(events.filter((event) => event.name === 'notification.dispatch.queued'
+          || event.name === 'notification.dispatch.delivered').map((event) => event.notification.id))
+          .toEqual(path === 'native bulk' ? [] : ['accepted']);
+      });
+    },
+  );
+
+  it.each([false, true])(
+    'preserves only pending requested failures after fail-fast queue fallback with failed rejection=%s',
+    async (rejectFailed) => {
+      const dispatchError = new Error('fallback enqueue failed');
+      const acceptedRequestedError = new Error('already accepted requested failure');
+      const pendingRequestedError = new Error('pending requested failure');
+      const events: NotificationLifecycleEvent[] = [];
+      const enqueued: string[] = [];
+      const container = new Container();
+      const moduleType = NotificationsModule.forRoot({
+        channels: [{
+          channel: 'email',
+          async send() {
+            return {};
+          },
+        }],
+        queue: {
+          adapter: {
+            async enqueue(job) {
+              enqueued.push(job.id);
+              if (job.id !== 'accepted') {
+                throw dispatchError;
+              }
+              return 'queued:accepted';
+            },
+          },
+        },
+        events: {
+          publisher: {
+            async publish(event) {
+              events.push(event);
+              if (event.name === 'notification.dispatch.requested') {
+                if (event.notification.id === 'accepted') {
+                  return Promise.reject(acceptedRequestedError);
+                }
+                if (event.notification.id === 'error') {
+                  return Promise.reject(pendingRequestedError);
+                }
+                if (event.notification.id === 'undefined') {
+                  return Promise.reject();
+                }
+              }
+              if (rejectFailed && event.name === 'notification.dispatch.failed') {
+                return Promise.reject();
+              }
+            },
+          },
+        },
+      });
+      container.register(...moduleProviders(moduleType));
+      const service = await container.resolve(NotificationsService);
+
+      const error = await service.dispatchMany(
+        ['accepted', 'fulfilled', 'error', 'undefined'].map((id) => ({ channel: 'email', id, payload: {} })),
+        { queue: true },
+      ).catch((reason: unknown) => reason);
+
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw new Error('Expected pending requested publication failures.');
+      }
+      const expected = [dispatchError, pendingRequestedError, undefined, ...(rejectFailed ? [undefined, undefined, undefined] : [])];
+      expect(error.errors).toHaveLength(expected.length);
+      expected.forEach((reason, index) => {
+        expect(error.errors[index]).toBe(reason);
+      });
+      expect(enqueued).toEqual(['accepted', 'fulfilled']);
+      expect(events.filter((event) => event.name === 'notification.dispatch.failed')
+        .map((event) => event.notification.id)).toEqual(['fulfilled', 'error', 'undefined']);
+      expect(events.filter((event) => event.name === 'notification.dispatch.queued')
+        .map((event) => event.deliveryId)).toEqual(['queued:accepted']);
+    },
+  );
+
   it('validates channels before queueing a single explicit queue dispatch', async () => {
     const queue = new RecordingQueueAdapter();
     const publisher = new RecordingPublisher();
