@@ -1464,6 +1464,150 @@ describe('@fluojs/drizzle', () => {
     }
   });
 
+  it('propagates a nested request abort signal to descendant request transactions', async () => {
+    const transactionDatabase = {};
+    let transactionCalls = 0;
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionDatabase);
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
+    const rootController = new AbortController();
+    const nestedController = new AbortController();
+    const nestedContinuation = createDeferred();
+    const nestedRejectionObserved = createDeferred();
+    const descendantObserved = createDeferred();
+    let descendantCalls = 0;
+    let intermediateError: Error | undefined;
+    let descendantError: Error | undefined;
+    let siblingResult: string | undefined;
+    let siblingHandle: unknown;
+
+    const requestTransaction = drizzle.requestTransaction(
+      async () => {
+        try {
+          await drizzle.requestTransaction(async () => {
+            nestedController.abort(new Error('nested request aborted'));
+            await nestedContinuation.promise;
+            try {
+              await drizzle.requestTransaction(async () => {
+                descendantCalls += 1;
+                return 'descendant-unreachable';
+              });
+            } catch (error) {
+              descendantError = error as Error;
+            }
+            descendantObserved.resolve();
+            return 'nested-unreachable';
+          }, nestedController.signal);
+        } catch (error) {
+          intermediateError = error as Error;
+        }
+        nestedRejectionObserved.resolve();
+        siblingResult = await drizzle.requestTransaction(async () => {
+          siblingHandle = drizzle.current();
+          return 'sibling-ok';
+        });
+        return 'root-ok';
+      },
+      rootController.signal,
+    );
+
+    try {
+      await nestedRejectionObserved.promise;
+      expect(rootController.signal.aborted).toBe(false);
+
+      nestedContinuation.resolve();
+      await descendantObserved.promise;
+
+      await expect(requestTransaction).resolves.toBe('root-ok');
+
+      expect(descendantCalls).toBe(0);
+      expect(intermediateError?.name).toBe('AbortError');
+      expect(intermediateError?.message).toBe('nested request aborted');
+      expect(descendantError?.name).toBe('AbortError');
+      expect(descendantError?.message).toBe(intermediateError?.message);
+      expect(rootController.signal.aborted).toBe(false);
+      expect(nestedController.signal.aborted).toBe(true);
+      expect(transactionCalls).toBe(1);
+      expect(siblingResult).toBe('sibling-ok');
+      expect(siblingHandle).toBe(transactionDatabase);
+    } finally {
+      nestedContinuation.resolve();
+      await Promise.allSettled([requestTransaction]);
+    }
+  });
+
+  it('propagates a nested fail-open request abort signal to descendant request transactions', async () => {
+    const database = {};
+    const drizzle = new DrizzleDatabase<typeof database>(database);
+    const rootController = new AbortController();
+    const nestedController = new AbortController();
+    const nestedContinuation = createDeferred();
+    const nestedRejectionObserved = createDeferred();
+    const descendantObserved = createDeferred();
+    let descendantCalls = 0;
+    let intermediateError: Error | undefined;
+    let descendantError: Error | undefined;
+    let siblingResult: string | undefined;
+    let siblingHandle: unknown;
+
+    const requestTransaction = drizzle.requestTransaction(
+      async () => {
+        try {
+          await drizzle.requestTransaction(async () => {
+            nestedController.abort(new Error('nested fail-open request aborted'));
+            await nestedContinuation.promise;
+            try {
+              await drizzle.requestTransaction(async () => {
+                descendantCalls += 1;
+                return 'descendant-unreachable';
+              });
+            } catch (error) {
+              descendantError = error as Error;
+            }
+            descendantObserved.resolve();
+            return 'nested-unreachable';
+          }, nestedController.signal);
+        } catch (error) {
+          intermediateError = error as Error;
+        }
+        nestedRejectionObserved.resolve();
+        siblingResult = await drizzle.requestTransaction(async () => {
+          siblingHandle = drizzle.current();
+          return 'sibling-ok';
+        });
+        return 'root-ok';
+      },
+      rootController.signal,
+    );
+
+    try {
+      await nestedRejectionObserved.promise;
+      expect(rootController.signal.aborted).toBe(false);
+
+      nestedContinuation.resolve();
+      await descendantObserved.promise;
+
+      await expect(requestTransaction).resolves.toBe('root-ok');
+
+      expect(descendantCalls).toBe(0);
+      expect(intermediateError?.name).toBe('AbortError');
+      expect(intermediateError?.message).toBe('nested fail-open request aborted');
+      expect(descendantError?.name).toBe('AbortError');
+      expect(descendantError?.message).toBe(intermediateError?.message);
+      expect(rootController.signal.aborted).toBe(false);
+      expect(nestedController.signal.aborted).toBe(true);
+      expect(siblingResult).toBe('sibling-ok');
+      expect(siblingHandle).toBe(database);
+    } finally {
+      nestedContinuation.resolve();
+      await Promise.allSettled([requestTransaction]);
+    }
+  });
+
   it('forwards transaction options for explicit and request-scoped transactions', async () => {
     const optionsCalls: Array<{ isolationLevel: string } | undefined> = [];
     const transactionDatabase = { kind: 'transaction' };
