@@ -1,7 +1,7 @@
 import { type Constructor, getModuleMetadata, Inject, type Token } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
 import { NotificationsModule, NotificationsService } from '@fluojs/notifications';
-import { FluoFactory, defineModule } from '@fluojs/runtime';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DiscordChannel } from './channel.js';
@@ -1397,7 +1397,9 @@ describe('DiscordModule', () => {
 
   it('preserves the cause when bootstrap verification fails', async () => {
     const cause = new Error('webhook credentials revoked');
+    const close = vi.fn(async () => undefined);
     const transport: DiscordTransport = {
+      close,
       async send() {
         return { ok: true, warnings: [] };
       },
@@ -1418,9 +1420,14 @@ describe('DiscordModule', () => {
       cause,
       message: 'Discord transport failed to initialize.',
     });
+    expect(close).not.toHaveBeenCalled();
+
     await expect(service.send({ content: 'After failed bootstrap' })).rejects.toThrowError(
       new DiscordTransportError('Discord transport failed to initialize.'),
     );
+
+    await service.onApplicationShutdown();
+    expect(close).not.toHaveBeenCalled();
   });
 
   it('reports shutdown cleanup failures separately from failed bootstrap diagnostics', async () => {
