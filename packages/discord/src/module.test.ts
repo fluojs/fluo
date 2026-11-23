@@ -1317,14 +1317,28 @@ describe('DiscordModule', () => {
     expect(transport.verifyCalls).toBe(0);
   });
 
-  it('preserves direct transport ownership across bootstrap and shutdown lifecycle hooks', async () => {
-    const transport = new PassiveTransport();
+  it.each((['forRoot', 'forRootAsync'] as const).flatMap((registration) => [
+    {},
+    { create: false },
+    { create: undefined },
+    { create: null },
+    { create: 'not-a-factory' },
+    { create: 42 },
+    { create: {} },
+  ].map((fields) => ({ fields, registration }))))('$registration preserves direct transport ownership with non-callable create: $fields', async ({ fields, registration }) => {
+    const transport = Object.assign(new PassiveTransport(), fields, {
+      kind: 'misleading-factory',
+      ownsResources: true,
+    });
     const container = new Container();
-    const moduleType = DiscordModule.forRoot({
+    const options = {
       defaultThreadId: 'thread-owned-by-app',
       transport,
       verifyOnModuleInit: true,
-    });
+    };
+    const moduleType = registration === 'forRoot'
+      ? DiscordModule.forRoot(options)
+      : DiscordModule.forRootAsync({ useFactory: async () => options });
 
     container.register(...moduleProviders(moduleType));
     const service = await container.resolve(DiscordService);
@@ -1365,6 +1379,52 @@ describe('DiscordModule', () => {
       new DiscordTransportError('Discord transport is shutting down or already stopped.'),
     );
     expect(transport.sent).toEqual(['App-owned transport']);
+  });
+
+  it.each((['forRoot', 'forRootAsync'] as const).flatMap((registration) => [
+    { metadata: {}, expectedKind: 'custom-factory', expectedOwnership: true },
+    { metadata: { kind: ' receiver-factory ', ownsResources: false }, expectedKind: 'receiver-factory', expectedOwnership: false },
+    { metadata: { kind: '   ', ownsResources: true }, expectedKind: 'custom-factory', expectedOwnership: true },
+  ].map((entry) => ({ ...entry, registration }))))('$registration prefers callable create over send with factory metadata: $metadata', async ({
+    metadata,
+    expectedKind,
+    expectedOwnership,
+    registration,
+  }) => {
+    const created = new PassiveTransport();
+    const create = vi.fn(function(this: { created: DiscordTransport }) {
+      return this.created;
+    });
+    const factory = Object.assign(new PassiveTransport(), { create, created }, metadata);
+    const options = { transport: factory };
+    const moduleType = registration === 'forRoot'
+      ? DiscordModule.forRoot(options)
+      : DiscordModule.forRootAsync({ useFactory: async () => options });
+    const container = new Container();
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await service.onModuleInit();
+    await service.send({ content: 'Factory-created transport' });
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(create.mock.contexts).toEqual([factory]);
+    expect(factory.sent).toEqual([]);
+    expect(created.sent).toEqual(['Factory-created transport']);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'ready', transportKind: expectedKind },
+      ownership: { externallyManaged: !expectedOwnership, ownsResources: expectedOwnership },
+      readiness: { status: 'ready' },
+    });
+
+    await service.onApplicationShutdown();
+
+    expect(created.closeCalls).toBe(expectedOwnership ? 1 : 0);
+    expect(factory.closeCalls).toBe(0);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopped' },
+      readiness: { status: 'not-ready' },
+    });
   });
 
   it('rejects sends while a concurrent shutdown is still closing the transport', async () => {
