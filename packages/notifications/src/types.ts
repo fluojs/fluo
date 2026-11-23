@@ -1,6 +1,16 @@
 import type { AsyncModuleOptions } from '@fluojs/core';
 
-/** Opaque payload shape carried through the shared notification contract. */
+/**
+ * Opaque payload shape carried through the shared notification contract.
+ *
+ * @remarks
+ * `Record<string, unknown>` alone does not guarantee admission snapshot support.
+ * Plain objects (including null-prototype objects) and arrays must contain only
+ * own data properties. Nested values may include Date, URL, URLSearchParams,
+ * RegExp, ArrayBuffer, ArrayBuffer-backed views, Map, and Set.
+ * Own getters/setters, unsupported class instances, or unsupported object
+ * prototypes cause a TypeError rejection at dispatch admission.
+ */
 export type NotificationPayload = Record<string, unknown>;
 
 /**

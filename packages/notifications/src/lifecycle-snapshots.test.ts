@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { NotificationsService } from './service.js';
 import type {
@@ -116,6 +116,44 @@ function mutateNotificationBytes(notification: NotificationDispatchRequest): voi
 }
 
 describe('NotificationsService lifecycle snapshots', () => {
+  it.each([false, true])(
+    'dispatchMany rejects the entire batch before any side effect when a later payload has an accessor (queue: %s)',
+    async (queue) => {
+      const publish = vi.fn(async () => {});
+      const send = vi.fn(async () => ({ externalId: 'delivered:email' }));
+      const enqueue = vi.fn(async () => 'queued:email');
+      const enqueueMany = vi.fn(async () => ['queued:first', 'queued:second']);
+      const channel: NotificationChannel = { channel: 'email', send };
+      const service = new NotificationsService(
+        {
+          channels: [channel],
+          events: { publishLifecycleEvents: true, publisher: { publish } },
+          queue: { adapter: { enqueue, enqueueMany }, bulkThreshold: 10 },
+        },
+        [channel],
+      );
+      const getter = vi.fn(() => 'unsafe');
+      const payload: Record<string, unknown> = {};
+      Object.defineProperty(payload, 'template', { enumerable: true, get: getter });
+
+      await expect(
+        service.dispatchMany(
+          [
+            { channel: 'email', payload: { template: 'first' } },
+            { channel: 'email', payload },
+          ],
+          { continueOnError: true, queue },
+        ),
+      ).rejects.toThrow(TypeError);
+
+      expect(getter).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(enqueueMany).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(['delivered', 'queued', 'failed'] as const)(
     'dispatch preserves admission snapshots and fallback identity after channel adapter byte mutation (%s)',
     async (status) => {
@@ -994,12 +1032,13 @@ describe('NotificationsService lifecycle snapshots', () => {
     });
     const prototypeAccessorPayload = Object.create(prototype) as Record<string, unknown>;
 
-    await expect(
-      service.dispatch({ channel: 'email', payload: ownAccessorPayload }),
-    ).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
-    await expect(
-      service.dispatch({ channel: 'email', payload: prototypeAccessorPayload }),
-    ).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
+    const ownAccessorDispatch = service.dispatch({ channel: 'email', payload: ownAccessorPayload });
+    const prototypeAccessorDispatch = service.dispatch({ channel: 'email', payload: prototypeAccessorPayload });
+
+    await expect(ownAccessorDispatch).rejects.toThrow(TypeError);
+    await expect(ownAccessorDispatch).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
+    await expect(prototypeAccessorDispatch).rejects.toThrow(TypeError);
+    await expect(prototypeAccessorDispatch).rejects.toThrow('Notification snapshots only support data properties on plain objects.');
 
     expect(ownAccessorReads).toBe(0);
     expect(prototypeAccessorReads).toBe(0);
