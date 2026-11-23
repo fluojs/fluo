@@ -7,6 +7,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
+import { aborted } from 'node:util';
 import { enforcePackageProductionInputs, productionInputClassifier } from '../../../../tooling/governance/package-production-inputs.mjs';
 import { buildVerificationPlan, digest, readVerificationManifest } from '../../../../tooling/ci/local-verification.mjs';
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
@@ -2975,25 +2976,52 @@ for (const scenario of ['missing', 'enumeration-failed']) {
   });
 }
 
-for (const externalLane of [false, true]) {
-test(`#4130 external watch: ${externalLane ? 'with' : 'without'} external lane -> fresh observations with one repository lookup per process`, async (t) => {
-  const f = externalFixture(t);
-  if (!externalLane) rmSync(f.externalPath);
-  const supplemental = start => f.calls().slice(start).filter(args => ['repo', 'api'].includes(args[0]));
-  const initialCalls = f.calls().length;
-  const signal = AbortSignal.timeout(20_000);
-  const sockets = [];
+async function withExternalWatch(externalLane, run, onListening = () => {}) {
+  const failure = new AbortController();
+  const errors = [];
+  const recordError = error => {
+    if (!errors.includes(error)) errors.push(error);
+    failure.abort(error);
+  };
+  const attempt = action => {
+    try { action(); } catch (error) { recordError(error); }
+  };
+  const signal = AbortSignal.any([AbortSignal.timeout(20_000), failure.signal]);
+  const sockets = new Map();
   const pending = [];
-  const server = createServer(socket => {
-    sockets.push(socket);
-    socket.once('data', () => { pending.push(socket); server.emit('tick'); });
-  });
-  const listening = once(server, 'listening', { signal });
-  server.listen(0, '127.0.0.1');
-  await listening;
-  const gh = join(f.root, 'bin/gh');
-  const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
-  writeFileSync(gh, `#!${process.execPath}
+  let removeFixture;
+  let server;
+  let child;
+  let closed;
+  let stopping = false;
+  let transcript = '';
+  let stderr = '';
+  const release = socket => {
+    if (!socket.destroyed && !socket.writableEnded) socket.end('continue\n');
+  };
+  try {
+    const f = externalFixture({ after: remove => { removeFixture = remove; } });
+    if (!externalLane) rmSync(f.externalPath);
+    const initialCalls = f.calls().length;
+    server = createServer(socket => {
+      sockets.set(socket, new Promise(resolve => socket.once('close', () => {
+        sockets.delete(socket);
+        resolve();
+      })));
+      socket.on('error', recordError);
+      socket.once('data', () => {
+        if (stopping) attempt(() => release(socket));
+        else { pending.push(socket); server.emit('tick'); }
+      });
+    });
+    server.on('error', recordError);
+    const listening = once(server, 'listening', { signal });
+    server.listen(0, '127.0.0.1');
+    await listening;
+    onListening(f.root, server);
+    const gh = join(f.root, 'bin/gh');
+    const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
+    writeFileSync(gh, `#!${process.execPath}
 import { connect as fixtureConnect } from 'node:net';
 if(process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverlapPullRequests'))) {
   await new Promise((done,reject)=>{
@@ -3003,33 +3031,76 @@ if(process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverl
   });
 }
 ${original}`);
-  const child = spawn(process.execPath, [script, 'watch', '--root', f.root, '--lane', f.lanePath, '--interval', '0'], {
-    env: { ...f.env, WATCH_PORT: String(server.address().port) }, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const closed = once(child, 'close');
-  let transcript = '';
-  let stderr = '';
-  child.stdout.on('data', chunk => { transcript += chunk; });
-  child.stderr.on('data', chunk => { stderr += chunk; });
-  t.after(async () => {
-    child.kill('SIGKILL');
-    for (const socket of sockets) socket.destroy();
-    server.close();
-    await closed;
-  });
-  const tick = async () => {
-    if (!pending.length) await once(server, 'tick', { signal });
-    return pending.shift();
-  };
-  const output = predicate => new Promise((resolve, reject) => {
-    const cleanup = () => { child.stdout.off('data', inspect); signal.removeEventListener('abort', abort); };
-    const inspect = () => { if (predicate(transcript)) { cleanup(); resolve(); } };
-    const abort = () => { cleanup(); reject(new Error(`Missing watch output: ${transcript}\n${stderr}`)); };
-    child.stdout.on('data', inspect);
-    signal.addEventListener('abort', abort, { once: true });
-    inspect();
-  });
+    // The IPC callback runs between synchronous CLI observations, so every started gh has exited.
+    const stopOnDisconnect = `data:text/javascript,${encodeURIComponent(`
+      if (process.connected) process.once('disconnect', () => process.exit(0));
+      else process.exit(0);
+    `)}`;
+    child = spawn(process.execPath, ['--import', stopOnDisconnect, script, 'watch',
+      '--root', f.root, '--lane', f.lanePath, '--interval', '0'], {
+      env: { ...f.env, WATCH_PORT: String(server.address().port) }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    });
+    child.on('error', recordError);
+    closed = new Promise(resolve => child.once('close', (code, exitSignal) => {
+      if (!stopping || code !== 0 || exitSignal !== null) {
+        recordError(new Error(`External watch closed (code ${code}, signal ${exitSignal}):\n${transcript}\n${stderr}`));
+      }
+      resolve({ exitSignal });
+    }));
+    child.stdout.on('data', chunk => { transcript += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    const tick = async () => {
+      signal.throwIfAborted();
+      if (!pending.length) await once(server, 'tick', { signal });
+      return pending.shift();
+    };
+    const output = predicate => new Promise((resolve, reject) => {
+      const cleanup = () => { child.stdout.off('data', inspect); signal.removeEventListener('abort', abort); };
+      const inspect = () => { if (predicate(transcript)) { cleanup(); resolve(); } };
+      const abort = () => {
+        cleanup();
+        reject(failure.signal.reason ?? new Error(`Missing watch output: ${transcript}\n${stderr}`, { cause: signal.reason }));
+      };
+      if (signal.aborted) { abort(); return; }
+      child.stdout.on('data', inspect);
+      signal.addEventListener('abort', abort, { once: true });
+      inspect();
+    });
+    await run({ f, child, tick, output, initialCalls, transcript: () => transcript });
+  } catch (error) {
+    recordError(error);
+  } finally {
+    stopping = true;
+    if (child?.connected) attempt(() => child.disconnect());
+    for (const socket of sockets.keys()) attempt(() => release(socket));
+    const exit = closed && await Promise.race([closed, aborted(AbortSignal.timeout(20_000), child)]);
+    if (closed && !exit) {
+      recordError(new Error('External watch did not drain; retaining the fixture because a fake gh may still be active'));
+      attempt(() => child.kill('SIGKILL'));
+    }
+    const listenerClosed = !server || new Promise(resolve => {
+      try {
+        server.close(error => {
+          if (!error || error.code === 'ERR_SERVER_NOT_RUNNING') resolve(true);
+          else { recordError(error); resolve(false); }
+        });
+      } catch (error) {
+        recordError(error);
+        resolve(false);
+      }
+    });
+    const socketClosures = [...sockets];
+    for (const [socket] of socketClosures) attempt(() => socket.destroy());
+    const [listenerStopped] = await Promise.all([listenerClosed, closed, ...socketClosures.map(([, done]) => done)]);
+    if ((!closed || exit?.exitSignal === null) && listenerStopped) attempt(() => removeFixture?.());
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length) throw new AggregateError(errors, 'External watch fixture failed');
+}
 
+for (const externalLane of [false, true]) {
+test(`#4130 external watch: ${externalLane ? 'with' : 'without'} external lane -> fresh observations with one repository lookup per process`, () => withExternalWatch(externalLane, async ({ f, tick, output, initialCalls, transcript }) => {
+  const supplemental = start => f.calls().slice(start).filter(args => ['repo', 'api'].includes(args[0]));
   (await tick()).end('continue\n');
   await output(text => text.includes(' -> review'));
   const firstEnd = f.calls().length;
@@ -3039,7 +3110,7 @@ ${original}`);
   assert.equal(supplemental(firstEnd).length, externalLane ? 2 : 1);
   assert.equal(supplemental(initialCalls).filter(args => args[0] === 'repo').length, 1);
   const secondEnd = f.calls().length;
-  assert.equal(transcript.split('\n').filter(line => line.includes('externalOverlaps=')).length, 1);
+  assert.equal(transcript().split('\n').filter(line => line.includes('externalOverlaps=')).length, 1);
   f.state.externalPrs.data.repository.pullRequests = f.connection([]);
   f.update();
   third.end('continue\n');
@@ -3047,12 +3118,52 @@ ${original}`);
 
   assert.equal(supplemental(secondEnd).length, externalLane ? 2 : 1);
   assert.ok(supplemental(secondEnd).length <= 3);
-  assert.equal(transcript.split('\n').filter(line => line.includes(' -> ')).length, 1);
-  const observations = transcript.split('\n').filter(line => line.includes('externalOverlaps='))
+  assert.equal(transcript().split('\n').filter(line => line.includes(' -> ')).length, 1);
+  const observations = transcript().split('\n').filter(line => line.includes('externalOverlaps='))
     .map(line => JSON.parse(line.split('externalOverlaps=')[1]));
   assert.equal(observations[0].prMatches.length, 1);
   assert.equal(observations[1].prMatches.length, 0);
-});
+}));
+}
+
+for (const setupFails of [false, true]) {
+  test(`#4296 external watch teardown: ${setupFails ? 'partial setup failure' : 'normal completion'} -> close resources before removing the fixture root`, async () => {
+    const setupError = new Error('injected watch setup failure after listen');
+    const rootAtClose = {};
+    let root;
+    let server;
+    let pendingGhFinished;
+    const onListening = (fixtureRoot, listener) => {
+      root = fixtureRoot;
+      server = listener;
+      server.once('close', () => { rootAtClose.listener = existsSync(root); });
+      if (setupFails) throw setupError;
+    };
+
+    try {
+      const run = () => withExternalWatch(true, async ({ f, child, tick }) => {
+        const socket = await tick();
+        const before = f.calls().length;
+        socket.once('close', () => { rootAtClose.socket = existsSync(root); });
+        child.once('close', () => {
+          rootAtClose.child = existsSync(root);
+          pendingGhFinished = rootAtClose.child && f.calls().slice(before)
+            .some(args => args.some(arg => arg.includes('ExternalOverlapPullRequests')));
+        });
+      }, onListening);
+      if (setupFails) await assert.rejects(run, (error) => error === setupError);
+      else await run();
+
+      assert.deepEqual(rootAtClose, setupFails ? { listener: true } : { child: true, socket: true, listener: true },
+        'the fixture root must still exist at each acquired resource close');
+      if (!setupFails) assert.equal(pendingGhFinished, true, 'the gated fake gh must finish writing before the watch closes');
+      assert.equal(existsSync(root), Boolean(process.env.FLUO_PRODUCT_TEST_EVIDENCE));
+    } finally {
+      if (server?.listening) await new Promise((resolve, reject) => {
+        server.close(error => error ? reject(error) : resolve());
+      });
+    }
+  });
 }
 
 test('#4130 external cost: no valid current prediction -> no supplemental gh calls and explicit unknown', (t) => {
