@@ -1,14 +1,15 @@
-import { describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import type { EmailNotificationQueueJob as PublicEmailNotificationQueueJob } from '@fluojs/email/queue';
 
 import { EmailChannel } from './channel.js';
 import { EmailMessageValidationError } from './errors.js';
 import { createEmailNotificationsQueueAdapter, EmailNotificationQueueJob, EmailNotificationsQueueWorker } from './queue.js';
 import { EmailService } from './service.js';
-import type { EmailNotificationDispatchRequest, EmailTransport, NormalizedEmailMessage, NormalizedEmailModuleOptions } from './types.js';
+import type { EmailAttachment, EmailNotificationDispatchRequest, EmailTransport, NormalizedEmailMessage, NormalizedEmailModuleOptions } from './types.js';
 import type { Queue } from '@fluojs/queue';
 
 function createQueueTestFixture(channel = 'email'): {
+  readonly channel: EmailChannel;
   readonly delivered: readonly NormalizedEmailMessage[];
   readonly worker: EmailNotificationsQueueWorker;
 } {
@@ -36,14 +37,83 @@ function createQueueTestFixture(channel = 'email'): {
     verifyOnModuleInit: false,
   };
   const service = new EmailService(options);
+  const emailChannel = new EmailChannel(service, options);
 
   return {
+    channel: emailChannel,
     delivered,
-    worker: new EmailNotificationsQueueWorker(new EmailChannel(service, options)),
+    worker: new EmailNotificationsQueueWorker(emailChannel),
   };
 }
 
 describe('EmailNotificationsQueueWorker', () => {
+  it('passes a structural notification DTO with inherited recipients through unchanged', async () => {
+    class DigestNotification implements EmailNotificationDispatchRequest {
+      readonly channel = 'email';
+      readonly payload = { text: 'Digest' };
+      get recipients(): readonly string[] {
+        return ['ops@example.com'];
+      }
+    }
+    const { channel, delivered, worker } = createQueueTestFixture();
+    const send = vi.spyOn(channel, 'send');
+    const notification = new DigestNotification();
+    const job: PublicEmailNotificationQueueJob = {
+      notification,
+      queuedAt: '2026-11-23T00:00:00.000Z',
+    };
+
+    await worker.handle(job);
+
+    expect(send.mock.calls[0]?.[0]).toBe(notification);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({ text: 'Digest', to: [{ address: 'ops@example.com' }] });
+    expect(notification.payload).toEqual({ text: 'Digest' });
+  });
+
+  it('passes native and string attachment DTOs with inherited fields through unchanged', async () => {
+    class DirectAttachment implements EmailAttachment {
+      constructor(readonly content: string | Uint8Array) {}
+      get filename(): string {
+        return typeof this.content === 'string' ? 'report.txt' : 'report.bin';
+      }
+      get contentType(): string {
+        return typeof this.content === 'string' ? 'text/plain' : 'application/octet-stream';
+      }
+    }
+    const { channel, delivered, worker } = createQueueTestFixture();
+    const send = vi.spyOn(channel, 'send');
+    const binary = new Uint8Array([99, 0, 255, 42, 88]).subarray(1, 4);
+    const attachments = Object.freeze([
+      Object.freeze(new DirectAttachment('report')),
+      Object.freeze(new DirectAttachment(binary)),
+    ]);
+    const notification: EmailNotificationDispatchRequest = {
+      channel: 'email',
+      recipients: ['ops@example.com'],
+      payload: { attachments, text: 'Direct attachments' },
+      subject: 'Direct envelope',
+      metadata: { trace: 'unchanged' },
+    };
+
+    await worker.handle({ notification, queuedAt: '2026-11-23T00:00:00.000Z' });
+
+    expect(send.mock.calls[0]?.[0]).toBe(notification);
+    expect(send.mock.calls[0]?.[0].payload.attachments).toBe(attachments);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({
+      subject: 'Direct envelope',
+      metadata: { trace: 'unchanged' },
+      attachments: [
+        { filename: 'report.txt', contentType: 'text/plain', content: 'report' },
+        { filename: 'report.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) },
+      ],
+    });
+    expect(notification.payload.attachments?.[0]).toBe(attachments[0]);
+    expect(notification.payload.attachments?.[1]).toBe(attachments[1]);
+    expect(attachments[1]?.content).toBe(binary);
+  });
+
   it('preserves the public queue job notification type and structural worker input', async () => {
     expectTypeOf<EmailNotificationQueueJob['notification']>().toEqualTypeOf<EmailNotificationDispatchRequest>();
     expectTypeOf<PublicEmailNotificationQueueJob['notification']>().toEqualTypeOf<EmailNotificationDispatchRequest>();

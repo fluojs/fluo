@@ -133,4 +133,87 @@ test('email queue JSON round trip preserves native Uint8Array indexed bytes when
   const empty = messages.at(-1).attachments[0].content;
   assert.ok(empty instanceof Uint8Array);
   assert.equal(empty.byteLength, 0);
+
+  const directMessages = [];
+  const directOptions = {
+    ...options,
+    transport: {
+      ...options.transport,
+      create: async () => ({
+        async send(message) {
+          directMessages.push(message);
+          return {
+            accepted: message.to.map((recipient) => recipient.address),
+            messageId: 'direct-getter-test',
+            pending: [],
+            rejected: [],
+          };
+        },
+      }),
+    },
+  };
+  const directChannel = new EmailChannel(new EmailService(directOptions), directOptions);
+  const handedOff = [];
+  const send = directChannel.send.bind(directChannel);
+  directChannel.send = (request, context) => {
+    handedOff.push(request);
+    return send(request, context);
+  };
+  const directWorker = new EmailNotificationsQueueWorker(directChannel);
+  class DigestNotification {
+    channel = 'email';
+    payload = { text: 'Digest' };
+    get recipients() {
+      return ['ops@example.com'];
+    }
+  }
+  const digest = new DigestNotification();
+  const directError = await directWorker.handle({
+    notification: digest,
+    queuedAt: '2026-11-23T00:00:00.000Z',
+  }).then(() => null, (error) => error);
+  assert.ifError(directError);
+  assert.equal(handedOff[0], digest);
+  assert.equal(directMessages.length, 1);
+  assert.equal(directMessages[0].to[0].address, 'ops@example.com');
+  assert.equal(directMessages[0].text, 'Digest');
+
+  class DirectAttachment {
+    constructor(content) {
+      this.content = content;
+    }
+    get filename() {
+      return typeof this.content === 'string' ? 'report.txt' : 'report.bin';
+    }
+    get contentType() {
+      return typeof this.content === 'string' ? 'text/plain' : 'application/octet-stream';
+    }
+  }
+  const attachments = Object.freeze([
+    Object.freeze(new DirectAttachment('report')),
+    Object.freeze(new DirectAttachment(content)),
+  ]);
+  const directNotification = {
+    channel: 'email',
+    payload: { attachments, text: 'Direct attachments' },
+    recipients: ['ops@example.com'],
+    subject: 'Direct envelope',
+    metadata: { trace: 'unchanged' },
+  };
+  await directWorker.handle({
+    notification: directNotification,
+    queuedAt: '2026-11-23T00:00:00.000Z',
+  });
+  assert.equal(handedOff[1], directNotification);
+  assert.equal(handedOff[1].payload.attachments, attachments);
+  assert.equal(handedOff[1].payload.attachments[0], attachments[0]);
+  assert.equal(handedOff[1].payload.attachments[1], attachments[1]);
+  assert.equal(directMessages.length, 2);
+  assert.equal(directMessages[1].subject, 'Direct envelope');
+  assert.deepEqual(directMessages[1].metadata, { trace: 'unchanged' });
+  assert.deepEqual(directMessages[1].attachments, [
+    { filename: 'report.txt', contentType: 'text/plain', content: 'report' },
+    { filename: 'report.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) },
+  ]);
+  assert.equal(attachments[1].content, content);
 });

@@ -112,7 +112,7 @@ export class EmailNotificationsQueueWorker {
    *
    * @param job Queued notification payload created by `createEmailNotificationsQueueAdapter(...)`.
    * @returns A promise that resolves only when email delivery is accepted by the channel contract.
-   * @throws {EmailMessageValidationError} When the queued notification targets another configured channel.
+   * @throws {EmailMessageValidationError} When the queued notification targets another configured channel or contains invalid attachment bytes.
    */
   async handle(job: EmailNotificationQueueJob): Promise<void> {
     const expectedChannel = this.channel.channel;
@@ -124,36 +124,39 @@ export class EmailNotificationsQueueWorker {
     }
 
     const notification: QueuedEmailNotification = job.notification;
+    const attachments = notification.payload.attachments;
+    let decodedAttachments: QueuedEmailAttachment[] | undefined;
+    if (attachments) {
+      for (let attachmentIndex = 0; attachmentIndex < attachments.length; attachmentIndex++) {
+        const attachment = attachments[attachmentIndex];
+        const content: unknown = attachment.content;
+        if (typeof content === 'string' || content instanceof Uint8Array) {
+          continue;
+        }
+        if (
+          typeof content !== 'object' || content === null || Array.isArray(content)
+          || !('bytes' in content) || !Object.hasOwn(content, 'bytes')
+          || Object.keys(content).length !== 1 || !Array.isArray(content.bytes)
+        ) {
+          throw new EmailMessageValidationError('Queued email attachment content is not a supported byte payload.');
+        }
+        const bytes: readonly unknown[] = content.bytes;
+        const restored = new Uint8Array(bytes.length);
+        for (let index = 0; index < bytes.length; index++) {
+          const byte = bytes[index];
+          if (typeof byte !== 'number' || !Number.isInteger(byte) || byte < 0 || byte > 255) {
+            throw new EmailMessageValidationError('Queued email attachment bytes must be integers between 0 and 255.');
+          }
+          restored[index] = byte;
+        }
+        decodedAttachments ??= attachments.slice();
+        decodedAttachments[attachmentIndex] = { ...attachment, content: restored };
+      }
+    }
     await this.channel.send(
-      {
-        ...notification,
-        payload: {
-          ...notification.payload,
-          attachments: notification.payload.attachments?.map((attachment) => {
-            const content: unknown = attachment.content;
-            if (typeof content === 'string' || content instanceof Uint8Array) {
-              return { ...attachment, content };
-            }
-            if (
-              typeof content !== 'object' || content === null || Array.isArray(content)
-              || !('bytes' in content) || !Object.hasOwn(content, 'bytes')
-              || Object.keys(content).length !== 1 || !Array.isArray(content.bytes)
-            ) {
-              throw new EmailMessageValidationError('Queued email attachment content is not a supported byte payload.');
-            }
-            const bytes: readonly unknown[] = content.bytes;
-            const restored = new Uint8Array(bytes.length);
-            for (let index = 0; index < bytes.length; index++) {
-              const byte = bytes[index];
-              if (typeof byte !== 'number' || !Number.isInteger(byte) || byte < 0 || byte > 255) {
-                throw new EmailMessageValidationError('Queued email attachment bytes must be integers between 0 and 255.');
-              }
-              restored[index] = byte;
-            }
-            return { ...attachment, content: restored };
-          }),
-        },
-      },
+      decodedAttachments
+        ? { ...notification, payload: { ...notification.payload, attachments: decodedAttachments } }
+        : job.notification,
       {},
     );
   }
