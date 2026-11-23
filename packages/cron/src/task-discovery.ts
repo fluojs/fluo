@@ -1,16 +1,21 @@
 import type { MetadataPropertyKey, Token } from '@fluojs/core';
-import { getClassDiMetadata } from '@fluojs/core/internal';
-import type { Provider } from '@fluojs/di';
+import type { Container, NormalizedProvider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 
 import { getSchedulingTaskMetadataEntries } from './metadata.js';
 import type { CronTaskDescriptor, NormalizedCronModuleOptions } from './types.js';
 
 interface DiscoveryCandidate {
+  readonly contributionIndex?: number;
   moduleName: string;
   scope: 'request' | 'singleton' | 'transient';
   targetType: Function;
   token: Token;
+}
+
+/** Framework-owned invocation identity, never exposed by registry snapshots. @internal */
+export interface CronTaskInvocationDescriptor extends CronTaskDescriptor {
+  readonly contributionIndex?: number;
 }
 
 /**
@@ -77,20 +82,20 @@ export function methodKeyToName(methodKey: MetadataPropertyKey): string {
 /**
  * Discover cron task descriptors.
  *
- * @param compiledModules The compiled modules.
- * @param options The options.
- * @param logger The logger.
+ * @param container The container owning effective normalized registrations.
+ * @param compiledModules The compiled modules used for display attribution.
+ * @param context Scheduling options and logger.
  * @returns The discover cron task descriptors result.
  */
 export function discoverCronTaskDescriptors(
+  container: Container,
   compiledModules: readonly CompiledModule[],
-  options: NormalizedCronModuleOptions,
-  logger: ApplicationLogger,
-): CronTaskDescriptor[] {
-  const seen = new Map<Function, Set<string>>();
-  const descriptors: CronTaskDescriptor[] = [];
+  context: { readonly options: NormalizedCronModuleOptions; readonly logger: ApplicationLogger },
+): CronTaskInvocationDescriptor[] {
+  const { options, logger } = context;
+  const descriptors: CronTaskInvocationDescriptor[] = [];
 
-  for (const candidate of collectDiscoveryCandidates(compiledModules)) {
+  for (const candidate of collectDiscoveryCandidates(container, compiledModules)) {
     const entries = getSchedulingTaskMetadataEntries(candidate.targetType.prototype);
 
     if (candidate.scope !== 'singleton') {
@@ -110,19 +115,12 @@ export function discoverCronTaskDescriptors(
         buildDefaultTaskName(candidate.targetType.name, methodName),
         entry.metadata.options.name,
       );
-      const seenMethods = seen.get(candidate.targetType) ?? new Set<string>();
       const lockTtlMs = entry.metadata.options.lockTtlMs ?? options.distributed.lockTtlMs;
 
-      if (seenMethods.has(methodName)) {
-        continue;
-      }
-
-      seenMethods.add(methodName);
-      seen.set(candidate.targetType, seenMethods);
-
-      const descriptor: CronTaskDescriptor = {
+      const descriptor: CronTaskInvocationDescriptor = {
         afterRun: entry.metadata.options.afterRun,
         beforeRun: entry.metadata.options.beforeRun,
+        contributionIndex: candidate.contributionIndex,
         distributed: entry.metadata.options.distributed ?? true,
         kind: entry.metadata.kind,
         lockKey: createLockKey(options.distributed.keyPrefix, entry.metadata.options.key ?? taskName),
@@ -151,56 +149,38 @@ export function discoverCronTaskDescriptors(
   return descriptors;
 }
 
-function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
-  if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
-  }
-
-  return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
-}
-
-function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
-  return typeof provider === 'object' && provider !== null && 'useClass' in provider;
-}
-
-function collectDiscoveryCandidates(compiledModules: readonly CompiledModule[]): DiscoveryCandidate[] {
+function collectDiscoveryCandidates(container: Container, compiledModules: readonly CompiledModule[]): DiscoveryCandidate[] {
   const candidates: DiscoveryCandidate[] = [];
-
-  for (const compiledModule of compiledModules) {
-    for (const provider of compiledModule.definition.providers ?? []) {
-      if (typeof provider === 'function') {
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: scopeFromProvider(provider),
-          targetType: provider,
-          token: provider,
-        });
-        continue;
-      }
-
-      if (isClassProvider(provider)) {
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: scopeFromProvider(provider),
-          targetType: provider.useClass,
-          token: provider.provide,
-        });
-      }
+  const state = container.inspectResolutionState();
+  const append = (provider: NormalizedProvider, contributionIndex?: number) => {
+    if (provider.type !== 'class' || !provider.useClass) {
+      return;
     }
-
-    for (const controller of compiledModule.definition.controllers ?? []) {
-      candidates.push({
-        moduleName: compiledModule.type.name,
-        scope: scopeFromProvider(controller),
-        targetType: controller,
-        token: controller,
-      });
+    const targetType = provider.useClass;
+    // Compiled declarations supply labels only; scope and invocation belong to DI.
+    const module = compiledModules.find((compiled) =>
+      compiled.definition.controllers?.includes(targetType)
+      || compiled.definition.providers?.some((declared) =>
+        typeof declared === 'function'
+          ? declared === provider.provide && declared === targetType
+          : declared.provide === provider.provide && 'useClass' in declared && declared.useClass === targetType,
+      ),
+    );
+    candidates.push({
+      contributionIndex,
+      moduleName: module?.type.name ?? targetType.name,
+      scope: provider.scope,
+      targetType,
+      token: provider.provide,
+    });
+  };
+  for (const provider of state.registrations.values()) {
+    append(provider);
+  }
+  for (const providers of state.multiRegistrations.values()) {
+    for (const [index, provider] of providers.entries()) {
+      append(provider, index);
     }
   }
-
   return candidates;
 }

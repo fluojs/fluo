@@ -59,6 +59,12 @@ Before upgrading from `@fluojs/cron` 2, move deployment hosts to Node.js `>=24.0
 
 Dynamic registry task identity now comes exclusively from the first `name` argument: remove `options.name` from `addCron`, `addInterval`, and `addTimeout` calls. Use `distributed: { enabled: true }` to enable Redis locking and omit `distributed` to keep it disabled; boolean `distributed: true` and `distributed: false` are no longer accepted. Integration code that reads decorator metadata must use `getSchedulingTaskMetadata(...)`, `getSchedulingTaskMetadataEntries(...)`, and `schedulingMetadataSymbol`; cron-only metadata aliases and metadata writers are no longer public. `normalizeCronModuleOptions(...)` and `NormalizedCronModuleOptions` are runtime internals, not application configuration APIs.
 
+### Scheduling contract migration
+
+`SchedulingTaskDescriptor` fields are now `readonly`, matching the frozen snapshots returned by `get` and `getAll`. Code that directly constructs or edits a descriptor must create a mutable copy (`const local = { ...descriptor }; local.ms = 5_000`) for local calculations, or use registry methods such as `updateIntervalMs`, `updateCronExpression`, `enable`, and `disable` to change scheduling state. Editing a copy does not update the registry. `getAll()` still returns a fresh mutable array: sorting, pushing, and splicing that array remain supported.
+
+`@Cron`, `addCron`, and `updateCronExpression` accept expressions only. Previously incidental acceptance of ISO absolute-time strings is removed, and bypassing types with a `Date` is rejected too. Keep absolute scheduling in application-owned code rather than substituting a startup-relative timeout. Supported Croner expression syntax (five/six fields, nicknames, names, ranges, steps, and extensions) remains available. Positive integer millisecond delays remain supported, including values above `2_147_483_647`: fluo splits long waits into cancellable host timer segments without shortening the requested delay.
+
 ## When to Use
 
 - When you need to run periodic background tasks (e.g., database cleanup, report generation).
@@ -235,6 +241,10 @@ class AppModule {}
 ```
 
 Only singleton providers/controllers are scheduled. Request-scoped and transient scheduled classes are skipped with a warning.
+
+Discovery follows the container's effective class registrations after duplicate-provider policy is applied. Losing declarations cannot add schedules or override the winner's scope or injection. Each eligible singleton multi-provider contribution runs its own instance; non-class and request/transient siblings keep their DI contribution positions without being resolved for scheduling. Distinct Symbol methods retain their actual method identities even when their descriptions match.
+
+Task hooks run in order: `beforeRun` → body → `onSuccess` or `onError` → `afterRun`. A thrown or rejected reason is passed unchanged to `onError`, including `0`, `false`, `''`, `null`, and `undefined`. Distributed renewal continues through asynchronous success/error and after hooks, and stops after execution settles, before token-safe release.
 
 ## Public API Overview
 
