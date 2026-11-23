@@ -3032,11 +3032,13 @@ if(process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverl
 }
 ${original}`);
     // The IPC callback runs between synchronous CLI observations, so every started gh has exited.
-    const stopOnDisconnect = `data:text/javascript,${encodeURIComponent(`
-      if (process.connected) process.once('disconnect', () => process.exit(0));
-      else process.exit(0);
+    const stopOnRequest = `data:text/javascript,${encodeURIComponent(`
+      const stop = () => process.exit(0);
+      if (!process.connected) stop();
+      process.once('disconnect', stop);
+      process.on('message', message => { if (message === 'stop') stop(); });
     `)}`;
-    child = spawn(process.execPath, ['--import', stopOnDisconnect, script, 'watch',
+    child = spawn(process.execPath, ['--import', stopOnRequest, script, 'watch',
       '--root', f.root, '--lane', f.lanePath, '--interval', '0'], {
       env: { ...f.env, WATCH_PORT: String(server.address().port) }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -3071,7 +3073,10 @@ ${original}`);
     recordError(error);
   } finally {
     stopping = true;
-    if (child?.connected) attempt(() => child.disconnect());
+    // Let the child close IPC: parent-initiated disconnect can bypass Node's child close accounting.
+    if (child?.connected) attempt(() => child.send('stop', error => {
+      if (error) recordError(error);
+    }));
     for (const socket of sockets.keys()) attempt(() => release(socket));
     const exit = closed && await Promise.race([closed, aborted(AbortSignal.timeout(20_000), child)]);
     if (closed && !exit) {
