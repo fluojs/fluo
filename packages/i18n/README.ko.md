@@ -429,6 +429,8 @@ const cachedLoader = CachedRemoteI18nLoader.create({
 cachedLoader.invalidate('en', 'common');
 ```
 
+카탈로그는 TTL이 만료되는 즉시 캐시 적중 대상에서 제외됩니다. 첫 `load()` 호출이 해당 wrapper의 `ttlMs` 길이 정리 주기를 시작합니다. 각 주기가 끝난 시점이나 그 이후의 첫 `load()` 호출은 캐시 적중이어도 만료된 모든 카탈로그의 참조를 제거하고 다음 주기를 시작합니다. 유휴 상태에서 항목을 제거하는 백그라운드 타이머는 없으며, 가비지 컬렉션 시점도 보장하지 않습니다.
+
 Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 전에 validate됩니다. Namespace는 `admin/common` 같은 safe relative path segment를 사용할 수 있습니다. `.`, `..`, absolute path, empty segment, `common.json` 같은 extension-bearing name, traversal attempt는 `I18N_INVALID_LOADER_OPTIONS`로 거부됩니다.
 
 ## Catalog Type Generation

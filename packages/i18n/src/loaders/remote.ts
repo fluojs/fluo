@@ -248,10 +248,13 @@ export class RemoteI18nLoader implements I18nLoader {
  * @remarks
  * This wrapper never changes `RemoteI18nLoader` defaults. Applications choose it explicitly when they want catalog
  * caching at the loading boundary and can invalidate entries through `invalidate(...)` or `clear()`.
+ * The first load at or after each TTL-length sweep interval releases expired entries, even on cache hits.
+ * There is no background eviction while the wrapper is idle.
  */
 export class CachedRemoteI18nLoader implements CachedI18nLoader {
   private readonly cache = new Map<string, { readonly catalog: I18nMessageTree; readonly expiresAt: number }>();
   private readonly pendingLoads = new Map<string, { count: number }>();
+  private nextSweepAt = Number.NEGATIVE_INFINITY;
   private readonly getCacheKey: (input: CachedI18nLoaderKeyInput) => string;
   private readonly loader: I18nLoader;
   private readonly now: () => number;
@@ -303,8 +306,18 @@ export class CachedRemoteI18nLoader implements CachedI18nLoader {
     validateLoaderNamespace(namespace, 'Cached remote i18n');
 
     const cacheKey = this.getCacheKey({ locale, namespace, version: this.version });
-    const cached = this.cache.get(cacheKey);
     const currentTime = this.now();
+
+    if (currentTime >= this.nextSweepAt) {
+      this.nextSweepAt = currentTime + this.ttlMs;
+      for (const [key, entry] of this.cache) {
+        if (currentTime >= entry.expiresAt) {
+          this.cache.delete(key);
+        }
+      }
+    }
+
+    const cached = this.cache.get(cacheKey);
 
     if (cached !== undefined && cached.expiresAt > currentTime) {
       return cached.catalog;
