@@ -46,7 +46,7 @@ export class EmailNotificationQueueJob {
           ...notification.payload,
           attachments: notification.payload.attachments?.map((attachment) => {
             const content = attachment.content;
-            if (typeof content === 'string' || 'bytes' in content) {
+            if (!(content instanceof Uint8Array)) {
               return attachment;
             }
             const bytes: number[] = [];
@@ -134,7 +134,7 @@ export class EmailNotificationsQueueWorker {
           attachments: notification.payload.attachments?.map((attachment) => ({
             ...attachment,
             content:
-              typeof attachment.content !== 'string' && 'bytes' in attachment.content
+              typeof attachment.content !== 'string' && !(attachment.content instanceof Uint8Array)
                 ? new Uint8Array(attachment.content.bytes)
                 : attachment.content,
           })),
