@@ -22,7 +22,7 @@ results only, keyed by full package name).
 | `queue-guide-app.ts` | Complete Queue guide app: `ProcessOrderJob`/`ExplodeJob` workers, `getQueueToken()` producer, `QueueProbe` buffering seam, plus a worker-less inspection app. |
 | `queue-guide.test.ts` | Native Redis job processing: constructor-identity enqueue, prototype rehydration, `deduplicationKey` id mapping, atomic `enqueueMany`, status snapshot, enqueue-time rejections, and dead-letter record shape via a second registration's `inspectDeadLetters`. |
 | `cron-guide-app.ts` | Complete Cron guide app: `@Cron`/`@Timeout` decorator tasks, `LockProbe` over the raw Redis client, plus a distributed-mode module (`keyPrefix: 'fluo:cron:guide'`, `lockTtlMs: 1_000`). |
-| `cron-guide.test.ts` | Decorator-time validation, registry discovery (default `<ClassName>.<methodName>` naming), dynamic registry semantics (self-disabling timeout, duplicate-name and invalid-expression rejection, transactional update rollback), and the native distributed lock (lease held during the tick, released before the next tick re-acquires). |
+| `cron-guide.test.ts` | Decorator validation/discovery, dynamic registry semantics including live replacement rollback and disable/update/enable, native lease acquire/hold/release, and production Lua stale release preserving a newer same-owner token. |
 
 ## Commands and results
 
@@ -48,6 +48,34 @@ Every wait is an event barrier (deferred resolved by the handler, worker,
 callback, or hook itself) wrapped in `boundedWait`, whose reject timer only
 fails stalled signals. Every application context, Redis client, and container
 is closed in `finally` (the container through the harness `cleanup()`).
+
+### #4234 focused cron rerun
+
+Recorded on branch `issue-4234`, starting at
+`8d85512e23be52f2fbfed650080f2960eb85bd7f`, with Node v24.22.1.
+Only the cron guide was rerun; the historical results above remain historical.
+The prepared explicit PATH and full raw output, measured execution times, and
+exit receipts are retained in the assigned checkout's ignored
+`.omo/issue-4234/` directory and implementer transcript.
+
+```text
+pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/async-work/cron-guide.test.ts --maxWorkers=1
+# exit 0: 1 file, 6 tests passed, no unhandled errors
+```
+
+The accepted TypeScript API command over `cron-guide.test.ts` and
+`cron-guide-app.ts` using `tsconfig.tools.json` also exited 0 with no
+diagnostics; `guide-typecheck-final.log` retains the exact program and PATH.
+
+The existing Redis fixture owns locked-image startup, readiness, ephemeral
+loopback binding, and cleanup. The stale-release test uses the production
+`CronDistributedLockManager` with that native client. Redis itself expires the
+old acquisition through `PEXPIRE key 0`; a new acquisition using the same owner
+gets a distinct token. Production `releaseLock(previous)` executes its Lua in
+Redis, and `GET` must retain the new token. Temporarily removing the production
+Lua token comparison made that assertion fail (`null` instead of the new token,
+exit 1); restoring the script returned all 6 guide tests to GREEN. No copied
+Lua or token-comparing mock supplies this evidence.
 
 ## Per-package source and contract evidence
 
@@ -140,7 +168,8 @@ is closed in `finally` (the container through the harness `cleanup()`).
   rejected), `src/expressions.ts` (`CronExpression` presets),
   `src/service.ts` (registry, duplicate-name rejection, rollback, timeout
   self-disable, tick admission), `src/task-runner.ts` (hook order:
-  callback -> post-run release -> success/error -> `afterRun`),
+  `beforeRun` -> callback -> success/error -> `afterRun`, followed by
+  service-owned token-safe release),
   `src/task-discovery.ts` (`buildDefaultTaskName` =
   `<ClassName>.<methodName>`, `createLockKey` = `<keyPrefix>:<name>`),
   `src/distributed-lock-manager.ts` (SET PX NX lease, renewal, release),
@@ -150,9 +179,11 @@ is closed in `finally` (the container through the harness `cleanup()`).
   expressions and static methods throw at decoration, dynamic timeouts run
   once and self-disable, duplicate dynamic names and invalid expressions are
   rejected atomically, a failed `updateCronExpression` replacement leaves the
-  previous expression active, and — natively — a distributed task holds the
+  previous expression active, disable/update/enable commits a new descriptor
+  and supports later disable/remove, and — natively — a distributed task holds the
   Redis lease (`GET` returns a non-empty token) during its callback and the
-  lease is released before the next tick re-acquires it.
+  lease is released before the next tick re-acquires it. The production Lua
+  boundary also preserves a newer token after a stale same-owner release.
 - Package tests corroborating: `packages/cron/src/module.test.ts`,
   `src/lifecycle-race.test.ts`, `src/lease-race.test.ts`,
   `src/optional-redis-peer.test.ts`, `src/shutdown-release.test.ts`.
