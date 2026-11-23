@@ -5,7 +5,7 @@ import { EmailChannel } from './channel.js';
 import { EmailMessageValidationError } from './errors.js';
 import { createEmailNotificationsQueueAdapter, EmailNotificationQueueJob, EmailNotificationsQueueWorker } from './queue.js';
 import { EmailService } from './service.js';
-import type { EmailAttachment, EmailNotificationDispatchRequest, EmailTransport, NormalizedEmailMessage, NormalizedEmailModuleOptions } from './types.js';
+import type { EmailAttachment, EmailNotificationDispatchRequest, EmailNotificationPayload, EmailTransport, NormalizedEmailMessage, NormalizedEmailModuleOptions } from './types.js';
 import type { Queue } from '@fluojs/queue';
 
 function createQueueTestFixture(channel = 'email'): {
@@ -47,6 +47,117 @@ function createQueueTestFixture(channel = 'email'): {
 }
 
 describe('EmailNotificationsQueueWorker', () => {
+  it.each(['enqueue', 'enqueueMany'] as const)('%s preserves producer getters and sequential original JSON projections', async (method) => {
+    const { delivered, worker } = createQueueTestFixture();
+    const projections: { notification: EmailNotificationDispatchRequest; key: string }[] = [];
+    class JsonNotification implements EmailNotificationDispatchRequest {
+      readonly channel = 'email';
+      constructor(readonly payload: EmailNotificationPayload) {}
+      get recipients(): readonly string[] {
+        return ['ops@example.com'];
+      }
+      toJSON(key: string) {
+        projections.push({ notification: this, key });
+        return { channel: this.channel, payload: this.payload, recipients: this.recipients, subject: 'JSON projection' };
+      }
+    }
+    class BinaryAttachment implements EmailAttachment {
+      constructor(readonly content: Uint8Array) {}
+      get filename(): string {
+        return this.content.byteLength ? 'report.bin' : 'empty.bin';
+      }
+      get contentType(): string {
+        return 'application/octet-stream';
+      }
+    }
+    const backing = new Uint8Array([99, 0, 255, 42, 88]);
+    const binary = backing.subarray(1, 4);
+    Object.defineProperty(binary, 'bytes', { value: [9], enumerable: true });
+    const opaque = { bytes: [7], raw: new Uint8Array([8]) };
+    const attachments = Object.freeze([
+      Object.freeze({ filename: 'report.txt', contentType: 'text/plain', content: 'report' }),
+      Object.freeze(new BinaryAttachment(binary)),
+      Object.freeze(new BinaryAttachment(new Uint8Array(0))),
+    ]);
+    const native: EmailNotificationDispatchRequest = {
+      channel: 'email', recipients: ['ops@example.com'], metadata: { opaque },
+      payload: { text: 'Native', attachments, templateData: { opaque } },
+    };
+    const stringDto = Object.freeze(new JsonNotification(Object.freeze({
+      text: 'String DTO', attachments: Object.freeze([{ filename: 'report.txt', content: 'report' }]),
+    })));
+    const emptyDto = Object.freeze(new JsonNotification(Object.freeze({ text: 'Empty DTO' })));
+    const requests = [native, stringDto, emptyDto, native, emptyDto].map((notification, index) => ({
+      channel: 'email', id: `producer-${index}`, notification, queuedAt: '2026-11-23T00:00:00.000Z',
+    }));
+    const stored: { job: object; payload: EmailNotificationQueueJob }[] = [];
+    const adapter = createEmailNotificationsQueueAdapter({
+      async enqueue(job) {
+        expect(job).toBeInstanceOf(EmailNotificationQueueJob);
+        const payload: EmailNotificationQueueJob = JSON.parse(JSON.stringify(job));
+        stored.push({ job, payload });
+        return 'stored';
+      },
+      async enqueueMany(entries) {
+        const batch = entries.map(({ job }) => {
+          expect(job).toBeInstanceOf(EmailNotificationQueueJob);
+          const payload: EmailNotificationQueueJob = JSON.parse(JSON.stringify(job));
+          return { job, payload };
+        });
+        stored.push(...batch);
+        return batch.map(() => 'stored');
+      },
+      async inspectDeadLetters() {
+        return { malformedRecordCount: 0, records: [] };
+      },
+    });
+    if (method === 'enqueue') {
+      for (const request of requests) await adapter.enqueue(request);
+    } else {
+      await adapter.enqueueMany?.(requests);
+    }
+    expect(stored).toHaveLength(5);
+    for (const [index, captured] of stored.entries()) {
+      expect(captured.payload).toMatchObject({ id: requests[index]?.id, queuedAt: requests[index]?.queuedAt });
+      await worker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), captured.payload));
+    }
+    expect(projections).toEqual([stringDto, emptyDto, emptyDto].map((notification) => ({ notification, key: 'notification' })));
+    expect(delivered.map((message) => message.text)).toEqual(['Native', 'String DTO', 'Empty DTO', 'Native', 'Empty DTO']);
+    for (const index of [0, 3]) {
+      expect(delivered[index]?.attachments).toEqual([
+        { filename: 'report.txt', contentType: 'text/plain', content: 'report' },
+        { filename: 'report.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) },
+        { filename: 'empty.bin', contentType: 'application/octet-stream', content: new Uint8Array(0) },
+      ]);
+      expect(stored[index]?.payload.notification.payload.templateData).toEqual({ opaque: { bytes: [7], raw: { 0: 8 } } });
+      expect(delivered[index]?.metadata).toEqual({ opaque: { bytes: [7], raw: { 0: 8 } } });
+    }
+    for (const index of [1, 2, 4]) {
+      expect(delivered[index]).toMatchObject({ subject: 'JSON projection', to: [{ address: 'ops@example.com' }] });
+    }
+    expect(delivered[1]?.attachments).toEqual([{ filename: 'report.txt', content: 'report' }]);
+    const serializationError = new Error('Original notification projection failed');
+    class FailingNotification extends JsonNotification {
+      override toJSON(_key: string): ReturnType<JsonNotification['toJSON']> {
+        throw serializationError;
+      }
+    }
+    const failing = { ...requests[0], notification: new FailingNotification({ text: 'Fail' }) };
+    if (method === 'enqueue') {
+      await expect(adapter.enqueue(failing)).rejects.toBe(serializationError);
+    } else {
+      await expect(adapter.enqueueMany?.([requests[0], failing, requests[1]])).rejects.toBe(serializationError);
+    }
+    expect(stored).toHaveLength(5);
+    expect(delivered).toHaveLength(5);
+    expect(projections).toHaveLength(3);
+    expect(native.payload.attachments).toBe(attachments);
+    expect(native.payload.templateData?.opaque).toBe(opaque);
+    expect(attachments[1]?.content).toBe(binary);
+    expect(backing).toEqual(new Uint8Array([99, 0, 255, 42, 88]));
+    expect(Reflect.get(binary, 'bytes')).toEqual([9]);
+  });
+
   it('passes a structural notification DTO with inherited recipients through unchanged', async () => {
     class DigestNotification implements EmailNotificationDispatchRequest {
       readonly channel = 'email';

@@ -222,4 +222,129 @@ test('email queue JSON round trip preserves native Uint8Array indexed bytes when
   assert.equal(content.byteLength, 3);
   assert.deepEqual([content[0], content[1], content[2]], [0, 255, 42]);
   assert.equal(attachments[1].content, content);
+
+  const projections = [];
+  class JsonNotification {
+    channel = 'email';
+    constructor(payload) {
+      this.payload = payload;
+    }
+    get recipients() {
+      return ['ops@example.com'];
+    }
+    toJSON(key) {
+      projections.push({ notification: this, key });
+      return { channel: this.channel, payload: this.payload, recipients: this.recipients, subject: 'JSON projection' };
+    }
+  }
+  class BinaryAttachment {
+    constructor(content) {
+      this.content = content;
+    }
+    get filename() {
+      return this.content.byteLength ? 'report.bin' : 'empty.bin';
+    }
+    get contentType() {
+      return 'application/octet-stream';
+    }
+  }
+  const opaque = { bytes: [7], raw: new Uint8Array([8]) };
+  const producerAttachments = Object.freeze([
+    Object.freeze({ filename: 'report.txt', contentType: 'text/plain', content: 'report' }),
+    Object.freeze(new BinaryAttachment(content)),
+    Object.freeze(new BinaryAttachment(new Uint8Array(0))),
+  ]);
+  const native = {
+    channel: 'email', recipients: ['ops@example.com'], metadata: { opaque },
+    payload: { text: 'Native', attachments: producerAttachments, templateData: { opaque } },
+  };
+  const stringDto = Object.freeze(new JsonNotification(Object.freeze({
+    text: 'String DTO', attachments: Object.freeze([{ filename: 'report.txt', content: 'report' }]),
+  })));
+  const emptyDto = Object.freeze(new JsonNotification(Object.freeze({ text: 'Empty DTO' })));
+  for (const method of ['enqueue', 'enqueueMany']) {
+    const stored = [];
+    const adapter = createEmailNotificationsQueueAdapter({
+      async enqueue(job) {
+        assert.equal(job.constructor, EmailNotificationQueueJob);
+        const payload = JSON.parse(JSON.stringify(job));
+        stored.push({ job, payload });
+        return 'stored';
+      },
+      async enqueueMany(entries) {
+        const batch = entries.map(({ job }) => {
+          assert.equal(job.constructor, EmailNotificationQueueJob);
+          return { job, payload: JSON.parse(JSON.stringify(job)) };
+        });
+        stored.push(...batch);
+        return batch.map(() => 'stored');
+      },
+      async inspectDeadLetters() {
+        return { malformedRecordCount: 0, records: [] };
+      },
+    });
+    const requests = [native, stringDto, emptyDto, native, emptyDto].map((notification, index) => ({
+      channel: 'email', id: `producer-${index}`, notification, queuedAt: '2026-11-23T00:00:00.000Z',
+    }));
+    const before = directMessages.length;
+    const projectionStart = projections.length;
+    if (method === 'enqueue') {
+      for (const request of requests) await adapter.enqueue(request);
+    } else {
+      await adapter.enqueueMany(requests);
+    }
+    assert.equal(stored.length, 5);
+    for (const [index, captured] of stored.entries()) {
+      assert.equal(captured.payload.id, requests[index].id);
+      assert.equal(captured.payload.queuedAt, requests[index].queuedAt);
+      const restored = Object.assign(Object.create(EmailNotificationQueueJob.prototype), captured.payload);
+      await directWorker.handle(restored);
+      const message = directMessages.at(-1);
+      if (index === 0 || index === 3) {
+        const bytes = message.attachments[1].content;
+        assert.ok(bytes instanceof Uint8Array);
+        assert.equal(bytes.byteLength, 3);
+        assert.deepEqual([bytes[0], bytes[1], bytes[2]], [0, 255, 42]);
+        assert.equal(message.attachments[1].filename, 'report.bin');
+        assert.equal(message.attachments[1].contentType, 'application/octet-stream');
+        assert.equal(message.attachments[0].content, 'report');
+        assert.equal(message.attachments[0].filename, 'report.txt');
+        assert.equal(message.attachments[2].filename, 'empty.bin');
+        assert.equal(message.attachments[2].contentType, 'application/octet-stream');
+        assert.ok(message.attachments[2].content instanceof Uint8Array);
+        assert.equal(message.attachments[2].content.byteLength, 0);
+        assert.deepEqual(restored.notification.payload.templateData, { opaque: { bytes: [7], raw: { 0: 8 } } });
+        assert.deepEqual(message.metadata, { opaque: { bytes: [7], raw: { 0: 8 } } });
+      } else {
+        assert.equal(message.to[0].address, 'ops@example.com');
+        assert.equal(message.subject, 'JSON projection');
+        assert.equal(message.text, index === 1 ? 'String DTO' : 'Empty DTO');
+        assert.deepEqual(message.attachments, index === 1 ? [{ filename: 'report.txt', content: 'report' }] : undefined);
+      }
+    }
+    assert.equal(directMessages.length, before + 5);
+    assert.deepEqual(projections.slice(projectionStart), [stringDto, emptyDto, emptyDto].map((notification) => ({
+      notification, key: 'notification',
+    })));
+    const serializationError = new Error('Original notification projection failed');
+    class FailingNotification extends JsonNotification {
+      toJSON() {
+        throw serializationError;
+      }
+    }
+    const failing = { ...requests[0], notification: new FailingNotification({ text: 'Fail' }) };
+    if (method === 'enqueue') {
+      await assert.rejects(adapter.enqueue(failing), serializationError);
+    } else {
+      await assert.rejects(adapter.enqueueMany([requests[0], failing, requests[1]]), serializationError);
+    }
+    assert.equal(stored.length, 5);
+    assert.equal(directMessages.length, before + 5);
+    assert.equal(projections.length, projectionStart + 3);
+    assert.equal(native.payload.attachments, producerAttachments);
+    assert.equal(native.payload.templateData.opaque, opaque);
+    assert.equal(producerAttachments[1].content, content);
+    assert.deepEqual([content[0], content[1], content[2]], [0, 255, 42]);
+    assert.deepEqual(content.bytes, [9]);
+  }
 });

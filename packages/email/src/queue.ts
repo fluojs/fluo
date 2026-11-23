@@ -34,25 +34,33 @@ export class EmailNotificationQueueJob {
     // Keep the JSON hook out of the public structural job type.
     Object.defineProperty(this, 'toJSON', {
       value: (): { notification: QueuedEmailNotification; queuedAt: string; id?: string } => {
-        const notification: QueuedEmailNotification = this.notification;
+        const notification = this.notification;
+        const attachments = notification.payload.attachments;
+        let encodedAttachments: QueuedEmailAttachment[] | undefined;
+        if (attachments) {
+          for (let attachmentIndex = 0; attachmentIndex < attachments.length; attachmentIndex++) {
+            const attachment = attachments[attachmentIndex];
+            const content = attachment.content;
+            if (!(content instanceof Uint8Array)) {
+              continue;
+            }
+            const bytes: number[] = [];
+            for (let index = 0; index < content.byteLength; index++) {
+              bytes.push(content[index]);
+            }
+            encodedAttachments ??= attachments.slice();
+            encodedAttachments[attachmentIndex] = {
+              ...attachment,
+              filename: attachment.filename,
+              contentType: attachment.contentType,
+              content: { bytes },
+            };
+          }
+        }
         return {
-          notification: {
-            ...notification,
-            payload: {
-              ...notification.payload,
-              attachments: notification.payload.attachments?.map((attachment) => {
-                const content = attachment.content;
-                if (!(content instanceof Uint8Array)) {
-                  return attachment;
-                }
-                const bytes: number[] = [];
-                for (let index = 0; index < content.byteLength; index++) {
-                  bytes.push(content[index]);
-                }
-                return { ...attachment, content: { bytes } };
-              }),
-            },
-          },
+          notification: encodedAttachments
+            ? { ...notification, payload: { ...notification.payload, attachments: encodedAttachments } }
+            : notification,
           queuedAt: this.queuedAt,
           id: this.id,
         };
