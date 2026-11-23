@@ -11,3 +11,5 @@ Keep direct notification and native/string attachment objects unchanged when no 
 Preserve original notification JSON projections when no native encoding is needed, and retain getter-based attachment filenames and MIME types through single and bulk queue serialization.
 
 Compose native attachment encoding with the original email JSON projections once, preserving projected envelope values, intentional omissions, and opaque data behavior.
+
+Encode only attachments selected by JSON projections, and preserve genuine cross-realm Uint8Array views using their intrinsic length despite shadowed properties.

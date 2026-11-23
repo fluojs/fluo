@@ -1,6 +1,7 @@
 import '@fluojs/core/metadata-preload';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { EmailChannel, EmailMessageValidationError, EmailService } from '@fluojs/email';
 import {
   createEmailNotificationsQueueAdapter,
@@ -416,5 +417,116 @@ test('email queue JSON round trip preserves native Uint8Array indexed bytes when
     assert.equal(joint.payload.attachments, producerAttachments);
     assert.equal(joint.payload.templateData.opaque, opaque);
     assert.deepEqual(content.bytes, [9]);
+  }
+  for (const method of ['enqueue', 'enqueueMany']) {
+    let discardedReads = 0;
+    const selectedView = new Uint8Array([99, 0, 255, 42, 88]).subarray(1, 4);
+    const selectedAttachments = Object.freeze([
+      Object.freeze({ filename: 'text.txt', content: 'text' }),
+      Object.freeze({ filename: 'selected.bin', contentType: 'application/octet-stream', content: selectedView }),
+    ]);
+    const discarded = { filename: 'discarded.bin', get content() { discardedReads++; throw new Error('Discarded content was read'); } };
+    const raw = [discarded, selectedAttachments[1]];
+    const selectedCalls = [];
+    Object.defineProperty(raw, 'toJSON', { value: function (key) {
+      selectedCalls.push({ key, receiver: this }); return selectedAttachments;
+    } });
+    Object.freeze(raw);
+    const selectedNotification = Object.freeze({
+      channel: 'email', recipients: ['selected@example.com'],
+      payload: Object.freeze({ text: 'Selected body', attachments: raw }),
+    });
+    const stored = [];
+    const adapter = createEmailNotificationsQueueAdapter({
+      async enqueue(job) { stored.push(JSON.parse(JSON.stringify(job))); return 'selected'; },
+      async enqueueMany(entries) {
+        const batch = entries.map(({ job }) => JSON.parse(JSON.stringify(job)));
+        stored.push(...batch); return batch.map(() => 'selected');
+      },
+      async inspectDeadLetters() { return { malformedRecordCount: 0, records: [] }; },
+    });
+    const request = { channel: 'email', id: 'selected-view', notification: selectedNotification, queuedAt: '2026-11-23T00:00:00.000Z' };
+    const enqueueError = await (method === 'enqueue' ? adapter.enqueue(request) : adapter.enqueueMany([request]))
+      .then(() => null, (error) => error);
+    assert.ifError(enqueueError);
+    assert.equal(discardedReads, 0);
+    assert.deepEqual(selectedCalls, [{ key: 'attachments', receiver: raw }]);
+    await directWorker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), stored[0]));
+    assert.deepEqual(directMessages.at(-1).attachments, [
+      { filename: 'text.txt', content: 'text' },
+      { filename: 'selected.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) },
+    ]);
+
+    const projectedCalls = [];
+    const original = [{ filename: 'raw.txt', content: 'raw' }];
+    Object.defineProperty(original, 'toJSON', { value: function (key) {
+      projectedCalls.push({ key, receiver: this }); return selectedAttachments;
+    } });
+    const fromString = { ...request, notification: {
+      ...selectedNotification, payload: { text: 'Selected from string', attachments: original },
+    } };
+    if (method === 'enqueue') await adapter.enqueue(fromString);
+    else await adapter.enqueueMany([fromString]);
+    await directWorker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), stored[1]));
+    assert.deepEqual(directMessages.at(-1).attachments[1].content, new Uint8Array([0, 255, 42]));
+    assert.deepEqual(projectedCalls, [{ key: 'attachments', receiver: original }]);
+
+    const foreign = runInNewContext('new Uint8Array(new Uint8Array([99,0,255,42,88]).buffer,1,3)');
+    assert.equal(foreign instanceof Uint8Array, false);
+    for (const view of [selectedView, foreign]) {
+      Object.defineProperties(view, {
+        bytes: { value: [9], enumerable: true },
+        byteLength: { value: 1, enumerable: true },
+        length: { value: 1, enumerable: true },
+        [Symbol.toStringTag]: { value: 'Uint16Array' },
+      });
+      const attachment = Object.freeze({ filename: 'native.bin', contentType: 'application/octet-stream', content: view });
+      const nativeNotification = Object.freeze({
+        channel: 'email', recipients: ['native@example.com'], payload: Object.freeze({ text: 'Native body', attachments: Object.freeze([attachment]) }),
+      });
+      const nativeRequest = { ...request, notification: nativeNotification };
+      if (method === 'enqueue') await adapter.enqueue(nativeRequest);
+      else await adapter.enqueueMany([nativeRequest]);
+      await directWorker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), stored.at(-1)));
+      const restoredContent = directMessages.at(-1).attachments[0].content;
+      assert.ok(restoredContent instanceof Uint8Array);
+      assert.equal(restoredContent.byteLength, 3);
+      assert.deepEqual([restoredContent[0], restoredContent[1], restoredContent[2]], [0, 255, 42]);
+      const projectionCalls = [];
+      const projectedAttachment = Object.freeze({
+        filename: 'raw.bin', content: new Uint8Array([9]),
+        toJSON(key) { projectionCalls.push({ key, receiver: this }); return attachment; },
+      });
+      const projectedRequest = { ...request, notification: {
+        ...nativeNotification, payload: { ...nativeNotification.payload, attachments: [projectedAttachment] },
+      } };
+      if (method === 'enqueue') await adapter.enqueue(projectedRequest);
+      else await adapter.enqueueMany([projectedRequest]);
+      await directWorker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), stored.at(-1)));
+      assert.deepEqual(directMessages.at(-1).attachments[0], {
+        filename: 'native.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]),
+      });
+      assert.deepEqual(projectionCalls, [{ key: '0', receiver: projectedAttachment }]);
+      assert.deepEqual(projectedAttachment.content, new Uint8Array([9]));
+      await directWorker.handle({ notification: nativeNotification, queuedAt: request.queuedAt });
+      assert.equal(directMessages.at(-1).attachments[0], attachment);
+      assert.equal(directMessages.at(-1).attachments[0].content, view);
+      assert.deepEqual(Array.from(Uint8Array.prototype.values.call(view)), [0, 255, 42]);
+      assert.equal(view.byteOffset, 1);
+      assert.equal(view.byteLength, 1);
+      assert.deepEqual(view.bytes, [9]);
+    }
+    const beforeInvalid = directMessages.length;
+    for (const invalid of [
+      { 0: 0, 1: 255, 2: 42, byteLength: 3, [Symbol.toStringTag]: 'Uint8Array' },
+      Object.defineProperty(new Uint8ClampedArray([0, 255, 42]), Symbol.toStringTag, { value: 'Uint8Array' }),
+      Object.defineProperty(new Uint16Array([0, 255, 42]), Symbol.toStringTag, { value: 'Uint8Array' }),
+      Object.defineProperty(new DataView(new ArrayBuffer(3)), Symbol.toStringTag, { value: 'Uint8Array' }),
+    ]) {
+      await assert.rejects(directWorker.handle({ notification: {
+        ...selectedNotification, payload: { text: 'Invalid brand', attachments: [{ content: invalid }] },
+      }, queuedAt: request.queuedAt }), EmailMessageValidationError);
+    }
+    assert.equal(directMessages.length, beforeInvalid);
   }
 });

@@ -9,6 +9,12 @@ import type { EmailAttachment, EmailNotificationDispatchRequest } from './types.
 
 type EmailQueueJsonSlot = 'notification' | 'payload' | 'attachments' | 'attachment';
 
+const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
+
+function isNativeUint8Array(value: unknown): value is Uint8Array {
+  return ArrayBuffer.isView(value) && Reflect.get(typedArrayPrototype, Symbol.toStringTag, value) === 'Uint8Array';
+}
+
 function createEmailQueueJsonValue(value: unknown, slot: EmailQueueJsonSlot): object {
   return {
     toJSON(key: string): unknown {
@@ -39,21 +45,11 @@ function createEmailQueueJsonValue(value: unknown, slot: EmailQueueJsonSlot): ob
       if (Array.isArray(projected)) return projected;
       const object = projected;
       const keys = Object.keys(object);
-      let content: unknown;
-      let readContent = false;
-      let encodedContent: { bytes: number[] } | undefined;
-      if (slot === 'attachment' && (!hasProjection || keys.includes('content'))) {
-        content = Reflect.get(object, 'content', object);
-        readContent = true;
-        if (content instanceof Uint8Array) {
-          const bytes: number[] = [];
-          for (let index = 0; index < content.byteLength; index++) bytes.push(content[index]);
-          encodedContent = { bytes };
-          if (!hasProjection) {
-            for (const field of ['filename', 'contentType', 'content']) {
-              if (!keys.includes(field)) keys.push(field);
-            }
-          }
+      const selectedKeys = new Set(keys);
+      let nativeContent = false;
+      if (slot === 'attachment' && !hasProjection) {
+        for (const field of ['content', 'filename', 'contentType']) {
+          if (!selectedKeys.has(field)) keys.push(field);
         }
       }
       // Preserve traversal order and the original receiver without projecting opaque values.
@@ -62,8 +58,18 @@ function createEmailQueueJsonValue(value: unknown, slot: EmailQueueJsonSlot): ob
         Object.defineProperty(result, property, {
           enumerable: true,
           get: () => {
-            if (property === 'content' && readContent) return encodedContent ?? content;
+            if (slot === 'attachment' && property !== 'content' && !selectedKeys.has(property) && !nativeContent) return undefined;
             const child: unknown = Reflect.get(object, property, object);
+            if (slot === 'attachment' && property === 'content') {
+              if (isNativeUint8Array(child)) {
+                nativeContent = true;
+                const length: number = Reflect.get(typedArrayPrototype, 'length', child);
+                const bytes: number[] = [];
+                for (let index = 0; index < length; index++) bytes.push(child[index]);
+                return { bytes };
+              }
+              return selectedKeys.has(property) ? child : undefined;
+            }
             if (slot === 'notification' && property === 'payload') return createEmailQueueJsonValue(child, 'payload');
             if (slot === 'payload' && property === 'attachments') return createEmailQueueJsonValue(child, 'attachments');
             return child;
@@ -92,10 +98,8 @@ export class EmailNotificationQueueJob {
     // Keep the JSON hook out of the public structural job type.
     Object.defineProperty(this, 'toJSON', {
       value: (): { notification: unknown; queuedAt: string; id?: string } => {
-        const notification = this.notification;
-        const needsEncoding = notification.payload.attachments?.some((attachment) => attachment.content instanceof Uint8Array);
         return {
-          notification: needsEncoding ? createEmailQueueJsonValue(notification, 'notification') : notification,
+          notification: createEmailQueueJsonValue(this.notification, 'notification'),
           queuedAt: this.queuedAt,
           id: this.id,
         };
@@ -173,7 +177,7 @@ export class EmailNotificationsQueueWorker {
       for (let attachmentIndex = 0; attachmentIndex < attachments.length; attachmentIndex++) {
         const attachment = attachments[attachmentIndex];
         const content: unknown = attachment.content;
-        if (typeof content === 'string' || content instanceof Uint8Array) {
+        if (typeof content === 'string' || isNativeUint8Array(content)) {
           continue;
         }
         if (

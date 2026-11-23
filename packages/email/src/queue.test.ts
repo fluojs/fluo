@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { runInNewContext } from 'node:vm';
 import type { EmailNotificationQueueJob as PublicEmailNotificationQueueJob } from '@fluojs/email/queue';
 
 import { EmailChannel } from './channel.js';
@@ -47,6 +48,178 @@ function createQueueTestFixture(channel = 'email'): {
 }
 
 describe('EmailNotificationsQueueWorker', () => {
+  it.each(['enqueue', 'enqueueMany'] as const)('%s encodes selected projections without evaluating discarded attachments', async (method) => {
+    const { delivered, worker } = createQueueTestFixture();
+    const binary = new Uint8Array([99, 0, 255, 42, 88]).subarray(1, 4);
+    const selected = Object.freeze([
+      Object.freeze({ filename: 'text.txt', content: 'text' }),
+      Object.freeze({ filename: 'selected.bin', contentType: 'application/octet-stream', content: binary }),
+    ]);
+    const calls: { key: string; receiver: unknown }[] = [];
+    let discardedReads = 0;
+    const discarded: EmailAttachment = {
+      filename: 'discarded.bin',
+      get content(): Uint8Array { discardedReads++; throw new Error('Discarded content was read'); },
+    };
+    const raw = [discarded, selected[1]];
+    Object.defineProperty(raw, 'toJSON', { value: function (this: typeof raw, key: string) {
+      calls.push({ key, receiver: this }); return selected;
+    } });
+    Object.freeze(raw);
+    const stringOnly = Object.freeze([{ filename: 'raw.txt', content: 'raw' }]);
+    const arrayProjection = [...stringOnly];
+    Object.defineProperty(arrayProjection, 'toJSON', { value: function (this: typeof arrayProjection, key: string) {
+      calls.push({ key, receiver: this }); return selected;
+    } });
+    Object.freeze(arrayProjection);
+    const payloadProjection = Object.freeze({
+      attachments: stringOnly, text: 'Raw body',
+      toJSON(key: string) { calls.push({ key, receiver: this }); return { attachments: selected, text: 'Selected body' }; },
+    });
+    const attachmentProjection = Object.freeze({
+      filename: 'raw.bin', content: 'raw',
+      toJSON(key: string) { calls.push({ key, receiver: this }); return selected[1]; },
+    });
+    class NotificationProjection implements EmailNotificationDispatchRequest {
+      readonly channel = 'email';
+      constructor(readonly payload: EmailNotificationPayload) {}
+      toJSON(key: string) {
+        calls.push({ key, receiver: this });
+        return { channel: 'email', recipients: ['selected@example.com'], payload: { attachments: selected, text: 'Selected body' } };
+      }
+    }
+    const notificationProjection = Object.freeze(new NotificationProjection({ text: 'Raw body', attachments: stringOnly }));
+    const discardedPayload: EmailNotificationDispatchRequest = Object.freeze({
+      channel: 'email',
+      get payload(): EmailNotificationPayload { discardedReads++; throw new Error('Discarded payload was read'); },
+      toJSON(key: string) {
+        calls.push({ key, receiver: this });
+        return { channel: 'email', recipients: ['selected@example.com'], payload: { attachments: selected, text: 'Selected body' } };
+      },
+    });
+    const order: string[] = [];
+    const opaque = Object.freeze({ toJSON(key: string) {
+      calls.push({ key, receiver: this }); order.push('opaque'); return undefined;
+    } });
+    const orderedAttachment = Object.freeze({
+      get filename(): string { order.push('filename'); return 'selected.bin'; },
+      opaque,
+      get content(): Uint8Array { order.push('content'); return binary; },
+      get contentType(): string { order.push('contentType'); return 'application/octet-stream'; },
+    });
+    class PlainStringAttachment implements EmailAttachment {
+      readonly content = 'plain string';
+      get filename(): string { throw new Error('Unselected inherited string filename was read'); }
+      get contentType(): string { throw new Error('Unselected inherited string MIME was read'); }
+    }
+    const base = { channel: 'email', recipients: ['selected@example.com'] };
+    const cases = [
+      { notification: { ...base, payload: { attachments: raw, text: 'Selected body' } }, receiver: raw, key: 'attachments', count: 2 },
+      { notification: discardedPayload, receiver: discardedPayload, key: 'notification', count: 2 },
+      { notification: notificationProjection, receiver: notificationProjection, key: 'notification', count: 2 },
+      { notification: { ...base, payload: payloadProjection }, receiver: payloadProjection, key: 'payload', count: 2 },
+      { notification: { ...base, payload: { attachments: arrayProjection, text: 'Selected body' } }, receiver: arrayProjection, key: 'attachments', count: 2 },
+      { notification: { ...base, payload: { attachments: [attachmentProjection], text: 'Selected body' } }, receiver: attachmentProjection, key: '0', count: 1 },
+      { notification: { ...base, payload: { attachments: [orderedAttachment], text: 'Selected body' } }, receiver: opaque, key: 'opaque', count: 1 },
+      { notification: { ...base, payload: { attachments: [new PlainStringAttachment(), selected[1]], text: 'Selected body' } }, receiver: undefined, key: '', count: 2 },
+    ];
+    const stored: EmailNotificationQueueJob[] = [];
+    const adapter = createEmailNotificationsQueueAdapter({
+      async enqueue(job) { stored.push(JSON.parse(JSON.stringify(job))); return 'selected'; },
+      async enqueueMany(entries) {
+        const batch: EmailNotificationQueueJob[] = entries.map(({ job }) => JSON.parse(JSON.stringify(job)));
+        stored.push(...batch); return batch.map(() => 'selected');
+      },
+      async inspectDeadLetters() { return { malformedRecordCount: 0, records: [] }; },
+    });
+
+    for (const [index, item] of cases.entries()) {
+      const request = { channel: 'email', notification: item.notification, id: `selected-${index}`, queuedAt: '2026-11-23T00:00:00.000Z' };
+      if (method === 'enqueue') await adapter.enqueue(request);
+      else await adapter.enqueueMany?.([request]);
+      await worker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), stored[index]));
+      const message = delivered[index];
+      expect(message?.text).toBe('Selected body');
+      expect(message?.to[0]?.address).toBe('selected@example.com');
+      expect(message?.attachments).toHaveLength(item.count);
+      expect(message?.attachments?.at(-1)).toEqual({
+        filename: 'selected.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]),
+      });
+      expect(message?.attachments?.at(-1)?.content).toBeInstanceOf(Uint8Array);
+      if (item.receiver !== undefined) expect(calls.filter((call) => call.receiver === item.receiver)).toEqual([{ key: item.key, receiver: item.receiver }]);
+    }
+    expect(discardedReads).toBe(0);
+    expect(stored).toHaveLength(8);
+    expect(delivered).toHaveLength(8);
+    expect(order).toEqual(['filename', 'opaque', 'content', 'contentType']);
+    expect(delivered[7]?.attachments?.[0]).toEqual({ content: 'plain string' });
+    expect(raw[0]).toBe(discarded);
+    expect(binary).toEqual(new Uint8Array([0, 255, 42]));
+  });
+
+  it.each(['enqueue', 'enqueueMany'] as const)('%s retains intrinsic native view bytes across realms and direct handoff', async (method) => {
+    const { delivered, worker, channel } = createQueueTestFixture();
+    const send = vi.spyOn(channel, 'send');
+    const local = new Uint8Array([99, 0, 255, 42, 88]).subarray(1, 4);
+    const foreign: Uint8Array = runInNewContext('new Uint8Array(new Uint8Array([99,0,255,42,88]).buffer,1,3)');
+    expect(foreign instanceof Uint8Array).toBe(false);
+    for (const content of [local, foreign]) {
+      Object.defineProperties(content, {
+        bytes: { value: [9], enumerable: true },
+        byteLength: { value: 1, enumerable: true },
+        length: { value: 1, enumerable: true },
+        [Symbol.toStringTag]: { value: 'Uint16Array' },
+      });
+      const attachment = Object.freeze({ filename: 'native.bin', contentType: 'application/octet-stream', content });
+      const notification = Object.freeze({ channel: 'email', recipients: ['native@example.com'], payload: Object.freeze({
+        text: 'Native body', attachments: Object.freeze([attachment]),
+      }) });
+      const stored: EmailNotificationQueueJob[] = [];
+      const adapter = createEmailNotificationsQueueAdapter({
+        async enqueue(job) { stored.push(JSON.parse(JSON.stringify(job))); return 'native'; },
+        async enqueueMany(entries) {
+          const batch: EmailNotificationQueueJob[] = entries.map(({ job }) => JSON.parse(JSON.stringify(job)));
+          stored.push(...batch); return batch.map(() => 'native');
+        },
+        async inspectDeadLetters() { return { malformedRecordCount: 0, records: [] }; },
+      });
+      const request = { channel: 'email', id: 'native-view', notification, queuedAt: '2026-11-23T00:00:00.000Z' };
+
+      if (method === 'enqueue') await adapter.enqueue(request);
+      else await adapter.enqueueMany?.([request]);
+      await worker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), stored[0]));
+      const roundTrip = delivered.at(-1)?.attachments?.[0];
+      expect(roundTrip).toEqual({ filename: 'native.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) });
+      expect(roundTrip?.content).toBeInstanceOf(Uint8Array);
+      expect(roundTrip?.content.length).toBe(3);
+      const projectionCalls: { key: string; receiver: unknown }[] = [];
+      const projectedAttachment = Object.freeze({
+        filename: 'raw.bin', content: new Uint8Array([9]),
+        toJSON(key: string) { projectionCalls.push({ key, receiver: this }); return attachment; },
+      });
+      const projectedRequest = { ...request, notification: {
+        ...notification, payload: { ...notification.payload, attachments: [projectedAttachment] },
+      } };
+      if (method === 'enqueue') await adapter.enqueue(projectedRequest);
+      else await adapter.enqueueMany?.([projectedRequest]);
+      await worker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), stored.at(-1)));
+      expect(delivered.at(-1)?.attachments?.[0]).toEqual({
+        filename: 'native.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]),
+      });
+      expect(projectionCalls).toEqual([{ key: '0', receiver: projectedAttachment }]);
+      expect(projectedAttachment.content).toEqual(new Uint8Array([9]));
+      await worker.handle({ notification, queuedAt: request.queuedAt });
+      expect(send.mock.calls.at(-1)?.[0]).toBe(notification);
+      expect(delivered.at(-1)?.attachments?.[0]).toBe(attachment);
+      expect(delivered.at(-1)?.attachments?.[0]?.content).toBe(content);
+      expect(Array.from(Uint8Array.prototype.values.call(content))).toEqual([0, 255, 42]);
+      expect(content.byteOffset).toBe(1);
+      expect(content.byteLength).toBe(1);
+      expect(Reflect.get(content, 'bytes')).toEqual([9]);
+    }
+    expect(delivered).toHaveLength(6);
+  });
+
   it.each(['enqueue', 'enqueueMany'] as const)('%s composes the same DTO projection with mixed native attachments', async (method) => {
     const { delivered, worker } = createQueueTestFixture();
     const calls: { kind: string; key: string; receiver: unknown }[] = [];
