@@ -356,4 +356,4 @@ The package intentionally keeps `createDiscordProviders(...)`, `DISCORD_OPTIONS`
 - `packages/discord/src/status.test.ts`: Health/readiness contract examples.
 ## Compatible service copies
 
-`DiscordService` and `DiscordChannel` support compatible-copy class injection; Discord channel tokens remain isolated.
+`DiscordService` and `DiscordChannel` support compatible-copy class injection. Compatible package copies loaded in the same realm share the same public `DISCORD_CHANNEL` injection key. Within the same injection scope, importing the token from a different copy does not select a different Discord client. Sharing the injection key does not mean that `DiscordService` or `DiscordChannel` instances in separate module scopes are the same.
