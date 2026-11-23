@@ -1656,24 +1656,18 @@ describe('SlackModule', () => {
     expect(fetchLike.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
   });
 
-  it('stops webhook retry backoff when the signal is aborted', async () => {
+  it('cancels a pending webhook retry timer with the original abort reason without another fetch', async () => {
     vi.useFakeTimers();
 
     try {
       const controller = new AbortController();
       const reason = new DOMException('retry cancelled', 'AbortError');
-      const fetchLike = vi.fn<SlackFetchLike>().mockImplementation(async () => {
-        queueMicrotask(() => {
-          controller.abort(reason);
-        });
-
-        return {
-          ok: false,
-          status: 429,
-          async text() {
-            return 'rate_limited';
-          },
-        };
+      const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValue({
+        ok: false,
+        status: 429,
+        async text() {
+          return 'rate_limited';
+        },
       });
       const transport = createSlackWebhookTransport({
         fetch: fetchLike,
@@ -1684,9 +1678,15 @@ describe('SlackModule', () => {
         signal: controller.signal,
       });
       const expectation = expect(pending).rejects.toBe(reason);
-      await vi.runAllTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBe(1);
+      expect(controller.signal.aborted).toBe(false);
+
+      controller.abort(reason);
 
       await expectation;
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.runAllTimersAsync();
       expect(fetchLike).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
