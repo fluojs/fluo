@@ -111,8 +111,8 @@ DiscordModule.forRootAsync({
 Behavioral contract 메모:
 
 - `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `DiscordService`, `DiscordChannel`, `DISCORD_CHANNEL`을 기본 global로 export합니다. fluo 옵션인 `global?: boolean`을 사용하고, migrated code가 Discord provider를 importing module 안에만 유지해야 할 때만 `global: false`를 설정하세요. NestJS `isGlobal`은 지원하지 않습니다.
-- `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석합니다.
-- `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API이며 `continueOnError`를 지원합니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다.
+- `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석하고, transport가 반환한 `ok: false` 영수증도 반환값으로 보존합니다.
+- `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API입니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다. 기본 모드와 `continueOnError: false`에서는 예외 또는 `ok: false` 영수증을 받으면 후속 메시지를 전송하기 전에 배치를 중단합니다. 실패 영수증은 provider 응답 내용을 노출하지 않는 `DiscordTransportError`로 거부됩니다. `continueOnError: true`에서는 두 종류의 실패 모두 입력 메시지와 오류를 `failures`에 기록하고 후속 메시지를 시도합니다. 성공 영수증만 `results`와 `succeeded`에 포함하며, 실패는 `failed`에 집계합니다. `ok`를 생략한 영수증은 기존처럼 `ok: true`로 정규화합니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, bootstrap verification 실패와 애플리케이션 shutdown 전반에서 factory-owned 리소스를 정확히 한 번 닫습니다. shutdown 전에 시작된 factory 생성 transport가 아직 완료되지 않았더라도 이를 기다리며, 진행 중인 bootstrap verification이 settle된 뒤에만 factory-owned transport를 닫습니다. Verification 실패 후 owned cleanup도 실패하면 status diagnostics는 이를 `shutdown-cleanup`으로 재분류하지 않고 최초 `initialization` failure phase를 유지하며, reject된 factory creation도 initialization failure로 유지됩니다.
 - send는 bootstrap이 transport를 `ready`로 표시한 뒤에만 허용됩니다. bootstrap 전, startup 중, bootstrap 실패 후, shutdown 중, shutdown 후 시도는 전달 전에 거부됩니다.
 - `ready` 상태에서 허용된 직접 send 또는 notification dispatch는 factory-owned transport resource를 닫기 전에 renderer와 transport delivery가 끝날 때까지 drain합니다. 전달 실패는 caller의 결과로 남고 shutdown 실패로 전파하지 않습니다.

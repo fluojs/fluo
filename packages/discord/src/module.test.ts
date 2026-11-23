@@ -1140,6 +1140,85 @@ describe('DiscordModule', () => {
     expect(transport.sent).toEqual(['ok-1', 'fail-2', 'ok-3']);
   });
 
+  it.each([undefined, false])(
+    'sendMany stops after an unsuccessful receipt when continueOnError is %s',
+    async (continueOnError) => {
+      const send = vi
+        .fn<DiscordTransport['send']>()
+        .mockResolvedValueOnce({ ok: false, response: 'private provider details' })
+        .mockResolvedValueOnce({ messageId: 'success-2', ok: true });
+      const container = new Container();
+      const moduleType = DiscordModule.forRoot({ transport: { send } });
+      container.register(...moduleProviders(moduleType));
+      const service = await container.resolve(DiscordService);
+      await service.onModuleInit();
+
+      await expect(
+        service.sendMany([{ content: 'Denied' }, { content: 'Later' }], { continueOnError }),
+      ).rejects.toThrowError(new DiscordTransportError('Discord transport reported an unsuccessful delivery.'));
+      expect(send).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('sendMany records an unsuccessful receipt and continues when continueOnError is true', async () => {
+    const send = vi
+      .fn<DiscordTransport['send']>()
+      .mockResolvedValueOnce({ ok: false, response: 'private provider details' })
+      .mockResolvedValueOnce({ messageId: 'success-2', ok: true });
+    const messages = [{ content: 'Denied' }, { content: 'Later' }];
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({ transport: { send } });
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendMany(messages, { continueOnError: true });
+
+    expect(result).toEqual({
+      failed: 1,
+      failures: [
+        {
+          error: expect.any(DiscordTransportError),
+          message: messages[0],
+        },
+      ],
+      results: [expect.objectContaining({ messageId: 'success-2', ok: true })],
+      succeeded: 1,
+    });
+    expect(result.failures[0]?.error.message).toBe('Discord transport reported an unsuccessful delivery.');
+    expect(send.mock.calls.map(([message]) => message.content)).toEqual(['Denied', 'Later']);
+  });
+
+  it('send preserves an unsuccessful transport receipt', async () => {
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({ transport: new UnsuccessfulTransport() });
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.send({ content: 'Denied' });
+
+    expect(result).toMatchObject({ ok: false, response: 'denied', statusCode: 200 });
+  });
+
+  it('sendMany counts a receipt without ok as a normalized success', async () => {
+    const send = vi.fn<DiscordTransport['send']>().mockResolvedValue({ messageId: 'implicit-success' });
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({ transport: { send } });
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendMany([{ content: 'Delivered' }]);
+
+    expect(result).toEqual({
+      failed: 0,
+      failures: [],
+      results: [expect.objectContaining({ messageId: 'implicit-success', ok: true })],
+      succeeded: 1,
+    });
+  });
+
   it('propagates sendMany abort signals between sequential Discord deliveries', async () => {
     const controller = new AbortController();
     const transport = new AbortAfterFirstDiscordTransport(controller);
