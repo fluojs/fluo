@@ -585,7 +585,7 @@ const redAssertion = (receipt, stdout) => {
   'RED receipt: expected one named runner assertion failure, without setup/unrelated failures');
 };
 
-const redCommand = (command, argv, paths, root) => {
+const redCommand = (command, argv, paths, checkout) => {
   if (Array.isArray(argv) && argv[1] === 'node_modules/vitest/vitest.mjs') {
     const quoted = (args) => args.map((arg) => /^[\w./=:-]+$/u.test(arg)
       ? arg : `'${arg.replaceAll("'", "'\\''")}'`).join(' ');
@@ -600,7 +600,7 @@ const redCommand = (command, argv, paths, root) => {
     'RED Vitest command: use the canonical packages runner, selection and reporter');
     try {
       requireInput(realpathSync(argv[0]) === realpathSync(process.execPath)
-        && realpathSync(resolve(root, argv[1])) === realpathSync(
+        && realpathSync(resolve(checkout, argv[1])) === realpathSync(
           fileURLToPath(new URL('../../../../node_modules/vitest/vitest.mjs', import.meta.url))),
       'RED Vitest command: substituted executable or runner entrypoint');
     } catch (error) {
@@ -646,7 +646,7 @@ const captureFixBackRed = (input) => {
   'RED capture: requires a clean separate previous-head checkout in the same repository');
   const patch = readPreparationArtifact(root, input.regression_patch, 'RED patch');
   const paths = regressionPatch(root, input.implementation, patch, input.failure);
-  const runner = redCommand(input.command, input.argv, paths, root);
+  const runner = redCommand(input.command, input.argv, paths, checkout);
   if (runner === 'vitest') {
     requireInput(input.argv[4] === input.failure.file && !existsSync(resolve(checkout, reportPath)),
       'RED Vitest command: wrong projected file or pre-existing reporter output');
@@ -774,7 +774,7 @@ export function prepareReviewInput(input) {
     redRoot = dirname(resolve(input.artifact_root, redReference.path));
     const patch = readPreparationArtifact(redRoot, red.regression_patch, 'RED patch');
     const paths = regressionPatch(root, input.implementation, patch, red.failure);
-    const runner = redCommand(red.command, red.argv, paths, root);
+    const runner = redCommand(red.command, red.argv, paths, checkout);
     readPreparationArtifact(redRoot, red.stderr, 'RED stderr');
     const stdout = readPreparationArtifact(redRoot, red.stdout, 'RED stdout').toString();
     if (runner === 'vitest') {

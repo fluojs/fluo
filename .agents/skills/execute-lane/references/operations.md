@@ -168,7 +168,13 @@ line and real corrected-head GREEN using identical command/argv. Node TAP
 retains its existing command forms. Packages Vitest uses only the fixed
 installed entrypoint, packages project, one projected test file/name selection,
 approved reporter and output path, and bounded worker options specified in
-`../../review-head/SKILL.md`. Unsupported regressions stop in preparation;
+`../../review-head/SKILL.md`. Authenticate that entrypoint relative to the
+actual execution checkout before spawn, and to the corrected review checkout
+when authenticating GREEN. Both must resolve to the preparer's approved
+installation; the repository root does not need its own `node_modules`.
+Good: separate reproduction/review worktrees link to that installation.
+Wrong: trust the root's valid installation while a checkout resolves another
+entrypoint. Unsupported regressions stop in preparation;
 they do not require a duplicate implementation in another test runner.
 
 For Vitest, capture and GREEN retain the approved reporter's exclusive output

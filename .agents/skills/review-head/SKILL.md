@@ -132,7 +132,13 @@ Packages regressions may instead use this exact Vitest argv shape:
 ```
 
 The executable and installed entrypoint must resolve to the preparer's actual
-Node and installed Vitest. The reporter is the approved sibling of
+Node and installed Vitest. Resolve the relative entrypoint from the actual
+execution checkout: the previous-head reproduction checkout before capture
+spawns, and the corrected-head review checkout during GREEN authentication.
+The repository root need not have its own dependency installation; separate
+worktrees may link to the preparer's approved installation. A valid root
+installation cannot authorize a different checkout entrypoint.
+The reporter is the approved sibling of
 `workflow-preparation.mjs`, not a caller-selected replacement. No extra runner
 options, alternative entrypoints or shell wrappers are accepted. The command
 is the argv joined by spaces, using `node` or the absolute executable for its

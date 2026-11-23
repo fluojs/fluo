@@ -367,6 +367,8 @@ function vitestRedFixture(t, scenario = 'assertion') {
 
 test('#4232 Vitest body assertion: real RED and GREEN -> common authenticated evidence', (t) => {
 	const value = vitestRedFixture(t);
+	// The repository root need not install dependencies used by separate worktrees.
+	rmSync(join(value.root, 'node_modules'));
 	value.attach();
 	value.green();
 
@@ -533,6 +535,63 @@ test('#4232 Vitest preparation: authenticated reporter tampering and missing GRE
 			name,
 		);
 	}
+});
+
+test('#4232 Vitest capture: substituted checkout entrypoint -> rejected before spawn', (t) => {
+	const value = vitestRedFixture(t);
+	rmSync(join(value.capture.checkout, 'node_modules'));
+	mkdirSync(join(value.capture.checkout, 'node_modules/vitest'), {
+		recursive: true,
+	});
+	const marker = join(value.capture.checkout, 'node_modules/entrypoint-ran');
+	writeFileSync(
+		join(value.capture.checkout, 'node_modules/vitest/vitest.mjs'),
+		`import { writeFileSync } from 'node:fs';\nwriteFileSync(${
+			JSON.stringify(marker)
+		}, 'ran');\n`,
+	);
+
+	const result = value.run();
+
+	assert.equal(
+		existsSync(marker),
+		false,
+		'unapproved checkout entrypoint must not execute',
+	);
+	assert.equal(result.status, 1, result.stderr);
+	assert.match(
+		JSON.parse(result.stderr).error,
+		/substituted executable or runner entrypoint/u,
+	);
+	assert.equal(JSON.parse(result.stderr).kind, 'input-preparation');
+	assert.equal(JSON.parse(result.stderr).fix_back_eligible, false);
+	assert.equal(existsSync(value.capture.artifact_root), false);
+	assert.equal(
+		git(value.capture.checkout, 'diff', '--cached', '--name-only'),
+		'',
+	);
+});
+
+test('#4232 Vitest review: substituted corrected checkout entrypoint -> typed block', (t) => {
+	const value = vitestRedFixture(t);
+	value.attach();
+	value.green();
+	rmSync(join(value.input.checkout, 'node_modules'));
+	mkdirSync(join(value.input.checkout, 'node_modules/vitest'), {
+		recursive: true,
+	});
+	writeFileSync(
+		join(value.input.checkout, 'node_modules/vitest/vitest.mjs'),
+		'// inert unapproved entrypoint\n',
+	);
+
+	assert.throws(
+		() => prepareReviewInput(value.input),
+		(error) =>
+			error.kind === 'input-preparation' &&
+			error.fix_back_eligible === false &&
+			/substituted executable or runner entrypoint/u.test(error.message),
+	);
 });
 
 test('#4232 Vitest argv: runner, reporter and behavior substitution -> no command executed', (t) => {
