@@ -356,4 +356,4 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `packages/discord/src/status.test.ts`: health/readiness 계약 예제.
 ## 호환되는 서비스 사본
 
-`DiscordService`와 `DiscordChannel`은 호환 사본 class injection을 지원하며 Discord channel token은 격리된 상태를 유지합니다.
+`DiscordService`와 `DiscordChannel`은 호환 사본 class injection을 지원합니다. 같은 realm에 로드된 호환 패키지 사본은 동일한 공개 `DISCORD_CHANNEL` 주입 키를 공유합니다. 같은 주입 범위에서는 토큰을 어느 사본에서 import했는지만으로 서로 다른 Discord client를 선택할 수 없습니다. 주입 키를 공유한다는 사실이 별도 모듈 범위의 `DiscordService` 또는 `DiscordChannel` 인스턴스까지 같다는 뜻은 아닙니다.
