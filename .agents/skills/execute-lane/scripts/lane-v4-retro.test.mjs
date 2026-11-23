@@ -26,30 +26,82 @@ import {
 
 const head = "a".repeat(40);
 
-test('external overlap evidence: polling and repeated conflict heads -> event counts and observed successes stay distinct', (t) => {
+test("external overlap evidence: polling and repeated conflict heads -> event counts and observed successes stay distinct", (t) => {
 	const root = fixture(t);
-	const overlaps = { version: 1, status: "complete", laneMatches: [{ lane_id: "other", issue: 99, files: ["src/a.ts"] }],
-		prMatches: [], unknowns: [] };
-	const first = recordRetroEvent(root, laneId, 1, "observation", { observationId: "first", externalOverlaps: overlaps });
-	const second = recordRetroEvent(root, laneId, 1, "observation", { observationId: "second",
-		externalOverlaps: { ...overlaps, status: "unobservable", unknowns: [{ source: "pr", subject: "OPEN", code: "command-failed" }] } });
-	const old = recordRetroEvent(root, laneId, 1, "observation", { action: "resolve-conflict" });
+	const overlaps = {
+		version: 1,
+		status: "complete",
+		laneMatches: [{ lane_id: "other", issue: 99, files: ["src/a.ts"] }],
+		prMatches: [],
+		unknowns: [],
+	};
+	const first = recordRetroEvent(root, laneId, 1, "observation", {
+		observationId: "first",
+		externalOverlaps: overlaps,
+	});
+	const second = recordRetroEvent(root, laneId, 1, "observation", {
+		observationId: "second",
+		externalOverlaps: {
+			...overlaps,
+			status: "unobservable",
+			unknowns: [{
+				source: "pr",
+				subject: "OPEN",
+				code: "command-failed",
+			}],
+		},
+	});
+	const old = recordRetroEvent(root, laneId, 1, "observation", {
+		action: "resolve-conflict",
+	});
 	const successful = recordRetroEvent(root, laneId, 1, "stage", {
-		phase: "resolve-conflict", head: head, result: { ok: true, head_sha: "c".repeat(40) } });
+		phase: "resolve-conflict",
+		head: head,
+		result: { ok: true, head_sha: "c".repeat(40) },
+	});
 	const repeated = recordRetroEvent(root, laneId, 1, "stage", {
-		phase: "resolve-conflict", head: "d".repeat(40), result: { ok: true, head_sha: "c".repeat(40) } });
+		phase: "resolve-conflict",
+		head: "d".repeat(40),
+		result: { ok: true, head_sha: "c".repeat(40) },
+	});
 	recordRetroEvent(root, laneId, 1, "stage", {
-		phase: "resolve-conflict", head, result: { ok: false, head_sha: "e".repeat(40) } });
+		phase: "resolve-conflict",
+		head,
+		result: { ok: false, head_sha: "e".repeat(40) },
+	});
 
 	const evidence = retrospectiveEvidence(root, laneId, snapshots);
 
-	assert.deepEqual(evidence.externalOverlapObservations.map(item => item.eventId).sort(), [first.eventId, second.eventId].sort());
-	assert.ok(evidence.externalOverlapObservations.every(item => item.issue === 1 && item.laneMatches === 1 && item.prMatches === 0));
-	assert.equal(evidence.externalOverlapObservations.find(item => item.eventId === second.eventId).status, "unobservable");
-	assert.deepEqual(evidence.conflictResolutions, [{ issue: 1, observedConflictResolutions: 1,
-		heads: [{ head: "c".repeat(40), eventIds: [successful.eventId, repeated.eventId].sort() }],
-		eventIds: [successful.eventId, repeated.eventId].sort(), history: "unknown" }]);
-	assert.ok(evidence.externalOverlapUnknowns.some(item => item.eventId === old.eventId));
+	assert.deepEqual(
+		evidence.externalOverlapObservations.map((item) => item.eventId).sort(),
+		[first.eventId, second.eventId].sort(),
+	);
+	assert.ok(
+		evidence.externalOverlapObservations.every((item) =>
+			item.issue === 1 && item.laneMatches === 1 && item.prMatches === 0
+		),
+	);
+	assert.equal(
+		evidence.externalOverlapObservations.find((item) =>
+			item.eventId === second.eventId
+		).status,
+		"unobservable",
+	);
+	assert.deepEqual(evidence.conflictResolutions, [{
+		issue: 1,
+		observedConflictResolutions: 1,
+		heads: [{
+			head: "c".repeat(40),
+			eventIds: [successful.eventId, repeated.eventId].sort(),
+		}],
+		eventIds: [successful.eventId, repeated.eventId].sort(),
+		history: "unknown",
+	}]);
+	assert.ok(
+		evidence.externalOverlapUnknowns.some((item) =>
+			item.eventId === old.eventId
+		),
+	);
 	assert.equal(evidence.totalElapsedMs, null);
 });
 const mergeCommit = "b".repeat(40);
@@ -58,10 +110,14 @@ const fixture = (t, completeCi = false) => {
 	const directory = process.env.FLUO_PRODUCT_TEST_EVIDENCE ?? tmpdir();
 	mkdirSync(directory, { recursive: true });
 	const root = mkdtempSync(resolve(directory, "retrospective-lane-"));
-	if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) t.after(() => rmSync(root, { recursive: true, force: true }));
+	if (!process.env.FLUO_PRODUCT_TEST_EVIDENCE) {
+		t.after(() => rmSync(root, { recursive: true, force: true }));
+	}
 	mkdirSync(resolve(root, ".omo"));
-	writeFileSync(resolve(root, ".omo/omo.jsonc"),
-		readFileSync(new URL("../../../../.omo/omo.jsonc", import.meta.url)));
+	writeFileSync(
+		resolve(root, ".omo/omo.jsonc"),
+		readFileSync(new URL("../../../../.omo/omo.jsonc", import.meta.url)),
+	);
 	if (completeCi) recordCiSnapshot(root, laneId, 1, ciRun(), [ciJob()]);
 	return root;
 };
@@ -69,37 +125,65 @@ const snapshots = [{
 	issue: 1,
 	decision: { action: "done" },
 	obs: {
-		pr: { number: 10, headSha: head, mergeCommit, ciRuns: [{
-			id: 20, attempt: 1, head, workflow: ".github/workflows/ci.yml",
-			status: "completed", conclusion: "failure",
-		}] },
+		pr: {
+			number: 10,
+			headSha: head,
+			mergeCommit,
+			ciRuns: [{
+				id: 20,
+				attempt: 1,
+				head,
+				workflow: ".github/workflows/ci.yml",
+				status: "completed",
+				conclusion: "failure",
+			}],
+		},
 		facts: {},
 		attempts: {},
 	},
 }];
 
-test('#4130 fix-back retrospective: engine-rejected conflict outcomes -> only genuine success contributes its head', (t) => {
+test("#4130 fix-back retrospective: engine-rejected conflict outcomes -> only genuine success contributes its head", (t) => {
 	const root = fixture(t);
 	const rejected = [
-		{ result: { ok: true, head_sha: head, error: { type: "child-contract-error" } } },
-		{ result: { ok: true, head_sha: "d".repeat(40) }, attempts: { "resolve-conflict": 1 } },
+		{
+			result: {
+				ok: true,
+				head_sha: head,
+				error: { type: "child-contract-error" },
+			},
+		},
+		{
+			result: { ok: true, head_sha: "d".repeat(40) },
+			attempts: { "resolve-conflict": 1 },
+		},
 		{ result: { ok: false, head_sha: "e".repeat(40) } },
 		{ result: { ok: "true", head_sha: "f".repeat(40) } },
 		{ result: null },
 	];
 	for (const outcome of rejected) {
-		recordRetroEvent(root, laneId, 1, "stage", { phase: "resolve-conflict", head, ...outcome });
+		recordRetroEvent(root, laneId, 1, "stage", {
+			phase: "resolve-conflict",
+			head,
+			...outcome,
+		});
 	}
 	const success = recordRetroEvent(root, laneId, 1, "stage", {
-		phase: "resolve-conflict", head, attempts: { "resolve-conflict": 0 },
+		phase: "resolve-conflict",
+		head,
+		attempts: { "resolve-conflict": 0 },
 		result: { ok: true, head_sha: "c".repeat(40) },
 	});
 
 	const evidence = retrospectiveEvidence(root, laneId, snapshots);
 
-	assert.deepEqual(evidence.conflictResolutions, [{ issue: 1, observedConflictResolutions: 1,
+	assert.deepEqual(evidence.conflictResolutions, [{
+		issue: 1,
+		observedConflictResolutions: 1,
 		heads: [{ head: "c".repeat(40), eventIds: [success.eventId] }],
-		eventIds: [success.eventId], history: "unknown" }]);
+		eventIds: [success.eventId],
+		history: "unknown",
+	}]);
 });
 
 const report = (request, eventId) => ({
@@ -151,56 +235,79 @@ test("final CI preparation: missing final run collection -> no retrospective dis
 	assert.deepEqual(request.issues, [1]);
 });
 
-test('#4091 retrospective: complete CI -> analyst dispatch; unfinished lane -> no dispatch', (t) => {
+test("#4091 retrospective: complete CI -> analyst dispatch; unfinished lane -> no dispatch", (t) => {
 	const root = fixture(t, true);
 
 	const request = retrospectiveRequest(root, laneId, snapshots);
 
-	assert.equal(request.action, 'retro');
-	assert.deepEqual(request.dispatch, { subagent_type: 'fluo-retrospective' });
-	const waiting = retrospectiveRequest(root, laneId, [{ issue: 1, decision: { action: 'review' } }]);
-	assert.deepEqual(waiting, { action: 'wait-lane', remaining: [1] });
+	assert.equal(request.action, "retro");
+	assert.deepEqual(request.dispatch, { subagent_type: "fluo-retrospective" });
+	const waiting = retrospectiveRequest(root, laneId, [{
+		issue: 1,
+		decision: { action: "review" },
+	}]);
+	assert.deepEqual(waiting, { action: "wait-lane", remaining: [1] });
 });
 
-test('#4091 retrospective: missing analyst registration -> typed input preparation', (t) => {
+test("#4091 retrospective: missing analyst registration -> typed input preparation", (t) => {
 	const root = fixture(t, true);
-	writeFileSync(resolve(root, '.omo/omo.jsonc'), '{"agents":{}}');
+	writeFileSync(resolve(root, ".omo/omo.jsonc"), '{"agents":{}}');
 
-	assert.throws(() => retrospectiveRequest(root, laneId, snapshots),
-		(error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
-			&& error.code === 'dispatch-target-unavailable' && error.subagent_type === 'fluo-retrospective');
+	assert.throws(
+		() => retrospectiveRequest(root, laneId, snapshots),
+		(error) =>
+			error.kind === "input-preparation" &&
+			error.fix_back_eligible === false &&
+			error.code === "dispatch-target-unavailable" &&
+			error.subagent_type === "fluo-retrospective",
+	);
 });
 
-test('#4091 registration JSONC: comments and trailing commas -> retrospective analyst dispatch', (t) => {
+test("#4091 registration JSONC: comments and trailing commas -> retrospective analyst dispatch", (t) => {
 	const root = fixture(t, true);
-	const path = resolve(root, '.omo/omo.jsonc');
+	const path = resolve(root, ".omo/omo.jsonc");
 	const { agents } = JSON.parse(readFileSync(path));
-	writeFileSync(path, `// registered stage agents
+	writeFileSync(
+		path,
+		`// registered stage agents
 { /* operator note */
   "routes": ["https://example.test//model/*prompt*/",],
   "agents": ${JSON.stringify(agents)},
-}`);
+}`,
+	);
 
 	const request = retrospectiveRequest(root, laneId, snapshots);
 
-	assert.equal(request.action, 'retro');
-	assert.equal(request.dispatch.subagent_type, 'fluo-retrospective');
+	assert.equal(request.action, "retro");
+	assert.equal(request.dispatch.subagent_type, "fluo-retrospective");
 });
 
-for (const defect of ['missing', 'broken']) {
+for (const defect of ["missing", "broken"]) {
 	test(`#4091 registration unreadable: ${defect} config -> typed retrospective block`, (t) => {
 		const root = fixture(t, true);
-		const path = resolve(root, '.omo/omo.jsonc');
-		if (defect === 'missing') rmSync(path);
+		const path = resolve(root, ".omo/omo.jsonc");
+		if (defect === "missing") rmSync(path);
 		else writeFileSync(path, '{"agents":');
 
-		assert.throws(() => retrospectiveRequest(root, laneId, snapshots),
-			(error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
-				&& error.code === 'dispatch-registration-unreadable');
+		assert.throws(
+			() => retrospectiveRequest(root, laneId, snapshots),
+			(error) =>
+				error.kind === "input-preparation" &&
+				error.fix_back_eligible === false &&
+				error.code === "dispatch-registration-unreadable",
+		);
 	});
 }
 
-for (const defect of ["missing-observation", "old-head", "old-attempt", "incomplete-jobs", "tampered-event"]) {
+for (
+	const defect of [
+		"missing-observation",
+		"old-head",
+		"old-attempt",
+		"incomplete-jobs",
+		"tampered-event",
+	]
+) {
 	test(`final CI preparation: ${defect} -> collection required or integrity rejection`, (t) => {
 		const root = fixture(t);
 		const observed = structuredClone(snapshots);
@@ -209,7 +316,9 @@ for (const defect of ["missing-observation", "old-head", "old-attempt", "incompl
 		if (defect === "missing-observation") delete observed[0].obs.pr.ciRuns;
 		if (defect === "old-head") run = { ...run, head_sha: "c".repeat(40) };
 		if (defect === "old-attempt") observed[0].obs.pr.ciRuns[0].attempt = 2;
-		if (defect === "incomplete-jobs") job = { ...job, status: "in_progress", conclusion: null };
+		if (defect === "incomplete-jobs") {
+			job = { ...job, status: "in_progress", conclusion: null };
+		}
 		const stored = recordCiSnapshot(root, laneId, 1, run, [job]);
 		if (defect === "tampered-event") {
 			const path = stored.at(-1).path;
@@ -219,18 +328,38 @@ for (const defect of ["missing-observation", "old-head", "old-attempt", "incompl
 			writeFileSync(path, JSON.stringify(event));
 		}
 
-		if (defect === "tampered-event") assert.throws(() => retrospectiveRequest(root, laneId, observed), /Invalid retrospective/u);
-		else assert.equal(retrospectiveRequest(root, laneId, observed).action, "collect-ci");
+		if (defect === "tampered-event") {
+			assert.throws(
+				() => retrospectiveRequest(root, laneId, observed),
+				/Invalid retrospective/u,
+			);
+		} else {assert.equal(
+				retrospectiveRequest(root, laneId, observed).action,
+				"collect-ci",
+			);}
 	});
 }
 
 test("final CI preparation: recollected final attempt -> unblocks without losing failures or inventing duration", (t) => {
 	const root = fixture(t, true);
 	const observed = structuredClone(snapshots);
-	observed[0].obs.pr.ciRuns[0] = { ...observed[0].obs.pr.ciRuns[0], attempt: 2, conclusion: "success" };
-	assert.equal(retrospectiveRequest(root, laneId, observed).action, "collect-ci");
-	const run = { ...ciRun(2), conclusion: "success", run_started_at: "2026-10-08T01:01:00Z" };
-	const stored = recordCiSnapshot(root, laneId, 1, run, [ciJob(2, "success")]);
+	observed[0].obs.pr.ciRuns[0] = {
+		...observed[0].obs.pr.ciRuns[0],
+		attempt: 2,
+		conclusion: "success",
+	};
+	assert.equal(
+		retrospectiveRequest(root, laneId, observed).action,
+		"collect-ci",
+	);
+	const run = {
+		...ciRun(2),
+		conclusion: "success",
+		run_started_at: "2026-10-08T01:01:00Z",
+	};
+	const stored = recordCiSnapshot(root, laneId, 1, run, [
+		ciJob(2, "success"),
+	]);
 	const bytes = readFileSync(stored.at(-1).path);
 
 	const request = retrospectiveRequest(root, laneId, observed);
@@ -239,10 +368,21 @@ test("final CI preparation: recollected final attempt -> unblocks without losing
 	recordCiSnapshot(root, laneId, 1, run, [ciJob(2, "success")]);
 	assert.deepEqual(readFileSync(stored.at(-1).path), bytes);
 	const events = readRetroEvents(root, laneId);
-	assert.equal(events.filter((event) => event.data.conclusion === "success").length, 1);
-	assert.equal(events.find((event) => event.data.conclusion === "success").data.elapsedMs, 120000);
+	assert.equal(
+		events.filter((event) => event.data.conclusion === "success").length,
+		1,
+	);
+	assert.equal(
+		events.find((event) => event.data.conclusion === "success").data
+			.elapsedMs,
+		120000,
+	);
 	assert.ok(events.some((event) => event.data.job?.conclusion === "failure"));
-	assert.equal(retrospectiveEvidence(root, laneId, observed).ciFailurePatterns[0].failures, 1);
+	assert.equal(
+		retrospectiveEvidence(root, laneId, observed).ciFailurePatterns[0]
+			.failures,
+		1,
+	);
 });
 
 test("raw reviewer blockers remain immutable after PASS and deduplicate replayed input", (t) => {
@@ -280,6 +420,177 @@ test("raw reviewer blockers remain immutable after PASS and deduplicate replayed
 	assert.equal(evidence.reviewBlockers.length, 1);
 	assert.equal(evidence.reviewBlockers[0].disposition, "reported-claim");
 	assert.equal(evidence.reviewBlockers[0].eventIds.length, 2);
+});
+
+const historicalReview = {
+	reviewer: "code",
+	reviewed_head_sha: head,
+	preflight_sha256: "c".repeat(64),
+	verdict_signal: "BLOCK",
+	blockers: [{
+		reviewer: "code",
+		signature: "runtime:ownership",
+		evidence: "src/runtime.ts:1",
+		fix_back_eligible: true,
+		status: "unresolved",
+	}],
+};
+
+test("#4233 retrospectiveEvidence: six historical wrapper PASS events -> structured reviews and immutable evidence", (t) => {
+	const root = fixture(t);
+	const observed = structuredClone(snapshots);
+	const before = structuredClone(observed);
+	const ledger = resolve(root, ".omo/lanes-v4/lane.json");
+	mkdirSync(resolve(root, ".omo/lanes-v4"), { recursive: true });
+	const ledgerBytes = JSON.stringify({
+		version: 4,
+		lane_id: laneId,
+		issues: {
+			1: {
+				facts: { review: { verdict: "pass" } },
+				approvals: { merge: false },
+				attempts: { implement: 2 },
+			},
+		},
+	});
+	writeFileSync(ledger, ledgerBytes);
+	const recorded = ["contract", "code", "verification"].flatMap((reviewer) =>
+		[head, "d".repeat(40)].map((reviewed_head_sha) =>
+			recordRetroEvent(root, laneId, 1, "review", {
+				source: "reviewer-task",
+				envelope: {
+					...historicalReview,
+					reviewer,
+					reviewed_head_sha,
+					verdict_signal: "PASS",
+					blockers: [],
+				},
+			})
+		)
+	);
+	const bytes = recorded.map(({ path }) => readFileSync(path));
+
+	const evidence = retrospectiveEvidence(root, laneId, observed);
+
+	assert.deepEqual(evidence.unstructuredReviewEventIds, []);
+	assert.deepEqual(evidence.reviewBlockers, []);
+	assert.deepEqual(
+		evidence.events.map(({ eventId }) => eventId).sort(),
+		recorded.map(({ eventId }) => eventId).sort(),
+	);
+	assert.deepEqual(
+		evidence.events.map(({ data }) => data).sort((a, b) =>
+			JSON.stringify(a).localeCompare(JSON.stringify(b))
+		),
+		recorded.map(({ path }) => JSON.parse(readFileSync(path)).data).sort((
+			a,
+			b,
+		) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+	);
+	assert.deepEqual(recorded.map(({ path }) => readFileSync(path)), bytes);
+	assert.equal(readFileSync(ledger, "utf8"), ledgerBytes);
+	assert.deepEqual(observed, before);
+});
+
+test("#4233 retrospectiveEvidence: direct batch and wrapper BLOCK -> deduplicated claims retain distinct identities and event IDs after PASS", (t) => {
+	const root = fixture(t);
+	const variants = [
+		historicalReview,
+		{
+			...historicalReview,
+			reviewer: "contract",
+			blockers: [{
+				...historicalReview.blockers[0],
+				reviewer: "contract",
+			}],
+		},
+		{ ...historicalReview, reviewed_head_sha: "d".repeat(40) },
+		{ ...historicalReview, preflight_sha256: "e".repeat(64) },
+		{
+			...historicalReview,
+			blockers: [{
+				...historicalReview.blockers[0],
+				signature: "runtime:shutdown",
+			}],
+		},
+	];
+	const records = variants.map((envelope) => [
+		recordRetroEvent(root, laneId, 1, "review", envelope),
+		recordRetroEvent(root, laneId, 1, "review", {
+			reviews: [envelope, envelope],
+		}),
+		recordRetroEvent(root, laneId, 1, "review", { envelope }),
+	]);
+	recordRetroEvent(root, laneId, 1, "review", {
+		envelope: { ...historicalReview, verdict_signal: "PASS", blockers: [] },
+	});
+
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.deepEqual(evidence.unstructuredReviewEventIds, []);
+	assert.deepEqual(
+		evidence.reviewBlockers.map((claim) => ({
+			...claim,
+			eventIds: [...claim.eventIds].sort(),
+		})).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+		variants.map((envelope, index) => ({
+			reviewer: envelope.reviewer,
+			head: envelope.reviewed_head_sha,
+			policy: envelope.preflight_sha256,
+			signature: envelope.blockers[0].signature,
+			disposition: "reported-claim",
+			blocker: envelope.blockers[0],
+			eventIds: records[index].map(({ eventId }) => eventId).sort(),
+		})).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+	);
+});
+
+test("#4233 retrospectiveEvidence: malformed wrappers and batches -> raw events and valid sibling blockers survive", (t) => {
+	const root = fixture(t);
+	const malformed = [
+		{ envelope: null },
+		{ envelope: "unparsed review" },
+		{ envelope: { ...historicalReview, blockers: null } },
+		{
+			envelope: {
+				...historicalReview,
+				blockers: [
+					null,
+					{ signature: " " },
+					...historicalReview.blockers,
+				],
+			},
+		},
+		{ reviews: null },
+		{ reviews: [null, { blockers: "invalid" }, historicalReview] },
+	];
+	const records = malformed.map((data) =>
+		recordRetroEvent(root, laneId, 1, "review", data)
+	);
+	const bytes = records.map(({ path }) => readFileSync(path));
+
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.deepEqual(
+		[...evidence.unstructuredReviewEventIds].sort(),
+		records.map(({ eventId }) => eventId).sort(),
+	);
+	assert.deepEqual(evidence.reviewBlockers, [{
+		reviewer: historicalReview.reviewer,
+		head,
+		policy: historicalReview.preflight_sha256,
+		signature: historicalReview.blockers[0].signature,
+		disposition: "reported-claim",
+		blocker: historicalReview.blockers[0],
+		eventIds: evidence.events.filter(({ eventId }) =>
+			[records[3].eventId, records[5].eventId].includes(eventId)
+		).map(({ eventId }) => eventId),
+	}]);
+	assert.deepEqual(
+		evidence.events.map(({ eventId }) => eventId).sort(),
+		records.map(({ eventId }) => eventId).sort(),
+	);
+	assert.deepEqual(records.map(({ path }) => readFileSync(path)), bytes);
 });
 
 test("malformed and failed implementer outcomes preserve their original shape", (t) => {
@@ -581,7 +892,9 @@ test("recording and report analysis leave the execution ledger unchanged", (t) =
 		JSON.stringify({ verdict_signal: "BLOCK" }),
 	]);
 	assert.deepEqual(readFileSync(path), before);
-	const event = readRetroEvents(root, laneId).find((entry) => entry.kind === "review");
+	const event = readRetroEvents(root, laneId).find((entry) =>
+		entry.kind === "review"
+	);
 	const request = retrospectiveRequest(root, laneId, snapshots);
 	recordRetrospective(root, request, report(request, event.eventId));
 	assert.deepEqual(readFileSync(path), before);
@@ -617,7 +930,9 @@ test("actual lane-end CLI generates one report and preserves the execution file"
 		`#!${process.execPath}
 const args=process.argv.slice(2);
 const pr={number:10,state:'MERGED',headRefOid:'${head}',mergeCommit:{oid:'${mergeCommit}'},mergedAt:'2026-10-08T02:00:00Z',mergeable:'MERGEABLE',statusCheckRollup:[]};
-console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON.stringify(ciRun())}]}]:args[0]==='pr'?pr:{state:'CLOSED',title:'fixture',body:''}));
+console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${
+			JSON.stringify(ciRun())
+		}]}]:args[0]==='pr'?pr:{state:'CLOSED',title:'fixture',body:''}));
 `,
 		{ mode: 0o755 },
 	);
@@ -662,9 +977,22 @@ console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON
 	assert.equal(pendingHandoff.settled, false);
 	const watchLines = execute("watch", ["--once"]).split("\n");
 	assert.ok(watchLines.some((line) => line.startsWith("RETRO-READY ")));
-	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("RETRO-READY ")).slice("RETRO-READY ".length)), request);
-	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("LANE-SETTLED ")).slice("LANE-SETTLED ".length)),
-		[{ issue: 1, action: "done" }]);
+	assert.deepEqual(
+		JSON.parse(
+			watchLines.find((line) => line.startsWith("RETRO-READY ")).slice(
+				"RETRO-READY ".length,
+			),
+		),
+		request,
+	);
+	assert.deepEqual(
+		JSON.parse(
+			watchLines.find((line) => line.startsWith("LANE-SETTLED ")).slice(
+				"LANE-SETTLED ".length,
+			),
+		),
+		[{ issue: 1, action: "done" }],
+	);
 	assert.equal(invoke("retro-evidence").events.length, 3);
 	const analysis = resolve(root, "analysis.json");
 	writeFileSync(analysis, JSON.stringify(report(request, event.eventId)));
@@ -746,17 +1074,30 @@ test("normal record automatically retains unsuccessful implementation stage evid
 	writeFileSync(path, JSON.stringify(lane));
 
 	execFileSync(process.execPath, [
-		cli, "clear-blocker", "--root", root, "--lane", path,
-		"--issue", "1", "--phase", "implement",
+		cli,
+		"clear-blocker",
+		"--root",
+		root,
+		"--lane",
+		path,
+		"--issue",
+		"1",
+		"--phase",
+		"implement",
 	]);
 
 	assert.deepEqual(readFileSync(resolve(root, events[0].path)), stageBytes);
 	const retained = readRetroEvents(root, laneId);
 	assert.equal(retained.length, 2);
-	const { operation_id, ...cleared } = retained.find((event) => event.kind === "incident").data;
-	assert.match(operation_id, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
+	const { operation_id, ...cleared } =
+		retained.find((event) => event.kind === "incident").data;
+	assert.match(
+		operation_id,
+		/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u,
+	);
 	assert.deepEqual(cleared, {
-		action: "clear-blocker", phase: "implement",
+		action: "clear-blocker",
+		phase: "implement",
 		blocker: { type: "attempts-exhausted", phase: "implement" },
 	});
 });
