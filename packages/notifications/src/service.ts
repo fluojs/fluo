@@ -49,10 +49,18 @@ export class NotificationsService {
   /**
    * Dispatches one notification through a registered channel or the configured queue seam.
    *
+   * @remarks
+   * The envelope is snapshotted at admission. Unsupported object shapes reject
+   * the returned Promise before any lifecycle publication (including requested
+   * and failed), channel send, or queue handoff. Callers must handle this
+   * admission rejection directly; it is not a delivery failure.
+   *
    * @typeParam TRequest Shared notification request envelope subtype.
    * @param notification Request envelope identifying the channel and opaque payload.
    * @param options Optional abort, queue, and lifecycle-publication controls.
    * @returns A normalized dispatch result describing direct vs queued delivery.
+   * @throws {TypeError} When the admission snapshot encounters own getters/setters,
+   * unsupported nested class instances, or unsupported object prototypes.
    * @throws {NotificationChannelNotFoundError} When no registered channel matches `notification.channel`.
    * @throws {NotificationQueueNotConfiguredError} When queue delivery is requested without a queue adapter.
    * @throws {NotificationQueueResultIntegrityError} When a queue adapter returns an invalid delivery identifier.
@@ -155,10 +163,21 @@ export class NotificationsService {
   /**
    * Dispatches multiple notifications in input order with optional bulk queue delegation.
    *
+   * @remarks
+   * Every envelope in a non-empty batch is snapshotted before the first lifecycle
+   * publication, channel send, or queue handoff. An admission failure in any
+   * envelope rejects the entire Promise, even with `continueOnError: true`:
+   * earlier valid envelopes are not published, sent, or enqueued, and no batch
+   * result containing failures is returned. Callers must handle this rejection
+   * directly. Per-item failure collection applies only to direct delivery and
+   * sequential queue fallback attempts after admission.
+   *
    * @typeParam TRequest Shared notification request envelope subtype.
    * @param notifications Ordered notification envelopes to send or enqueue.
    * @param options Optional queue preference and tolerant error-handling controls.
    * @returns A batch summary containing successes and captured failures.
+   * @throws {TypeError} When any admission snapshot encounters own getters/setters,
+   * unsupported nested class instances, or unsupported object prototypes.
    * @throws {NotificationQueueNotConfiguredError} When queue-backed bulk delivery is requested without a queue adapter.
    * @throws {NotificationQueueResultIntegrityError} When a queue adapter returns invalid delivery identifiers.
    */
