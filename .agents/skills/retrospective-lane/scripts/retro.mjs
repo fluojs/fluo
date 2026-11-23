@@ -10,11 +10,7 @@ import {
 } from "node:fs";
 import { relative, resolve } from "node:path";
 import { summarizeIntegrationMeasurements } from "../../execute-lane/scripts/generated-integration.mjs";
-import {
-	dispatchFor,
-	readRegisteredAgents,
-	validateDispatchTarget,
-} from "../../execute-lane/scripts/dispatch-targets.mjs";
+import { dispatchFor, readRegisteredAgents, validateDispatchTarget } from "../../execute-lane/scripts/dispatch-targets.mjs";
 
 const kinds = new Set([
 	"stage",
@@ -210,12 +206,8 @@ export const recordCiSnapshot = (root, laneId, issue, run, jobs) => {
 			run: identity,
 			conclusion: run.conclusion,
 			status: run.status,
-			complete: jobs.length > 0 && run.conclusion !== null &&
-				run.conclusion !== undefined &&
-				jobs.every((job) =>
-					job.status === "completed" &&
-					typeof job.conclusion === "string"
-				),
+			complete: jobs.length > 0 && run.conclusion !== null && run.conclusion !== undefined
+				&& jobs.every((job) => job.status === "completed" && typeof job.conclusion === "string"),
 			createdAt: run.created_at,
 			completedAt: end === null ? null : new Date(end).toISOString(),
 			elapsedMs: Number.isFinite(start) && end !== null && end >= start
@@ -246,47 +238,19 @@ export const retrospectiveRequest = (root, laneId, snapshots) => {
 		if (!pr?.number) continue;
 		const runs = pr.ciRuns;
 		let reason = null;
-		if (!Array.isArray(runs) || runs.length === 0) {
-			reason = "missing-final-run-observation";
-		} else if (
-			runs.some((run) =>
-				run.head !== pr.headSha || run.status !== "completed" ||
-				!Number.isSafeInteger(run.id) ||
-				!Number.isSafeInteger(run.attempt) || run.attempt < 1 ||
-				typeof run.workflow !== "string"
-			)
-		) reason = "incomplete-final-run-observation";
-		else if (
-			runs.some((run) =>
-				!events.some((event) =>
-					event.issue === issue && event.kind === "ci" &&
-					event.data.complete === true &&
-					event.data.status === "completed" &&
-					event.data.run.id === run.id &&
-					event.data.run.attempt === run.attempt &&
-					event.data.run.head === pr.headSha &&
-					event.data.run.workflow === run.workflow &&
-					event.data.conclusion === run.conclusion
-				)
-			)
-		) reason = "missing-final-ci-collection";
-		if (reason) {
-			requirements.push({
-				issue,
-				pr: pr.number,
-				head: pr.headSha,
-				reason,
-			});
-		}
+		if (!Array.isArray(runs) || runs.length === 0) reason = "missing-final-run-observation";
+		else if (runs.some((run) => run.head !== pr.headSha || run.status !== "completed"
+			|| !Number.isSafeInteger(run.id) || !Number.isSafeInteger(run.attempt) || run.attempt < 1
+			|| typeof run.workflow !== "string")) reason = "incomplete-final-run-observation";
+		else if (runs.some((run) => !events.some((event) => event.issue === issue && event.kind === "ci"
+			&& event.data.complete === true && event.data.status === "completed"
+			&& event.data.run.id === run.id && event.data.run.attempt === run.attempt
+			&& event.data.run.head === pr.headSha && event.data.run.workflow === run.workflow
+			&& event.data.conclusion === run.conclusion))) reason = "missing-final-ci-collection";
+		if (reason) requirements.push({ issue, pr: pr.number, head: pr.headSha, reason });
 	}
-	if (requirements.length) {
-		return {
-			action: "collect-ci",
-			kind: "input-preparation",
-			issues: requirements.map((entry) => entry.issue),
-			requirements,
-		};
-	}
+	if (requirements.length) return { action: "collect-ci", kind: "input-preparation",
+		issues: requirements.map((entry) => entry.issue), requirements };
 	const units = snapshots.map(({ issue, obs }) => ({
 		issue,
 		pr: obs.pr?.number ?? null,
@@ -333,11 +297,9 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 		if (event.kind !== "review") continue;
 		const envelopes = Array.isArray(event.data?.reviews)
 			? event.data.reviews
-			: [
-				event.data && Object.hasOwn(event.data, "envelope")
-					? event.data.envelope
-					: event.data,
-			];
+			: [event.data && Object.hasOwn(event.data, "envelope")
+				? event.data.envelope
+				: event.data];
 		for (const envelope of envelopes) {
 			if (!envelope || !Array.isArray(envelope.blockers)) {
 				unstructuredReviewEventIds.add(event.eventId);
@@ -396,43 +358,24 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 	for (const event of events) {
 		if (event.kind === "observation") {
 			const overlaps = event.data?.externalOverlaps;
-			if (overlaps) {
-				externalOverlapObservations.push({
-					eventId: event.eventId,
-					issue: event.issue,
-					status: overlaps.status,
-					laneMatches: overlaps.laneMatches.length,
-					prMatches: overlaps.prMatches.length,
-					unknowns: overlaps.unknowns,
-				});
-			} else {externalOverlapUnknowns.push({
-					eventId: event.eventId,
-					issue: event.issue,
-					code: "external-overlap-unrecorded",
-				});}
+			if (overlaps) externalOverlapObservations.push({
+				eventId: event.eventId, issue: event.issue, status: overlaps.status,
+				laneMatches: overlaps.laneMatches.length, prMatches: overlaps.prMatches.length,
+				unknowns: overlaps.unknowns,
+			});
+			else externalOverlapUnknowns.push({ eventId: event.eventId, issue: event.issue, code: "external-overlap-unrecorded" });
 		}
-		if (
-			event.kind !== "stage" || event.data?.phase !== "resolve-conflict"
-		) continue;
+		if (event.kind !== "stage" || event.data?.phase !== "resolve-conflict") continue;
 		const result = event.data.result;
-		if (
-			typeof result !== "object" || result === null || result.ok !== true
-		) continue;
+		if (typeof result !== "object" || result === null || result.ok !== true) continue;
 		// applyChildResult resets this phase to zero only on success; record
 		// captures that outcome, unlike the issue's current attempt counters.
 		const attempts = event.data.attempts?.["resolve-conflict"];
-		if (
-			attempts !== undefined
-				? attempts !== 0
-				: result.error?.type === "child-contract-error"
-		) continue;
+		if (attempts !== undefined ? attempts !== 0 : result.error?.type === "child-contract-error") continue;
 		const head = result.head_sha;
 		if (!/^[a-f0-9]{40}$/u.test(head ?? "")) continue;
 		const heads = conflicts.get(event.issue) ?? new Map();
-		heads.set(
-			head,
-			[...new Set([...(heads.get(head) ?? []), event.eventId])].sort(),
-		);
+		heads.set(head, [...new Set([...(heads.get(head) ?? []), event.eventId])].sort());
 		conflicts.set(event.issue, heads);
 	}
 	return {
@@ -453,25 +396,13 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 		totalElapsedMs: null,
 		externalOverlapObservations,
 		externalOverlapUnknowns,
-		conflictResolutions: [...conflicts].sort(([a], [b]) => a - b).map((
-			[issue, heads],
-		) => ({
-			issue,
-			observedConflictResolutions: heads.size,
-			heads: [...heads].sort(([a], [b]) => a.localeCompare(b)).map((
-				[head, eventIds],
-			) => ({ head, eventIds })),
-			eventIds: [...new Set([...heads.values()].flat())].sort(),
-			history: "unknown",
+		conflictResolutions: [...conflicts].sort(([a], [b]) => a - b).map(([issue, heads]) => ({
+			issue, observedConflictResolutions: heads.size,
+			heads: [...heads].sort(([a], [b]) => a.localeCompare(b)).map(([head, eventIds]) => ({ head, eventIds })),
+			eventIds: [...new Set([...heads.values()].flat())].sort(), history: "unknown",
 		})),
-		integrationMeasurements: summarizeIntegrationMeasurements(
-			events,
-			Object.fromEntries(
-				snapshots.map((
-					{ issue, obs },
-				) => [issue, obs.headSha ?? obs.pr?.headSha]),
-			),
-		),
+		integrationMeasurements: summarizeIntegrationMeasurements(events,
+			Object.fromEntries(snapshots.map(({ issue, obs }) => [issue, obs.headSha ?? obs.pr?.headSha]))),
 		limitations: [
 			"Recorded timestamps are observation times, not execution start/end times.",
 			"Attempt counters can reset; distinct observations are not a total execution count.",
