@@ -19,8 +19,6 @@ type QueuedEmailNotification = Omit<EmailNotificationDispatchRequest, 'payload'>
 
 /** Serialized queue payload used by the built-in notifications queue adapter. */
 export class EmailNotificationQueueJob {
-  readonly notification: QueuedEmailNotification;
-
   /**
    * Creates one queued email notification job payload.
    *
@@ -29,22 +27,39 @@ export class EmailNotificationQueueJob {
    * @param id Deterministic notification identity preserved for queue deduplication.
    */
   constructor(
-    notification: EmailNotificationDispatchRequest,
+    public readonly notification: EmailNotificationDispatchRequest,
     public readonly queuedAt: string,
     public readonly id?: string,
-  ) {
-    this.notification = notification.payload.attachments
-      ? {
-          ...notification,
-          payload: {
-            ...notification.payload,
-            attachments: notification.payload.attachments.map((attachment) => ({
-              ...attachment,
-              content: typeof attachment.content === 'string' ? attachment.content : { bytes: Array.from(attachment.content) },
-            })),
-          },
-        }
-      : notification;
+  ) {}
+
+  /**
+   * Serializes attachment view bytes without changing the public notification.
+   *
+   * @returns The internal JSON queue payload with notification identity preserved.
+   */
+  toJSON(): { notification: QueuedEmailNotification; queuedAt: string; id?: string } {
+    const notification: QueuedEmailNotification = this.notification;
+    return {
+      notification: {
+        ...notification,
+        payload: {
+          ...notification.payload,
+          attachments: notification.payload.attachments?.map((attachment) => {
+            const content = attachment.content;
+            if (typeof content === 'string' || 'bytes' in content) {
+              return attachment;
+            }
+            const bytes: number[] = [];
+            for (let index = 0; index < content.byteLength; index++) {
+              bytes.push(content[index]);
+            }
+            return { ...attachment, content: { bytes } };
+          }),
+        },
+      },
+      queuedAt: this.queuedAt,
+      id: this.id,
+    };
   }
 }
 
@@ -110,7 +125,7 @@ export class EmailNotificationsQueueWorker {
       );
     }
 
-    const notification = job.notification;
+    const notification: QueuedEmailNotification = job.notification;
     await this.channel.send(
       {
         ...notification,

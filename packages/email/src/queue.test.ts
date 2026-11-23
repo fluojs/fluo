@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { EmailNotificationQueueJob as PublicEmailNotificationQueueJob } from '@fluojs/email/queue';
 
 import { EmailChannel } from './channel.js';
 import { EmailMessageValidationError } from './errors.js';
 import { createEmailNotificationsQueueAdapter, EmailNotificationQueueJob, EmailNotificationsQueueWorker } from './queue.js';
 import { EmailService } from './service.js';
-import type { EmailTransport, NormalizedEmailMessage, NormalizedEmailModuleOptions } from './types.js';
+import type { EmailNotificationDispatchRequest, EmailTransport, NormalizedEmailMessage, NormalizedEmailModuleOptions } from './types.js';
 import type { Queue } from '@fluojs/queue';
 
 function createQueueTestFixture(channel = 'email'): {
@@ -43,7 +44,17 @@ function createQueueTestFixture(channel = 'email'): {
 }
 
 describe('EmailNotificationsQueueWorker', () => {
-  it.each(['enqueue', 'enqueueMany'] as const)('%s preserves mixed attachments through JSON queue storage', async (method) => {
+  it('preserves the public queue job notification type', () => {
+    expectTypeOf<EmailNotificationQueueJob['notification']>().toEqualTypeOf<EmailNotificationDispatchRequest>();
+    expectTypeOf<PublicEmailNotificationQueueJob['notification']>().toEqualTypeOf<EmailNotificationDispatchRequest>();
+  });
+
+  it.each([
+    { method: 'enqueue', alteredIterator: false },
+    { method: 'enqueueMany', alteredIterator: false },
+    { method: 'enqueue', alteredIterator: true },
+    { method: 'enqueueMany', alteredIterator: true },
+  ])('$method preserves mixed attachments through JSON queue storage (altered iterator: $alteredIterator)', async ({ method, alteredIterator }) => {
     // Given
     const { delivered, worker } = createQueueTestFixture();
     const queued: object[] = [];
@@ -61,9 +72,15 @@ describe('EmailNotificationsQueueWorker', () => {
       },
     });
     const backing = new Uint8Array([99, 0, 255, 42, 88]);
+    class AlteredIteratorBytes extends Uint8Array {
+      override [Symbol.iterator](): ReturnType<Uint8Array[typeof Symbol.iterator]> {
+        return new Uint8Array([17])[Symbol.iterator]();
+      }
+    }
+    const binary = alteredIterator ? new AlteredIteratorBytes(backing.buffer, 1, 3) : backing.subarray(1, 4);
     const attachments = Object.freeze([
       { filename: 'text.txt', contentType: 'text/plain', content: 'original text' },
-      { filename: 'bytes.bin', contentType: 'application/octet-stream', content: backing.subarray(1, 4) },
+      { filename: 'bytes.bin', contentType: 'application/octet-stream', content: binary },
       { filename: 'empty.bin', content: new Uint8Array(0) },
     ].map((attachment) => Object.freeze(attachment)));
     const notification = {
@@ -105,7 +122,7 @@ describe('EmailNotificationsQueueWorker', () => {
     expect(delivered[0]?.attachments?.[1]?.content).toBeInstanceOf(Uint8Array);
     expect(delivered[0]?.attachments?.[2]?.content).toBeInstanceOf(Uint8Array);
     expect(notification.payload.attachments).toBe(attachments);
-    expect(attachments[1]?.content).toEqual(new Uint8Array([0, 255, 42]));
+    expect(attachments[1]?.content).toBe(binary);
     expect(backing).toEqual(new Uint8Array([99, 0, 255, 42, 88]));
   });
 
