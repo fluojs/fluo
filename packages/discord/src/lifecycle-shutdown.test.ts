@@ -1,3 +1,4 @@
+import { setImmediate } from 'node:timers/promises';
 import { type Constructor, getModuleMetadata } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
 import { describe, expect, it, vi } from 'vitest';
@@ -98,6 +99,9 @@ describe('DiscordService shutdown lifecycle regressions', () => {
       message: 'Discord transport failed to initialize.',
     });
 
+    await setImmediate();
+    expect(close).not.toHaveBeenCalled();
+
     rejectVerification(verificationError);
     await verificationSettled;
     await closeStarted;
@@ -188,6 +192,9 @@ describe('DiscordService shutdown lifecycle regressions', () => {
       cause: cleanupError,
       message: 'Discord transport failed to close cleanly.',
     });
+
+    await setImmediate();
+    expect(close).not.toHaveBeenCalled();
 
     rejectVerification(verificationError);
     await verificationSettled;

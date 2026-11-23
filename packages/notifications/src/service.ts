@@ -93,7 +93,7 @@ export class NotificationsService {
     dispatchNotification: TRequest,
     options: NotificationDispatchOptions,
   ): Promise<NotificationDispatchResult> {
-    const requestedPublicationError = await this.publishLifecycleEventBestEffort(
+    const requestedPublicationResult = await this.publishLifecycleEventBestEffort(
       'notification.dispatch.requested',
       dispatchNotification,
       options,
@@ -103,7 +103,7 @@ export class NotificationsService {
       try {
         this.requireChannel(dispatchNotification.channel);
       } catch (error) {
-        await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
+        await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationResult);
         throw error;
       }
 
@@ -127,7 +127,7 @@ export class NotificationsService {
 
         return result;
       } catch (error) {
-        await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
+        await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationResult);
         throw error;
       }
     }
@@ -137,7 +137,7 @@ export class NotificationsService {
     try {
       channel = this.requireChannel(dispatchNotification.channel);
     } catch (error) {
-      await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
+      await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationResult);
       throw error;
     }
 
@@ -160,7 +160,7 @@ export class NotificationsService {
 
       return result;
     } catch (error) {
-      await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationError);
+      await this.publishFailureLifecycleEvent(dispatchNotification, options, error, requestedPublicationResult);
       throw error;
     }
   }
@@ -209,14 +209,14 @@ export class NotificationsService {
     const dispatchNotifications = notifications.map((notification) => createNotificationDispatchSnapshot(notification));
 
     if (this.shouldQueue(notifications.length, options)) {
-      const requestedPublicationErrors = await this.publishRequestedLifecycleEvents(dispatchNotifications, options);
+      const requestedPublicationResults = await this.publishRequestedLifecycleEvents(dispatchNotifications, options);
 
       let queue: ReturnType<NotificationsService['requireQueueAdapter']>;
 
       try {
         queue = this.requireQueueAdapter();
       } catch (error) {
-        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationResults);
         throw error;
       }
 
@@ -225,7 +225,7 @@ export class NotificationsService {
           this.requireChannel(notification.channel);
         }
       } catch (error) {
-        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationResults);
         throw error;
       }
 
@@ -236,7 +236,7 @@ export class NotificationsService {
           dispatchNotifications,
           jobs,
           options,
-          requestedPublicationErrors,
+          requestedPublicationResults,
         );
       }
 
@@ -260,7 +260,7 @@ export class NotificationsService {
           };
         });
       } catch (error) {
-        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationErrors);
+        await this.publishFailureLifecycleEvents(dispatchNotifications, options, error, requestedPublicationResults);
         throw error;
       }
 
@@ -427,23 +427,25 @@ export class NotificationsService {
     options: NotificationDispatchOptions,
     deliveryId?: string,
     error?: unknown,
-  ): Promise<unknown | undefined> {
+  ): Promise<PromiseSettledResult<void>> {
     try {
       await this.publishLifecycleEvent(name, notification, options, deliveryId, error);
     } catch (publicationError) {
-      return publicationError;
+      return { status: 'rejected', reason: publicationError };
     }
 
-    return undefined;
+    return { status: 'fulfilled', value: undefined };
   }
 
   private async publishFailureLifecycleEvent<TRequest extends NotificationDispatchRequest>(
     notification: TRequest,
     options: NotificationDispatchOptions,
     error: unknown,
-    ...precedingPublicationErrors: readonly unknown[]
+    ...precedingPublicationResults: readonly (PromiseSettledResult<void> | undefined)[]
   ): Promise<void> {
-    const priorPublicationErrors = precedingPublicationErrors.filter((entry) => entry !== undefined);
+    const priorPublicationErrors = precedingPublicationResults
+      .filter((result): result is PromiseRejectedResult => result?.status === 'rejected')
+      .map((result) => result.reason);
 
     try {
       await this.publishLifecycleEvent('notification.dispatch.failed', notification, options, undefined, error);
@@ -460,9 +462,11 @@ export class NotificationsService {
     notifications: readonly TRequest[],
     options: NotificationDispatchOptions,
     error: unknown,
-    precedingPublicationErrors: readonly unknown[] = [],
+    precedingPublicationResults: readonly PromiseSettledResult<void>[] = [],
   ): Promise<void> {
-    const priorPublicationErrors = precedingPublicationErrors.filter((entry) => entry !== undefined);
+    const priorPublicationErrors = precedingPublicationResults
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason);
     const failurePublicationResults = await Promise.allSettled(
       notifications.map((notification) =>
         this.publishLifecycleEvent('notification.dispatch.failed', notification, options, undefined, error),
@@ -485,27 +489,27 @@ export class NotificationsService {
   private async publishRequestedLifecycleEvents<TRequest extends NotificationDispatchRequest>(
     notifications: readonly TRequest[],
     options: NotificationDispatchOptions,
-  ): Promise<readonly unknown[]> {
-    const publicationErrors: Array<unknown | undefined> = [];
+  ): Promise<readonly PromiseSettledResult<void>[]> {
+    const publicationResults: PromiseSettledResult<void>[] = [];
 
     for (const notification of notifications) {
-      const publicationError = await this.publishLifecycleEventBestEffort(
+      const publicationResult = await this.publishLifecycleEventBestEffort(
         'notification.dispatch.requested',
         notification,
         options,
       );
 
-      publicationErrors.push(publicationError);
+      publicationResults.push(publicationResult);
     }
 
-    return publicationErrors;
+    return publicationResults;
   }
 
   private async dispatchManyThroughSequentialQueueFallback<TRequest extends NotificationDispatchRequest>(
     notifications: readonly TRequest[],
     jobs: readonly NotificationsQueueJob<TRequest>[],
     options: NotificationDispatchManyOptions,
-    requestedPublicationErrors: readonly unknown[],
+    requestedPublicationResults: readonly PromiseSettledResult<void>[],
   ): Promise<NotificationDispatchBatchResult<TRequest>> {
     const queue = this.requireQueueAdapter();
     const results: NotificationDispatchResult[] = [];
@@ -537,12 +541,12 @@ export class NotificationsService {
         };
 
         if (!(options.continueOnError ?? false)) {
-          await this.publishFailureLifecycleEvents(notifications.slice(index), options, error, requestedPublicationErrors.slice(index));
+          await this.publishFailureLifecycleEvents(notifications.slice(index), options, error, requestedPublicationResults.slice(index));
           throw error;
         }
 
         try {
-          await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationErrors[index]);
+          await this.publishFailureLifecycleEvent(notification, options, error, requestedPublicationResults[index]);
         } catch (publicationError) {
           failure.error = publicationError instanceof Error
             ? publicationError
