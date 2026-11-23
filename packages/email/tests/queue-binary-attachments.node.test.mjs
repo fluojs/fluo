@@ -347,4 +347,74 @@ test('email queue JSON round trip preserves native Uint8Array indexed bytes when
     assert.deepEqual([content[0], content[1], content[2]], [0, 255, 42]);
     assert.deepEqual(content.bytes, [9]);
   }
+
+  class JointNotification extends JsonNotification {
+    toJSON(key) {
+      projections.push({ notification: this, key });
+      return {
+        channel: this.channel, payload: this.payload, recipients: ['projected@example.com'], subject: 'Joint projection',
+        toJSON() { throw new Error('Returned notification must not be projected twice'); },
+      };
+    }
+  }
+  const joint = Object.freeze(new JointNotification(Object.freeze({
+    text: 'Joint body', attachments: producerAttachments, templateData: { opaque },
+  })));
+  for (const method of ['enqueue', 'enqueueMany']) {
+    const stored = [];
+    const adapter = createEmailNotificationsQueueAdapter({
+      async enqueue(job) {
+        stored.push(JSON.parse(JSON.stringify(job)));
+        return 'joint';
+      },
+      async enqueueMany(entries) {
+        const batch = entries.map(({ job }) => JSON.parse(JSON.stringify(job)));
+        stored.push(...batch);
+        return batch.map(() => 'joint');
+      },
+      async inspectDeadLetters() { return { malformedRecordCount: 0, records: [] }; },
+    });
+    const request = {
+      channel: 'email', id: 'joint', notification: joint, queuedAt: '2026-11-23T00:00:00.000Z',
+    };
+    const projectionStart = projections.length;
+    const before = directMessages.length;
+    if (method === 'enqueue') await adapter.enqueue(request);
+    else await adapter.enqueueMany([request]);
+    assert.equal(stored.length, 1);
+    const restored = Object.assign(Object.create(EmailNotificationQueueJob.prototype), stored[0]);
+    const jointError = await directWorker.handle(restored).then(() => null, (error) => error);
+    assert.ifError(jointError);
+    const message = directMessages.at(-1);
+    assert.equal(directMessages.length, before + 1);
+    assert.equal(message.to[0].address, 'projected@example.com');
+    assert.equal(message.subject, 'Joint projection');
+    assert.equal(message.text, 'Joint body');
+    assert.deepEqual(message.attachments, [
+      { filename: 'report.txt', contentType: 'text/plain', content: 'report' },
+      { filename: 'report.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) },
+      { filename: 'empty.bin', contentType: 'application/octet-stream', content: new Uint8Array(0) },
+    ]);
+    assert.ok(message.attachments[1].content instanceof Uint8Array);
+    assert.equal(message.attachments[1].content.byteLength, 3);
+    assert.deepEqual(restored.notification.payload.templateData, { opaque: { bytes: [7], raw: { 0: 8 } } });
+    assert.equal(projections.length, projectionStart + 1);
+    assert.equal(projections.at(-1).key, 'notification');
+    assert.equal(projections.at(-1).notification, joint);
+    const projectionError = new Error('Joint projection failed');
+    class FailingJoint extends JointNotification {
+      toJSON() { throw projectionError; }
+    }
+    const failing = { ...request, notification: new FailingJoint(joint.payload) };
+    if (method === 'enqueue') await assert.rejects(adapter.enqueue(failing), projectionError);
+    else await assert.rejects(adapter.enqueueMany([
+      { ...request, notification: native }, failing, request,
+    ]), projectionError);
+    assert.equal(stored.length, 1);
+    assert.equal(directMessages.length, before + 1);
+    assert.equal(projections.length, projectionStart + 1);
+    assert.equal(joint.payload.attachments, producerAttachments);
+    assert.equal(joint.payload.templateData.opaque, opaque);
+    assert.deepEqual(content.bytes, [9]);
+  }
 });

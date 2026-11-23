@@ -5,17 +5,75 @@ import { QueueWorker, type Queue } from '@fluojs/queue';
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailChannel } from './channel.js';
 import { EmailMessageValidationError } from './errors.js';
-import type { EmailAttachment, EmailNotificationDispatchRequest, EmailNotificationPayload } from './types.js';
+import type { EmailAttachment, EmailNotificationDispatchRequest } from './types.js';
 
-type QueuedEmailAttachment = Omit<EmailAttachment, 'content'> & {
-  readonly content: EmailAttachment['content'] | { readonly bytes: readonly number[] };
-};
+type EmailQueueJsonSlot = 'notification' | 'payload' | 'attachments' | 'attachment';
 
-type QueuedEmailNotification = Omit<EmailNotificationDispatchRequest, 'payload'> & {
-  readonly payload: Omit<EmailNotificationPayload, 'attachments'> & {
-    readonly attachments?: readonly QueuedEmailAttachment[];
+function createEmailQueueJsonValue(value: unknown, slot: EmailQueueJsonSlot): object {
+  return {
+    toJSON(key: string): unknown {
+      let projected = value;
+      let hasProjection = false;
+      if (value !== null && (typeof value === 'object' || typeof value === 'function')) {
+        const toJSON: unknown = Reflect.get(value, 'toJSON', value);
+        if (typeof toJSON === 'function') {
+          hasProjection = true;
+          projected = Reflect.apply(toJSON, value, [key]);
+        }
+      }
+      if (projected === null || typeof projected !== 'object') return projected;
+      if (slot === 'attachments') {
+        if (!Array.isArray(projected)) return projected;
+        const entries: readonly unknown[] = projected;
+        const length = entries.length;
+        const result: unknown[] = [];
+        result.length = length;
+        for (let index = 0; index < length; index++) {
+          Object.defineProperty(result, index, {
+            enumerable: true,
+            get: () => createEmailQueueJsonValue(entries[index], 'attachment'),
+          });
+        }
+        return result;
+      }
+      if (Array.isArray(projected)) return projected;
+      const object = projected;
+      const keys = Object.keys(object);
+      let content: unknown;
+      let readContent = false;
+      let encodedContent: { bytes: number[] } | undefined;
+      if (slot === 'attachment' && (!hasProjection || keys.includes('content'))) {
+        content = Reflect.get(object, 'content', object);
+        readContent = true;
+        if (content instanceof Uint8Array) {
+          const bytes: number[] = [];
+          for (let index = 0; index < content.byteLength; index++) bytes.push(content[index]);
+          encodedContent = { bytes };
+          if (!hasProjection) {
+            for (const field of ['filename', 'contentType', 'content']) {
+              if (!keys.includes(field)) keys.push(field);
+            }
+          }
+        }
+      }
+      // Preserve traversal order and the original receiver without projecting opaque values.
+      const result: Record<string, unknown> = {};
+      for (const property of keys) {
+        Object.defineProperty(result, property, {
+          enumerable: true,
+          get: () => {
+            if (property === 'content' && readContent) return encodedContent ?? content;
+            const child: unknown = Reflect.get(object, property, object);
+            if (slot === 'notification' && property === 'payload') return createEmailQueueJsonValue(child, 'payload');
+            if (slot === 'payload' && property === 'attachments') return createEmailQueueJsonValue(child, 'attachments');
+            return child;
+          },
+        });
+      }
+      return result;
+    },
   };
-};
+}
 
 /** Serialized queue payload used by the built-in notifications queue adapter. */
 export class EmailNotificationQueueJob {
@@ -33,34 +91,11 @@ export class EmailNotificationQueueJob {
   ) {
     // Keep the JSON hook out of the public structural job type.
     Object.defineProperty(this, 'toJSON', {
-      value: (): { notification: QueuedEmailNotification; queuedAt: string; id?: string } => {
+      value: (): { notification: unknown; queuedAt: string; id?: string } => {
         const notification = this.notification;
-        const attachments = notification.payload.attachments;
-        let encodedAttachments: QueuedEmailAttachment[] | undefined;
-        if (attachments) {
-          for (let attachmentIndex = 0; attachmentIndex < attachments.length; attachmentIndex++) {
-            const attachment = attachments[attachmentIndex];
-            const content = attachment.content;
-            if (!(content instanceof Uint8Array)) {
-              continue;
-            }
-            const bytes: number[] = [];
-            for (let index = 0; index < content.byteLength; index++) {
-              bytes.push(content[index]);
-            }
-            encodedAttachments ??= attachments.slice();
-            encodedAttachments[attachmentIndex] = {
-              ...attachment,
-              filename: attachment.filename,
-              contentType: attachment.contentType,
-              content: { bytes },
-            };
-          }
-        }
+        const needsEncoding = notification.payload.attachments?.some((attachment) => attachment.content instanceof Uint8Array);
         return {
-          notification: encodedAttachments
-            ? { ...notification, payload: { ...notification.payload, attachments: encodedAttachments } }
-            : notification,
+          notification: needsEncoding ? createEmailQueueJsonValue(notification, 'notification') : notification,
           queuedAt: this.queuedAt,
           id: this.id,
         };

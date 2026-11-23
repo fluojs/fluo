@@ -47,6 +47,174 @@ function createQueueTestFixture(channel = 'email'): {
 }
 
 describe('EmailNotificationsQueueWorker', () => {
+  it.each(['enqueue', 'enqueueMany'] as const)('%s composes the same DTO projection with mixed native attachments', async (method) => {
+    const { delivered, worker } = createQueueTestFixture();
+    const calls: { kind: string; key: string; receiver: unknown }[] = [];
+    const opaque = Object.freeze({
+      toJSON(key: string) {
+        calls.push({ kind: 'opaque', key, receiver: this });
+        return { bytes: [7], raw: new Uint8Array([8]) };
+      },
+    });
+    const backing = new Uint8Array([99, 0, 255, 42, 88]);
+    const binary = backing.subarray(1, 4);
+    Object.defineProperty(binary, 'bytes', { value: [9], enumerable: true });
+    class NativeAttachment implements EmailAttachment {
+      constructor(readonly content: Uint8Array) {}
+      get filename(): string { return 'view.bin'; }
+      get contentType(): string { return 'application/octet-stream'; }
+    }
+    class ProjectedAttachment extends NativeAttachment {
+      toJSON(key: string) {
+        calls.push({ kind: 'attachment', key, receiver: this });
+        return { filename: 'projected.bin', content: this.content };
+      }
+    }
+    const mixed = Object.freeze([
+      Object.freeze({ filename: 'text.txt', content: 'plain text' }),
+      Object.freeze(new NativeAttachment(binary)),
+    ]);
+    const projectedAttachment = Object.freeze(new ProjectedAttachment(binary));
+    const projectedString = Object.freeze({
+      filename: 'original.txt', contentType: 'text/plain', content: 'original text',
+      toJSON(key: string) {
+        calls.push({ kind: 'string', key, receiver: this });
+        return { filename: 'projected.txt', content: 'projected text' };
+      },
+    });
+    const nestedAttachments = [projectedString, projectedAttachment];
+    Object.defineProperty(nestedAttachments, 'toJSON', {
+      value: function (this: typeof nestedAttachments, key: string) {
+        calls.push({ kind: 'array', key, receiver: this });
+        return this;
+      },
+    });
+    Object.freeze(nestedAttachments);
+    const nestedPayload: EmailNotificationPayload = Object.freeze({
+      attachments: nestedAttachments, text: 'Original nested body',
+      toJSON(key: string) {
+        calls.push({ kind: 'payload', key, receiver: this });
+        return {
+          attachments: this.attachments, text: 'Nested body', templateData: { opaque },
+          toJSON() { throw new Error('Returned payload must not be projected twice'); },
+        };
+      },
+    });
+    const droppedPayload: EmailNotificationPayload = Object.freeze({
+      attachments: mixed, text: 'Original dropped body',
+      toJSON(key: string) {
+        calls.push({ kind: 'drop', key, receiver: this });
+        return { text: 'Dropped attachments' };
+      },
+    });
+    class JointNotification implements EmailNotificationDispatchRequest {
+      readonly channel = 'email';
+      readonly subject = 'Original subject';
+      #omitSubject: boolean;
+      constructor(readonly payload: EmailNotificationPayload, omitSubject = false) { this.#omitSubject = omitSubject; }
+      get recipients(): readonly string[] { return ['original@example.com']; }
+      toJSON(key: string) {
+        calls.push({ kind: 'notification', key, receiver: this });
+        return {
+          channel: this.channel, payload: this.payload, recipients: ['projected@example.com'],
+          ...(this.#omitSubject ? {} : { subject: 'Projected subject' }), metadata: { opaque },
+          toJSON() { throw new Error('Returned notification must not be projected twice'); },
+        };
+      }
+    }
+    const joint = Object.freeze(new JointNotification(Object.freeze({ text: 'Joint body', attachments: mixed })));
+    const nested = Object.freeze(new JointNotification(nestedPayload));
+    const dropped = Object.freeze(new JointNotification(droppedPayload, true));
+    const ordinary: EmailNotificationDispatchRequest = Object.freeze({
+      channel: 'email', recipients: ['ordinary@example.com'], subject: 'Ordinary subject',
+      payload: Object.freeze({ text: 'Ordinary body', attachments: mixed }),
+    });
+    const requests = [joint, nested, dropped, ordinary].map((notification, index) => ({
+      channel: 'email', id: `joint-${index}`, notification, queuedAt: '2026-11-23T00:00:00.000Z',
+    }));
+    const stored: EmailNotificationQueueJob[] = [];
+    const adapter = createEmailNotificationsQueueAdapter({
+      async enqueue(job) {
+        const payload: EmailNotificationQueueJob = JSON.parse(JSON.stringify(job));
+        stored.push(payload);
+        return 'joint';
+      },
+      async enqueueMany(entries) {
+        const batch: EmailNotificationQueueJob[] = entries.map(({ job }) => JSON.parse(JSON.stringify(job)));
+        stored.push(...batch);
+        return batch.map(() => 'joint');
+      },
+      async inspectDeadLetters() { return { malformedRecordCount: 0, records: [] }; },
+    });
+    if (method === 'enqueue') {
+      for (const request of requests) await adapter.enqueue(request);
+    } else {
+      await adapter.enqueueMany?.(requests);
+    }
+    for (const payload of stored) await worker.handle(Object.assign(Object.create(EmailNotificationQueueJob.prototype), payload));
+    expect(delivered).toHaveLength(4);
+    expect(delivered[0]).toMatchObject({
+      subject: 'Projected subject', text: 'Joint body', to: [{ address: 'projected@example.com' }],
+      metadata: { opaque: { bytes: [7], raw: { 0: 8 } } },
+      attachments: [
+        { filename: 'text.txt', content: 'plain text' },
+        { filename: 'view.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) },
+      ],
+    });
+    expect(delivered[0]?.attachments?.[1]?.content).toBeInstanceOf(Uint8Array);
+    expect(delivered[1]).toMatchObject({ subject: 'Projected subject', text: 'Nested body', to: [{ address: 'projected@example.com' }] });
+    expect(delivered[1]?.attachments).toEqual([
+      { filename: 'projected.txt', content: 'projected text' },
+      { filename: 'projected.bin', content: new Uint8Array([0, 255, 42]) },
+    ]);
+    expect(stored[1]?.notification.payload.templateData).toEqual({ opaque: { bytes: [7], raw: { 0: 8 } } });
+    expect(delivered[2]?.text).toBe('Dropped attachments');
+    expect(delivered[2]?.subject).toBeUndefined();
+    expect(delivered[2]?.attachments).toBeUndefined();
+    expect(Object.hasOwn(stored[2]?.notification ?? {}, 'subject')).toBe(false);
+    expect(Object.hasOwn(stored[2]?.notification.payload ?? {}, 'attachments')).toBe(false);
+    expect(delivered[3]).toMatchObject({ subject: 'Ordinary subject', text: 'Ordinary body', to: [{ address: 'ordinary@example.com' }] });
+    expect(delivered[3]?.attachments).toEqual(delivered[0]?.attachments);
+    const expectedCalls = [
+      ['notification', 'notification', joint], ['notification', 'notification', nested],
+      ['notification', 'notification', dropped], ['payload', 'payload', nestedPayload],
+      ['drop', 'payload', droppedPayload], ['array', 'attachments', nestedAttachments],
+      ['string', '0', projectedString], ['attachment', '1', projectedAttachment],
+    ] as const;
+    for (const [kind, key, receiver] of expectedCalls) {
+      const matching = calls.filter((call) => call.kind === kind && call.receiver === receiver);
+      expect(matching).toHaveLength(1);
+      expect(matching[0]?.key).toBe(key);
+      expect(matching[0]?.receiver).toBe(receiver);
+    }
+    expect(calls.filter((call) => call.kind === 'opaque')).toHaveLength(4);
+    for (const call of calls.filter((item) => item.kind === 'opaque')) {
+      expect(call.key).toBe('opaque');
+      expect(call.receiver).toBe(opaque);
+    }
+    const projectionError = new Error('Joint projection failed');
+    class FailingNotification extends JointNotification {
+      override toJSON(_key: string): ReturnType<JointNotification['toJSON']> { throw projectionError; }
+    }
+    const failing = { ...requests[0], notification: new FailingNotification(joint.payload) };
+    if (method === 'enqueue') await expect(adapter.enqueue(failing)).rejects.toBe(projectionError);
+    else await expect(adapter.enqueueMany?.([requests[3], failing, requests[0]])).rejects.toBe(projectionError);
+    const opaqueError = new Error('Opaque projection failed');
+    const failingOpaque = { ...requests[0], notification: {
+      ...ordinary, metadata: { toJSON() { throw opaqueError; } },
+    } };
+    if (method === 'enqueue') await expect(adapter.enqueue(failingOpaque)).rejects.toBe(opaqueError);
+    else await expect(adapter.enqueueMany?.([requests[3], failingOpaque, requests[0]])).rejects.toBe(opaqueError);
+    expect(stored).toHaveLength(4);
+    expect(delivered).toHaveLength(4);
+    expect(joint.payload.attachments).toBe(mixed);
+    expect(nested.payload).toBe(nestedPayload);
+    expect(dropped.payload.attachments).toBe(mixed);
+    expect(joint.subject).toBe('Original subject');
+    expect(Reflect.get(binary, 'bytes')).toEqual([9]);
+    expect(backing).toEqual(new Uint8Array([99, 0, 255, 42, 88]));
+  });
+
   it.each(['enqueue', 'enqueueMany'] as const)('%s preserves producer getters and sequential original JSON projections', async (method) => {
     const { delivered, worker } = createQueueTestFixture();
     const projections: { notification: EmailNotificationDispatchRequest; key: string }[] = [];
