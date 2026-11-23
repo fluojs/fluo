@@ -114,7 +114,7 @@ Behavioral contract 메모:
 - 직접 전달과 notifications 기반 전달은 lifecycle이 `ready`일 때만 허용됩니다. `onModuleInit()`이 끝나기 전, 초기화 실패 뒤, 또는 shutdown 중 호출하면 transport를 lazy 생성하거나 재사용하지 않고 `SlackLifecycleError`로 실패합니다.
 - shutdown은 새 전달을 거부하고, 진행 중인 factory 소유 transport 생성과 `verify()` 호출을 포함하는 공유 bootstrap initialization promise가 settle되기를 기다린 뒤 활성 전달을 drain하고, 소유한 transport를 닫고 완료됩니다.
 - factory 소유 transport cleanup은 bootstrap 실패 cleanup과 application shutdown 사이에서 직렬화되므로, 두 경로가 경합해도 같은 owned transport는 최대 한 번만 닫힙니다.
-- `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
+- `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다. `failed` 상태에서는 초기화 실패와 shutdown 실패 모두 readiness를 `not-ready`로 보고하며, 중립적인 사유 `Slack transport failed.`를 사용합니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
 
 ### `verifyOnModuleInit`을 이용한 bootstrap 검증

@@ -2168,6 +2168,15 @@ describe('SlackModule', () => {
     await expect(service.onApplicationShutdown()).rejects.toThrowError(
       new SlackLifecycleError('Slack transport failed to close cleanly.', { cause: closeError }),
     );
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'failed' },
+      health: { status: 'unhealthy' },
+      readiness: {
+        critical: true,
+        reason: 'Slack transport failed.',
+        status: 'not-ready',
+      },
+    });
   });
 
   it('does not mark the service ready when shutdown interrupts bootstrap verification', async () => {
@@ -2244,7 +2253,7 @@ describe('SlackModule', () => {
     expect(service.createPlatformStatusSnapshot()).toMatchObject({
       details: { lifecycleState: 'failed', verifiedOnModuleInit: true },
       readiness: {
-        reason: 'Slack transport failed to initialize.',
+        reason: 'Slack transport failed.',
         status: 'not-ready',
       },
     });
