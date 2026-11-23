@@ -100,6 +100,13 @@ an immutable `SchedulingTaskDescriptor` snapshot (`get`/`getAll`), including
 its `source` (`'decorator'` or `'dynamic'`), kind, cadence, lock key, and
 enabled state.
 
+Descriptor fields are `readonly` in TypeScript as well as frozen at runtime.
+Use `{ ...task }` for mutable local calculations or registry mutation methods
+to change scheduling; editing the copy does not change the task. The array
+returned by `getAll()` remains mutable. Discovery uses effective DI class
+registrations, including each eligible singleton multi contribution, rather
+than applying schedules from losing duplicate declarations.
+
 ### Task options and hooks
 
 All three decorators accept shared options: `name`, a `key` (lock-key
@@ -132,6 +139,12 @@ argument is the sole identity - registry key, scheduler metadata name, and
 default lock key; dynamic options configure behavior only and never rename a
 task.
 
+Cron inputs are expression-only: ISO absolute-time strings and `Date` objects
+are rejected. Migrate incidental absolute-time inputs to application-owned
+absolute scheduling. Supported Croner grammar remains available. Positive
+integer interval/timeout delays above `2_147_483_647`ms are split into
+cancellable host timer segments and never shortened to the host limit.
+
 ```ts title="fragment: registry-driven tasks (SCHEDULING_REGISTRY injected as `registry`)"
 // Schedule, inspect, and mutate at runtime:
 registry.addCron('cleanup.sessions', '0 * * * *', () => purgeExpiredSessions());
@@ -139,7 +152,9 @@ registry.addInterval('inventory.poll', 5_000, () => pollInventory());
 registry.addTimeout('cache.warm', 1_000, () => warmCaches());
 
 const task = registry.get('inventory.poll'); // immutable descriptor snapshot
+registry.disable('cleanup.sessions');
 registry.updateCronExpression('cleanup.sessions', '0 */2 * * *');
+registry.enable('cleanup.sessions');
 registry.disable('inventory.poll'); // stops ticks, keeps the descriptor
 registry.remove('cache.warm');
 ```
@@ -167,6 +182,10 @@ default) before running; release runs in a `finally` path after execution.
 Each acquisition derives a unique lease token from the configured `ownerId`,
 and renewal and release compare that exact token, so a delayed release from an
 expired lease cannot delete a newer one.
+
+Renewal lasts through asynchronous `onSuccess`, `onError`, and `afterRun`
+settlement. Hooks keep the order `beforeRun`, body, success/error, `afterRun`;
+falsy thrown or rejected reasons reach `onError` unchanged.
 
 ```ts title="src/app.module.ts"
 import { Module } from '@fluojs/core';

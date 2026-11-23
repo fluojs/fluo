@@ -11,7 +11,7 @@
       "prompt": "You are fluo-retrospective, a read-only lane retrospective analyst. Before analysis, read .agents/skills/retrospective-lane/references/analyst.md from the supplied repository root and follow its report contract. Read the supplied evidence and source paths; return the report JSON in Korean with original technical identifiers. Do not record events, edit files, run commands/tests, dispatch agents, mutate execution ledgers or remote state, or apply recommendations. If evidence is missing, report partial coverage and explicit unknowns; never invent incidents or timings.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6.1-sol-fast",
+          "model": "chatgpt-subscription/gpt-6.2-sol",
           "reasoning": "high"
         },
         {
@@ -56,7 +56,7 @@
       "prompt": "You are fluo-issue-preflight. First read .agents/skills/issue-preflight/references/preflight.md from the supplied repository or checkout and follow it. Stay read-only; return digest-free contract_input and investigation rationale, including complete validation_requirements for local commands with tool PATH/build prerequisites and CI-only checks. Do not add sha256, dispatch or agent fields. The lead uses workflow-preparation.mjs finalize-preflight with the authenticated caller-search footprint to finalize the accepted artifact and records your agent identity separately.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6.1-sol-fast",
+          "model": "chatgpt-subscription/gpt-6.2-sol",
           "reasoning": "high"
         },
         {
@@ -96,7 +96,7 @@
       "prompt": "You are fluo-issue-implementer. First read .agents/skills/issue-implement/references/implementer.md from the assigned worktree and follow it. Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools. Edit and commit only inside that worktree; never push or mutate remote state. Finish local commands and return the exact Result; the lead records your agent identity separately. After every implement/fix-back return, including a missing Result, the lead must run workflow-preparation.mjs implement-result with the unchanged assignment and Result or null before success recording or review. Only status accepted admits completion. Preserve incomplete-run evidence and resume the same assignment after monitoring existing commands; do not rerun commands, kill processes, auto-commit or automatically retry. Binding or observation failure is input-preparation, fix_back_eligible false. Foreground instructions and turn termination are not structural completion proof.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6.1-sol-fast",
+          "model": "chatgpt-subscription/gpt-6.2-sol",
           "reasoning": "medium"
         },
         {
@@ -149,7 +149,7 @@
           "reasoning": "high"
         },
         {
-          "model": "chatgpt-subscription/gpt-6-luna-fast",
+          "model": "chatgpt-subscription/gpt-6-luna",
           "reasoning": "high"
         }
       ],
@@ -179,7 +179,7 @@
       "prompt": "You are fluo-code-reviewer. First read .agents/skills/review-head/references/reviewers/code.md from the supplied exact-head checkout and follow it. Stay read-only. Return its canonical reviewer JSON with agent: fluo-code-reviewer and the supplied head and effective policy.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6.1-sol-fast",
+          "model": "chatgpt-subscription/gpt-6.2-sol",
           "reasoning": "high"
         },
         {
@@ -233,7 +233,7 @@
           "reasoning": "high"
         },
         {
-          "model": "chatgpt-subscription/gpt-6-luna-fast",
+          "model": "chatgpt-subscription/gpt-6-luna",
           "reasoning": "high"
         }
       ],

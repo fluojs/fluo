@@ -1,7 +1,7 @@
 import { ensureMetadataSymbol } from '@fluojs/core/internal';
-import { Cron as CronValidator } from 'croner';
 
 import { schedulingMetadataSymbol } from './metadata.js';
+import { assertValidCronExpression } from './scheduler.js';
 import type {
   CronTaskMetadata,
   CronTaskOptions,
@@ -77,11 +77,7 @@ function assertMethodIsPublic(context: ClassMethodDecoratorContext, decoratorNam
  * ```
  */
 export function Cron(expression: string, options: CronTaskOptions = {}): MethodDecoratorLike {
-  try {
-    new CronValidator(expression, { maxRuns: 0 });
-  } catch {
-    throw new Error(`@Cron(): invalid cron expression "${expression}".`);
-  }
+  assertValidCronExpression(expression);
 
   const decorator = (_value: Function, context: ClassMethodDecoratorContext) => {
     assertMethodIsPublic(context, '@Cron');
