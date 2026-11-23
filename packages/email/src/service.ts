@@ -161,14 +161,14 @@ export class EmailService implements OnModuleInit, OnApplicationShutdown {
     try {
       await this.bootstrapPromise;
     } finally {
-      if (this.lifecycleState === 'failed') {
+      if (this.lifecycleState === 'failed' && !this.shutdownPromise) {
         this.bootstrapPromise = undefined;
       }
     }
   }
 
   private async startTransport(): Promise<void> {
-    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+    if (this.shutdownPromise || isShutdownLifecycleState(this.lifecycleState)) {
       return;
     }
 
@@ -181,8 +181,9 @@ export class EmailService implements OnModuleInit, OnApplicationShutdown {
         return;
       }
 
-      if (this.options.verifyOnModuleInit && transport.verify) {
-        await this.trackInFlightOperation(Promise.resolve(transport.verify()));
+      const verify = transport.verify;
+      if (this.options.verifyOnModuleInit && verify) {
+        await this.trackInFlightOperation(() => verify.call(transport));
       }
 
       if (this.lifecycleState !== 'starting') {
@@ -247,7 +248,9 @@ export class EmailService implements OnModuleInit, OnApplicationShutdown {
     } else {
       this.assertCanDeliver();
     }
-    const result = await this.trackInFlightOperation(Promise.resolve(transport.send(normalized, options)));
+    assertNotAborted(options.signal);
+    this.assertCanDeliver();
+    const result = await this.trackInFlightOperation(() => transport.send(normalized, options));
 
     return {
       accepted: result.accepted ?? [],
@@ -405,8 +408,8 @@ export class EmailService implements OnModuleInit, OnApplicationShutdown {
       throw error;
     }
 
-    if (options.preserveShutdownState && isShutdownLifecycleState(this.lifecycleState)) {
-      throw error;
+    if (options.preserveShutdownState && (this.shutdownPromise || isShutdownLifecycleState(this.lifecycleState))) {
+      throw createLifecycleError('Email transport failed to initialize.', error);
     }
 
     this.lifecycleState = 'failed';
@@ -433,13 +436,18 @@ export class EmailService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
-  private async trackInFlightOperation<T>(operation: Promise<T>): Promise<T> {
-    this.inFlightOperations.add(operation);
+  private async trackInFlightOperation<T>(operation: () => T | Promise<T>): Promise<T> {
+    let complete!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    this.inFlightOperations.add(completion);
 
     try {
-      return await operation;
+      return await operation();
     } finally {
-      this.inFlightOperations.delete(operation);
+      this.inFlightOperations.delete(completion);
+      complete();
     }
   }
 
