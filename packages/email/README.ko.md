@@ -406,6 +406,8 @@ Behavioral contract 메모:
 - `EmailNotificationsQueueWorker`는 `@fluojs/email/queue`에서 export되며, queue 기반 전달을 활성화하는 애플리케이션이 직접 등록해야 합니다.
 - 내장 adapter는 결정적인 `NotificationsQueueJob.id`를 queued email payload에 보존하고 Queue의 `deduplicationKey`로 전달합니다. Queue가 이를 BullMQ에 유효한 job id로 매핑하므로 BullMQ가 반복 notification dispatch 시도를 deduplicate할 수 있습니다.
 - Notification bulk adapter는 parallel single-job enqueue 대신 Queue의 atomic `enqueueMany(...)` seam에 위임하고, 각 notification ID를 해당 entry의 `deduplicationKey`로 유지합니다.
+- 단건 및 일괄 enqueue는 바이너리 첨부의 실제 `Uint8Array` 뷰 범위만 JSON 표현으로 저장하며, worker가 transport handoff 전에 동일한 길이와 바이트의 `Uint8Array`로 복원합니다. 빈 바이너리 첨부, 문자열 content, filename, contentType 및 첨부 순서를 보존하며 호출자 입력을 변경하지 않습니다. 공개 첨부 입력은 계속 `string | Uint8Array`이고 사전 인코딩은 필요하지 않습니다. 기존 문자열 첨부 job과 첨부 없는 job도 계속 처리합니다.
+- 배포 전에 기존 producer를 정지하고 이미 저장된 구형 바이너리 job의 존재와 처리 방침을 확인하세요. 운영자는 원본 첨부에서 복구하여 재등록하는 등의 방법으로 해당 job을 처리해야 합니다. 이번 수정은 과거에 일반 객체로 저장된 바이너리 payload를 자동 복원하거나 저장된 큐를 자동 마이그레이션하지 않습니다.
 - worker는 transport handoff 전에 queued notification channel이 구성된 `EmailChannel.channel`과 정확히 일치하는지 확인합니다. 일치하지 않으면 `EmailMessageValidationError`로 실패하므로 non-email 작업이 email transport에 도달하지 않습니다.
 - worker는 `EmailChannel` 전달 semantics를 재사용하므로 transport가 수락된 수신자 0명 또는 `pending`/`rejected` 수신자를 보고하면 queued job이 실패합니다. 따라서 incomplete delivery는 성공한 job으로 승인되지 않고 `@fluojs/queue`의 retry/dead-letter 흐름으로 넘어갑니다.
 

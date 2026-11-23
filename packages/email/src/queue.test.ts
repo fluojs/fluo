@@ -43,6 +43,97 @@ function createQueueTestFixture(channel = 'email'): {
 }
 
 describe('EmailNotificationsQueueWorker', () => {
+  it.each(['enqueue', 'enqueueMany'] as const)('%s preserves mixed attachments through JSON queue storage', async (method) => {
+    // Given
+    const { delivered, worker } = createQueueTestFixture();
+    const queued: object[] = [];
+    const adapter = createEmailNotificationsQueueAdapter({
+      async enqueue(job) {
+        queued.push(job);
+        return 'queued';
+      },
+      async enqueueMany(entries) {
+        queued.push(...entries.map((entry) => entry.job));
+        return entries.map(() => 'queued');
+      },
+      async inspectDeadLetters() {
+        return { malformedRecordCount: 0, records: [] };
+      },
+    });
+    const backing = new Uint8Array([99, 0, 255, 42, 88]);
+    const attachments = Object.freeze([
+      { filename: 'text.txt', contentType: 'text/plain', content: 'original text' },
+      { filename: 'bytes.bin', contentType: 'application/octet-stream', content: backing.subarray(1, 4) },
+      { filename: 'empty.bin', content: new Uint8Array(0) },
+    ].map((attachment) => Object.freeze(attachment)));
+    const notification = {
+      channel: 'email',
+      payload: { attachments, text: 'Attachments', templateData: { opaque: { bytes: [7] } } },
+      recipients: ['user@example.com'],
+      subject: 'Mixed attachments',
+      metadata: { trace: 'preserved' },
+    };
+    const job = { channel: 'email', id: 'attachment-job', notification, queuedAt: '2026-11-23T00:00:00.000Z' };
+
+    // When
+    if (method === 'enqueue') {
+      await adapter.enqueue(job);
+    } else {
+      await adapter.enqueueMany?.([job]);
+    }
+    for (const captured of queued) {
+      const restored: EmailNotificationQueueJob = Object.assign(
+        Object.create(EmailNotificationQueueJob.prototype),
+        JSON.parse(JSON.stringify(captured)),
+      );
+      expect(restored).toMatchObject({ id: job.id, queuedAt: job.queuedAt });
+      expect(restored.notification).toMatchObject({
+        metadata: notification.metadata,
+        payload: { templateData: notification.payload.templateData },
+      });
+      await worker.handle(restored);
+    }
+
+    // Then
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({ subject: 'Mixed attachments', text: 'Attachments', metadata: { trace: 'preserved' } });
+    expect(delivered[0]?.attachments).toEqual([
+      { filename: 'text.txt', contentType: 'text/plain', content: 'original text' },
+      { filename: 'bytes.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) },
+      { filename: 'empty.bin', content: new Uint8Array(0) },
+    ]);
+    expect(delivered[0]?.attachments?.[1]?.content).toBeInstanceOf(Uint8Array);
+    expect(delivered[0]?.attachments?.[2]?.content).toBeInstanceOf(Uint8Array);
+    expect(notification.payload.attachments).toBe(attachments);
+    expect(attachments[1]?.content).toEqual(new Uint8Array([0, 255, 42]));
+    expect(backing).toEqual(new Uint8Array([99, 0, 255, 42, 88]));
+  });
+
+  it.each([false, true])('delivers legacy JSON jobs with string attachments present=%s', async (hasAttachments) => {
+    // Given
+    const { delivered, worker } = createQueueTestFixture();
+    const attachments = hasAttachments ? [{ filename: 'legacy.txt', content: 'legacy text' }] : undefined;
+    const legacy = {
+      notification: {
+        channel: 'email',
+        payload: { attachments, text: 'Legacy job' },
+        recipients: ['user@example.com'],
+      },
+      queuedAt: '2026-09-03T00:00:00.000Z',
+    };
+    const restored: EmailNotificationQueueJob = Object.assign(
+      Object.create(EmailNotificationQueueJob.prototype),
+      JSON.parse(JSON.stringify(legacy)),
+    );
+
+    // When
+    await worker.handle(restored);
+
+    // Then
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.attachments).toEqual(attachments);
+  });
+
   it('forwards the notification id through the public queue deduplication seam', async () => {
     // Given
     const queuedJobs: object[] = [];

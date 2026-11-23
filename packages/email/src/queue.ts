@@ -5,10 +5,22 @@ import { QueueWorker, type Queue } from '@fluojs/queue';
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailChannel } from './channel.js';
 import { EmailMessageValidationError } from './errors.js';
-import type { EmailNotificationDispatchRequest } from './types.js';
+import type { EmailAttachment, EmailNotificationDispatchRequest, EmailNotificationPayload } from './types.js';
+
+type QueuedEmailAttachment = Omit<EmailAttachment, 'content'> & {
+  readonly content: EmailAttachment['content'] | { readonly bytes: readonly number[] };
+};
+
+type QueuedEmailNotification = Omit<EmailNotificationDispatchRequest, 'payload'> & {
+  readonly payload: Omit<EmailNotificationPayload, 'attachments'> & {
+    readonly attachments?: readonly QueuedEmailAttachment[];
+  };
+};
 
 /** Serialized queue payload used by the built-in notifications queue adapter. */
 export class EmailNotificationQueueJob {
+  readonly notification: QueuedEmailNotification;
+
   /**
    * Creates one queued email notification job payload.
    *
@@ -17,10 +29,23 @@ export class EmailNotificationQueueJob {
    * @param id Deterministic notification identity preserved for queue deduplication.
    */
   constructor(
-    public readonly notification: EmailNotificationDispatchRequest,
+    notification: EmailNotificationDispatchRequest,
     public readonly queuedAt: string,
     public readonly id?: string,
-  ) {}
+  ) {
+    this.notification = notification.payload.attachments
+      ? {
+          ...notification,
+          payload: {
+            ...notification.payload,
+            attachments: notification.payload.attachments.map((attachment) => ({
+              ...attachment,
+              content: typeof attachment.content === 'string' ? attachment.content : { bytes: Array.from(attachment.content) },
+            })),
+          },
+        }
+      : notification;
+  }
 }
 
 /**
@@ -85,6 +110,22 @@ export class EmailNotificationsQueueWorker {
       );
     }
 
-    await this.channel.send(job.notification, {});
+    const notification = job.notification;
+    await this.channel.send(
+      {
+        ...notification,
+        payload: {
+          ...notification.payload,
+          attachments: notification.payload.attachments?.map((attachment) => ({
+            ...attachment,
+            content:
+              typeof attachment.content !== 'string' && 'bytes' in attachment.content
+                ? new Uint8Array(attachment.content.bytes)
+                : attachment.content,
+          })),
+        },
+      },
+      {},
+    );
   }
 }
