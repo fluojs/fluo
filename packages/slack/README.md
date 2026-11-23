@@ -296,7 +296,8 @@ Behavioral contract notes:
 
 - Passing `fetch` explicitly is the portable path and is recommended for all supported runtimes. For backward compatibility, omitting `fetch` falls back to `globalThis.fetch` when that ambient runtime API exists; runtimes without `globalThis.fetch` fail fast with `SlackConfigurationError`.
 - The built-in webhook transport consumes transient `408`, `429`, and `5xx` response bodies before retrying with bounded exponential backoff, then surfaces an error only after retries are exhausted.
-- Abort signals are passed to the injected `fetch` boundary and cancel retry backoff without wrapping `AbortError` values as `SlackTransportError`.
+- Abort signals are passed to the injected `fetch` boundary, propagate the original error when reading a delivered webhook response body is cancelled, and cancel retry backoff without wrapping `AbortError` values as `SlackTransportError`.
+- The request JSON body is serialized once before the first `fetch` call; local serialization failures such as unserializable `metadata` values reject immediately with `SlackTransportError` without contacting the webhook or waiting through backoff.
 - Caller-visible `SlackTransportError` messages omit raw upstream response bodies by default.
 
 ### Intentional limitations

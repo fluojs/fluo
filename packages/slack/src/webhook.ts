@@ -34,6 +34,18 @@ function createWebhookPayload(message: NormalizedSlackMessage): Record<string, u
   };
 }
 
+function createSerializationFailureMessage(): string {
+  return 'Slack webhook delivery failed because the message payload could not be serialized to JSON. Payload contents were omitted from the caller-visible error.';
+}
+
+function serializeWebhookRequestBody(message: NormalizedSlackMessage): string {
+  try {
+    return JSON.stringify(createWebhookPayload(message));
+  } catch {
+    throw new SlackTransportError(createSerializationFailureMessage());
+  }
+}
+
 function resolveFetch(fetchLike: SlackFetchLike | undefined): SlackFetchLike {
   if (fetchLike) {
     return fetchLike;
@@ -48,10 +60,14 @@ function resolveFetch(fetchLike: SlackFetchLike | undefined): SlackFetchLike {
   return (input, init) => globalThis.fetch(input, init as never) as Promise<SlackFetchResponse>;
 }
 
-async function readResponseBody(response: SlackFetchResponse): Promise<string> {
+async function readResponseBody(response: SlackFetchResponse, signal: AbortSignal | undefined): Promise<string> {
   try {
     return await response.text();
-  } catch {
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw error;
+    }
+
     return '';
   }
 }
@@ -125,17 +141,19 @@ export function createSlackWebhookTransport(options: SlackWebhookTransportOption
 
   return {
     async send(message: NormalizedSlackMessage, context: SlackTransportContext) {
+      const requestBody = serializeWebhookRequestBody(message);
+
       for (let attempt = 1; attempt <= DEFAULT_RETRY_ATTEMPTS; attempt += 1) {
         try {
           const response = await fetchLike(webhookUrl, {
-            body: JSON.stringify(createWebhookPayload(message)),
+            body: requestBody,
             headers: {
               'content-type': 'application/json; charset=utf-8',
             },
             method: 'POST',
             signal: context.signal,
           });
-          const body = await readResponseBody(response);
+          const body = await readResponseBody(response, context.signal);
 
           if (!response.ok) {
             if (attempt < DEFAULT_RETRY_ATTEMPTS && isTransientStatus(response.status)) {

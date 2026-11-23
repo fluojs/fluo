@@ -1218,6 +1218,35 @@ describe('SlackModule', () => {
     ]);
   });
 
+  it('rejects unserializable webhook payloads before fetching or scheduling backoff', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi.fn<SlackFetchLike>();
+      const transport = createSlackWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      });
+
+      const pending = transport.send(
+        { attachments: [], blocks: [], channel: '#ops', metadata: { count: 1n }, text: 'Unserializable payload path' },
+        {},
+      );
+      const expectation = expect(pending).rejects.toThrowError(
+        new SlackTransportError(
+          'Slack webhook delivery failed because the message payload could not be serialized to JSON. Payload contents were omitted from the caller-visible error.',
+        ),
+      );
+      await vi.runAllTimersAsync();
+
+      await expectation;
+      expect(fetchLike).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects multi-recipient notification fan-out inside one Slack dispatch', async () => {
     const container = new Container();
     const moduleType = SlackModule.forRoot({
@@ -1536,6 +1565,79 @@ describe('SlackModule', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('propagates AbortError when reading a successful webhook response body is cancelled', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const controller = new AbortController();
+      const abortError = new DOMException('The operation was aborted.', 'AbortError');
+      const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        async text() {
+          throw abortError;
+        },
+      });
+      const transport = createSlackWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      });
+
+      await expect(
+        transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Body cancel path' }, { signal: controller.signal }),
+      ).rejects.toBe(abortError);
+      expect(fetchLike).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('propagates the original failure when a successful webhook body read is cancelled with an aborted signal', async () => {
+    const controller = new AbortController();
+    const readFailure = new Error('response stream failed');
+    const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      async text() {
+        controller.abort();
+        throw readFailure;
+      },
+    });
+    const transport = createSlackWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+    });
+
+    await expect(
+      transport.send(
+        { attachments: [], blocks: [], channel: '#ops', text: 'Aborted signal read path' },
+        { signal: controller.signal },
+      ),
+    ).rejects.toBe(readFailure);
+    expect(fetchLike).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an empty-body success receipt when a successful webhook body read fails without cancellation', async () => {
+    const readFailure = new Error('response stream failed');
+    const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      async text() {
+        throw readFailure;
+      },
+    });
+    const transport = createSlackWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+    });
+
+    await expect(
+      transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Body read failure path' }, {}),
+    ).resolves.toMatchObject({ ok: true, response: '', statusCode: 200, warnings: [] });
+    expect(fetchLike).toHaveBeenCalledTimes(1);
   });
 
   it('passes AbortSignal to webhook fetch and does not retry AbortError failures', async () => {
