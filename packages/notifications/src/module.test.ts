@@ -1432,6 +1432,51 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('dispatchMany rejects a pre-aborted native bulk batch without any queue handoff', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('native bulk batch pre-aborted');
+    const publisher = new RecordingPublisher();
+    let enqueueCalls = 0;
+    let enqueueManyCalls = 0;
+    const queue: NotificationsQueueAdapter = {
+      async enqueue(job) {
+        enqueueCalls += 1;
+        return `queued:${job.id}`;
+      },
+      async enqueueMany(jobs) {
+        enqueueManyCalls += 1;
+        return jobs.map((job) => `queued:${job.id}`);
+      },
+    };
+    const notifications = [
+      { channel: 'email', id: 'pre-aborted-A', payload: { template: 'digest' } },
+      { channel: 'email', id: 'pre-aborted-B', payload: { template: 'digest' } },
+    ];
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { throw new Error('Expected queue-backed delivery.'); } }],
+      events: { publisher },
+      queue: { adapter: queue, bulkThreshold: 2 },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    abortController.abort(abortError);
+
+    await expect(
+      service.dispatchMany(notifications, { signal: abortController.signal }),
+    ).rejects.toBe(abortError);
+
+    expect(enqueueManyCalls).toBe(0);
+    expect(enqueueCalls).toBe(0);
+    expect(publisher.events.map((event) => [event.notification.id, event.name])).toEqual([
+      ['pre-aborted-A', 'notification.dispatch.requested'],
+      ['pre-aborted-B', 'notification.dispatch.requested'],
+      ['pre-aborted-A', 'notification.dispatch.failed'],
+      ['pre-aborted-B', 'notification.dispatch.failed'],
+    ]);
+  });
+
   it('forwards a live caller abort signal to native bulk queue adapters and emits no queued result', async () => {
     const abortController = new AbortController();
     const abortError = new Error('native bulk dispatch aborted');
@@ -2033,6 +2078,71 @@ describe('NotificationsModule', () => {
       'notification.dispatch.requested',
       'notification.dispatch.failed',
       'notification.dispatch.failed',
+    ]);
+  });
+
+  it('dispatchMany preserves accepted fallback results when a later enqueue is aborted', async () => {
+    const abortController = new AbortController();
+    const abortError = new Error('sequential fallback aborted after acceptance');
+    const secondEnqueueStarted = createDeferred();
+    const publisher = new RecordingPublisher();
+    const enqueueIds: string[] = [];
+    let listenerRemoved = false;
+    const queue: NotificationsQueueAdapter = {
+      async enqueue(job, context) {
+        enqueueIds.push(job.id);
+
+        if (job.id === 'fallback-B') {
+          return rejectWhenAborted(context?.signal, secondEnqueueStarted.resolve, () => {
+            listenerRemoved = true;
+          });
+        }
+
+        return `queued:${job.id}`;
+      },
+    };
+    const notifications = [
+      { channel: 'email', id: 'fallback-A', payload: { template: 'digest' } },
+      { channel: 'email', id: 'fallback-B', payload: { template: 'digest' } },
+      { channel: 'email', id: 'fallback-C', payload: { template: 'digest' } },
+    ];
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [{ channel: 'email', async send() { throw new Error('Expected queue-backed delivery.'); } }],
+      events: { publisher },
+      queue: { adapter: queue, bulkThreshold: 2 },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany(notifications, {
+      continueOnError: true,
+      signal: abortController.signal,
+    });
+
+    await secondEnqueueStarted.promise;
+    abortController.abort(abortError);
+    const result = await dispatch;
+
+    expect(enqueueIds).toEqual(['fallback-A', 'fallback-B']);
+    expect(listenerRemoved).toBe(true);
+    expect(result).toMatchObject({ succeeded: 1, queued: 1, failed: 2 });
+    expect(result.results).toEqual([
+      { channel: 'email', deliveryId: 'queued:fallback-A', status: 'queued' },
+    ]);
+    expect(result.failures.map((failure) => failure.notification)).toEqual([
+      notifications[1],
+      notifications[2],
+    ]);
+    expect(result.failures[0]?.error).toBe(abortError);
+    expect(result.failures[1]?.error).toBe(abortError);
+    expect(publisher.events.map((event) => [event.notification.id, event.name])).toEqual([
+      ['fallback-A', 'notification.dispatch.requested'],
+      ['fallback-B', 'notification.dispatch.requested'],
+      ['fallback-C', 'notification.dispatch.requested'],
+      ['fallback-A', 'notification.dispatch.queued'],
+      ['fallback-B', 'notification.dispatch.failed'],
+      ['fallback-C', 'notification.dispatch.failed'],
     ]);
   });
 
