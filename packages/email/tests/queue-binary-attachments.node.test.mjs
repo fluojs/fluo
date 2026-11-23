@@ -1,7 +1,7 @@
 import '@fluojs/core/metadata-preload';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EmailChannel, EmailService } from '@fluojs/email';
+import { EmailChannel, EmailMessageValidationError, EmailService } from '@fluojs/email';
 import {
   createEmailNotificationsQueueAdapter,
   EmailNotificationQueueJob,
@@ -11,6 +11,7 @@ import {
 test('email queue JSON round trip preserves native Uint8Array indexed bytes when content has an own bytes property', async () => {
   // Given
   const deliveries = [];
+  const messages = [];
   const options = {
     defaultFrom: { address: 'noreply@example.com' },
     defaultReplyTo: [],
@@ -18,6 +19,7 @@ test('email queue JSON round trip preserves native Uint8Array indexed bytes when
     transport: {
       create: async () => ({
         async send(message) {
+          messages.push(message);
           const content = message.attachments[0].content;
           deliveries.push({
             native: content instanceof Uint8Array,
@@ -86,4 +88,49 @@ test('email queue JSON round trip preserves native Uint8Array indexed bytes when
     { native: true, length: 3, bytes: [0, 255, 42] },
     { native: true, length: 3, bytes: [0, 255, 42] },
   ]);
+
+  const malformedContents = [
+    { 0: 0, 1: 255, 2: 42 },
+    {},
+    null,
+    9,
+    { bytes: null },
+    { bytes: '9' },
+    { bytes: { 0: 9 } },
+    { bytes: [null] },
+    { bytes: [-1] },
+    { bytes: [256] },
+    { bytes: [1.5] },
+    { bytes: ['9'] },
+    { bytes: [true] },
+    { bytes: new Array(1) },
+    { bytes: [0], extra: true },
+  ];
+  for (const invalidContent of malformedContents) {
+    const stored = {
+      notification: {
+        ...notification,
+        payload: { text: 'Invalid stored attachment', attachments: [{ filename: 'invalid.bin', content: invalidContent }] },
+      },
+      queuedAt: '2026-11-23T00:00:00.000Z',
+    };
+    const restored = Object.assign(
+      Object.create(EmailNotificationQueueJob.prototype),
+      JSON.parse(JSON.stringify(stored)),
+    );
+    await assert.rejects(worker.handle(restored), EmailMessageValidationError);
+  }
+  assert.equal(messages.length, 4, 'Malformed stored content must not reach the transport');
+
+  await worker.handle({
+    notification: {
+      ...notification,
+      payload: { text: 'Valid empty wire attachment', attachments: [{ filename: 'empty.bin', content: { bytes: [] } }] },
+    },
+    queuedAt: '2026-11-23T00:00:00.000Z',
+  });
+  assert.equal(messages.length, 5);
+  const empty = messages.at(-1).attachments[0].content;
+  assert.ok(empty instanceof Uint8Array);
+  assert.equal(empty.byteLength, 0);
 });

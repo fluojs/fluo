@@ -30,36 +30,34 @@ export class EmailNotificationQueueJob {
     public readonly notification: EmailNotificationDispatchRequest,
     public readonly queuedAt: string,
     public readonly id?: string,
-  ) {}
-
-  /**
-   * Serializes attachment view bytes without changing the public notification.
-   *
-   * @returns The internal JSON queue payload with notification identity preserved.
-   */
-  toJSON(): { notification: QueuedEmailNotification; queuedAt: string; id?: string } {
-    const notification: QueuedEmailNotification = this.notification;
-    return {
-      notification: {
-        ...notification,
-        payload: {
-          ...notification.payload,
-          attachments: notification.payload.attachments?.map((attachment) => {
-            const content = attachment.content;
-            if (!(content instanceof Uint8Array)) {
-              return attachment;
-            }
-            const bytes: number[] = [];
-            for (let index = 0; index < content.byteLength; index++) {
-              bytes.push(content[index]);
-            }
-            return { ...attachment, content: { bytes } };
-          }),
-        },
+  ) {
+    // Keep the JSON hook out of the public structural job type.
+    Object.defineProperty(this, 'toJSON', {
+      value: (): { notification: QueuedEmailNotification; queuedAt: string; id?: string } => {
+        const notification: QueuedEmailNotification = this.notification;
+        return {
+          notification: {
+            ...notification,
+            payload: {
+              ...notification.payload,
+              attachments: notification.payload.attachments?.map((attachment) => {
+                const content = attachment.content;
+                if (!(content instanceof Uint8Array)) {
+                  return attachment;
+                }
+                const bytes: number[] = [];
+                for (let index = 0; index < content.byteLength; index++) {
+                  bytes.push(content[index]);
+                }
+                return { ...attachment, content: { bytes } };
+              }),
+            },
+          },
+          queuedAt: this.queuedAt,
+          id: this.id,
+        };
       },
-      queuedAt: this.queuedAt,
-      id: this.id,
-    };
+    });
   }
 }
 
@@ -131,13 +129,29 @@ export class EmailNotificationsQueueWorker {
         ...notification,
         payload: {
           ...notification.payload,
-          attachments: notification.payload.attachments?.map((attachment) => ({
-            ...attachment,
-            content:
-              typeof attachment.content !== 'string' && !(attachment.content instanceof Uint8Array)
-                ? new Uint8Array(attachment.content.bytes)
-                : attachment.content,
-          })),
+          attachments: notification.payload.attachments?.map((attachment) => {
+            const content: unknown = attachment.content;
+            if (typeof content === 'string' || content instanceof Uint8Array) {
+              return { ...attachment, content };
+            }
+            if (
+              typeof content !== 'object' || content === null || Array.isArray(content)
+              || !('bytes' in content) || !Object.hasOwn(content, 'bytes')
+              || Object.keys(content).length !== 1 || !Array.isArray(content.bytes)
+            ) {
+              throw new EmailMessageValidationError('Queued email attachment content is not a supported byte payload.');
+            }
+            const bytes: readonly unknown[] = content.bytes;
+            const restored = new Uint8Array(bytes.length);
+            for (let index = 0; index < bytes.length; index++) {
+              const byte = bytes[index];
+              if (typeof byte !== 'number' || !Number.isInteger(byte) || byte < 0 || byte > 255) {
+                throw new EmailMessageValidationError('Queued email attachment bytes must be integers between 0 and 255.');
+              }
+              restored[index] = byte;
+            }
+            return { ...attachment, content: restored };
+          }),
         },
       },
       {},

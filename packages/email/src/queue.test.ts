@@ -44,9 +44,26 @@ function createQueueTestFixture(channel = 'email'): {
 }
 
 describe('EmailNotificationsQueueWorker', () => {
-  it('preserves the public queue job notification type', () => {
+  it('preserves the public queue job notification type and structural worker input', async () => {
     expectTypeOf<EmailNotificationQueueJob['notification']>().toEqualTypeOf<EmailNotificationDispatchRequest>();
     expectTypeOf<PublicEmailNotificationQueueJob['notification']>().toEqualTypeOf<EmailNotificationDispatchRequest>();
+
+    const { delivered, worker } = createQueueTestFixture();
+    const notification: EmailNotificationDispatchRequest = {
+      channel: 'email',
+      payload: { text: 'Direct structural job' },
+      recipients: ['user@example.com'],
+    };
+    const job: PublicEmailNotificationQueueJob = {
+      notification,
+      queuedAt: '2026-11-23T00:00:00.000Z',
+    };
+
+    await worker.handle(job);
+    await worker.handle({ notification, queuedAt: job.queuedAt });
+
+    expect(delivered).toHaveLength(2);
+    expect(delivered.map((message) => message.text)).toEqual(['Direct structural job', 'Direct structural job']);
   });
 
   it.each([
