@@ -247,13 +247,15 @@ The directory variant scans `${rootDir}/${locale}/**/*.json`, validates every fi
 ```ts title="fragment: typed facade"
 import type { I18nCatalogTypedService } from './generated-i18n-catalog.d';
 
-const typedI18n = {
+const typedI18n: I18nCatalogTypedService = {
   translate: i18n.translate.bind(i18n),
   translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
-} satisfies I18nCatalogTypedService;
+};
 
 typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
 ```
+
+The explicit type annotation narrows the bound `translate` to generated catalog keys. Using `satisfies` alone checks the object's compatibility but preserves the broad `key: string` signature.
 
 Invalid catalog shapes and unsafe locale/namespace paths reject with the loader error codes; invalid output names reject with `I18N_INVALID_OPTIONS`.
 

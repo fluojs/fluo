@@ -468,14 +468,16 @@ The generated declaration text includes fully qualified key unions, namespace un
 ```ts
 import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';
 
-const typedI18n = {
+const typedI18n: I18nCatalogTypedService = {
   translate: i18n.translate.bind(i18n),
   translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
-} satisfies I18nCatalogTypedService;
+};
 
 typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
 typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });
 ```
+
+The explicit type annotation narrows the bound `translate` to generated catalog keys. Using `satisfies` alone checks the object's compatibility but preserves the broad `key: string` signature.
 
 These helper declarations are type-only and application-owned. They do not add runtime wrappers, do not import framework bridges, and do not change the broad runtime `I18nService.translate(key: string, options)` signature.
 
