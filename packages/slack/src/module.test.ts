@@ -1325,6 +1325,124 @@ describe('SlackModule', () => {
     expect(transportState.sent.map((entry) => entry.text)).toEqual(['one', 'two', 'three']);
   });
 
+  it('returns an unsuccessful receipt from send without rejecting', async () => {
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: new UnsuccessfulTransport(),
+    })));
+    const service = await initializeSlackService(container);
+
+    const receipt = await service.send({ text: 'Denied' });
+
+    expect(receipt).toEqual({
+      channel: '#ops',
+      messageTs: undefined,
+      metadata: undefined,
+      ok: false,
+      response: 'denied',
+      statusCode: 200,
+      warnings: [],
+    });
+  });
+
+  it('rejects sendMany on an unsuccessful receipt before sending the next message', async () => {
+    const send = vi.fn(new UnsuccessfulTransport().send);
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({ transport: { send } })));
+    const service = await initializeSlackService(container);
+
+    await expect(service.sendMany([{ text: 'Denied' }, { text: 'Unsent' }])).rejects.toBeInstanceOf(SlackTransportError);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('collects unsuccessful sendMany receipts once and preserves mixed delivery order', async () => {
+    const providerError = new Error('provider rejected thrown');
+    const sent: string[] = [];
+    const denied = { text: 'denied' };
+    const thrown = { text: 'thrown' };
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({
+      transport: {
+        async send(message) {
+          const text = message.text ?? '';
+          sent.push(text);
+          if (text === 'thrown') {
+            throw providerError;
+          }
+          return { ok: text !== 'denied', messageTs: text };
+        },
+      },
+    })));
+    const service = await initializeSlackService(container);
+
+    const result = await service.sendMany([{ text: 'first' }, denied, thrown, { text: 'last' }], {
+      continueOnError: true,
+    });
+
+    expect(result).toMatchObject({ failed: 2, succeeded: 2 });
+    expect(result.results.map((receipt) => receipt.messageTs)).toEqual(['first', 'last']);
+    expect(result.failures).toHaveLength(2);
+    expect(result.failures[0]?.message).toBe(denied);
+    expect(result.failures[0]?.error).toBeInstanceOf(SlackTransportError);
+    expect(result.failures[1]?.message).toBe(thrown);
+    expect(result.failures[1]?.error).toBe(providerError);
+    expect(sent).toEqual(['first', 'denied', 'thrown', 'last']);
+  });
+
+  it.each([false, true])('rejects sendMany when the final delivery aborts with continueOnError=%s', async (continueOnError) => {
+    const controller = new AbortController();
+    const send = vi.fn<SlackTransport['send']>(async () => {
+      controller.abort();
+      return { ok: true };
+    });
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({ transport: { send } })));
+    const service = await initializeSlackService(container);
+
+    await expect(service.sendMany([{ text: 'last' }], {
+      continueOnError,
+      signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects sendMany validation errors without provider handoff even with continueOnError', async () => {
+    const send = vi.fn(new UnsuccessfulTransport().send);
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({ transport: { send } })));
+    const service = await initializeSlackService(container);
+
+    await expect(service.sendMany([{}, { text: 'Unsent' }], {
+      continueOnError: true,
+    })).rejects.toBeInstanceOf(SlackMessageValidationError);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejects sendMany when shutdown starts between deliveries even with continueOnError', async () => {
+    let shutdown: Promise<void> | undefined;
+    const send = vi.fn<SlackTransport['send']>(async () => {
+      shutdown = service.onApplicationShutdown();
+      return { ok: true };
+    });
+    const close = vi.fn(async () => undefined);
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({
+      transport: { create: () => ({ send, close }), kind: 'batch-shutdown', ownsResources: true },
+    })));
+    const service = await initializeSlackService(container);
+
+    try {
+      await expect(service.sendMany([{ text: 'first' }, { text: 'Unsent' }], {
+        continueOnError: true,
+      })).rejects.toBeInstanceOf(SlackLifecycleError);
+    } finally {
+      await shutdown;
+    }
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it('stops sendMany at the first provider error by default', async () => {
     const transport = new SelectiveFailureSlackTransport();
     const container = new Container();

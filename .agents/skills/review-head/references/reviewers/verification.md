@@ -125,6 +125,14 @@ Authenticate rather than trust:
 
 ## Same-head and authority rules
 
+For a prepared `review-transfer`, first follow
+`../../SKILL.md#bounded-complete-review-transfer`. Authenticate the manifest and
+all ordered units against the unchanged lead-provided transfer, and read every
+bounded unit completely to recover the original common/readable_index.
+Do not judge from a manifest, summary or clipped unit. Any transfer failure is
+`kind:"input-preparation",fix_back_eligible:false`, never product BLOCK,
+implementation fix-back or implicit PASS. All axes consume identical input.
+
 Consume the lead's prepared `common` input, including authenticated authored
 diff, pinned verification base, current merge base, footprint and focused
 receipts. Missing preparation is an input gap for the lead, not a product

@@ -172,6 +172,8 @@ NotificationsModule.forRoot({
 
 `dispatchMany()`는 비어 있지 않은 전체 입력의 스냅샷을 첫 publication이나 전송 전에 생성합니다. 뒤쪽 항목 하나가 접수에 실패해도 `continueOnError: true`와 무관하게 호출 전체가 `TypeError`로 거부됩니다. 앞쪽 정상 항목도 발행·전송·enqueue되지 않으며, `failures`를 포함한 배치 결과도 반환되지 않습니다. 호출자는 배치 호출 자체의 거부를 처리해야 합니다. `continueOnError`의 항목별 실패 수집은 접수 이후의 직접 전송과 순차 queue fallback 시도에 한정됩니다.
 
+`dispatch()`와 `dispatchMany()`는 첫 비동기 대기 전에 호출의 `queue`, `publishLifecycleEvents`, `signal` 참조를 접수 시 고정하며, `dispatchMany()`는 batch 전체의 `continueOnError`도 고정합니다. 같은 options 객체를 다음 호출에 재사용하며 필드를 재할당해도 이미 접수한 호출의 전달 경로, lifecycle 발행, 실패 수집 정책은 바뀌지 않습니다. `signal`은 복제하거나 `aborted` 값을 저장하지 않고 원래 `AbortSignal` 참조를 유지하므로 이후 `abort()`는 인계 전 검사와 queue adapter 및 channel에 그대로 전파됩니다. 호출별 lifecycle 설정은 모듈 기본값보다 우선하며, 옵션 없는 후속 호출은 모듈 기본값을 사용합니다.
+
 ### Lifecycle 내장 표현
 
 | 인터페이스 | 불변 필드 |

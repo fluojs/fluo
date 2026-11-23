@@ -916,11 +916,178 @@ export function prepareReviewInput(input) {
     })) };
 }
 
+// Bounds apply to serialized UTF-8 files, including JSON escaping and wrappers.
+export const reviewTransferLimits = Object.freeze({
+  unit_bytes: 49999, unit_lines: 1500, prepared_bytes: 2 * 1024 * 1024,
+  total_bytes: 8 * 1024 * 1024, chunk_bytes: 16000, max_units: 132,
+});
+const boundedReviewUnit = (bytes) => requireInput(bytes.length <= reviewTransferLimits.unit_bytes
+  && bytes.toString('utf8').split('\n').length <= reviewTransferLimits.unit_lines,
+'review transfer: unit exceeds byte/line limit');
+const reviewBinding = (prepared) => ({
+  issue: prepared.common.issue, head_sha: prepared.common.head_sha, tree_sha: prepared.common.tree_sha,
+  contract_sha256: prepared.common.contract_sha256, policy_sha256: prepared.common.preflight_sha256,
+  axes: prepared.reviewers.map(({ reviewer }) => reviewer),
+});
+
+/** Authenticate the complete transfer before returning any reconstructed input. */
+function consumeReviewTransfer(root, transfer) {
+  exact(transfer, ['version', 'manifest', 'prepared', 'binding'], 'review transfer');
+  requireInput(transfer.version === 1, 'review transfer: unsupported version');
+  exact(transfer.prepared, ['bytes', 'sha256'], 'review transfer prepared');
+  requireInput(Number.isSafeInteger(transfer.prepared.bytes) && transfer.prepared.bytes > 0
+    && transfer.prepared.bytes <= reviewTransferLimits.prepared_bytes && digest(transfer.prepared.sha256),
+  'review transfer: prepared size/digest invalid');
+  requireInput(transfer.manifest?.bytes <= reviewTransferLimits.unit_bytes,
+    'review transfer: manifest exceeds byte limit');
+  const manifestBytes = readPreparationArtifact(root, transfer.manifest, 'review transfer manifest');
+  boundedReviewUnit(manifestBytes);
+  let manifest;
+  try { manifest = JSON.parse(manifestBytes); }
+  catch (error) { throw new WorkflowPreparationError(`review transfer: unreadable manifest JSON: ${error.message}`); }
+  exact(manifest, ['version', 'binding', 'prepared', 'limits', 'total_bytes', 'units'], 'review transfer manifest');
+  requireInput(manifest.version === 1 && isDeepStrictEqual(manifest.binding, transfer.binding)
+    && isDeepStrictEqual(manifest.prepared, transfer.prepared)
+    && isDeepStrictEqual(manifest.limits, reviewTransferLimits),
+  'review transfer: manifest binding mismatch');
+  requireInput(Array.isArray(manifest.units) && manifest.units.length > 0
+    && manifest.units.length <= reviewTransferLimits.max_units,
+  'review transfer: incomplete unit inventory');
+  requireInput(Number.isSafeInteger(manifest.total_bytes) && manifest.total_bytes > 0
+    && manifest.total_bytes <= reviewTransferLimits.total_bytes,
+  'review transfer: total exceeds limit');
+  let offset = 0;
+  let total = manifestBytes.length;
+  const paths = new Set([transfer.manifest.path]);
+  const units = manifest.units.map((entry, index) => {
+    exact(entry, ['index', 'offset', 'content_bytes', 'lines', 'reference'], 'review transfer unit entry');
+    requireInput(entry.index === index && entry.offset === offset
+      && Number.isSafeInteger(entry.content_bytes) && entry.content_bytes > 0
+      && entry.content_bytes <= reviewTransferLimits.chunk_bytes
+      && entry.lines === 1 && entry.reference?.bytes <= reviewTransferLimits.unit_bytes
+      && !paths.has(entry.reference?.path),
+    'review transfer: duplicate, reordered or invalid unit');
+    paths.add(entry.reference.path);
+    const bytes = readPreparationArtifact(root, entry.reference, 'review transfer unit');
+    boundedReviewUnit(bytes);
+    requireInput(bytes.toString('utf8').split('\n').length === entry.lines,
+      'review transfer: wrong unit line count');
+    let unit;
+    try { unit = JSON.parse(bytes); }
+    catch (error) { throw new WorkflowPreparationError(`review transfer: unreadable unit JSON: ${error.message}`); }
+    exact(unit, ['version', 'index', 'offset', 'text'], 'review transfer unit');
+    requireInput(unit.version === 1 && unit.index === index && unit.offset === offset
+      && typeof unit.text === 'string' && Buffer.byteLength(unit.text) === entry.content_bytes,
+    'review transfer: unit length/position mismatch');
+    offset += entry.content_bytes;
+    total += bytes.length;
+    requireInput(total <= reviewTransferLimits.total_bytes, 'review transfer: total exceeds limit');
+    return unit;
+  });
+  requireInput(total === manifest.total_bytes && offset === transfer.prepared.bytes,
+    'review transfer: incomplete total length');
+  const bytes = Buffer.from(units.map(({ text }) => text).join(''));
+  requireInput(sha256(bytes) === transfer.prepared.sha256, 'review transfer: prepared digest mismatch');
+  let prepared;
+  try { prepared = JSON.parse(bytes); }
+  catch (error) { throw new WorkflowPreparationError(`review transfer: unreadable prepared JSON: ${error.message}`); }
+  requireInput(prepared?.status === 'prepared' && prepared.kind === 'review-input'
+    && Array.isArray(prepared.reviewers) && prepared.common
+    && isDeepStrictEqual(reviewBinding(prepared), transfer.binding)
+    && prepared.reviewers.every(({ reviewer, dispatch, input }) =>
+      isDeepStrictEqual(input, prepared.common) && isDeepStrictEqual(dispatch, reviewerTargets[reviewer])),
+  'review transfer: reconstructed binding mismatch');
+  return { prepared, manifest, units };
+}
+
+export function readReviewTransfer(root, transfer) {
+  try { return consumeReviewTransfer(root, transfer).prepared; }
+  catch (error) {
+    if (error instanceof WorkflowPreparationError) throw error;
+    throw new WorkflowPreparationError(`review transfer: unreadable input: ${error.message}`);
+  }
+}
+
+/** Keep small CLI results unchanged; retain large results as bounded authenticated files. */
+export function prepareReviewTransfer(input) {
+  const prepared = prepareReviewInput(input);
+  const inline = Buffer.from(`${JSON.stringify(prepared, null, 2)}\n`);
+  if (inline.length <= reviewTransferLimits.unit_bytes
+    && inline.toString('utf8').split('\n').length <= reviewTransferLimits.unit_lines) return prepared;
+  const serialized = JSON.stringify(prepared);
+  const bytes = Buffer.from(serialized);
+  requireInput(bytes.length <= reviewTransferLimits.prepared_bytes,
+    'review transfer: prepared size exceeds total allowance');
+  const binding = reviewBinding(prepared);
+  const content = { bytes: bytes.length, sha256: sha256(bytes) };
+  const directory = `review-transfer-${content.sha256}`;
+  const store = (path, value) => {
+    const data = Buffer.from(JSON.stringify(value));
+    boundedReviewUnit(data);
+    return { data, reference: { path: `${directory}/${path}`, bytes: data.length, sha256: sha256(data) } };
+  };
+  const files = [];
+  let fragment = '';
+  let size = 0;
+  let offset = 0;
+  const flush = () => {
+    const index = files.length;
+    const stored = store(`unit-${index}.json`, { version: 1, index, offset, text: fragment });
+    files.push({ ...stored, entry: { index, offset, content_bytes: size, lines: 1, reference: stored.reference } });
+    offset += size;
+    fragment = '';
+    size = 0;
+  };
+  for (const character of serialized) {
+    const length = Buffer.byteLength(character);
+    if (size + length > reviewTransferLimits.chunk_bytes) flush();
+    fragment += character;
+    size += length;
+  }
+  if (size) flush();
+  requireInput(files.length <= reviewTransferLimits.max_units, 'review transfer: too many units');
+  const manifest = { version: 1, binding, prepared: content, limits: reviewTransferLimits,
+    total_bytes: 0, units: files.map(({ entry }) => entry) };
+  const unitBytes = files.reduce((sum, { data }) => sum + data.length, 0);
+  // Account for the decimal total's own serialized width.
+  let manifestFile = store('manifest.json', manifest);
+  while (manifest.total_bytes !== unitBytes + manifestFile.data.length) {
+    manifest.total_bytes = unitBytes + manifestFile.data.length;
+    manifestFile = store('manifest.json', manifest);
+  }
+  requireInput(manifest.total_bytes <= reviewTransferLimits.total_bytes, 'review transfer: total exceeds limit');
+  const transfer = { version: 1, manifest: manifestFile.reference, prepared: content, binding };
+  const result = { status: 'prepared', kind: 'review-transfer', artifact_root: input.artifact_root, transfer,
+    reviewers: prepared.reviewers.map(({ reviewer, dispatch }) => ({ reviewer, dispatch, transfer })) };
+  boundedReviewUnit(Buffer.from(`${JSON.stringify(result, null, 2)}\n`));
+  try {
+    mkdirSync(resolve(input.artifact_root, directory), { recursive: true });
+    requireInput(realpathSync(resolve(input.artifact_root, directory))
+      === resolve(realpathSync(input.artifact_root), directory), 'review transfer: directory escaped artifact root');
+    for (const file of [...files, manifestFile]) {
+      try { writeFileSync(resolve(input.artifact_root, file.reference.path), file.data, { flag: 'wx' }); }
+      catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        readPreparationArtifact(input.artifact_root, file.reference, 'retained review transfer');
+      }
+    }
+  } catch (error) {
+    throw new WorkflowPreparationError(`review transfer: cannot retain complete transfer: ${error.message}`);
+  }
+  readReviewTransfer(input.artifact_root, transfer);
+  requireInput(text(input.checkout, 'rev-parse', 'HEAD') === input.head_sha
+    && text(input.checkout, 'status', '--porcelain=v1') === ''
+    && text(input.root, 'rev-parse', `${input.base_ref}^{commit}`) === prepared.common.base_head_sha
+    && isDeepStrictEqual(JSON.parse(readFileSync(input.accepted_contract_path, 'utf8')), input.contract),
+  'review transfer: observation changed during transfer');
+  return result;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const [stage, path] = process.argv.slice(2);
-    requireInput(['preflight', 'finalize-preflight', 'implement', 'implement-result', 'review', 'fix-back-red'].includes(stage) && path && process.argv.length === 4,
-      'Usage: node workflow-preparation.mjs <preflight|finalize-preflight|implement|implement-result|review|fix-back-red> <input.json>');
+    requireInput(['preflight', 'finalize-preflight', 'implement', 'implement-result', 'review', 'review-read', 'fix-back-red'].includes(stage) && path && process.argv.length === 4,
+      'Usage: node workflow-preparation.mjs <preflight|finalize-preflight|implement|implement-result|review|review-read|fix-back-red> <input.json>');
     const input = JSON.parse(readFileSync(path, 'utf8'));
     if (stage === 'preflight') {
       exact(input, ['version', 'stage', 'root', 'footprint'], 'preflight preparation');
@@ -930,7 +1097,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     }
     let result;
     switch (stage) {
-      case 'review': result = prepareReviewInput(input); break;
+      case 'review': result = prepareReviewTransfer(input); break;
+      case 'review-read': {
+        exact(input, ['version', 'stage', 'artifact_root', 'transfer', 'index'], 'review transfer read');
+        requireInput(input.version === 1 && input.stage === stage && typeof input.artifact_root === 'string'
+          && isAbsolute(input.artifact_root), 'review transfer read: invalid version/stage/root');
+        const { manifest, units } = consumeReviewTransfer(input.artifact_root, input.transfer);
+        requireInput(input.index === null || (Number.isSafeInteger(input.index) && input.index >= 0
+          && input.index < units.length), 'review transfer read: invalid unit index');
+        result = input.index === null ? manifest : units[input.index];
+        // The authenticated file's compact representation is the bounded reader output.
+        const output = Buffer.from(JSON.stringify(result));
+        boundedReviewUnit(output);
+        process.stdout.write(output);
+        break;
+      }
       case 'finalize-preflight': result = finalizePreflight(input); break;
       case 'implement': result = prepareImplement(input); break;
       case 'implement-result': result = prepareImplementResult(input); break;
@@ -941,7 +1122,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           footprint: prepareSourceFootprint(input.root, input.footprint) };
         break;
     }
-    if (result.kind === 'incomplete-run') {
+    if (stage === 'review-read') {
+      // Output was already bounded above; pretty-printing can exceed its line bound.
+    } else if (result.kind === 'incomplete-run') {
       process.stderr.write(`${JSON.stringify(result, null, 2)}\n`);
       process.exitCode = 2;
     } else {

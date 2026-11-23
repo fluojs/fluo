@@ -172,6 +172,8 @@ If single-notification admission fails, the Promise returned by `dispatch()` rej
 
 `dispatchMany()` snapshots the entire non-empty input before the first publication or delivery. An admission failure in even a later item rejects the entire call with `TypeError`, regardless of `continueOnError: true`. Earlier valid items are not published, sent, or enqueued, and no batch result containing `failures` is returned. Callers must handle rejection of the batch call itself. Per-item failure collection through `continueOnError` is limited to direct delivery and sequential queue fallback attempts after admission.
 
+`dispatch()` and `dispatchMany()` capture the call's `queue`, `publishLifecycleEvents`, and `signal` reference at admission before the first asynchronous wait; `dispatchMany()` also captures `continueOnError` for the entire batch. Reassigning fields while reusing the same options object for another call does not change an admitted call's delivery route, lifecycle publication, or failure collection policy. The service retains the original `AbortSignal` reference without cloning it or storing its `aborted` value, so a later `abort()` still reaches pre-handoff checks, queue adapters, and channels. Per-call lifecycle settings take precedence over module defaults, and subsequent calls without options use the module defaults.
+
 ### Lifecycle built-in representations
 
 | Interface | Immutable fields |

@@ -282,6 +282,177 @@ test("raw reviewer blockers remain immutable after PASS and deduplicate replayed
 	assert.equal(evidence.reviewBlockers[0].eventIds.length, 2);
 });
 
+const historicalReview = {
+	reviewer: "code",
+	reviewed_head_sha: head,
+	preflight_sha256: "c".repeat(64),
+	verdict_signal: "BLOCK",
+	blockers: [{
+		reviewer: "code",
+		signature: "runtime:ownership",
+		evidence: "src/runtime.ts:1",
+		fix_back_eligible: true,
+		status: "unresolved",
+	}],
+};
+
+test("#4233 retrospectiveEvidence: six historical wrapper PASS events -> structured reviews and immutable evidence", (t) => {
+	const root = fixture(t);
+	const observed = structuredClone(snapshots);
+	const before = structuredClone(observed);
+	const ledger = resolve(root, ".omo/lanes-v4/lane.json");
+	mkdirSync(resolve(root, ".omo/lanes-v4"), { recursive: true });
+	const ledgerBytes = JSON.stringify({
+		version: 4,
+		lane_id: laneId,
+		issues: {
+			1: {
+				facts: { review: { verdict: "pass" } },
+				approvals: { merge: false },
+				attempts: { implement: 2 },
+			},
+		},
+	});
+	writeFileSync(ledger, ledgerBytes);
+	const recorded = ["contract", "code", "verification"].flatMap((reviewer) =>
+		[head, "d".repeat(40)].map((reviewed_head_sha) =>
+			recordRetroEvent(root, laneId, 1, "review", {
+				source: "reviewer-task",
+				envelope: {
+					...historicalReview,
+					reviewer,
+					reviewed_head_sha,
+					verdict_signal: "PASS",
+					blockers: [],
+				},
+			})
+		)
+	);
+	const bytes = recorded.map(({ path }) => readFileSync(path));
+
+	const evidence = retrospectiveEvidence(root, laneId, observed);
+
+	assert.deepEqual(evidence.unstructuredReviewEventIds, []);
+	assert.deepEqual(evidence.reviewBlockers, []);
+	assert.deepEqual(
+		evidence.events.map(({ eventId }) => eventId).sort(),
+		recorded.map(({ eventId }) => eventId).sort(),
+	);
+	assert.deepEqual(
+		evidence.events.map(({ data }) => data).sort((a, b) =>
+			JSON.stringify(a).localeCompare(JSON.stringify(b))
+		),
+		recorded.map(({ path }) => JSON.parse(readFileSync(path)).data).sort((
+			a,
+			b,
+		) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+	);
+	assert.deepEqual(recorded.map(({ path }) => readFileSync(path)), bytes);
+	assert.equal(readFileSync(ledger, "utf8"), ledgerBytes);
+	assert.deepEqual(observed, before);
+});
+
+test("#4233 retrospectiveEvidence: direct batch and wrapper BLOCK -> deduplicated claims retain distinct identities and event IDs after PASS", (t) => {
+	const root = fixture(t);
+	const variants = [
+		historicalReview,
+		{
+			...historicalReview,
+			reviewer: "contract",
+			blockers: [{
+				...historicalReview.blockers[0],
+				reviewer: "contract",
+			}],
+		},
+		{ ...historicalReview, reviewed_head_sha: "d".repeat(40) },
+		{ ...historicalReview, preflight_sha256: "e".repeat(64) },
+		{
+			...historicalReview,
+			blockers: [{
+				...historicalReview.blockers[0],
+				signature: "runtime:shutdown",
+			}],
+		},
+	];
+	const records = variants.map((envelope) => [
+		recordRetroEvent(root, laneId, 1, "review", envelope),
+		recordRetroEvent(root, laneId, 1, "review", {
+			reviews: [envelope, envelope],
+		}),
+		recordRetroEvent(root, laneId, 1, "review", { envelope }),
+	]);
+	recordRetroEvent(root, laneId, 1, "review", {
+		envelope: { ...historicalReview, verdict_signal: "PASS", blockers: [] },
+	});
+
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.deepEqual(evidence.unstructuredReviewEventIds, []);
+	assert.deepEqual(
+		evidence.reviewBlockers.map((claim) => ({
+			...claim,
+			eventIds: [...claim.eventIds].sort(),
+		})).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+		variants.map((envelope, index) => ({
+			reviewer: envelope.reviewer,
+			head: envelope.reviewed_head_sha,
+			policy: envelope.preflight_sha256,
+			signature: envelope.blockers[0].signature,
+			disposition: "reported-claim",
+			blocker: envelope.blockers[0],
+			eventIds: records[index].map(({ eventId }) => eventId).sort(),
+		})).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+	);
+});
+
+test("#4233 retrospectiveEvidence: malformed wrappers and batches -> raw events and valid sibling blockers survive", (t) => {
+	const root = fixture(t);
+	const malformed = [
+		{ envelope: null },
+		{ envelope: "unparsed review" },
+		{ envelope: { ...historicalReview, blockers: null } },
+		{
+			envelope: {
+				...historicalReview,
+				blockers: [
+					null,
+					{ signature: " " },
+					...historicalReview.blockers,
+				],
+			},
+		},
+		{ reviews: null },
+		{ reviews: [null, { blockers: "invalid" }, historicalReview] },
+	];
+	const records = malformed.map((data) =>
+		recordRetroEvent(root, laneId, 1, "review", data)
+	);
+	const bytes = records.map(({ path }) => readFileSync(path));
+
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.deepEqual(
+		[...evidence.unstructuredReviewEventIds].sort(),
+		records.map(({ eventId }) => eventId).sort(),
+	);
+	assert.deepEqual(evidence.reviewBlockers, [{
+		reviewer: historicalReview.reviewer,
+		head,
+		policy: historicalReview.preflight_sha256,
+		signature: historicalReview.blockers[0].signature,
+		disposition: "reported-claim",
+		blocker: historicalReview.blockers[0],
+		eventIds: evidence.events.filter(({ eventId }) =>
+			[records[3].eventId, records[5].eventId].includes(eventId)
+		).map(({ eventId }) => eventId),
+	}]);
+	assert.deepEqual(
+		evidence.events.map(({ eventId }) => eventId).sort(),
+		records.map(({ eventId }) => eventId).sort(),
+	);
+	assert.deepEqual(records.map(({ path }) => readFileSync(path)), bytes);
+});
+
 test("malformed and failed implementer outcomes preserve their original shape", (t) => {
 	const root = fixture(t);
 	recordRetroEvent(root, laneId, 1, "implementer", null);

@@ -20,7 +20,7 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
 }
 
 function isTransportFactory(value: DiscordModuleOptions['transport']): value is DiscordTransportFactory {
-  return typeof value === 'object' && value !== null && 'create' in value;
+  return typeof value === 'object' && value !== null && 'create' in value && typeof value.create === 'function';
 }
 
 function normalizeDiscordModuleOptions(options: DiscordModuleOptions): NormalizedDiscordModuleOptions {
@@ -29,7 +29,8 @@ function normalizeDiscordModuleOptions(options: DiscordModuleOptions): Normalize
   }
 
   const transport = options.transport;
-  const createTransport = isTransportFactory(transport)
+  const transportIsFactory = isTransportFactory(transport);
+  const createTransport = transportIsFactory
     ? (async (): Promise<DiscordTransport> => transport.create())
     : (async (): Promise<DiscordTransport> => transport as DiscordTransport);
 
@@ -41,8 +42,8 @@ function normalizeDiscordModuleOptions(options: DiscordModuleOptions): Normalize
     renderer: options.renderer,
     transport: {
       create: createTransport,
-      kind: isTransportFactory(transport) ? normalizeOptionalString(transport.kind) ?? 'custom-factory' : 'custom-instance',
-      ownsResources: isTransportFactory(transport) ? transport.ownsResources ?? true : false,
+      kind: transportIsFactory ? normalizeOptionalString(transport.kind) ?? 'custom-factory' : 'custom-instance',
+      ownsResources: transportIsFactory ? transport.ownsResources ?? true : false,
     },
     verifyOnModuleInit: options.verifyOnModuleInit ?? false,
   };

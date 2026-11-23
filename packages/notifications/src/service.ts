@@ -57,7 +57,7 @@ export class NotificationsService {
    *
    * @typeParam TRequest Shared notification request envelope subtype.
    * @param notification Request envelope identifying the channel and opaque payload.
-   * @param options Optional abort, queue, and lifecycle-publication controls.
+   * @param dispatchOptions Optional abort, queue, and lifecycle-publication controls.
    * @returns A normalized dispatch result describing direct vs queued delivery.
    * @throws {TypeError} When the admission snapshot encounters own getters/setters,
    * unsupported nested class instances, or unsupported object prototypes.
@@ -77,8 +77,13 @@ export class NotificationsService {
    */
   async dispatch<TRequest extends NotificationDispatchRequest>(
     notification: TRequest,
-    options: NotificationDispatchOptions = {},
+    dispatchOptions: NotificationDispatchOptions = {},
   ): Promise<NotificationDispatchResult> {
+    const options: NotificationDispatchOptions = {
+      queue: dispatchOptions.queue,
+      publishLifecycleEvents: dispatchOptions.publishLifecycleEvents,
+      signal: dispatchOptions.signal,
+    };
     const dispatchNotification = createNotificationDispatchSnapshot(notification);
 
     return this.dispatchAdmitted(dispatchNotification, options);
@@ -137,7 +142,7 @@ export class NotificationsService {
     }
 
     try {
-      const delivery = await channel.send(dispatchNotification, { signal: options.signal });
+      const delivery = await channel.send(createNotificationDispatchSnapshot(dispatchNotification), { signal: options.signal });
       const status = delivery.status ?? 'delivered';
       const result: NotificationDispatchResult = {
         channel: dispatchNotification.channel,
@@ -174,7 +179,7 @@ export class NotificationsService {
    *
    * @typeParam TRequest Shared notification request envelope subtype.
    * @param notifications Ordered notification envelopes to send or enqueue.
-   * @param options Optional queue preference and tolerant error-handling controls.
+   * @param dispatchOptions Optional queue preference and tolerant error-handling controls.
    * @returns A batch summary containing successes and captured failures.
    * @throws {TypeError} When any admission snapshot encounters own getters/setters,
    * unsupported nested class instances, or unsupported object prototypes.
@@ -183,8 +188,14 @@ export class NotificationsService {
    */
   async dispatchMany<TRequest extends NotificationDispatchRequest>(
     notifications: readonly TRequest[],
-    options: NotificationDispatchManyOptions = {},
+    dispatchOptions: NotificationDispatchManyOptions = {},
   ): Promise<NotificationDispatchBatchResult<TRequest>> {
+    const options: NotificationDispatchManyOptions = {
+      queue: dispatchOptions.queue,
+      publishLifecycleEvents: dispatchOptions.publishLifecycleEvents,
+      continueOnError: dispatchOptions.continueOnError,
+      signal: dispatchOptions.signal,
+    };
     if (notifications.length === 0) {
       return {
         failed: 0,
@@ -315,7 +326,7 @@ export class NotificationsService {
     return {
       channel: notification.channel,
       id: this.createQueueJobId(notification),
-      notification,
+      notification: createNotificationDispatchSnapshot(notification),
       queuedAt: new Date().toISOString(),
     };
   }
