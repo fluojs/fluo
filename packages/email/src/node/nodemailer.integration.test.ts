@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { createServer, type Socket } from 'node:net';
+import { createConnection, createServer, type Socket } from 'node:net';
 
 import nodemailer from 'nodemailer';
 import { describe, expect, it } from 'vitest';
@@ -12,10 +12,13 @@ async function createSmtpBoundary(greeting = '220 fluo SMTP ready') {
   const messages: string[] = [];
   const commands: string[] = [];
   const sockets = new Set<Socket>();
-  const closed: Promise<unknown>[] = [];
+  const closed: Promise<{ error: unknown } | undefined>[] = [];
   const server = createServer((socket) => {
     sockets.add(socket);
-    closed.push(once(socket, 'close', { signal: AbortSignal.timeout(5000) }));
+    closed.push(once(socket, 'close', { signal: AbortSignal.timeout(5000) }).then(
+      () => undefined,
+      (error: unknown) => ({ error }),
+    ));
     socket.setEncoding('utf8');
     socket.write(`${greeting}\r\n`);
     let input = '';
@@ -75,13 +78,29 @@ async function createSmtpBoundary(greeting = '220 fluo SMTP ready') {
     messages,
     closed,
     sockets,
+    server,
     smtp: { host: '127.0.0.1', port: address.port, secure: false, ignoreTLS: true },
     async cleanup() {
+      const serverClosed = new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
       for (const socket of sockets) socket.destroy();
-      await Promise.all(closed);
-      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      await serverClosed;
+      for (const result of await Promise.all(closed)) {
+        if (result) throw result.error;
+      }
     },
   };
+}
+
+async function runSmtpTest(body: () => Promise<void>, close: () => void | Promise<void>, cleanup: () => Promise<void>) {
+  let failure: { error: unknown } | undefined;
+  for (const step of [body, close, cleanup]) {
+    try {
+      await step();
+    } catch (error) {
+      failure ??= { error };
+    }
+  }
+  if (failure) throw failure.error;
 }
 
 function createMessage(): NormalizedEmailMessage {
@@ -98,12 +117,39 @@ function createMessage(): NormalizedEmailMessage {
 }
 
 describe('Nodemailer real SMTP boundary', () => {
+  it.each(['body', 'transport close', 'close watch'])('cleans up after %s failure and preserves the first error', async (failure) => {
+    const boundary = await createSmtpBoundary();
+    const accepted = once(boundary.server, 'connection', { signal: AbortSignal.timeout(5000) });
+    const client = createConnection(boundary.smtp);
+    const [socket] = await accepted;
+    const watchError = new Error('close watch failed');
+    const firstError = failure === 'close watch' ? watchError : new Error(`${failure} failed`);
+
+    try {
+      socket.emit('error', watchError);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await expect(runSmtpTest(
+        async () => { if (failure === 'body') throw firstError; },
+        () => { if (failure !== 'close watch') throw failure === 'body' ? new Error('later close failure') : firstError; },
+        () => boundary.cleanup(),
+      )).rejects.toBe(firstError);
+      expect(socket.destroyed).toBe(true);
+      expect(boundary.server.listening).toBe(false);
+    } finally {
+      client.destroy();
+      for (const connection of boundary.sockets) connection.destroy();
+      if (boundary.server.listening) {
+        await new Promise<void>((resolve, reject) => boundary.server.close((error) => error ? reject(error) : resolve()));
+      }
+    }
+  });
+
   it('verifies and sends structured addresses and attachments through a caller-owned transporter', async () => {
     const boundary = await createSmtpBoundary();
     const transporter = nodemailer.createTransport(boundary.smtp);
     const transport = NodemailerEmailTransport.create({ transporter });
 
-    try {
+    await runSmtpTest(async () => {
       await transport.verify();
       const receipt = await transport.send(createMessage(), {});
 
@@ -122,10 +168,7 @@ describe('Nodemailer real SMTP boundary', () => {
       expect(boundary.messages[0]).toContain('filename=payload.txt');
       expect(boundary.messages[0]).toContain('AQID');
       expect(boundary.commands.filter((command) => command.startsWith('EHLO'))).toHaveLength(2);
-    } finally {
-      transporter.close();
-      await boundary.cleanup();
-    }
+    }, () => transporter.close(), () => boundary.cleanup());
   });
 
   it('keeps rejected recipients separate from accepted recipients at the real SMTP seam', async () => {
@@ -133,14 +176,11 @@ describe('Nodemailer real SMTP boundary', () => {
     const transporter = nodemailer.createTransport(boundary.smtp);
     const transport = NodemailerEmailTransport.create({ transporter });
 
-    try {
+    await runSmtpTest(async () => {
       const receipt = await transport.send({ ...createMessage(), to: [{ address: 'to@example.com' }, { address: 'reject@example.com' }] }, {});
 
       expect(receipt).toMatchObject({ accepted: ['to@example.com'], pending: [], rejected: ['reject@example.com'] });
-    } finally {
-      transporter.close();
-      await boundary.cleanup();
-    }
+    }, () => transporter.close(), () => boundary.cleanup());
   });
 
   it('preserves provider errors when every SMTP recipient is rejected', async () => {
@@ -148,14 +188,11 @@ describe('Nodemailer real SMTP boundary', () => {
     const transporter = nodemailer.createTransport(boundary.smtp);
     const transport = NodemailerEmailTransport.create({ transporter });
 
-    try {
+    await runSmtpTest(async () => {
       await expect(transport.send({ ...createMessage(), to: [{ address: 'reject@example.com' }] }, {}))
         .rejects.toMatchObject({ code: 'EENVELOPE', responseCode: 550, command: 'RCPT TO' });
       expect(boundary.messages).toEqual([]);
-    } finally {
-      transporter.close();
-      await boundary.cleanup();
-    }
+    }, () => transporter.close(), () => boundary.cleanup());
   });
 
   it.each([
@@ -166,13 +203,10 @@ describe('Nodemailer real SMTP boundary', () => {
     const transporter = nodemailer.createTransport(boundary.smtp);
     const transport = NodemailerEmailTransport.create({ transporter });
 
-    try {
+    await runSmtpTest(async () => {
       await expect(transport.send({ ...createMessage(), from }, {})).rejects.toBeInstanceOf(EmailMessageValidationError);
       expect(boundary.sockets.size).toBe(0);
-    } finally {
-      transporter.close();
-      await boundary.cleanup();
-    }
+    }, () => transporter.close(), () => boundary.cleanup());
   });
 
   it('forwards verify errors from the real SMTP provider', async () => {
@@ -180,12 +214,9 @@ describe('Nodemailer real SMTP boundary', () => {
     const transporter = nodemailer.createTransport(boundary.smtp);
     const transport = NodemailerEmailTransport.create({ transporter });
 
-    try {
+    await runSmtpTest(async () => {
       await expect(transport.verify()).rejects.toMatchObject({ responseCode: 421, command: 'CONN' });
-    } finally {
-      transporter.close();
-      await boundary.cleanup();
-    }
+    }, () => transporter.close(), () => boundary.cleanup());
   });
 
   it('closes factory-owned pooled SMTP connections through the adapter close boundary', async () => {
@@ -193,17 +224,14 @@ describe('Nodemailer real SMTP boundary', () => {
     const factory = NodemailerEmailTransport.createFactory({ smtp: { ...boundary.smtp, pool: true } });
     const transport = await factory.create();
 
-    try {
+    await runSmtpTest(async () => {
       await transport.send(createMessage(), {});
       expect(factory.ownsResources).toBe(true);
       expect(boundary.sockets.size).toBe(1);
 
       await transport.close?.();
-      await Promise.all(boundary.closed);
+      expect(await Promise.all(boundary.closed)).toEqual([undefined]);
       expect([...boundary.sockets].every((socket) => socket.destroyed)).toBe(true);
-    } finally {
-      await transport.close?.();
-      await boundary.cleanup();
-    }
+    }, async () => { await transport.close?.(); }, () => boundary.cleanup());
   });
 });
