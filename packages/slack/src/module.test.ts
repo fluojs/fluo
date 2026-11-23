@@ -583,6 +583,50 @@ describe('SlackModule', () => {
     expect(transportState.sent).toEqual([]);
   });
 
+  it('forwards the caller signal into template rendering and skips the transport when rendering aborts mid-flight', async () => {
+    const controller = new AbortController();
+    const observedSignals: Array<AbortSignal | undefined> = [];
+    let resolveRendererStarted!: () => void;
+    const rendererStarted = new Promise<void>((resolve) => {
+      resolveRendererStarted = resolve;
+    });
+    const render = vi.fn(async (input: SlackTemplateRenderInput) => {
+      observedSignals.push(input.signal);
+      const cancellation = new Promise<void>((resolve) => {
+        input.signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      resolveRendererStarted();
+      await cancellation;
+
+      return { text: 'rendered after cancellation' };
+    });
+    const transport = new PassiveTransport();
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      renderer: { render },
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+    const delivery = service.sendNotification(
+      {
+        channel: 'slack',
+        payload: { text: 'Abort during rendering' },
+        template: 'abort-mid-render-template',
+      },
+      { signal: controller.signal },
+    );
+
+    await rendererStarted;
+    controller.abort();
+
+    expect(observedSignals).toEqual([controller.signal]);
+    await expect(delivery).rejects.toMatchObject({ name: 'AbortError' });
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(transport.sent).toEqual([]);
+  });
+
   it('honors an already-aborted signal before returning an empty sendMany batch', async () => {
     const controller = new AbortController();
     const create = vi.fn(async () => new PassiveTransport());

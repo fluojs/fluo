@@ -231,7 +231,7 @@ Behavioral contract 메모:
 
 ### Template rendering과 merge precedence
 
-Notification template을 공유 `@fluojs/notifications` envelope에서 Slack 전용 text, blocks, attachments로 변환해야 한다면 `SlackTemplateRenderer`를 제공합니다. `SlackService.sendNotification(...)`은 `notification.template`과 `SlackModuleOptions.renderer`가 모두 있을 때에만 `renderer.render(input)`을 호출합니다. Render input에는 `template`, `payload`, optional `subject`, optional `locale`, optional dispatch `metadata`가 들어갑니다.
+Notification template을 공유 `@fluojs/notifications` envelope에서 Slack 전용 text, blocks, attachments로 변환해야 한다면 `SlackTemplateRenderer`를 제공합니다. `SlackService.sendNotification(...)`은 `notification.template`과 `SlackModuleOptions.renderer`가 모두 있을 때에만 `renderer.render(input)`을 호출합니다. Render input에는 `template`, `payload`, optional `subject`, optional `locale`, optional dispatch `metadata`가 들어갑니다. 호출자가 abort signal을 넘기면 `sendNotification(...)`은 동일한 signal을 optional render-input `signal`로 렌더러에 전달해 렌더러가 진행 중 취소에 협력할 수 있게 합니다. 렌더링 도중 signal이 abort되면 전달은 transport 호출 없이 `AbortError`로 거부됩니다.
 
 ```typescript
 import type { SlackTemplateRenderer } from '@fluojs/slack';
