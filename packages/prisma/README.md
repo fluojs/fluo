@@ -291,6 +291,8 @@ try {
 
 ### Shutdown and Status Contracts
 
+Concurrent initialization calls on the same `PrismaService` share the outcome of one in-flight `$connect()`, whether it succeeds or fails. Further initialization does not reconnect after successful initialization, and does not start a new `$connect()` once shutdown begins, even if shutdown is still pending or has failed.
+
 `PrismaService.requestTransaction(...)` is available before and during normal serving, but new request-scoped transactions are rejected once application shutdown has started. New outer manual `transaction(...)` and service `@Transaction()` boundaries are also rejected after shutdown begins; boundaries that were already open are drained before `$disconnect()` so shutdown does not race an active Prisma transaction. Shutdown also waits for an in-flight `$connect()` to settle before `$disconnect()`; once shutdown starts, a late connect completion cannot restore ready state or admit new transaction work. During shutdown, open request transactions are aborted, tracked until their outer transaction boundary has settled, and drained before `$disconnect()` runs. This includes nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary: they reuse the ambient Prisma transaction client, stay visible in `details.activeRequestTransactions` until the outer boundary finishes, and do not open a second Prisma transaction.
 
 `createPrismaPlatformStatusSnapshot(...)` and `PrismaService.createPlatformStatusSnapshot()` expose the same lifecycle contract to diagnostics surfaces:

@@ -366,9 +366,25 @@ export class PrismaService<
   }
 
   async onModuleInit(): Promise<void> {
-    if (typeof this.client.$connect === 'function') {
-      this.connectTransition = Promise.resolve(this.client.$connect());
-      await this.connectTransition;
+    if (this.lifecycleState !== 'created') {
+      return;
+    }
+
+    if (!this.connectTransition && typeof this.client.$connect === 'function') {
+      // Publish the transition before native code can reenter a lifecycle hook.
+      this.connectTransition = Promise.resolve().then(() => this.client.$connect?.());
+    }
+
+    const connectTransition = this.connectTransition;
+    if (connectTransition) {
+      try {
+        await connectTransition;
+      } catch (error) {
+        if (this.connectTransition === connectTransition) {
+          this.connectTransition = undefined;
+        }
+        throw error;
+      }
     }
 
     if (this.lifecycleState === 'created') {
