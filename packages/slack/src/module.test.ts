@@ -1325,6 +1325,124 @@ describe('SlackModule', () => {
     expect(transportState.sent.map((entry) => entry.text)).toEqual(['one', 'two', 'three']);
   });
 
+  it('returns an unsuccessful receipt from send without rejecting', async () => {
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: new UnsuccessfulTransport(),
+    })));
+    const service = await initializeSlackService(container);
+
+    const receipt = await service.send({ text: 'Denied' });
+
+    expect(receipt).toEqual({
+      channel: '#ops',
+      messageTs: undefined,
+      metadata: undefined,
+      ok: false,
+      response: 'denied',
+      statusCode: 200,
+      warnings: [],
+    });
+  });
+
+  it('rejects sendMany on an unsuccessful receipt before sending the next message', async () => {
+    const send = vi.fn(new UnsuccessfulTransport().send);
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({ transport: { send } })));
+    const service = await initializeSlackService(container);
+
+    await expect(service.sendMany([{ text: 'Denied' }, { text: 'Unsent' }])).rejects.toBeInstanceOf(SlackTransportError);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('collects unsuccessful sendMany receipts once and preserves mixed delivery order', async () => {
+    const providerError = new Error('provider rejected thrown');
+    const sent: string[] = [];
+    const denied = { text: 'denied' };
+    const thrown = { text: 'thrown' };
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({
+      transport: {
+        async send(message) {
+          const text = message.text ?? '';
+          sent.push(text);
+          if (text === 'thrown') {
+            throw providerError;
+          }
+          return { ok: text !== 'denied', messageTs: text };
+        },
+      },
+    })));
+    const service = await initializeSlackService(container);
+
+    const result = await service.sendMany([{ text: 'first' }, denied, thrown, { text: 'last' }], {
+      continueOnError: true,
+    });
+
+    expect(result).toMatchObject({ failed: 2, succeeded: 2 });
+    expect(result.results.map((receipt) => receipt.messageTs)).toEqual(['first', 'last']);
+    expect(result.failures).toHaveLength(2);
+    expect(result.failures[0]?.message).toBe(denied);
+    expect(result.failures[0]?.error).toBeInstanceOf(SlackTransportError);
+    expect(result.failures[1]?.message).toBe(thrown);
+    expect(result.failures[1]?.error).toBe(providerError);
+    expect(sent).toEqual(['first', 'denied', 'thrown', 'last']);
+  });
+
+  it.each([false, true])('rejects sendMany when the final delivery aborts with continueOnError=%s', async (continueOnError) => {
+    const controller = new AbortController();
+    const send = vi.fn<SlackTransport['send']>(async () => {
+      controller.abort();
+      return { ok: true };
+    });
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({ transport: { send } })));
+    const service = await initializeSlackService(container);
+
+    await expect(service.sendMany([{ text: 'last' }], {
+      continueOnError,
+      signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects sendMany validation errors without provider handoff even with continueOnError', async () => {
+    const send = vi.fn(new UnsuccessfulTransport().send);
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({ transport: { send } })));
+    const service = await initializeSlackService(container);
+
+    await expect(service.sendMany([{}, { text: 'Unsent' }], {
+      continueOnError: true,
+    })).rejects.toBeInstanceOf(SlackMessageValidationError);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejects sendMany when shutdown starts between deliveries even with continueOnError', async () => {
+    let shutdown: Promise<void> | undefined;
+    const send = vi.fn<SlackTransport['send']>(async () => {
+      shutdown = service.onApplicationShutdown();
+      return { ok: true };
+    });
+    const close = vi.fn(async () => undefined);
+    const container = new Container();
+    container.register(...moduleProviders(SlackModule.forRoot({
+      transport: { create: () => ({ send, close }), kind: 'batch-shutdown', ownsResources: true },
+    })));
+    const service = await initializeSlackService(container);
+
+    try {
+      await expect(service.sendMany([{ text: 'first' }, { text: 'Unsent' }], {
+        continueOnError: true,
+      })).rejects.toBeInstanceOf(SlackLifecycleError);
+    } finally {
+      await shutdown;
+    }
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it('stops sendMany at the first provider error by default', async () => {
     const transport = new SelectiveFailureSlackTransport();
     const container = new Container();
@@ -1839,47 +1957,124 @@ describe('SlackModule', () => {
     expect(transportState.verifyCalls).toBe(0);
   });
 
-  it('preserves direct transport ownership across bootstrap and shutdown lifecycle hooks', async () => {
-    const transport = new PassiveTransport();
-    const container = new Container();
-    const moduleType = SlackModule.forRoot({
-      defaultChannel: '#owned-by-app',
-      transport,
-      verifyOnModuleInit: true,
-    });
+  it.each(['forRoot', 'forRootAsync'] as const)(
+    '%s preserves direct transport ownership with a non-callable create field across bootstrap and shutdown',
+    async (registration) => {
+      class AppOwnedTransport extends PassiveTransport {
+        readonly create = false;
+      }
 
-    container.register(...moduleProviders(moduleType));
-    const service = await initializeSlackService(container);
-    expect(service.createPlatformStatusSnapshot()).toMatchObject({
-      details: {
-        lifecycleState: 'ready',
-        transportKind: 'custom-instance',
-        verifiedOnModuleInit: true,
-      },
-      ownership: {
-        externallyManaged: true,
-        ownsResources: false,
-      },
-      readiness: { critical: true, status: 'ready' },
-    });
+      const transport = new AppOwnedTransport();
+      const container = new Container();
+      const options = {
+        defaultChannel: '#owned-by-app',
+        transport,
+        verifyOnModuleInit: true,
+      };
+      const moduleType =
+        registration === 'forRoot'
+          ? SlackModule.forRoot(options)
+          : SlackModule.forRootAsync({ useFactory: async () => options });
 
-    await service.send({ text: 'App-owned transport' });
-    await service.onApplicationShutdown();
+      container.register(...moduleProviders(moduleType));
+      const service = await initializeSlackService(container);
+      expect(service.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          lifecycleState: 'ready',
+          transportKind: 'custom-instance',
+          verifiedOnModuleInit: true,
+        },
+        ownership: {
+          externallyManaged: true,
+          ownsResources: false,
+        },
+        readiness: { critical: true, status: 'ready' },
+      });
 
-    expect(transport.sent).toEqual(['App-owned transport']);
-    expect(transport.closeCalls).toBe(0);
-    expect(service.createPlatformStatusSnapshot()).toMatchObject({
-      details: { lifecycleState: 'stopped' },
-      ownership: {
-        externallyManaged: true,
-        ownsResources: false,
-      },
-      readiness: {
-        reason: 'Slack transport is shutting down or already stopped.',
-        status: 'not-ready',
-      },
-    });
-  });
+      await expect(service.send({ text: 'App-owned transport' })).resolves.toMatchObject({
+        channel: '#owned-by-app',
+        ok: true,
+      });
+      await service.onApplicationShutdown();
+
+      expect(transport.sent).toEqual(['App-owned transport']);
+      expect(transport.closeCalls).toBe(0);
+      expect(service.createPlatformStatusSnapshot()).toMatchObject({
+        details: { lifecycleState: 'stopped' },
+        ownership: {
+          externallyManaged: true,
+          ownsResources: false,
+        },
+        readiness: {
+          reason: 'Slack transport is shutting down or already stopped.',
+          status: 'not-ready',
+        },
+      });
+    },
+  );
+
+  it.each([
+    { registration: 'forRoot', overrides: {}, kind: 'custom-factory', ownsResources: true },
+    { registration: 'forRootAsync', overrides: {}, kind: 'custom-factory', ownsResources: true },
+    {
+      registration: 'forRoot',
+      overrides: { kind: 'app-factory', ownsResources: false },
+      kind: 'app-factory',
+      ownsResources: false,
+    },
+    {
+      registration: 'forRootAsync',
+      overrides: { kind: 'app-factory', ownsResources: false },
+      kind: 'app-factory',
+      ownsResources: false,
+    },
+  ] as const)(
+    '$registration prioritizes callable create over send with $kind ownership',
+    async ({ registration, overrides, kind, ownsResources }) => {
+      const transport = new PassiveTransport();
+      const factory = {
+        ...overrides,
+        createCalls: 0,
+        transport,
+        send: vi.fn(async () => ({ ok: true })),
+        create() {
+          this.createCalls += 1;
+          return this.transport;
+        },
+      };
+      const options = { defaultChannel: '#factory', transport: factory };
+      const moduleType =
+        registration === 'forRoot'
+          ? SlackModule.forRoot(options)
+          : SlackModule.forRootAsync({ useFactory: async () => options });
+      const container = new Container();
+      container.register(...moduleProviders(moduleType));
+      const unresolvedService = await container.resolve(SlackService);
+      expect(factory.createCalls).toBe(0);
+
+      const service = await initializeSlackService(container);
+
+      expect(service).toBe(unresolvedService);
+      expect(factory.createCalls).toBe(1);
+      expect(service.createPlatformStatusSnapshot()).toMatchObject({
+        details: { lifecycleState: 'ready', transportKind: kind },
+        ownership: { externallyManaged: !ownsResources, ownsResources },
+      });
+      await expect(service.send({ text: 'Factory transport' })).resolves.toMatchObject({
+        channel: '#factory',
+        ok: true,
+      });
+      expect(transport.sent).toEqual(['Factory transport']);
+      expect(factory.send).not.toHaveBeenCalled();
+
+      await service.onApplicationShutdown();
+
+      expect(transport.closeCalls).toBe(ownsResources ? 1 : 0);
+      expect(service.createPlatformStatusSnapshot()).toMatchObject({
+        details: { lifecycleState: 'stopped' },
+      });
+    },
+  );
 
   it('blocks shutdown-time delivery from reusing or recreating transports', async () => {
     let resolveTransport!: (transport: DelayedLifecycleTransport) => void;
@@ -2050,6 +2245,15 @@ describe('SlackModule', () => {
     await expect(service.onApplicationShutdown()).rejects.toThrowError(
       new SlackLifecycleError('Slack transport failed to close cleanly.', { cause: closeError }),
     );
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'failed' },
+      health: { status: 'unhealthy' },
+      readiness: {
+        critical: true,
+        reason: 'Slack transport failed.',
+        status: 'not-ready',
+      },
+    });
   });
 
   it('does not mark the service ready when shutdown interrupts bootstrap verification', async () => {
@@ -2126,7 +2330,7 @@ describe('SlackModule', () => {
     expect(service.createPlatformStatusSnapshot()).toMatchObject({
       details: { lifecycleState: 'failed', verifiedOnModuleInit: true },
       readiness: {
-        reason: 'Slack transport failed to initialize.',
+        reason: 'Slack transport failed.',
         status: 'not-ready',
       },
     });

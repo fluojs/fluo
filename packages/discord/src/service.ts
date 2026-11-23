@@ -277,6 +277,11 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
    * @param messages Ordered message list to deliver through the configured transport.
    * @param options Optional tolerant batch controls such as `continueOnError`.
    * @returns A batch summary containing successes and any captured failures.
+   * @throws {DiscordTransportError} When a receipt reports `ok: false` and `continueOnError` is not enabled.
+   *
+   * @remarks
+   * Exceptions and unsuccessful receipts stop the batch by default. With `continueOnError: true`,
+   * both are recorded as failures while later messages are attempted.
    *
    * @example
    * ```ts
@@ -290,7 +295,11 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
 
     for (const message of messages) {
       try {
-        results.push(await this.send(message, options));
+        const result = await this.send(message, options);
+        if (result.ok === false) {
+          throw new DiscordTransportError('Discord transport reported an unsuccessful delivery.');
+        }
+        results.push(result);
       } catch (error) {
         const failure = {
           error: error instanceof Error ? error : new Error('Discord delivery failed.'),
