@@ -134,7 +134,7 @@ export class NotificationsService {
     }
 
     try {
-      const delivery = await channel.send(dispatchNotification, { signal: options.signal });
+      const delivery = await channel.send(createNotificationDispatchSnapshot(dispatchNotification), { signal: options.signal });
       const status = delivery.status ?? 'delivered';
       const result: NotificationDispatchResult = {
         channel: dispatchNotification.channel,
@@ -307,7 +307,7 @@ export class NotificationsService {
     return {
       channel: notification.channel,
       id: this.createQueueJobId(notification),
-      notification,
+      notification: createNotificationDispatchSnapshot(notification),
       queuedAt: new Date().toISOString(),
     };
   }
