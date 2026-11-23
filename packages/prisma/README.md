@@ -387,6 +387,8 @@ Use `PrismaService<TClient>` when a provider only needs wrapper methods such as 
 
 - `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target form. The accessor selects the Prisma wrapper, native options remain separate, and Fluo policy is last. An accessor returning `null` or `undefined` is rejected before the transaction runner or decorated method body starts; automatic service discovery is never used as a fallback for an empty accessor result. Existing options-only, no-argument, and accessor-plus-boundary calls remain legacy compatibility overloads.
 
+- Supported calls are `Transaction()`, `Transaction(nativeOptions)`, `Transaction(nativeOptions, boundary)`, `Transaction(accessor)`, `Transaction(accessor, nativeOptions, boundary)`, and `Transaction(accessor, boundary)`. Without an accessor function, boundary policy belongs in the second argument. A third argument (including explicit `undefined`) is rejected by strict TypeScript and throws `TypeError` at decorator creation, before the method body can run, rather than silently discarding policy.
+
 - Standard TC39 method decorator for service-layer transaction boundaries. Normal code supplies an accessor; automatic service/facade discovery is retained only for existing single-target services.
 
 ### After-Commit Exports
