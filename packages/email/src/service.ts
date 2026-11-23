@@ -340,8 +340,8 @@ export class EmailService implements OnModuleInit, OnApplicationShutdown {
         headers: payload.headers,
         html: payload.html ?? rendered?.html,
         metadata: {
-          ...(payload.metadata ?? {}),
           ...(notification.metadata ?? {}),
+          ...(payload.metadata ?? {}),
           ...(notification.template ? { template: notification.template } : {}),
         },
         replyTo: payload.replyTo,

@@ -168,6 +168,8 @@ If `events.publisher` is configured, lifecycle event publication defaults to on 
 
 When `notification.dispatch.requested` publication rejects and delivery or queue handoff later fails, the caller receives an `AggregateError` with the original dispatch error first, followed by the requested publication rejection reasons in input order, then any failed-event publication rejection reasons. Rejection reasons retain their original values, including `undefined` from `Promise.reject()`. Successful requested publications add no error entry. A successful delivery or queue handoff still returns its delivered/queued result without publishing `failed`, even if requested or success-event publication rejects. Sequential queue fallback preserves accepted jobs and associates requested publication rejections only with the corresponding failed jobs.
 
+`dispatch()` and `dispatchMany()` capture the call's `queue`, `publishLifecycleEvents`, and `signal` reference at admission before the first asynchronous wait; `dispatchMany()` also captures `continueOnError` for the entire batch. Reassigning fields while reusing the same options object for another call does not change an admitted call's delivery route, lifecycle publication, or failure collection policy. The service retains the original `AbortSignal` reference without cloning it or storing its `aborted` value, so a later `abort()` still reaches pre-handoff checks, queue adapters, and channels. Per-call lifecycle settings take precedence over module defaults, and subsequent calls without options use the module defaults.
+
 ### Lifecycle built-in representations
 
 | Interface | Immutable fields |

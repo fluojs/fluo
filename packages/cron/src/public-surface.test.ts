@@ -22,7 +22,10 @@ const declarationRootPath = join(packageRoot, 'dist/index.d.ts');
 
 function compilePackageConsumer(source: string, useDist = false): readonly ts.Diagnostic[] {
   const fixture = join(packageRoot, 'public-surface-consumer.ts');
-  const targetPath = useDist && existsSync(declarationRootPath) ? declarationRootPath : sourceRootPath;
+  if (useDist && !existsSync(declarationRootPath)) {
+    throw new Error('Build @fluojs/cron declarations before running consumer checks.');
+  }
+  const targetPath = useDist ? declarationRootPath : sourceRootPath;
   const options: ts.CompilerOptions = {
     baseUrl: packageRoot,
     ignoreDeprecations: '6.0',
@@ -180,27 +183,57 @@ describe('@fluojs/cron root barrel public surface', () => {
     ).toBe(true);
   });
 
-  it('preserves public contract validation against built declarations when present', () => {
-    if (!existsSync(declarationRootPath)) {
-      return;
-    }
-
+  it('preserves each public contract validation against built declarations', () => {
     const validDiagnostics = compilePackageConsumer(
       "import type { CronScheduler } from '@fluojs/cron';\ntype Tested = CronScheduler;\nvoid (0 as unknown as Tested);",
       true,
     );
     expect(validDiagnostics.filter((d) => d.category === ts.DiagnosticCategory.Error)).toEqual([]);
 
-    const invalidDiagnostics = compilePackageConsumer(
+    const nameDiagnostics = compilePackageConsumer(
       `
-      import type { DynamicCronTaskOptions, CronModuleOptions } from '@fluojs/cron';
+      import type { DynamicCronTaskOptions } from '@fluojs/cron';
       const c: DynamicCronTaskOptions = { name: 'bad' };
-      const m: CronModuleOptions = { distributed: true };
       void c;
-      void m;
     `,
       true,
     );
-    expect(invalidDiagnostics.filter((d) => d.category === ts.DiagnosticCategory.Error).length).toBeGreaterThan(0);
+    expect(nameDiagnostics.filter((d) => d.category === ts.DiagnosticCategory.Error).map((d) => d.code)).toEqual([2353]);
+
+    const distributedDiagnostics = compilePackageConsumer(`
+      import type { CronModuleOptions } from '@fluojs/cron';
+      const m: CronModuleOptions = { distributed: true };
+      void m;
+    `, true);
+    expect(distributedDiagnostics.filter((d) => d.category === ts.DiagnosticCategory.Error).map((d) => d.code)).toEqual([2559]);
+  });
+
+  it.each([false, true])('descriptor consumer: built=%s -> readonly fields and mutable copies/arrays', (useDist) => {
+    const writes = [
+      'enabled = false', 'kind = "interval"', 'name = "renamed"', 'source = "dynamic"',
+      'distributed = false', 'lockKey = "changed"', 'lockTtlMs = 1000',
+      'expression = "* * * * *"', 'ms = 2000', 'timezone = "UTC"',
+      'moduleName = "Other"', 'targetName = "Other"', 'methodName = "other"',
+    ];
+    const diagnostics = compilePackageConsumer(`
+      import type { SchedulingTaskDescriptor } from '@fluojs/cron';
+      declare const descriptor: SchedulingTaskDescriptor;
+      ${writes.map((write) => `descriptor.${write};`).join('\n')}
+    `, useDist);
+    expect(diagnostics.filter((d) => d.category === ts.DiagnosticCategory.Error).map((d) => d.code))
+      .toEqual(writes.map(() => 2540));
+
+    const mutableDiagnostics = compilePackageConsumer(`
+      import type { SchedulingRegistry, SchedulingTaskDescriptor } from '@fluojs/cron';
+      declare const registry: SchedulingRegistry;
+      declare const descriptor: SchedulingTaskDescriptor;
+      const copy = { ...descriptor };
+      copy.name = "local";
+      copy.ms = 1000;
+      const tasks: SchedulingTaskDescriptor[] = registry.getAll();
+      tasks.push(copy);
+      tasks.splice(0, 1);
+    `, useDist);
+    expect(mutableDiagnostics.filter((d) => d.category === ts.DiagnosticCategory.Error)).toEqual([]);
   });
 });

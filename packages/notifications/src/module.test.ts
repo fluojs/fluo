@@ -16,6 +16,8 @@ import { NotificationsModule } from './module.js';
 import { NotificationsService } from './service.js';
 import type {
   NotificationChannel,
+  NotificationDispatchManyOptions,
+  NotificationDispatchOptions,
   NotificationDispatchRequest,
   NotificationDispatchResult,
   NotificationLifecycleEvent,
@@ -188,6 +190,243 @@ function rejectWhenAborted(
 }
 
 describe('NotificationsModule', () => {
+  it.each([true, false])('dispatch preserves admitted options when queue=%s and the caller reuses them', async (queue) => {
+    const requested = createDeferred();
+    const release = createDeferred();
+    const events: NotificationLifecycleEvent[] = [];
+    const signals: Array<AbortSignal | undefined> = [];
+    const original = new AbortController();
+    const replacement = new AbortController();
+    const options: NotificationDispatchOptions = {
+      publishLifecycleEvents: true,
+      queue,
+      signal: original.signal,
+    };
+    const service = new NotificationsService({
+      channels: [],
+      events: {
+        publishLifecycleEvents: true,
+        publisher: {
+          async publish(event) {
+            events.push(event);
+            if (event.notification.id === 'first' && event.name === 'notification.dispatch.requested') {
+              requested.resolve();
+              await release.promise;
+            }
+          },
+        },
+      },
+      queue: {
+        bulkThreshold: 10,
+        adapter: {
+          async enqueue(_job, context) {
+            signals.push(context?.signal);
+            return 'queue-delivery';
+          },
+        },
+      },
+    }, [{
+      channel: 'email',
+      async send(_notification, context) {
+        signals.push(context?.signal);
+        return { externalId: 'direct-delivery' };
+      },
+    }]);
+
+    const first = service.dispatch({ id: 'first', channel: 'email', payload: {} }, options);
+    await requested.promise;
+    options.queue = !queue;
+    options.publishLifecycleEvents = false;
+    options.signal = replacement.signal;
+    const second = await service.dispatch({ id: 'second', channel: 'email', payload: {} }, options);
+    release.resolve();
+
+    await expect(first).resolves.toMatchObject({ status: queue ? 'queued' : 'delivered' });
+    expect(second.status).toBe(queue ? 'delivered' : 'queued');
+    expect(signals).toEqual([replacement.signal, original.signal]);
+    expect(events.map((event) => [event.notification.id, event.name])).toEqual([
+      ['first', 'notification.dispatch.requested'],
+      ['first', queue ? 'notification.dispatch.queued' : 'notification.dispatch.delivered'],
+    ]);
+  });
+
+  it.each(['direct', 'native', 'sequential'] as const)(
+    'dispatchMany preserves admitted options during %s delivery when the caller reuses them',
+    async (mode) => {
+      const requested = createDeferred();
+      const release = createDeferred();
+      const events: NotificationLifecycleEvent[] = [];
+      const signals: Array<AbortSignal | undefined> = [];
+      const original = new AbortController();
+      const replacement = new AbortController();
+      const deliveryError = new Error('delivery failed');
+      const options: NotificationDispatchManyOptions = {
+        continueOnError: true,
+        publishLifecycleEvents: true,
+        queue: mode !== 'direct',
+        signal: original.signal,
+      };
+      const service = new NotificationsService({
+        channels: [],
+        events: {
+          publishLifecycleEvents: true,
+          publisher: {
+            async publish(event) {
+              events.push(event);
+              if (event.notification.id === 'first' && event.name === 'notification.dispatch.requested') {
+                requested.resolve();
+                await release.promise;
+              }
+            },
+          },
+        },
+        queue: {
+          bulkThreshold: 10,
+          adapter: {
+            async enqueue(job, context) {
+              signals.push(context?.signal);
+              if (job.notification.id === 'first') {
+                throw deliveryError;
+              }
+              return 'queued-delivery';
+            },
+            ...(mode === 'native' ? {
+              async enqueueMany(jobs: readonly NotificationsQueueJob[], context?: { signal?: AbortSignal }) {
+                signals.push(context?.signal);
+                return jobs.map((job) => `queued:${job.id}`);
+              },
+            } : {}),
+          },
+        },
+      }, [{
+        channel: 'email',
+        async send(notification, context) {
+          signals.push(context?.signal);
+          if (notification.id === 'first') {
+            throw deliveryError;
+          }
+          return { externalId: 'direct-delivery' };
+        },
+      }]);
+      const batch = [
+        { id: 'first', channel: 'email', payload: {} },
+        { id: 'last', channel: 'email', payload: {} },
+      ];
+
+      const first = service.dispatchMany(batch, options);
+      await requested.promise;
+      options.queue = mode === 'direct';
+      options.continueOnError = false;
+      options.publishLifecycleEvents = false;
+      options.signal = replacement.signal;
+      const second = await service.dispatchMany([{ id: 'second', channel: 'email', payload: {} }], options);
+      release.resolve();
+      const result = await first;
+
+      expect(second).toMatchObject({ failed: 0, queued: mode === 'direct' ? 1 : 0, succeeded: 1 });
+      expect(result).toMatchObject({
+        failed: mode === 'native' ? 0 : 1,
+        queued: mode === 'native' ? 2 : mode === 'sequential' ? 1 : 0,
+        succeeded: mode === 'native' ? 2 : 1,
+      });
+      if (mode !== 'native') {
+        expect(result.failures[0]?.error).toBe(deliveryError);
+      }
+      expect(signals).toEqual(mode === 'native'
+        ? [replacement.signal, original.signal]
+        : [replacement.signal, original.signal, original.signal]);
+      expect(events.map((event) => [event.notification.id, event.name])).toEqual(mode === 'direct' ? [
+        ['first', 'notification.dispatch.requested'],
+        ['first', 'notification.dispatch.failed'],
+        ['last', 'notification.dispatch.requested'],
+        ['last', 'notification.dispatch.delivered'],
+      ] : [
+        ['first', 'notification.dispatch.requested'],
+        ['last', 'notification.dispatch.requested'],
+        ['first', mode === 'native' ? 'notification.dispatch.queued' : 'notification.dispatch.failed'],
+        ['last', 'notification.dispatch.queued'],
+      ]);
+    },
+  );
+
+  it.each(['single', 'native', 'sequential'] as const)(
+    '%s dispatch observes the original signal aborted during requested publication before queue handoff',
+    async (mode) => {
+      const requested = createDeferred();
+      const release = createDeferred();
+      const publisher = new RecordingPublisher();
+      const original = new AbortController();
+      const abortError = new Error('aborted before queue handoff');
+      const queue = new RecordingQueueAdapter();
+      const service = new NotificationsService({
+        channels: [],
+        events: {
+          publishLifecycleEvents: true,
+          publisher: {
+            async publish(event) {
+              await publisher.publish(event);
+              if (event.name === 'notification.dispatch.requested') {
+                requested.resolve();
+                await release.promise;
+              }
+            },
+          },
+        },
+        queue: {
+          bulkThreshold: 1,
+          adapter: mode === 'sequential' ? { enqueue: queue.enqueue.bind(queue) } : queue,
+        },
+      }, [{ channel: 'email', async send() { return {}; } }]);
+      const options: NotificationDispatchOptions = { queue: true, signal: original.signal };
+      const notification = { channel: 'email', payload: {} };
+
+      const dispatch = mode === 'single'
+        ? service.dispatch(notification, options)
+        : service.dispatchMany([notification], options);
+      await requested.promise;
+      options.signal = new AbortController().signal;
+      original.abort(abortError);
+      release.resolve();
+
+      await expect(dispatch).rejects.toBe(abortError);
+      expect(queue.jobs).toEqual([]);
+      expect(publisher.events.map((event) => event.name)).toEqual([
+        'notification.dispatch.requested',
+        'notification.dispatch.failed',
+      ]);
+    },
+  );
+
+  it.each([
+    { batch: false, modulePublication: true },
+    { batch: false, modulePublication: false },
+    { batch: true, modulePublication: true },
+    { batch: true, modulePublication: false },
+  ])('dispatch lifecycle override restores module defaults: %j', async ({ batch, modulePublication }) => {
+    const publisher = new RecordingPublisher();
+    const service = new NotificationsService({
+      channels: [],
+      events: { publishLifecycleEvents: modulePublication, publisher },
+    }, [{ channel: 'email', async send() { return {}; } }]);
+    const notification = { channel: 'email', payload: {} };
+    const dispatch = (options?: NotificationDispatchOptions) => batch
+      ? service.dispatchMany([notification], options)
+      : service.dispatch(notification, options);
+
+    await dispatch({ publishLifecycleEvents: !modulePublication });
+    expect(publisher.events.map((event) => event.name)).toEqual(modulePublication ? [] : [
+      'notification.dispatch.requested',
+      'notification.dispatch.delivered',
+    ]);
+    publisher.events.length = 0;
+    await dispatch();
+
+    expect(publisher.events.map((event) => event.name)).toEqual(modulePublication ? [
+      'notification.dispatch.requested',
+      'notification.dispatch.delivered',
+    ] : []);
+  });
+
   it('makes default global providers visible through a real testing module graph', async () => {
     const deliveries: string[] = [];
 

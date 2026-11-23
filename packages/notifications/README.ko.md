@@ -168,6 +168,8 @@ NotificationsModule.forRoot({
 
 `notification.dispatch.requested` 발행이 거부된 뒤 전달이나 queue handoff도 실패하면 호출자는 원래 dispatch error가 첫 항목인 `AggregateError`를 받습니다. 그 뒤에는 입력 순서대로 requested 발행 거부 사유가, 마지막에는 failed-event 발행 거부 사유가 들어갑니다. 거부 사유는 `Promise.reject()`의 `undefined`를 포함해 원래 값 그대로 보존하며, 성공한 requested 발행은 오류 항목을 추가하지 않습니다. 전달이나 queue handoff가 성공하면 requested 또는 성공 이벤트 발행이 거부되어도 `failed`를 발행하지 않고 delivered/queued 결과를 반환합니다. Sequential queue fallback은 이미 수락된 job을 유지하고 requested 발행 거부 사유를 해당 실패 job에만 연결합니다.
 
+`dispatch()`와 `dispatchMany()`는 첫 비동기 대기 전에 호출의 `queue`, `publishLifecycleEvents`, `signal` 참조를 접수 시 고정하며, `dispatchMany()`는 batch 전체의 `continueOnError`도 고정합니다. 같은 options 객체를 다음 호출에 재사용하며 필드를 재할당해도 이미 접수한 호출의 전달 경로, lifecycle 발행, 실패 수집 정책은 바뀌지 않습니다. `signal`은 복제하거나 `aborted` 값을 저장하지 않고 원래 `AbortSignal` 참조를 유지하므로 이후 `abort()`는 인계 전 검사와 queue adapter 및 channel에 그대로 전파됩니다. 호출별 lifecycle 설정은 모듈 기본값보다 우선하며, 옵션 없는 후속 호출은 모듈 기본값을 사용합니다.
+
 ### Lifecycle 내장 표현
 
 | 인터페이스 | 불변 필드 |
