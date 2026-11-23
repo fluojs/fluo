@@ -211,9 +211,15 @@ test('email queue JSON round trip preserves native Uint8Array indexed bytes when
   assert.equal(directMessages.length, 2);
   assert.equal(directMessages[1].subject, 'Direct envelope');
   assert.deepEqual(directMessages[1].metadata, { trace: 'unchanged' });
-  assert.deepEqual(directMessages[1].attachments, [
-    { filename: 'report.txt', contentType: 'text/plain', content: 'report' },
-    { filename: 'report.bin', contentType: 'application/octet-stream', content: new Uint8Array([0, 255, 42]) },
+  assert.equal(directMessages[1].attachments, attachments);
+  assert.deepEqual(directMessages[1].attachments.map((attachment) => [attachment.filename, attachment.contentType]), [
+    ['report.txt', 'text/plain'],
+    ['report.bin', 'application/octet-stream'],
   ]);
+  assert.equal(directMessages[1].attachments[0].content, 'report');
+  assert.equal(directMessages[1].attachments[1].content, content);
+  assert.ok(content instanceof Uint8Array);
+  assert.equal(content.byteLength, 3);
+  assert.deepEqual([content[0], content[1], content[2]], [0, 255, 42]);
   assert.equal(attachments[1].content, content);
 });

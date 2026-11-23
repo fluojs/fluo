@@ -123,9 +123,9 @@ export class EmailNotificationsQueueWorker {
       );
     }
 
-    const notification: QueuedEmailNotification = job.notification;
+    const notification = job.notification;
     const attachments = notification.payload.attachments;
-    let decodedAttachments: QueuedEmailAttachment[] | undefined;
+    let decodedAttachments: EmailAttachment[] | undefined;
     if (attachments) {
       for (let attachmentIndex = 0; attachmentIndex < attachments.length; attachmentIndex++) {
         const attachment = attachments[attachmentIndex];
