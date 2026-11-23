@@ -664,6 +664,76 @@ describe('EmailModule', () => {
     });
   });
 
+  it('lets payload metadata override colliding notification metadata while derived template stays last', async () => {
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      renderer: {
+        async render() {
+          return {
+            subject: 'Rendered subject',
+            text: 'rendered text',
+          };
+        },
+      },
+      transport: createRecordingTransportFactory({ messagePrefix: 'metadata' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await service.sendNotification({
+      channel: 'email',
+      metadata: {
+        campaign: 'notification-campaign',
+        notificationOnly: 'notification-value',
+        template: 'notification-metadata-template',
+      },
+      payload: {
+        metadata: {
+          campaign: 'payload-campaign',
+          payloadOnly: 'payload-value',
+          template: 'payload-metadata-template',
+        },
+        text: 'payload text',
+      },
+      recipients: ['metadata-recipient@example.com'],
+      template: 'derived-template',
+    });
+
+    expect(transportState.sent[0]).toMatchObject({
+      metadata: {
+        campaign: 'payload-campaign',
+        notificationOnly: 'notification-value',
+        payloadOnly: 'payload-value',
+        template: 'derived-template',
+      },
+    });
+
+    await service.sendNotification({
+      channel: 'email',
+      metadata: {
+        campaign: 'notification-campaign',
+        template: 'notification-metadata-template',
+      },
+      payload: {
+        metadata: {
+          campaign: 'payload-campaign',
+          template: 'payload-metadata-template',
+        },
+        text: 'payload text',
+      },
+      recipients: ['metadata-recipient@example.com'],
+    });
+
+    expect(transportState.sent[1]).toMatchObject({
+      metadata: {
+        campaign: 'payload-campaign',
+        template: 'payload-metadata-template',
+      },
+    });
+  });
+
   it('uses rendered notification fallbacks when payload fields and notification subject are absent', async () => {
     const container = new Container();
     const moduleType = EmailModule.forRoot({
