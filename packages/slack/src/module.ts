@@ -20,7 +20,7 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
 }
 
 function isTransportFactory(value: SlackModuleOptions['transport']): value is SlackTransportFactory {
-  return typeof value === 'object' && value !== null && 'create' in value;
+  return typeof value === 'object' && value !== null && 'create' in value && typeof value.create === 'function';
 }
 
 function normalizeSlackModuleOptions(options: SlackModuleOptions): NormalizedSlackModuleOptions {
@@ -29,7 +29,8 @@ function normalizeSlackModuleOptions(options: SlackModuleOptions): NormalizedSla
   }
 
   const transport = options.transport;
-  const createTransport = isTransportFactory(transport)
+  const factory = isTransportFactory(transport);
+  const createTransport = factory
     ? (async (): Promise<SlackTransport> => transport.create())
     : (async (): Promise<SlackTransport> => transport as SlackTransport);
 
@@ -41,8 +42,8 @@ function normalizeSlackModuleOptions(options: SlackModuleOptions): NormalizedSla
     renderer: options.renderer,
     transport: {
       create: createTransport,
-      kind: isTransportFactory(transport) ? normalizeOptionalString(transport.kind) ?? 'custom-factory' : 'custom-instance',
-      ownsResources: isTransportFactory(transport) ? transport.ownsResources ?? true : false,
+      kind: factory ? normalizeOptionalString(transport.kind) ?? 'custom-factory' : 'custom-instance',
+      ownsResources: factory ? transport.ownsResources ?? true : false,
     },
     verifyOnModuleInit: options.verifyOnModuleInit ?? false,
   };
