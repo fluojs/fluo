@@ -45,7 +45,10 @@ const outcomeFor = (record) => {
 /** Parse native task custody and durable child lifecycle without copying conversation content. */
 export const collectStageLifecycle = (input) => {
 	const { stage, taskId, parentSessionId, taskFile, sessionFile } = input ?? {};
-	if (!stageAgents.has(stage) || !/^st_[a-f0-9]+$/u.test(taskId ?? "") || !text(parentSessionId)) {
+	if (
+		!stageAgents.has(stage) || typeof taskId !== "string" ||
+		!/^st_[a-f0-9]+$/u.test(taskId) || !text(parentSessionId)
+	) {
 		throw new TypeError("Stage lifecycle requires the lead's stage, native task ID and parent session ID");
 	}
 	const unknowns = [];

@@ -955,6 +955,22 @@ const captureTaskAttempt = (root, sessionFile, runtimeMs, durationStatus = "mono
 	});
 };
 
+test("retro-record: non-string task ID is rejected and valid lifecycle evidence stays readable", (t) => {
+	const root = fixture(t);
+	const valid = captureTaskAttempt(root, null, 137);
+	const invalid = { stage: "review:code", taskId: ["st_b"], parentSessionId: "lead-session" };
+
+	assert.throws(() => recordRetroEvent(root, laneId, 1, "stage-lifecycle", invalid), {
+		name: "TypeError",
+		message: /native task ID/u,
+	});
+
+	const { events, stageLifecycle } = retrospectiveEvidence(root, laneId, snapshots);
+	assert.deepEqual(events.map(({ eventId }) => eventId), [valid.eventId]);
+	assert.deepEqual(stageLifecycle.dispatches.map(({ taskId, attempts }) =>
+		[taskId, attempts.map(({ elapsedMs }) => elapsedMs)]), [["st_a", [137]]]);
+});
+
 test("retro-evidence: verified task attempt without an engine start retains duration and source", (t) => {
 	const root = fixture(t);
 	const capture = captureTaskAttempt(root, null, 137);
