@@ -362,8 +362,9 @@ export const recordCiSnapshot = (root, laneId, issue, run, jobs) => {
 	return recorded;
 };
 
-const attemptCompletionSuppliers = (timing) => {
-	const attemptStart = githubTimestamp(timing.runQueue.completedAt);
+const attemptCompletionSuppliers = (timing, runCreatedAt) => {
+	const earliest = Math.max(githubTimestamp(runCreatedAt) ?? -Infinity,
+		githubTimestamp(timing.runQueue.completedAt) ?? -Infinity);
 	const suppliers = [];
 	let latestUnverifiedEnd = -Infinity;
 	for (const { id, status, conclusion, startedAt, completedAt, execution } of timing.jobs) {
@@ -372,12 +373,12 @@ const attemptCompletionSuppliers = (timing) => {
 		const end = githubTimestamp(completedAt);
 		// Cancelled and timed-out jobs can attest to completion without attesting to execution duration.
 		// Missing or contradictory ends cannot establish ordering against siblings.
-		if (end === null || (start !== null && end < start) || (attemptStart !== null && end < attemptStart)) {
+		if (end === null || (start !== null && end < start) || end < earliest) {
 			return [];
 		}
 		if (["conflicting-job-identity", "missing-job-identity", timingConflict].includes(execution.reason)
 			|| status !== "completed" || typeof conclusion !== "string"
-			|| (startedAt != null && (start === null || (attemptStart !== null && start < attemptStart)))) {
+			|| (startedAt != null && (start === null || start < earliest))) {
 			latestUnverifiedEnd = Math.max(latestUnverifiedEnd, end);
 		} else {
 			suppliers.push({ id, end });
@@ -518,10 +519,11 @@ const summarizeCiTimings = (events) => {
 		const reconciled = recent.timing && allTimed.length ? reconcileAttemptTiming([...allTimed, recent], recent) : null;
 		const timing = reconciled?.timing ?? recent.timing;
 		const creationObservations = observations.map(({ runCreatedAt }) => runCreatedAt);
+		const runCreatedAt = reconcileBoundary(creationObservations).latest;
 		if (reconciled) details.elapsedStartedAt = reconciled.elapsedStartedAt;
 		let elapsed = {};
 		if (completed.length && timed.length) {
-			const suppliers = reconciled?.elapsedConflict ? [] : attemptCompletionSuppliers(timing);
+			const suppliers = reconciled?.elapsedConflict ? [] : attemptCompletionSuppliers(timing, runCreatedAt);
 			const last = suppliers.length ? Math.max(...suppliers.map(({ end }) => end)) : null;
 			// Original creation bounds retry ordering, but is not a retry queue boundary.
 			const retryBounds = recent.run.attempt === 1 ? {} : {
@@ -551,7 +553,7 @@ const summarizeCiTimings = (events) => {
 			eventIds: observations.map(({ eventId }) => eventId),
 			elapsedEventId: completed.length ? eventId : null,
 			runQueue: timing?.runQueue ?? null,
-			jobs: projectJobTimings(timing?.jobs ?? [], reconcileBoundary(creationObservations).latest),
+			jobs: projectJobTimings(timing?.jobs ?? [], runCreatedAt),
 			reason: reconciled?.elapsedConflict ? timingConflict : timing ? null : "legacy-timing-unrecorded",
 		};
 	}).sort((a, b) => a.issue - b.issue || a.run.id - b.run.id || a.run.attempt - b.run.attempt);

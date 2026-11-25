@@ -1158,6 +1158,41 @@ test("#4286 run creation bounds projected job and step timing without discarding
 	assert.deepEqual([captured.elapsedMs, captured.elapsedScope], [80000, "retry-attempt-excluding-queue"]);
 });
 
+test("#4286 projected completion rejects suppliers outside trusted run boundaries", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), id: 57, conclusion: "success", run_started_at: null };
+	const valid = { ...ciJob(1, "success"), run_id: run.id, head_sha: head, name: "Verify", steps: [] };
+	const latest = { ...valid, id: 32, started_at: "2026-10-08T00:59:00Z", completed_at: "2026-10-08T01:04:00Z" };
+	const [recorded] = recordCiSnapshot(root, laneId, 1, run, [valid, latest]);
+	const cases = [
+		{ job: { completed_at: "2026-10-08T01:02:00Z" }, expected: [180000, [31]] },
+		{ job: { conclusion: "cancelled", started_at: null, completed_at: "2026-10-08T00:59:59Z" }, expected: [null, []] },
+		{ job: { conclusion: "timed_out", started_at: null }, expected: [240000, [32]] },
+		{ job: {}, priorCreation: true, expected: [null, []] },
+	];
+	for (const [index, { job, priorCreation }] of cases.entries()) {
+		const id = run.id + index + 1;
+		if (priorCreation) {
+			recordCiSnapshot(root, laneId, 1, { ...run, id, status: "in_progress" }, [{ ...valid, run_id: id }]);
+		}
+		recordCiSnapshot(root, laneId, 1, { ...run, id, created_at: priorCreation ? null : run.created_at },
+			[{ ...valid, run_id: id }, { ...latest, ...job, run_id: id }]);
+	}
+
+	const { ciTimings: [timing, ...variants], events } = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.equal(timing.elapsedMs, null);
+	assert.deepEqual([timing.elapsedCompletedAt, timing.elapsedCompletedJobIds, timing.elapsedReason],
+		[null, [], "job-completion-unobserved"]);
+	assert.deepEqual(timing.jobs.map(({ execution }) => [execution.elapsedMs, execution.reason]),
+		[[120000, null], [null, "contradictory-boundaries"]]);
+	assert.deepEqual(variants.map(({ elapsedMs, elapsedCompletedJobIds }) => [elapsedMs, elapsedCompletedJobIds]),
+		cases.map(({ expected }) => expected));
+	const { data } = events.find(({ eventId }) => eventId === recorded.eventId);
+	assert.deepEqual([data.elapsedMs, data.elapsedScope, data.completedAt],
+		[240000, "initial-run-including-queue", "2026-10-08T01:04:00.000Z"]);
+});
+
 test("#4286 initial run queue survives cancellation only with a proven start", (t) => {
 	const root = fixture(t);
 	const run = { ...ciRun(), conclusion: "cancelled", run_started_at: "2026-10-08T01:00:20Z" };
