@@ -939,6 +939,69 @@ console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON
 	assert.deepEqual(readFileSync(path), original);
 });
 
+const captureTaskAttempt = (root, sessionFile, runtimeMs, durationStatus = "monotonic") => {
+	const taskId = "st_a";
+	const parentSessionId = "lead-session";
+	const taskFile = resolve(root, "task.json");
+	writeFileSync(taskFile, JSON.stringify({
+		task_id: taskId, parent_session_id: parentSessionId, child_session_id: "child-attempt",
+		agent_type: "fluo-code-reviewer", background_mode: "background",
+		run_start_epoch: 1, notification: { run_epoch: 1 }, status: "completed",
+		terminal_at: "2026-10-08T01:00:05.000Z",
+		run_stats: { duration_status: durationStatus, runtime_ms: runtimeMs },
+	}));
+	return recordRetroEvent(root, laneId, 1, "stage-lifecycle", {
+		stage: "review:code", taskId, parentSessionId, taskFile, sessionFile,
+	});
+};
+
+test("retro-evidence: verified task attempt without an engine start retains duration and source", (t) => {
+	const root = fixture(t);
+	const capture = captureTaskAttempt(root, null, 137);
+
+	const { observedStarts, dispatches: [dispatch] } = retrospectiveEvidence(root, laneId, snapshots).stageLifecycle;
+
+	assert.equal(observedStarts, null);
+	assert.deepEqual(dispatch.runs, []);
+	assert.deepEqual(dispatch.attempts, [{
+		epoch: 1, childSessionId: "child-attempt", elapsedMs: 137, clock: "native-task-monotonic",
+		eventIds: [capture.eventId], sources: [resolve(root, "task.json")], unknown: null,
+	}]);
+});
+
+for (const { name, captures, unknown } of [
+	{
+		name: "conflicting same-epoch task durations",
+		captures: [[137, "monotonic"], [151, "monotonic"]],
+		unknown: "conflicting-attempt-clock",
+	},
+	{
+		name: "non-monotonic task duration",
+		captures: [[137, "unavailable"]],
+		unknown: "attempt-clock-unavailable",
+	},
+]) {
+	test(`retro-evidence: ${name} do not supply elapsed time (${unknown})`, (t) => {
+		const root = fixture(t);
+		const sessionFile = resolve(root, "child.jsonl");
+		writeFileSync(sessionFile, [
+			{ type: "session", id: "child-attempt", spawnedBy: { taskId: "st_a", parentSessionId: "lead-session" } },
+			{ type: "custom", customType: "session-lifecycle", id: "engine-start",
+				data: { taskId: "st_a", parentSessionId: "lead-session", sessionId: "child-attempt", role: "child",
+					runId: "engine-run", epoch: 1, seq: 1, runActive: true, persisted: true, restoring: false } },
+		].map((entry) => JSON.stringify(entry)).join("\n"));
+		const eventIds = captures.map(([ms, status]) => captureTaskAttempt(root, sessionFile, ms, status).eventId).sort();
+
+		const { observedStarts, dispatches: [dispatch] } = retrospectiveEvidence(root, laneId, snapshots).stageLifecycle;
+
+		assert.equal(observedStarts, 1);
+		assert.deepEqual(dispatch.attempts, [{
+			epoch: 1, childSessionId: "child-attempt", elapsedMs: null, clock: null,
+			eventIds, sources: [resolve(root, "task.json")], unknown,
+		}]);
+	});
+}
+
 test("normal record automatically retains unsuccessful implementation stage evidence", (t) => {
 	const root = fixture(t);
 	const path = resolve(root, "lane.json");

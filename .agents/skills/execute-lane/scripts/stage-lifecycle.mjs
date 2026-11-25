@@ -177,7 +177,7 @@ export const summarizeStageLifecycle = (events) => {
 				const byRun = Map.groupBy(checkpoints, ({ runId }) => runId);
 				const childRuns = [...byRun].sort(([a], [b]) => a.localeCompare(b)).map(([, records]) => summarizeRun(records));
 				runs.push(...childRuns);
-				if (childRuns.some(({ start }) => start !== null)) attempts.push(...summarizeAttempts(captures));
+				attempts.push(...summarizeAttempts(captures));
 			}
 		}
 		return {
