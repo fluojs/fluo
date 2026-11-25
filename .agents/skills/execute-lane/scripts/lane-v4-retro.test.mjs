@@ -1042,6 +1042,7 @@ test("#4286 fix-back: cancelled job completion bounds attempt elapsed independen
 		{ job: { ...cancelled, completed_at: null }, legacy: 180000, elapsed: null },
 		{ job: { ...cancelled, completed_at: "not-a-timestamp" }, legacy: 180000, elapsed: null },
 		{ job: { ...cancelled, started_at: "2026-10-08T01:09:00Z" }, legacy: 480000, elapsed: null },
+		{ job: { ...cancelled, started_at: "2026-10-08T01:09:00Z", completed_at: "2026-10-08T01:02:00Z" }, legacy: 180000, elapsed: null },
 		{ job: { ...cancelled, started_at: "2026-10-08T01:00:10Z" }, legacy: 480000, elapsed: null },
 	];
 	for (const [index, { job, legacy }] of cases.entries()) {

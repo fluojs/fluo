@@ -349,12 +349,12 @@ const attemptCompletionSuppliers = (timing) => {
 		const start = githubTimestamp(startedAt);
 		const end = githubTimestamp(completedAt);
 		// A cancelled job can attest to completion without attesting to execution duration.
-		// An unverified in-attempt completion may be the last; don't substitute a sibling.
-		if (end === null) return [];
+		// A missing or reversed end cannot establish ordering against siblings.
+		if (end === null || (start !== null && end < start)) return [];
 		if (["conflicting-job-identity", "missing-job-identity"].includes(execution.reason)
 			|| status !== "completed" || typeof conclusion !== "string" || conclusion === "timed_out"
 			|| (attemptStart !== null && end < attemptStart)
-			|| (startedAt != null && (start === null || end < start || (attemptStart !== null && start < attemptStart)))) {
+			|| (startedAt != null && (start === null || (attemptStart !== null && start < attemptStart)))) {
 			latestUnverifiedEnd = Math.max(latestUnverifiedEnd, end);
 		} else {
 			suppliers.push({ id, end });
