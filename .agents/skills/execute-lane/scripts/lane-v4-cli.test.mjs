@@ -1,9 +1,10 @@
+// allow: SIZE_OK — #4153 requires the original single-file CLI suite and forbids splitting its tests into another file.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
@@ -2976,7 +2977,7 @@ for (const scenario of ['missing', 'enumeration-failed']) {
   });
 }
 
-async function withExternalWatch(externalLane, run, onListening = () => {}) {
+async function withGatedWatch({ makeFixture, gate, releaseOnTick = false, onListening = () => {} }, run) {
   const failure = new AbortController();
   const errors = [];
   const recordError = error => {
@@ -2989,6 +2990,7 @@ async function withExternalWatch(externalLane, run, onListening = () => {}) {
   const signal = AbortSignal.any([AbortSignal.timeout(20_000), failure.signal]);
   const sockets = new Map();
   const pending = [];
+  const writers = new Map();
   let removeFixture;
   let server;
   let child;
@@ -2999,10 +3001,9 @@ async function withExternalWatch(externalLane, run, onListening = () => {}) {
   const release = socket => {
     if (!socket.destroyed && !socket.writableEnded) socket.end('continue\n');
   };
+  let stage = 'fixture setup';
   try {
-    const f = externalFixture({ after: remove => { removeFixture = remove; } });
-    if (!externalLane) rmSync(f.externalPath);
-    const initialCalls = f.calls().length;
+    const f = makeFixture({ after: remove => { removeFixture = remove; } });
     server = createServer(socket => {
       sockets.set(socket, new Promise(resolve => socket.once('close', () => {
         sockets.delete(socket);
@@ -3011,19 +3012,22 @@ async function withExternalWatch(externalLane, run, onListening = () => {}) {
       socket.on('error', recordError);
       socket.once('data', () => {
         if (stopping) attempt(() => release(socket));
+        else if (releaseOnTick) { server.emit('tick'); attempt(() => release(socket)); }
         else { pending.push(socket); server.emit('tick'); }
       });
     });
     server.on('error', recordError);
+    stage = 'listen';
     const listening = once(server, 'listening', { signal });
     server.listen(0, '127.0.0.1');
     await listening;
+    stage = 'watch setup';
     onListening(f.root, server);
     const gh = join(f.root, 'bin/gh');
     const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
     writeFileSync(gh, `#!${process.execPath}
 import { connect as fixtureConnect } from 'node:net';
-if(process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverlapPullRequests'))) {
+if(process.env.WATCH_PORT && (${gate})) {
   await new Promise((done,reject)=>{
     const socket=fixtureConnect(Number(process.env.WATCH_PORT),'127.0.0.1');
     socket.on('connect',()=>socket.write('tick\\n'));
@@ -3039,26 +3043,32 @@ ${original}`);
       process.on('message', message => { if (message === 'stop') stop(); });
     `)}`;
     child = spawn(process.execPath, ['--import', stopOnRequest, script, 'watch',
-      '--root', f.root, '--lane', f.lanePath, '--interval', '0'], {
+      '--root', f.root, '--lane', f.lanePath, '--interval', releaseOnTick ? '0.01' : '0'], {
       env: { ...f.env, WATCH_PORT: String(server.address().port) }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
     child.on('error', recordError);
     closed = new Promise(resolve => child.once('close', (code, exitSignal) => {
       if (!stopping || code !== 0 || exitSignal !== null) {
-        recordError(new Error(`External watch closed (code ${code}, signal ${exitSignal}):\n${transcript}\n${stderr}`));
+        recordError(new Error(`Watch closed during ${stage} (code ${code}, signal ${exitSignal}):\n${transcript}\n${stderr}`));
       }
       resolve({ exitSignal });
     }));
     child.stdout.on('data', chunk => { transcript += chunk; });
     child.stderr.on('data', chunk => { stderr += chunk; });
     const tick = async () => {
+      stage = 'watch handshake';
       signal.throwIfAborted();
+      if (releaseOnTick) return once(server, 'tick', { signal });
       if (!pending.length) await once(server, 'tick', { signal });
       return pending.shift();
     };
     const output = predicate => new Promise((resolve, reject) => {
+      stage = 'watch output';
       const cleanup = () => { child.stdout.off('data', inspect); signal.removeEventListener('abort', abort); };
-      const inspect = () => { if (predicate(transcript)) { cleanup(); resolve(); } };
+      const inspect = () => {
+        const value = predicate(transcript);
+        if (value) { cleanup(); resolve(value); }
+      };
       const abort = () => {
         cleanup();
         reject(failure.signal.reason ?? new Error(`Missing watch output: ${transcript}\n${stderr}`, { cause: signal.reason }));
@@ -3068,9 +3078,26 @@ ${original}`);
       signal.addEventListener('abort', abort, { once: true });
       inspect();
     });
-    await run({ f, child, tick, output, initialCalls, transcript: () => transcript });
+    const recordBlocker = async () => {
+      stage = 'record writer';
+      signal.throwIfAborted();
+      const writer = spawn(process.execPath, [script, 'record', '--root', f.root, ...f.common,
+        '--phase', 'implement', '--result-json', '{"ok":false}'], { env: f.env, stdio: ['ignore', 'pipe', 'pipe'] });
+      writers.set(writer, new Promise(resolve => writer.once('close', () => {
+        writers.delete(writer);
+        resolve();
+      })));
+      writer.on('error', recordError);
+      writer.stdout.resume();
+      let writerStderr = '';
+      writer.stderr.on('data', chunk => { writerStderr += chunk; });
+      const [status] = await once(writer, 'close', { signal });
+      assert.equal(status, 0, `record writer: ${writerStderr}`);
+    };
+    await run({ f, child, tick, output, recordBlocker, transcript: () => transcript });
   } catch (error) {
-    recordError(error);
+    recordError(signal.aborted && !failure.signal.aborted
+      ? new Error(`Watch fixture deadline during ${stage}:\n${transcript}\n${stderr}`, { cause: error }) : error);
   } finally {
     stopping = true;
     // Let the child close IPC: parent-initiated disconnect can bypass Node's child close accounting.
@@ -3078,10 +3105,14 @@ ${original}`);
       if (error) recordError(error);
     }));
     for (const socket of sockets.keys()) attempt(() => release(socket));
-    const exit = closed && await Promise.race([closed, aborted(AbortSignal.timeout(20_000), child)]);
-    if (closed && !exit) {
-      recordError(new Error('External watch did not drain; retaining the fixture because a fake gh may still be active'));
-      attempt(() => child.kill('SIGKILL'));
+    const drain = await Promise.race([
+      Promise.all([closed, ...writers.values()]),
+      aborted(AbortSignal.timeout(20_000), server ?? failure),
+    ]);
+    if (!drain) {
+      recordError(new Error('Watch teardown did not drain; retaining the fixture because a fake gh may still be active'));
+      if (child) attempt(() => child.kill('SIGKILL'));
+      for (const writer of writers.keys()) attempt(() => writer.kill('SIGKILL'));
     }
     const listenerClosed = !server || new Promise(resolve => {
       try {
@@ -3096,11 +3127,29 @@ ${original}`);
     });
     const socketClosures = [...sockets];
     for (const [socket] of socketClosures) attempt(() => socket.destroy());
-    const [listenerStopped] = await Promise.all([listenerClosed, closed, ...socketClosures.map(([, done]) => done)]);
-    if ((!closed || exit?.exitSignal === null) && listenerStopped) attempt(() => removeFixture?.());
+    const stopped = await Promise.race([
+      Promise.all([listenerClosed, closed, ...writers.values(), ...socketClosures.map(([, done]) => done)]),
+      aborted(AbortSignal.timeout(20_000), server ?? failure),
+    ]);
+    if (!stopped) recordError(new Error('Watch teardown did not observe resource close; retaining fixture'));
+    if (stopped?.[0] && drain && (!closed || drain[0].exitSignal === null)) attempt(() => removeFixture?.());
   }
   if (errors.length === 1) throw errors[0];
-  if (errors.length) throw new AggregateError(errors, 'External watch fixture failed');
+  if (errors.length) throw new AggregateError(errors, 'Gated watch fixture failed');
+}
+
+function withExternalWatch(externalLane, run, onListening) {
+  let initialCalls;
+  return withGatedWatch({
+    makeFixture: context => {
+      const f = externalFixture(context);
+      if (!externalLane) rmSync(f.externalPath);
+      initialCalls = f.calls().length;
+      return f;
+    },
+    gate: "process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverlapPullRequests'))",
+    onListening,
+  }, fixture => run({ ...fixture, initialCalls }));
 }
 
 for (const externalLane of [false, true]) {
@@ -3855,81 +3904,65 @@ test('readiness: real merged base integration -> deactivate the old grant and is
   assert.equal(f.readiness(42).value.sequence, 2);
 });
 
-test('watch readiness targets: three OPEN PRs and record blocker between fixture handshakes -> changed selected sibling and blocked state', async (t) => {
-  const f = readinessFixture(t, { 42: ['docs/shared.md'], 43: ['docs/shared.md'], 44: ['docs/shared.md'] });
-  for (const issue of [42, 43, 44]) f.implementIssue(issue);
-  f.state.prs = Object.fromEntries([42, 43, 44].map(issue => [`issue-${issue}`, {
-    number: issue + 100, state: 'OPEN', headRefOid: f.git(f.root, 'rev-parse', `issue-${issue}`),
-    mergeable: 'MERGEABLE', statusCheckRollup: [{ state: 'PENDING' }],
-  }]));
-  f.update();
-  const signal = AbortSignal.timeout(20_000);
-  const sockets = [];
-  const server = createServer(socket => {
-    sockets.push(socket);
-    socket.once('data', () => { server.emit('tick'); socket.end('continue\n'); });
-  });
-  const listening = once(server, 'listening', { signal });
-  server.listen(0, '127.0.0.1');
-  await listening;
-  const gh = join(f.root, 'bin/gh');
-  const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
-  writeFileSync(gh, `#!${process.execPath}
-import { connect as fixtureConnect } from 'node:net';
-if(process.env.WATCH_PORT && process.argv[2]==='pr' && process.argv[4]==='issue-44') {
-  await new Promise((done,reject)=>{
-    const socket=fixtureConnect(Number(process.env.WATCH_PORT),'127.0.0.1');
-    socket.on('connect',()=>socket.write('tick\\n'));
-    socket.on('end',done); socket.on('error',reject); socket.resume();
+for (const removalFails of [false, true]) {
+  test(removalFails
+    ? '#4153 watch readiness: ENOTEMPTY while removing the root -> resources already closed'
+    : 'watch readiness targets: three OPEN PRs and record blocker between fixture handshakes -> changed selected sibling and blocked state', async () => {
+    const rootAtClose = {};
+    let root;
+    let removalError;
+    const run = () => withGatedWatch({
+      makeFixture: context => {
+        const removeWithFault = remove => () => {
+          try {
+            rmdirSync(root);
+          } catch (error) {
+            removalError = error;
+            throw error;
+          } finally {
+            remove?.();
+          }
+        };
+        const f = readinessFixture(removalFails ? { after: remove => context.after(removeWithFault(remove)) } : context,
+          { 42: ['docs/shared.md'], 43: ['docs/shared.md'], 44: ['docs/shared.md'] });
+        root = f.root;
+        if (removalFails && process.env.FLUO_PRODUCT_TEST_EVIDENCE) context.after(removeWithFault());
+        for (const issue of [42, 43, 44]) f.implementIssue(issue);
+        f.state.prs = Object.fromEntries([42, 43, 44].map(issue => [`issue-${issue}`, {
+          number: issue + 100, state: 'OPEN', headRefOid: f.git(f.root, 'rev-parse', `issue-${issue}`),
+          mergeable: 'MERGEABLE', statusCheckRollup: [{ state: 'PENDING' }],
+        }]));
+        f.update();
+        return f;
+      },
+      gate: "process.argv[2]==='pr' && process.argv[4]==='issue-44'",
+      releaseOnTick: true,
+      onListening: (fixtureRoot, server) => {
+        server.once('close', () => { rootAtClose.listener = existsSync(fixtureRoot); });
+        server.on('connection', socket => {
+          rootAtClose.socket = false;
+          socket.once('close', () => { rootAtClose.socket = existsSync(fixtureRoot); });
+        });
+      },
+    }, async ({ child, tick, output, recordBlocker }) => {
+      child.once('close', () => { rootAtClose.child = existsSync(root); });
+      const first = await output(text => text.split('\n').find(line =>
+        line.includes('issue 44:') && line.includes('wait-preflight-overlap')));
+      assert.match(first, /siblings=\[\{"issue":42,/u);
+      await tick();
+      for (let attempt = 0; attempt < 3; attempt++) await recordBlocker();
+      const changed = await output(text => text.split('\n').find(line =>
+        line.includes('issue 44: wait-preflight-overlap -> wait-preflight-overlap') && line.includes('siblings=[{"issue":43,')));
+
+      assert.match(changed, /"issue":42[^]*"state":"blocked"/u);
+      assert.match(changed, /siblings=\[\{"issue":43,/u);
+    });
+    if (removalFails) {
+      await assert.rejects(run, error => error === removalError && error.code === 'ENOTEMPTY');
+    } else await run();
+    assert.deepEqual(rootAtClose, { child: true, socket: true, listener: true });
   });
 }
-${original}`);
-  const child = spawn(process.execPath, [script, 'watch', '--root', f.root, '--lane', f.lanePath, '--interval', '0.01'], {
-    env: { ...f.env, WATCH_PORT: String(server.address().port) }, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let transcript = '';
-  let stderr = '';
-  child.stdout.on('data', chunk => { transcript += chunk; });
-  child.stderr.on('data', chunk => { stderr += chunk; });
-  const closed = once(child, 'close');
-  t.after(async () => {
-    child.kill('SIGKILL');
-    for (const socket of sockets) socket.destroy();
-    server.close();
-    await closed;
-  });
-  const line = predicate => new Promise((resolve, reject) => {
-    const inspect = () => {
-      const found = transcript.split('\n').find(predicate);
-      if (found) { cleanup(); resolve(found); }
-    };
-    const abort = () => { cleanup(); reject(new Error(`watch did not emit expected targets: ${transcript}\n${stderr}`)); };
-    const cleanup = () => { child.stdout.off('data', inspect); signal.removeEventListener('abort', abort); };
-    child.stdout.on('data', inspect);
-    signal.addEventListener('abort', abort, { once: true });
-    inspect();
-  });
-  const first = await line(text => text.includes('issue 44:') && text.includes('wait-preflight-overlap'));
-  assert.match(first, /siblings=\[\{"issue":42,/u);
-  const tick = once(server, 'tick', { signal });
-  await tick;
-  const changed = line(text => text.includes('issue 44: wait-preflight-overlap -> wait-preflight-overlap') &&
-    text.includes('siblings=[{"issue":43,'));
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const writer = spawn(process.execPath, [script, 'record', '--root', f.root, ...f.common,
-      '--phase', 'implement', '--result-json', '{"ok":false}'], { env: f.env, stdio: ['ignore', 'pipe', 'pipe'] });
-    writer.stdout.resume();
-    let errors = '';
-    writer.stderr.on('data', chunk => { errors += chunk; });
-    const [status] = await once(writer, 'close', { signal });
-    assert.equal(status, 0, errors);
-  }
-
-  const output = await changed;
-
-  assert.match(output, /"issue":42[^]*"state":"blocked"/u);
-  assert.match(output, /siblings=\[\{"issue":43,/u);
-});
 
 test('CLI overlap: plan, plan-all and watch -> identical sibling/file targets before review', (t) => {
   const f = overlapFixture(t);
