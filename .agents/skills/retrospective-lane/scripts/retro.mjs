@@ -489,7 +489,7 @@ const summarizeCiTimings = (events) => {
 		const key = digest({ issue, id: run.id, attempt: run.attempt, head: run.head, workflow: run.workflow });
 		const observations = attempts.get(key) ?? [];
 		observations.push({ issue, run, eventId, timing, complete: data.complete, elapsedMs: elapsedMs ?? null, elapsedScope: elapsedScope ?? null,
-			status, conclusion: conclusion ?? null,
+			status, conclusion: conclusion ?? null, runCreatedAt: data.createdAt,
 			elapsedStartedAt: elapsedStartedAt ?? null, elapsedCompletedAt: data.completedAt ?? null });
 		attempts.set(key, observations);
 	}
@@ -498,7 +498,7 @@ const summarizeCiTimings = (events) => {
 		const candidates = completed.length ? completed : observations;
 		const timed = candidates.filter(({ timing }) => timing);
 		const recent = timed.at(-1) ?? candidates.at(-1);
-		const { eventId, timing: _timing, complete, ...details } = recent;
+		const { eventId, timing: _timing, complete, runCreatedAt: _runCreatedAt, ...details } = recent;
 		const allTimed = observations.filter((observation) => observation !== recent && observation.timing);
 		// Keep final status and completion provenance, but reconcile all attributed boundaries.
 		const reconciled = recent.timing && allTimed.length ? reconcileAttemptTiming([...allTimed, recent], recent) : null;
@@ -508,10 +508,14 @@ const summarizeCiTimings = (events) => {
 		if (completed.length && timed.length) {
 			const suppliers = reconciled?.elapsedConflict ? [] : attemptCompletionSuppliers(timing);
 			const last = suppliers.length ? Math.max(...suppliers.map(({ end }) => end)) : null;
+			// Original creation bounds retry ordering, but is not a retry queue boundary.
+			const retryBounds = recent.run.attempt === 1 ? {} : {
+				starts: observations.map(({ runCreatedAt }) => runCreatedAt),
+			};
 			const measured = interval({
 				scope: details.elapsedScope, source: "github-job.completed_at",
 				startedAt: details.elapsedStartedAt, completedAt: last === null ? null : new Date(last).toISOString(),
-			}, reconciled?.elapsedConflict ? timingConflict : last === null ? "job-completion-unobserved" : null);
+			}, reconciled?.elapsedConflict ? timingConflict : last === null ? "job-completion-unobserved" : null, retryBounds);
 			elapsed = {
 				elapsedMs: measured.elapsedMs,
 				elapsedCompletedAt: measured.completedAt,

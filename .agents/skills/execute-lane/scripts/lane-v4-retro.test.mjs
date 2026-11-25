@@ -1086,6 +1086,35 @@ test("#4286 retry elapsed is unknown when an attributable job ends before the at
 	assert.equal(events.find(({ eventId }) => eventId === snapshot.eventId).data.elapsedMs, 160000);
 });
 
+test("#4286 retry elapsed is unknown when the attempt starts before the original run was created", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(2), conclusion: "success" };
+	const job = { ...ciJob(2, "success"), head_sha: head, name: "Verify", steps: [] };
+	const cases = [
+		{ start: "2026-10-08T00:59:00Z", legacy: 240000, elapsed: null, reason: "contradictory-boundaries" },
+		{ start: "2026-10-08T01:00:00Z", legacy: 180000, elapsed: 180000, reason: null },
+		{ start: "2026-10-08T01:00:20Z", legacy: 160000, elapsed: 160000, reason: null },
+	];
+	const recorded = cases.map(({ start }, index) => {
+		const id = run.id + index;
+		return recordCiSnapshot(root, laneId, 1, { ...run, id, run_started_at: start }, [{ ...job, run_id: id }])[0];
+	});
+
+	const { ciTimings, events } = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.equal(ciTimings[0].elapsedMs, null);
+	for (const [index, { start, legacy, elapsed, reason }] of cases.entries()) {
+		const timing = ciTimings[index];
+		const original = events.find(({ eventId }) => eventId === recorded[index].eventId).data;
+		assert.deepEqual([timing.elapsedMs, timing.elapsedReason, timing.elapsedStartedAt, timing.elapsedScope],
+			[elapsed, reason, start, "retry-attempt-excluding-queue"]);
+		assert.deepEqual([timing.runQueue.elapsedMs, timing.runQueue.reason, timing.runQueue.startedAt],
+			[null, "retry-queue-unobserved", null]);
+		assert.equal(timing.jobs[0].execution.elapsedMs, 120000);
+		assert.deepEqual([original.elapsedMs, original.elapsedScope], [legacy, "retry-attempt-excluding-queue"]);
+	}
+});
+
 test("#4286 initial run queue survives cancellation only with a proven start", (t) => {
 	const root = fixture(t);
 	const run = { ...ciRun(), conclusion: "cancelled", run_started_at: "2026-10-08T01:00:20Z" };
