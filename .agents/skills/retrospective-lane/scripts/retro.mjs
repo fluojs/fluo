@@ -145,6 +145,116 @@ export const readRetroEvents = (root, laneId) => {
 	);
 };
 
+const githubTimestamp = (value) => {
+	if (typeof value !== "string") return null;
+	const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/u.exec(value);
+	if (!match) return null;
+	const wall = Date.parse(`${match[1]}Z`);
+	const ms = Date.parse(value);
+	return Number.isFinite(ms) && Number.isFinite(wall) && new Date(wall).toISOString().slice(0, 19) === match[1] ? ms : null;
+};
+
+const interval = ({ scope, source, startedAt = null, completedAt = null }, reason = null, bounds = null) => {
+	const start = githubTimestamp(startedAt);
+	const end = githubTimestamp(completedAt);
+	const earliest = githubTimestamp(bounds?.startedAt);
+	const latest = githubTimestamp(bounds?.completedAt);
+	const unknown = reason ?? (
+		startedAt === null || completedAt === null ? "missing-boundary"
+			: start === null || end === null ? "invalid-timestamp"
+			: end < start ? "reversed-boundaries"
+			: (earliest !== null && start < earliest) || (latest !== null && end > latest)
+			? "contradictory-boundaries" : null
+	);
+	return { scope, source, startedAt, completedAt, elapsedMs: unknown === null ? end - start : null, reason: unknown };
+};
+
+const executionBlocker = ({ status, conclusion }, subject) => {
+	if (["cancelled", "skipped", "timed_out"].includes(conclusion)) return `${subject}-${conclusion}`;
+	if (status !== "completed" || typeof conclusion !== "string") return `${subject}-not-completed`;
+	return null;
+};
+
+const preparationSteps = {
+	"Resolve verification plan": ["Restore immutable verification image", "Load cached image", "Prepare and archive verified image"],
+	"Verify": ["Acquire build outputs for evidence validation", "Restore documentation outputs for evidence validation"],
+	"reusable-task": ["Restore verification image", "Load verification image", "Cache integrity-checked pnpm package contents", "Acquire provenance-bound primary build"],
+};
+
+const timingScope = (workflow, job, step) => {
+	// GitHub reports the caller job and called job together for this workflow.
+	if (workflow !== ".github/workflows/ci.yml") return "unclassified-step";
+	const isReusableTask = /^(?:Primary build \/ build|(?:Verify task|Node compatibility) \(([\w-]+)\) \/ \1)$/u.test(job);
+	const context = isReusableTask ? "reusable-task" : job === "Verify" || job === "Resolve verification plan" ? job : null;
+	if (context !== null && preparationSteps[context].includes(step)) {
+		return "environment-preparation-step";
+	}
+	if (context === "Verify" && step === "Require every planned capability and job result") return "verification-aggregate-step";
+	if (context === "Resolve verification plan" && step === "Verify the host runner against real Docker fixtures") return "verification-host-checks-step";
+	if (context === "reusable-task" && step === "Execute the shared Linux task") return "verification-execution-step";
+	return "unclassified-step";
+};
+
+const jobTiming = (run, job, identityReason) => {
+	const { id, name, status, conclusion } = job;
+	const startedAt = job.started_at ?? null;
+	const completedAt = job.completed_at ?? null;
+	const execution = interval({
+		scope: "job-execution", source: "github-job.started_at/completed_at", startedAt, completedAt,
+	}, identityReason ?? executionBlocker(job, "job"), { startedAt: run.run_started_at });
+	const queue = interval({
+		scope: "job-queue", source: "github-job.queued_at/started_at",
+		startedAt: job.queued_at, completedAt: startedAt,
+	}, identityReason ?? executionBlocker(job, "job"));
+	const runnerSetup = interval({ scope: "runner-setup", source: null }, "runner-setup-unobserved");
+	const stepNumbers = new Set();
+	const repeatedSteps = new Set();
+	for (const step of job.steps ?? []) {
+		if (stepNumbers.has(step.number)) repeatedSteps.add(step.number);
+		stepNumbers.add(step.number);
+	}
+	const steps = (job.steps ?? []).map((step) => {
+		const scope = timingScope(run.path, name, step.name);
+		const reason = identityReason ?? (repeatedSteps.has(step.number) ? "conflicting-step-identity" : null)
+			?? (!Number.isSafeInteger(step.number) || step.number <= 0 ? "missing-step-identity" : null)
+			?? executionBlocker(step, "step")
+			?? (scope === "verification-execution-step" ? "mixed-task-scope"
+				: scope === "unclassified-step" ? "step-purpose-unproven" : null);
+		return {
+			number: step.number, name: step.name, status: step.status, conclusion: step.conclusion,
+			timing: interval({
+				scope, source: "github-step.started_at/completed_at",
+				startedAt: step.started_at, completedAt: step.completed_at,
+			}, reason, { startedAt: startedAt ?? run.run_started_at, completedAt }),
+		};
+	});
+	return { id, name, status, conclusion, head: job.head_sha ?? null, createdAt: job.created_at ?? null,
+		startedAt, completedAt, execution, queue, runnerSetup, steps };
+};
+
+const attemptTiming = (run, jobs) => {
+	const jobsById = new Map();
+	for (const job of jobs) {
+		const observations = jobsById.get(job.id) ?? new Map();
+		observations.set(digest(job), job);
+		jobsById.set(job.id, observations);
+	}
+	return {
+		runQueue: interval({
+			scope: "run-queue", source: "github-run.created_at/run_started_at",
+			startedAt: run.run_attempt === 1 ? run.created_at : null, completedAt: run.run_started_at,
+		}, run.run_attempt !== 1 ? "retry-queue-unobserved"
+			: ["cancelled", "skipped"].includes(run.conclusion) ? `run-${run.conclusion}`
+			: ["in_progress", "completed"].includes(run.status) ? null : "run-start-unconfirmed"),
+		jobs: [...jobsById].sort(([a], [b]) => a - b).flatMap(([id, observations]) =>
+			[...observations.values()].map((job) => jobTiming(run, job,
+				observations.size > 1 ? "conflicting-job-identity"
+					: !Number.isSafeInteger(id) || id <= 0 ? "missing-job-identity"
+					: Object.hasOwn(job, "head_sha") && job.head_sha !== run.head_sha ? "job-identity-mismatch"
+					: null))),
+	};
+};
+
 /** A CI failure is keyed to a real run attempt and completed job, not a polling tick. */
 export const recordCiSnapshot = (root, laneId, issue, run, jobs) => {
 	if (
@@ -217,9 +327,46 @@ export const recordCiSnapshot = (root, laneId, issue, run, jobs) => {
 				? "initial-run-including-queue"
 				: "retry-attempt-excluding-queue",
 			jobCount: jobs.length,
+			timing: attemptTiming(run, jobs),
+		}));
+	} else if (jobs.length > 0) {
+		// A partial timing observation cannot satisfy complete CI collection or supply run elapsed.
+		recorded.push(recordRetroEvent(root, laneId, issue, "ci", {
+			run: identity, status: run.status, createdAt: run.created_at, timing: attemptTiming(run, jobs),
 		}));
 	}
 	return recorded;
+};
+
+const summarizeCiTimings = (events) => {
+	const attempts = new Map();
+	for (const { kind, issue, eventId, data } of events) {
+		if (kind !== "ci" || (!Object.hasOwn(data, "elapsedScope") && !data.timing)) continue;
+		const { run, timing, elapsedMs, elapsedScope, status, conclusion } = data;
+		const elapsedStartedAt = run.attempt === 1 ? data.createdAt : timing?.runQueue.completedAt;
+		const key = digest({ issue, id: run.id, attempt: run.attempt, head: run.head, workflow: run.workflow });
+		const observations = attempts.get(key) ?? [];
+		observations.push({ issue, run, eventId, timing, elapsedMs: elapsedMs ?? null, elapsedScope: elapsedScope ?? null,
+			status, conclusion: conclusion ?? null,
+			elapsedStartedAt: elapsedStartedAt ?? null, elapsedCompletedAt: data.completedAt ?? null });
+		attempts.set(key, observations);
+	}
+	return [...attempts.values()].map((observations) => {
+		const completed = observations.filter(({ elapsedScope }) => elapsedScope !== null);
+		const candidates = completed.length ? completed : observations;
+		const timed = candidates.filter(({ timing }) => timing);
+		const recent = timed.at(-1) ?? candidates.at(-1);
+		const { eventId, timing: _timing, ...details } = recent;
+		const timing = completed.length && new Set(timed.map(({ timing }) => digest(timing))).size > 1
+			? null : recent.timing;
+		return {
+			...details,
+			eventIds: observations.map(({ eventId }) => eventId),
+			elapsedEventId: details.elapsedScope === null ? null : eventId,
+			runQueue: timing?.runQueue ?? null, jobs: timing?.jobs ?? [],
+			reason: timing ? null : timed.length ? "conflicting-attempt-timing" : "legacy-timing-unrecorded",
+		};
+	}).sort((a, b) => a.issue - b.issue || a.run.id - b.run.id || a.run.attempt - b.run.attempt);
 };
 
 /** Aggregate only after the existing issue engine says every work unit is done. */
@@ -393,6 +540,7 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 		ciFailurePatterns: [...byJob.values()].sort((a, b) =>
 			b.failures - a.failures || a.job.localeCompare(b.job)
 		),
+		ciTimings: summarizeCiTimings(events),
 		totalElapsedMs: null,
 		externalOverlapObservations,
 		externalOverlapUnknowns,
@@ -407,11 +555,16 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 			"Recorded timestamps are observation times, not execution start/end times.",
 			"Attempt counters can reset; distinct observations are not a total execution count.",
 			"CI and soak durations have separate scopes and must not be summed as lane duration.",
+			"CI timing intervals can overlap. Only allowlisted workflow/job/step purposes are classified; runner initialization and pure shared Linux task execution are not isolated.",
 			"Reviewer blockers are reported claims until independently adjudicated.",
 			"History before this recorder was enabled may be missing; follow referenced receipts.",
 		],
 	};
 };
+
+const describeInterval = ({ scope, elapsedMs, reason, startedAt, completedAt, source }) =>
+	`${scope}: ${elapsedMs === null ? `unknown (${reason})` : `${elapsedMs} ms`} `
+	+ `[${startedAt ?? "unknown"} → ${completedAt ?? "unknown"}; source: ${source ?? "unavailable"}]`;
 
 /** Persist analysis only; recommendations never modify code, rules, CI, or remote state. */
 export const recordRetrospective = (root, request, report) => {
@@ -500,6 +653,7 @@ export const recordRetrospective = (root, request, report) => {
 		...report,
 		recordedAt: new Date().toISOString(),
 		evidence,
+		ciTimings: summarizeCiTimings(events.values()),
 	};
 	mkdirSync(retroDirectory(root, report.laneId), { recursive: true });
 	const sections = [["Bottlenecks", report.bottlenecks], [
@@ -531,6 +685,22 @@ export const recordRetrospective = (root, request, report) => {
 		]),
 		"## Unknowns",
 		...report.unknowns.map((value) => `- ${value}`),
+		"",
+		"## GitHub Actions timing",
+		"Intervals can overlap and are not summed. Runner initialization and pure shared Linux task execution are not isolated.",
+		...stored.ciTimings.flatMap(({ issue, run, eventIds, elapsedEventId, status, conclusion, elapsedMs, elapsedScope, elapsedStartedAt, elapsedCompletedAt, reason, runQueue, jobs }) => [
+			"",
+			`- #${issue}, run ${run.id}, attempt ${run.attempt}, head ${run.head}, workflow ${run.workflow} (${status}/${conclusion})`,
+			elapsedScope === null ? "  - Run elapsed: unknown (run not completed)"
+				: `  - ${elapsedScope}: ${elapsedMs === null ? "unknown" : `${elapsedMs} ms`} [${elapsedStartedAt ?? "unknown"} → ${elapsedCompletedAt ?? "unknown"}]; evidence: ${elapsedEventId}`,
+			`  - ${runQueue ? describeInterval(runQueue) : `Timing breakdown: unknown (${reason})`}`,
+			`  - Timing evidence: ${eventIds.join(", ")}`,
+			...jobs.flatMap((job) => [
+				`  - Job ${job.id}: ${job.name} (${job.status}/${job.conclusion})`,
+				...([job.queue, job.execution, job.runnerSetup].map((item) => `    - ${describeInterval(item)}`)),
+				...job.steps.map((step) => `    - Step ${step.number}: ${step.name} (${step.status ?? "unknown"}/${step.conclusion ?? "unknown"}): ${describeInterval(step.timing)}`),
+			]),
+		]),
 		"",
 		"## Evidence",
 		...evidence.map((item) => `- ${item.path} (${item.sha256})`),

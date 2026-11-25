@@ -521,15 +521,21 @@ test("CI failure patterns distinguish attempts, replay, cancellation and measure
 
 test("CI failures can be retained before the whole run settles without fabricating a run duration", (t) => {
 	const root = fixture(t);
+	const knownStep = {
+		number: 1, name: "Restore verification image", conclusion: "success", status: "completed",
+		started_at: "2026-10-08T01:01:10Z", completed_at: "2026-10-08T01:01:20Z",
+	};
 	recordCiSnapshot(root, laneId, 1, {
 		...ciRun(),
 		status: "in_progress",
 		conclusion: null,
-	}, [ciJob()]);
-	const events = readRetroEvents(root, laneId);
-	assert.equal(events.length, 1);
-	assert.equal(events[0].data.job.id, 31);
-	assert.equal(Object.hasOwn(events[0].data, "elapsedMs"), false);
+	}, [ciJob(), { ...ciJob(1, "success"), id: 32, name: "Verify task (tooling-1) / tooling-1", steps: [knownStep] }]);
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+	assert.deepEqual(evidence.events.filter(({ data }) => data.job).map(({ data }) => data.job.id), [31]);
+	assert.equal(evidence.events.some(({ data }) => Object.hasOwn(data, "elapsedMs")), false);
+	assert.equal(evidence.request.action, "collect-ci");
+	assert.equal(evidence.ciTimings[0].elapsedMs, null);
+	assert.equal(evidence.ciTimings[0].jobs.find(({ id }) => id === 32).steps[0].timing.elapsedMs, 10000);
 	assert.throws(
 		() =>
 			recordCiSnapshot(root, laneId, 1, ciRun(), [{
@@ -759,7 +765,33 @@ test("recording and report analysis leave the execution ledger unchanged", (t) =
 });
 
 test("actual lane-end CLI generates one report and preserves the execution file", (t) => {
-	const root = fixture(t, true);
+	const root = fixture(t);
+	const at = (time) => `2026-10-08T01:${time}Z`;
+	const step = (number, name, start, end, conclusion = "success") => ({
+		number, name, status: "completed", conclusion, started_at: start, completed_at: end,
+	});
+	const run = { ...ciRun(), run_started_at: at("00:20") };
+	const retry = { ...ciRun(2), run_started_at: at("04:00"), conclusion: "success" };
+	const jobs = [
+		{ ...ciJob(), id: 41, name: "Verify task (tooling-1) / tooling-1", conclusion: "success",
+			head_sha: head, queued_at: at("00:50"), steps: [
+				step(1, "Restore verification image", at("01:02"), at("01:12")),
+				step(2, "Execute the shared Linux task", at("01:12"), at("02:35")),
+				step(3, "Load verification image", null, null, "skipped"),
+			] },
+		{ ...ciJob(), id: 42, name: "Verify", conclusion: "success", completed_at: at("02:50"),
+			created_at: at("00:30"),
+			steps: [step(1, "Require every planned capability and job result", at("02:30"), at("02:45"))] },
+		{ ...ciJob(), name: "Resolve verification plan", conclusion: "cancelled", steps: [
+			step(1, "Restore immutable verification image", at("01:01"), at("01:05")),
+			step(2, "Load cached image", at("02:00"), at("02:30"), "cancelled"),
+			step(3, "Verify the host runner against real Docker fixtures", at("02:20"), at("02:10")),
+			step(4, "Prepare and archive verified image", at("01:08"), "not-a-timestamp"),
+		] },
+		{ ...ciJob(), id: 43, name: "Verify", conclusion: "success", head_sha: "c".repeat(40),
+			steps: [step(1, "Require every planned capability and job result", at("01:30"), at("01:45"))] },
+	];
+	const retryJob = { ...ciJob(2, "success"), started_at: at("04:05"), completed_at: at("04:30"), steps: [] };
 	const path = resolve(root, "lane.json");
 	writeFileSync(
 		path,
@@ -788,7 +820,12 @@ test("actual lane-end CLI generates one report and preserves the execution file"
 		`#!${process.execPath}
 const args=process.argv.slice(2);
 const pr={number:10,state:'MERGED',headRefOid:'${head}',mergeCommit:{oid:'${mergeCommit}'},mergedAt:'2026-10-08T02:00:00Z',mergeable:'MERGEABLE',statusCheckRollup:[]};
-console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON.stringify(ciRun())}]}]:args[0]==='pr'?pr:{state:'CLOSED',title:'fixture',body:''}));
+const path=args.at(-1);
+const jobs = path.includes('/attempts/1/jobs') ? ${JSON.stringify(jobs)} : [${JSON.stringify(retryJob)}];
+const api = path.includes('/jobs?') ? [{total_count:jobs.length,jobs}]
+  : path.endsWith('/attempts/1') ? ${JSON.stringify(run)}
+  : [{total_count:1,workflow_runs:[${JSON.stringify(retry)}]}];
+console.log(JSON.stringify(args[0]==='api'?api:args[0]==='pr'?pr:{state:'CLOSED',title:'fixture',body:''}));
 `,
 		{ mode: 0o755 },
 	);
@@ -824,6 +861,7 @@ console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON
 		"--value-file",
 		envelope,
 	]);
+	invoke("retro-ci", ["--issue", "1"]);
 	const request = invoke("retro-plan");
 	assert.equal(request.action, "retro");
 	assert.ok(Array.isArray(invoke("plan-all")));
@@ -836,12 +874,65 @@ console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON
 	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("RETRO-READY ")).slice("RETRO-READY ".length)), request);
 	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("LANE-SETTLED ")).slice("LANE-SETTLED ".length)),
 		[{ issue: 1, action: "done" }]);
-	assert.equal(invoke("retro-evidence").events.length, 3);
+	invoke("retro-ci", ["--issue", "1"]);
+	const evidence = invoke("retro-evidence");
+	assert.equal(evidence.events.length, 4);
+	assert.equal(evidence.totalElapsedMs, null);
+	assert.deepEqual(evidence.ciFailurePatterns.map(({ failures, cancellations }) => [failures, cancellations]), [[0, 1]]);
+	const timing = evidence.ciTimings ?? [];
+	assert.deepEqual(timing.map(({ run, elapsedMs, elapsedScope }) =>
+		[run.id, run.attempt, run.head, run.workflow, elapsedMs, elapsedScope]), [
+		[20, 1, head, ".github/workflows/ci.yml", 180000, "initial-run-including-queue"],
+		[20, 2, head, ".github/workflows/ci.yml", 30000, "retry-attempt-excluding-queue"],
+	]);
+	const [first, second] = timing;
+	assert.deepEqual(timing.map(({ elapsedStartedAt, elapsedCompletedAt }) => [elapsedStartedAt, elapsedCompletedAt]),
+		[[at("00:00"), "2026-10-08T01:03:00.000Z"], [at("04:00"), "2026-10-08T01:04:30.000Z"]]);
+	assert.deepEqual(first.runQueue, {
+		scope: "run-queue", source: "github-run.created_at/run_started_at",
+		startedAt: at("00:00"), completedAt: at("00:20"), elapsedMs: 20000, reason: null,
+	});
+	assert.equal(second.runQueue.elapsedMs, null);
+	assert.equal(second.runQueue.startedAt, null);
+	assert.equal(second.runQueue.reason, "retry-queue-unobserved");
+	const jobById = new Map(first.jobs.map((job) => [job.id, job]));
+	const task = jobById.get(41);
+	const aggregate = jobById.get(42);
+	const cancelled = jobById.get(31);
+	const wrongHead = jobById.get(43);
+	assert.deepEqual(first.jobs.map(({ id, status, conclusion }) => [id, status, conclusion]), [
+		[31, "completed", "cancelled"], [41, "completed", "success"],
+		[42, "completed", "success"], [43, "completed", "success"],
+	]);
+	assert.equal(task.execution.elapsedMs, 120000);
+	assert.equal(aggregate.execution.elapsedMs, 110000);
+	assert.equal(task.queue.elapsedMs, 10000);
+	assert.equal(aggregate.queue.reason, "missing-boundary");
+	assert.equal(task.runnerSetup.reason, "runner-setup-unobserved");
+	const intervals = (job) => job.steps.map(({ timing: interval }) =>
+		[interval.scope, interval.elapsedMs, interval.reason]);
+	assert.deepEqual(intervals(task), [
+		["environment-preparation-step", 10000, null],
+		["verification-execution-step", null, "mixed-task-scope"],
+		["environment-preparation-step", null, "step-skipped"],
+	]);
+	assert.deepEqual(intervals(aggregate), [["verification-aggregate-step", 15000, null]]);
+	assert.equal(cancelled.execution.reason, "job-cancelled");
+	assert.deepEqual(intervals(cancelled), [
+		["environment-preparation-step", 4000, null],
+		["environment-preparation-step", null, "step-cancelled"],
+		["verification-host-checks-step", null, "reversed-boundaries"],
+		["environment-preparation-step", null, "invalid-timestamp"],
+	]);
+	assert.deepEqual(intervals(wrongHead), [["verification-aggregate-step", null, "job-identity-mismatch"]]);
 	const analysis = resolve(root, "analysis.json");
 	writeFileSync(analysis, JSON.stringify(report(request, event.eventId)));
 	const saved = invoke("retro-report", ["--value-file", analysis]);
-	assert.ok(existsSync(saved.markdown));
+	const markdown = readFileSync(saved.markdown, "utf8");
 	const reportBytes = readFileSync(saved.report);
+	assert.deepEqual(JSON.parse(reportBytes).ciTimings, timing);
+	assert.match(markdown, /verification-aggregate-step: 15000 ms .*2026-10-08T01:02:30Z.*2026-10-08T01:02:45Z/u);
+	assert.match(markdown, /verification-execution-step: unknown \(mixed-task-scope\)/u);
 	assert.equal(invoke("retro-plan").action, "done");
 	assert.equal(invoke("plan-all", ["--with-retro"]).settled, true);
 	assert.equal(
@@ -855,7 +946,22 @@ console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON
 		false,
 	);
 	assert.deepEqual(readFileSync(saved.report), reportBytes);
+	assert.equal(readFileSync(saved.markdown, "utf8"), markdown);
 	assert.deepEqual(readFileSync(path), original);
+});
+
+test("#4286 retrospective evidence: legacy elapsed observations do not fabricate a timing breakdown", (t) => {
+	const root = fixture(t);
+	const legacy = recordRetroEvent(root, laneId, 1, "ci", {
+		run: { id: 20, attempt: 1, head, workflow: ".github/workflows/ci.yml" },
+		status: "completed", conclusion: "failure", complete: true,
+		elapsedMs: 180000, elapsedScope: "initial-run-including-queue",
+	});
+
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.deepEqual(evidence.ciTimings?.map(({ eventIds, elapsedMs, reason }) =>
+		[eventIds, elapsedMs, reason]), [[[legacy.eventId], 180000, "legacy-timing-unrecorded"]]);
 });
 
 test("normal record automatically retains unsuccessful implementation stage evidence", (t) => {
@@ -960,6 +1066,23 @@ test("CI collector queries each run attempt separately and reuses completed obse
 	queried.length = 0;
 	captureRetroCi(root, lane, 1, query);
 	assert.equal(queried.length, 1);
+});
+
+test("#4286 CI collector: foreign historical attempt -> evidence gap instead of attribution", (t) => {
+	const root = fixture(t);
+	const lane = { lane_id: laneId, issues: { 1: { branch: "issue-1" } } };
+	captureRetroCi(root, lane, 1, (_root, _cmd, args) => {
+		const path = args.at(-1);
+		if (path.includes("/runs?")) return JSON.stringify([{ total_count: 1, workflow_runs: [ciRun(2)] }]);
+		if (path.endsWith("/attempts/1")) return JSON.stringify({ ...ciRun(), head_sha: "c".repeat(40) });
+		const job = path.includes("/attempts/1/jobs") ? ciJob() : ciJob(2);
+		return JSON.stringify([{ total_count: 1, jobs: [job] }]);
+	});
+
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+	assert.deepEqual(evidence.ciTimings.map(({ run }) => [run.attempt, run.head]), [[2, head]]);
+	assert.deepEqual(evidence.events.filter(({ kind }) => kind === "gap").map(({ data }) => data.code),
+		["ci-attempt-identity-mismatch:20:1"]);
 });
 
 test("unavailable or incomplete CI evidence is retained as a gap without altering lane authority", (t) => {

@@ -170,7 +170,7 @@ export const captureRetroCi = (root, lane, issue, query = run) => {
 				event.issue === issue && event.kind === "ci" &&
 				Object.hasOwn(event.data, "conclusion") && event.data.complete === true
 			)
-			.map((event) => `${event.data.run.id}:${event.data.run.attempt}`),
+			.map(({ data: { run } }) => `${run.id}:${run.attempt}:${run.head}:${run.workflow}`),
 	);
 	if (
 		pages[0]?.total_count !==
@@ -185,7 +185,7 @@ export const captureRetroCi = (root, lane, issue, query = run) => {
 			throw new TypeError("Missing GitHub run attempt");
 		}
 		for (let attempt = 1; attempt <= latest.run_attempt; attempt++) {
-			if (known.has(`${latest.id}:${attempt}`)) continue;
+			if (known.has(`${latest.id}:${attempt}:${latest.head_sha}:${latest.path}`)) continue;
 			const attemptJson = attempt === latest.run_attempt
 				? null
 				: query(root, "gh", [
@@ -199,6 +199,11 @@ export const captureRetroCi = (root, lane, issue, query = run) => {
 			const current = attempt === latest.run_attempt
 				? latest
 				: JSON.parse(attemptJson);
+			if (current?.id !== latest.id || current.run_attempt !== attempt ||
+				current.head_sha !== latest.head_sha || current.path !== latest.path) {
+				gap(`ci-attempt-identity-mismatch:${latest.id}:${attempt}`);
+				continue;
+			}
 			const jobsJson = query(root, "gh", [
 				"api",
 				"--paginate",
