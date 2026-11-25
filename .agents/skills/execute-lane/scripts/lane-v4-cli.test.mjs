@@ -2991,6 +2991,19 @@ async function withGatedWatch({ makeFixture, gate, releaseOnTick = false, onList
   const sockets = new Map();
   const pending = [];
   const writers = new Map();
+  const groups = new Set();
+  const spawnOwned = (argv, options) => {
+    // The watch and each writer lead a private POSIX group inherited by their Git/gh children.
+    const owned = spawn(process.execPath, argv, { ...options, detached: true });
+    if (owned.pid) {
+      const group = -owned.pid;
+      groups.add(group);
+      owned.once('close', () => attempt(() => {
+        if (!signalFixtureProcess(group, 0)) groups.delete(group);
+      }));
+    }
+    return owned;
+  };
   let removeFixture;
   let server;
   let child;
@@ -3042,7 +3055,7 @@ ${original}`);
       process.once('disconnect', stop);
       process.on('message', message => { if (message === 'stop') stop(); });
     `)}`;
-    child = spawn(process.execPath, ['--import', stopOnRequest, script, 'watch',
+    child = spawnOwned(['--import', stopOnRequest, script, 'watch',
       '--root', f.root, '--lane', f.lanePath, '--interval', releaseOnTick ? '0.01' : '0'], {
       env: { ...f.env, WATCH_PORT: String(server.address().port) }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -3051,7 +3064,7 @@ ${original}`);
       if (!stopping || code !== 0 || exitSignal !== null) {
         recordError(new Error(`Watch closed during ${stage} (code ${code}, signal ${exitSignal}):\n${transcript}\n${stderr}`));
       }
-      resolve({ exitSignal });
+      resolve();
     }));
     child.stdout.on('data', chunk => { transcript += chunk; });
     child.stderr.on('data', chunk => { stderr += chunk; });
@@ -3081,18 +3094,25 @@ ${original}`);
     const recordBlocker = async () => {
       stage = 'record writer';
       signal.throwIfAborted();
-      const writer = spawn(process.execPath, [script, 'record', '--root', f.root, ...f.common,
+      const writer = spawnOwned([script, 'record', '--root', f.root, ...f.common,
         '--phase', 'implement', '--result-json', '{"ok":false}'], { env: f.env, stdio: ['ignore', 'pipe', 'pipe'] });
-      writers.set(writer, new Promise(resolve => writer.once('close', () => {
+      let writerStderr = '';
+      writers.set(writer, new Promise(resolve => writer.once('close', (code, exitSignal) => {
+        if (code !== 0 || exitSignal !== null) {
+          recordError(new Error(`record writer closed (code ${code}, signal ${exitSignal}):\n${writerStderr}`));
+        }
         writers.delete(writer);
         resolve();
       })));
       writer.on('error', recordError);
       writer.stdout.resume();
-      let writerStderr = '';
       writer.stderr.on('data', chunk => { writerStderr += chunk; });
-      const [status] = await once(writer, 'close', { signal });
-      assert.equal(status, 0, `record writer: ${writerStderr}`);
+      try {
+        await once(writer, 'close', { signal });
+      } catch (error) {
+        throw failure.signal.reason ?? error;
+      }
+      signal.throwIfAborted();
     };
     await run({ f, child, tick, output, recordBlocker, transcript: () => transcript });
   } catch (error) {
@@ -3110,10 +3130,13 @@ ${original}`);
       aborted(AbortSignal.timeout(20_000), server ?? failure),
     ]);
     if (!drain) {
-      recordError(new Error('Watch teardown did not drain; retaining the fixture because a fake gh may still be active'));
-      if (child) attempt(() => child.kill('SIGKILL'));
-      for (const writer of writers.keys()) attempt(() => writer.kill('SIGKILL'));
+      recordError(new Error(`Watch teardown did not drain after ${stage}; forcing fixture process groups to exit`));
     }
+    const remainingGroups = [...groups];
+    if (remainingGroups.length && !errors.length) {
+      recordError(new Error(`Gated watch teardown found surviving process groups after ${stage}: ${remainingGroups}`));
+    }
+    for (const group of remainingGroups) attempt(() => signalFixtureProcess(group, 'SIGKILL'));
     const listenerClosed = !server || new Promise(resolve => {
       try {
         server.close(error => {
@@ -3127,12 +3150,20 @@ ${original}`);
     });
     const socketClosures = [...sockets];
     for (const [socket] of socketClosures) attempt(() => socket.destroy());
-    const stopped = await Promise.race([
-      Promise.all([listenerClosed, closed, ...writers.values(), ...socketClosures.map(([, done]) => done)]),
-      aborted(AbortSignal.timeout(20_000), server ?? failure),
+    const cleanupDeadline = AbortSignal.timeout(20_000);
+    const [stopped, alive] = await Promise.all([
+      Promise.race([
+        Promise.all([listenerClosed, closed, ...writers.values(), ...socketClosures.map(([, done]) => done)]),
+        aborted(cleanupDeadline, server ?? failure),
+      ]),
+      waitForFixtureExit(remainingGroups, cleanupDeadline).catch(error => {
+        recordError(error);
+        return remainingGroups;
+      }),
     ]);
-    if (!stopped) recordError(new Error('Watch teardown did not observe resource close; retaining fixture'));
-    if (stopped?.[0] && drain && (!closed || drain[0].exitSignal === null)) attempt(() => removeFixture?.());
+    if (!stopped?.[0]) recordError(new Error('Watch teardown did not observe resource close; retaining fixture'));
+    if (alive.length) recordError(new Error(`Watch teardown did not observe exit of process groups ${alive}; retaining fixture`));
+    if (stopped?.[0] && !alive.length) attempt(() => removeFixture?.());
   }
   if (errors.length === 1) throw errors[0];
   if (errors.length) throw new AggregateError(errors, 'Gated watch fixture failed');
@@ -3219,6 +3250,98 @@ for (const setupFails of [false, true]) {
     }
   });
 }
+
+function signalFixtureProcess(pid, signal) {
+  try {
+    process.kill(pid, signal);
+    return true;
+  } catch (error) {
+    if (error.code === 'ESRCH') return false;
+    throw error;
+  }
+}
+
+async function waitForFixtureExit(pids, deadline) {
+  let alive;
+  do {
+    alive = pids.filter(pid => signalFixtureProcess(pid, 0));
+    if (!alive.length || deadline.aborted) return alive;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  } while (true);
+}
+
+test('#4153 gated watch teardown: a signaled record writer cannot leave a live fake gh at fixture removal', async () => {
+  const probe = createServer(socket => {
+    socket.on('error', () => socket.destroy());
+    let handshake = '';
+    socket.setEncoding('utf8');
+    socket.on('data', chunk => {
+      handshake += chunk;
+      if (handshake.endsWith('\n')) probe.emit('gh-ready', JSON.parse(handshake));
+    });
+  });
+  const signal = AbortSignal.timeout(20_000);
+  let root;
+  let fakeGhPid;
+  let aliveAtRemoval;
+  let socket;
+  probe.once('connection', accepted => { socket = accepted; });
+  try {
+    const listening = once(probe, 'listening', { signal });
+    probe.listen(0, '127.0.0.1');
+    await listening;
+    const fixtureError = await withGatedWatch({
+      makeFixture: context => {
+        const f = externalFixture({ after: remove => context.after(() => {
+          if (fakeGhPid) aliveAtRemoval = signalFixtureProcess(fakeGhPid, 0);
+          remove();
+        }) });
+        root = f.root;
+        const gh = join(root, 'bin/gh');
+        const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
+        writeFileSync(gh, `#!${process.execPath}
+import { connect } from 'node:net';
+if (!process.env.WATCH_PORT && process.argv[2] === 'issue' && process.argv[3] === 'view') {
+  const probe = connect(${probe.address().port}, '127.0.0.1');
+  probe.once('connect', () => probe.write(JSON.stringify({ writer: process.ppid, gh: process.pid }) + '\\n'));
+  probe.on('error', () => probe.destroy());
+  await new Promise(resolve => probe.once('close', resolve));
+  process.exit(0);
+}
+${original}`);
+        return f;
+      },
+      gate: "process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverlapPullRequests'))",
+    }, async ({ tick, recordBlocker }) => {
+      await tick();
+      const ready = once(probe, 'gh-ready', { signal });
+      const writerDone = recordBlocker().then(() => null, error => error);
+      const [{ writer, gh }] = await ready;
+      fakeGhPid = gh;
+      process.kill(writer, 'SIGKILL');
+      const writerError = await writerDone;
+      assert.match(writerError?.message ?? '', /record writer/u);
+      assert.ok(existsSync(root), 'the root must outlive the abnormal writer exit');
+    }).then(() => null, error => error);
+
+    assert.ok(fakeGhPid, fixtureError?.stack);
+    assert.equal(aliveAtRemoval ?? signalFixtureProcess(fakeGhPid, 0), false,
+      'the delayed fake gh must exit before fixture root removal');
+    assert.equal(existsSync(root), Boolean(process.env.FLUO_PRODUCT_TEST_EVIDENCE));
+    assert.match(fixtureError?.message ?? '', /record writer.*SIGKILL/u);
+  } finally {
+    try {
+      // The prior head leaves this process alive; the regression owns fallback cleanup.
+      if (fakeGhPid && signalFixtureProcess(fakeGhPid, 'SIGKILL')) {
+        assert.deepEqual(await waitForFixtureExit([fakeGhPid], AbortSignal.timeout(20_000)), [],
+          'the regression failed to reap its delayed fake gh');
+      }
+    } finally {
+      socket?.destroy();
+      if (probe.listening) await new Promise(resolve => probe.close(resolve));
+    }
+  }
+});
 
 test('#4130 external cost: no valid current prediction -> no supplemental gh calls and explicit unknown', (t) => {
   const f = externalFixture(t);
