@@ -1421,6 +1421,54 @@ test("#4286 fifth fix-back checks the job queue end rather than its beginning ag
 	assert.deepEqual([valid.queue.elapsedMs, valid.queue.reason], [30000, null]);
 });
 
+test("#4286 job queue stays unknown when its own completion precedes its start", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "success", run_started_at: "2026-10-08T01:00:20Z" };
+	const job = { ...ciJob(1, "success"), head_sha: head, name: "Verify", steps: [],
+		queued_at: "2026-10-08T01:00:50Z", started_at: "2026-10-08T01:01:20Z" };
+	const sibling = { ...job, id: 32 };
+	const [earlier] = recordCiSnapshot(root, laneId, 1, { ...run, status: "in_progress", conclusion: null }, [
+		{ ...job, completed_at: "2026-10-08T01:01:10Z" }, sibling,
+	]);
+	recordCiSnapshot(root, laneId, 1, run, [{ ...job, completed_at: null }, sibling]);
+
+	const { ciTimings: [attempt], events } = retrospectiveEvidence(root, laneId, snapshots);
+	const direct = events.find(({ eventId }) => eventId === earlier.eventId).data.timing.jobs;
+	const queueResult = ({ queue }) => [queue.elapsedMs, queue.reason];
+
+	assert.deepEqual([direct, attempt.jobs].map((jobs) => jobs.map(queueResult)), [
+		[[null, "contradictory-boundaries"], [30000, null]],
+		[[null, "contradictory-boundaries"], [30000, null]],
+	]);
+});
+
+test("#4286 reconciled elapsed cites supplying events separately from final status", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "success", run_started_at: "2026-10-08T01:00:20Z" };
+	const job = { ...ciJob(1, "success"), head_sha: head, name: "Verify", steps: [] };
+	const finalSnapshots = structuredClone(snapshots);
+	finalSnapshots[0].obs.pr.ciRuns[0].conclusion = "success";
+	const [earlier] = recordCiSnapshot(root, laneId, 1, {
+		...run, status: "in_progress", conclusion: null, created_at: null,
+	}, [job]);
+	const [final] = recordCiSnapshot(root, laneId, 1, run, [{ ...job, completed_at: null }]);
+
+	const evidence = retrospectiveEvidence(root, laneId, finalSnapshots);
+	const request = retrospectiveRequest(root, laneId, finalSnapshots);
+	const saved = recordRetrospective(root, request, report(request, final.eventId));
+	const stored = JSON.parse(readFileSync(saved.report, "utf8"));
+	const markdown = readFileSync(saved.markdown, "utf8");
+
+	const provenance = ({ elapsedMs, elapsedEventId, finalStatusEventId, elapsedStartedEventIds, elapsedCompletedEventIds }) =>
+		[elapsedMs, elapsedEventId, finalStatusEventId, elapsedStartedEventIds, elapsedCompletedEventIds];
+	const expected = [180000, final.eventId, final.eventId, [final.eventId], [earlier.eventId]];
+	assert.deepEqual(evidence.ciTimings.map(provenance), [expected]);
+	assert.deepEqual(stored.ciTimings.map(provenance), [expected]);
+	assert.ok(markdown.split("\n").some((line) => line.includes("initial-run-including-queue: 180000 ms") &&
+		line.includes(`start evidence: ${final.eventId}`) && line.includes(`completion evidence: ${earlier.eventId}`)));
+	assert.ok(markdown.includes(`Final status evidence: ${final.eventId}`));
+});
+
 test("#4286 fifth fix-back counts a timed-out job completion without measuring its execution", (t) => {
 	const root = fixture(t);
 	const run = { ...ciRun(), run_started_at: "2026-10-08T01:00:20Z" };
