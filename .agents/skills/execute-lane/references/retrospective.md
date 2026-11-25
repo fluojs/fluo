@@ -69,6 +69,64 @@ Repeated observations of the same completed merge set reuse the report.
 Legacy execution ledgers remain unchanged and completed issues never reopen
 for analysis; missing older history is reported as partial coverage.
 
+## Native stage lifecycle capture
+
+At each background `task` dispatch, retain its returned `task_id` and the
+lead's durable parent session ID alongside the lane, issue, and `stage`:
+`preflight`, `implement`, `fix-back`, or `review:contract`, `review:code`,
+`review:verification`. For a parallel wave retain one binding per returned
+task, not one binding for the aggregate. A route or child result is not a
+dispatch receipt. If no task ID was returned, report the missing capture as a
+retrospective gap; do not mint one.
+
+1. While the child is live, use the installed Senpi RPC `list_sessions`
+   (`include_workers: true`) on the existing task host to find its
+   `context.task_id`, `durableSessionId`, and `sessionPath`. With the matching
+   routing handle, `get_state.lifecycle` can corroborate child role, parent,
+   task and engine `runId`. Read the native task-state JSON for that task
+   (`senpi-task/tasks/<taskId>.json` in the active project's OMO runtime
+   directory). Its live `host_session.session_path` identifies the same
+   session file. Preserve the path before the host removes its live handle.
+   Routing IDs are ephemeral; do not substitute one for the durable ID.
+2. Write a binding JSON file under ignored local evidence storage:
+   `{ "stage": "...", "taskId": "st_...", "parentSessionId": "...",
+   "taskFile": "/absolute/native/task.json", "sessionFile": "/absolute/native/session.jsonl" }`.
+   Use `null` for an unavailable path. Do not copy full prompts, child output
+   or auth material into lane evidence. Run:
+
+   ```text
+   node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs retro-record --root . --lane <lane-v4.json> --issue <n> --kind stage-lifecycle --value-file <binding.json>
+   ```
+
+3. Repeat after settlement, an observed interruption, or resumption for the
+   same dispatch. Read the original files or retained byte copies of their
+   native records, not the text of a monitor notification. The intake checks
+   task/parent/child lineage and captures original file, entry ID, event ID,
+   engine epoch and run ID. Durable `session-lifecycle` checkpoints with
+   `runActive: true` establish that the named run started. A matching inactive
+   checkpoint with `lastTurnEnd` establishes its terminal boundary and
+   classification. `since` can predate the run and `observedAt` can be
+   restamped on replay; neither nor the JSONL entry timestamp is a numeric
+   run clock here. A truncated RPC monitor notification, watcher timeout,
+   attempt count, or completion delivery does not replace these checks.
+
+`retro-evidence.stageLifecycle` keeps run boundaries and task attempts separate.
+Only an epoch-bound terminal native task record with monotonic `run_stats`
+can supply task-attempt elapsed time; it is not engine-run elapsed time. Do not
+sum runs, task attempts, CI, or parallel axes into lane elapsed time. An
+interruption followed by another run does not bridge the gap between them.
+The native transcript does not attest the executed Git head: keep `head: null`,
+never borrow a checkout, review-input or result head for this field, and keep
+these runs out of the existing superseded-head calculation. Missing and
+conflicting sources remain traceable from event IDs and source references; no
+verified start means the observed start count is `null`, not zero. Coverage is
+partial because these captures do not establish complete lane history.
+
+This command writes only retrospective observations. If capture or storage
+fails, preserve the error in lead evidence and continue existing stage-result
+recording, final CI capture and gate checks. Success or failure of a host
+run is not a review verdict, product blocker or fix-back authorization.
+
 Recommendations do not automatically change workflow, tests, skills, rules,
 models, or remote state. Applying them is separate scoped work. All incident
 data and reports live in `.omo/retros/`, outside disposable issue worktrees

@@ -836,7 +836,88 @@ console.log(JSON.stringify(args[0]==='api'?[{total_count:1,workflow_runs:[${JSON
 	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("RETRO-READY ")).slice("RETRO-READY ".length)), request);
 	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("LANE-SETTLED ")).slice("LANE-SETTLED ".length)),
 		[{ issue: 1, action: "done" }]);
-	assert.equal(invoke("retro-evidence").events.length, 3);
+	const legacy = invoke("retro-evidence");
+	assert.equal(legacy.events.length, 3);
+	assert.equal(legacy.stageLifecycle?.coverage, "partial");
+	assert.equal(legacy.stageLifecycle.observedStarts, null);
+	const native = (suffix, stage, checkpoints, { task = {}, reverse = false } = {}) => {
+		const taskId = `st_${suffix}`;
+		const parentSessionId = "lead-session";
+		const childSessionId = `child-${suffix}`;
+		const taskFile = resolve(root, `${suffix}.json`);
+		const sessionFile = resolve(root, `${suffix}.jsonl`);
+		const agentType = {
+			"review:code": "fluo-code-reviewer", "review:contract": "fluo-contract-reviewer",
+			"fix-back": "fluo-issue-implementer", implement: "fluo-issue-implementer", preflight: "fluo-issue-preflight",
+		}[stage];
+		writeFileSync(taskFile, JSON.stringify({
+			task_id: taskId, child_session_id: childSessionId, parent_session_id: parentSessionId,
+			agent_type: agentType, background_mode: "background", ...task,
+		}));
+		const entries = checkpoints.map(([seq, runId, runActive, endedBy, epoch = 1]) => ({
+			type: "custom", customType: "session-lifecycle", id: `${runId}-${seq}`,
+			timestamp: `2026-10-08T01:00:0${seq}.000Z`,
+			data: { taskId, parentSessionId, sessionId: childSessionId, role: "child",
+				epoch, seq, runId, runActive, persisted: true, restoring: false,
+				...(endedBy ? { lastTurnEnd: { endedBy, deadlineStop: false, budgetSpent: false } } : {}) },
+		}));
+		if (checkpoints.length > 0) writeFileSync(sessionFile, [
+			{ type: "session", id: childSessionId, spawnedBy: { taskId, parentSessionId } },
+			...(reverse ? entries.reverse() : entries),
+		].map((entry) => JSON.stringify(entry)).join("\n"));
+		return invoke("retro-record", ["--issue", "1", "--kind", "stage-lifecycle", "--value", JSON.stringify({
+			stage, taskId, parentSessionId, taskFile, sessionFile,
+		})]);
+	};
+	const endOnly = native("a", "review:code", [[2, "first", false, "provider-error"]]);
+	const code = native("a", "review:code", [
+		[1, "first", true], [2, "first", false, "provider-error"],
+		[3, "retry", true], [4, "retry", false, "system-abort"],
+		[5, "resumed", true], [6, "resumed", false, "clean"],
+	], { reverse: true });
+	assert.equal(native("a", "review:code", [
+		[1, "first", true], [2, "first", false, "provider-error"],
+		[3, "retry", true], [4, "retry", false, "system-abort"],
+		[5, "resumed", true], [6, "resumed", false, "clean"],
+	], { reverse: true }).eventId, code.eventId);
+	const contract = native("b", "review:contract", [[1, "parallel", true], [2, "parallel", false, "clean"]], {
+		task: { run_start_epoch: 0, notification: { run_epoch: 0 }, status: "completed",
+			terminal_at: "2026-10-08T01:00:05.000Z", run_stats: { duration_status: "monotonic", runtime_ms: 137 } },
+	});
+	const missing = native("c", "preflight", [], { task: { status: "completed" } });
+	native("d", "implement", [[1, "active", true]]);
+	native("e", "fix-back", [[1, "end-only", false, "provider-error"]]);
+	native("f", "fix-back", [[1, "conflict", true], [2, "conflict", false, "clean", 2]]);
+	const damagedId = "0".repeat(64);
+	const damaged = resolve(root, ".omo", "retros", laneId, "issue-1", "events", `lifecycle-${damagedId}.json`);
+	writeFileSync(damaged, "{");
+
+	const observed = invoke("retro-evidence");
+	const [reviewCode, reviewContract, preflight, implement, fixBack, conflict] = observed.stageLifecycle.dispatches;
+	assert.equal(observed.stageLifecycle.observedStarts, 5);
+	assert.equal(observed.stageLifecycle.coverage, "partial");
+	assert.equal(observed.totalElapsedMs, null);
+	assert.deepEqual(reviewCode.runs.map(({ runId, outcome, elapsedMs, head }) =>
+		[runId, outcome, elapsedMs, head]), [
+		["first", "failed", null, null], ["resumed", "completed", null, null],
+		["retry", "interrupted", null, null],
+	]);
+	assert.deepEqual(reviewCode.runs[0].eventIds, [code.eventId, endOnly.eventId].sort());
+	assert.equal(reviewCode.runs[0].start.entryId, "first-1");
+	assert.equal(reviewCode.runs[0].end.entryId, "first-2");
+	assert.equal(reviewContract.stage, "review:contract");
+	assert.deepEqual(reviewContract.attempts.map(({ elapsedMs, clock, eventIds }) =>
+		[elapsedMs, clock, eventIds]), [[137, "native-task-monotonic", [contract.eventId]]]);
+	assert.deepEqual(preflight.runs, []);
+	assert.equal(preflight.unknowns.find(({ code }) => code === "source-unreadable").eventId, missing.eventId);
+	assert.equal(implement.runs[0].end, null);
+	assert.equal(implement.runs[0].outcome, null);
+	assert.equal(fixBack.runs[0].start, null);
+	assert.equal(fixBack.runs[0].outcome, null);
+	assert.deepEqual(conflict.runs[0].unknowns, ["conflicting-checkpoints"]);
+	assert.deepEqual(observed.stageLifecycle.storageGaps.map(({ code, eventId }) =>
+		[code, eventId]), [["capture-unreadable", damagedId]]);
+	assert.deepEqual(readFileSync(path), original);
 	const analysis = resolve(root, "analysis.json");
 	writeFileSync(analysis, JSON.stringify(report(request, event.eventId)));
 	const saved = invoke("retro-report", ["--value-file", analysis]);

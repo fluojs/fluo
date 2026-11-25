@@ -10,10 +10,12 @@ import {
 } from "node:fs";
 import { relative, resolve } from "node:path";
 import { summarizeIntegrationMeasurements } from "../../execute-lane/scripts/generated-integration.mjs";
+import { collectStageLifecycle, summarizeStageLifecycle } from "../../execute-lane/scripts/stage-lifecycle.mjs";
 import { dispatchFor, readRegisteredAgents, validateDispatchTarget } from "../../execute-lane/scripts/dispatch-targets.mjs";
 
 const kinds = new Set([
 	"stage",
+	"stage-lifecycle",
 	"review",
 	"implementer",
 	"ci",
@@ -62,7 +64,7 @@ export const recordRetroEvent = (root, laneId, issue, kind, data) => {
 	) {
 		throw new TypeError("Unknown retrospective work unit or event kind");
 	}
-	const identity = { version: 1, laneId, issue, kind, data };
+	const identity = { version: 1, laneId, issue, kind, data: kind === "stage-lifecycle" ? collectStageLifecycle(data) : data };
 	const eventId = digest(identity);
 	const directory = resolve(
 		retroDirectory(root, laneId),
@@ -70,7 +72,7 @@ export const recordRetroEvent = (root, laneId, issue, kind, data) => {
 		"events",
 	);
 	mkdirSync(directory, { recursive: true });
-	const path = resolve(directory, `${eventId}.json`);
+	const path = resolve(directory, `${kind === "stage-lifecycle" ? "lifecycle-" : ""}${eventId}.json`);
 	const event = {
 		...identity,
 		eventId,
@@ -98,7 +100,7 @@ export const recordRetroEvent = (root, laneId, issue, kind, data) => {
 	return { eventId, path };
 };
 
-export const readRetroEvents = (root, laneId) => {
+export const readRetroEvents = (root, laneId, lifecycleGaps = []) => {
 	const directory = retroDirectory(root, laneId);
 	if (!existsSync(directory)) return [];
 	const records = [];
@@ -109,34 +111,26 @@ export const readRetroEvents = (root, laneId) => {
 		const events = resolve(directory, unit.name, "events");
 		if (!existsSync(events)) continue;
 		for (const name of readdirSync(events).sort()) {
-			if (!/^[a-f0-9]{64}\.json$/u.test(name)) continue;
+			const match = /^(lifecycle-)?([a-f0-9]{64})\.json$/u.exec(name);
+			if (!match) continue;
 			const path = resolve(events, name);
-			const bytes = readFileSync(path);
-			const event = JSON.parse(bytes);
-			const identity = {
-				version: event.version,
-				laneId: event.laneId,
-				issue: event.issue,
-				kind: event.kind,
-				data: event.data,
-			};
-			if (
-				event.version !== 1 || event.laneId !== laneId ||
-				`issue-${event.issue}` !== unit.name ||
-				!kinds.has(event.kind) ||
-				digest(identity) !== event.eventId ||
-				name !== `${event.eventId}.json` ||
-				!Number.isFinite(Date.parse(event.recordedAt))
-			) {
-				throw new TypeError(
-					`Invalid retrospective observation: ${path}`,
-				);
+			try {
+				const bytes = readFileSync(path);
+				const event = JSON.parse(bytes);
+				const { version, laneId: observedLane, issue, kind, data } = event;
+				if (
+					version !== 1 || observedLane !== laneId || `issue-${issue}` !== unit.name ||
+					!kinds.has(kind) || Boolean(match[1]) !== (kind === "stage-lifecycle") ||
+					digest({ version, laneId, issue, kind, data }) !== event.eventId ||
+					match[2] !== event.eventId || !Number.isFinite(Date.parse(event.recordedAt))
+				) {
+					throw new TypeError(`Invalid retrospective observation: ${path}`);
+				}
+				records.push({ ...event, path: relative(root, path), sha256: sha(bytes) });
+			} catch (error) {
+				if (!match[1] || !(error instanceof Error)) throw error;
+				lifecycleGaps.push({ code: "capture-unreadable", path: relative(root, path), eventId: match[2] });
 			}
-			records.push({
-				...event,
-				path: relative(root, path),
-				sha256: sha(bytes),
-			});
 		}
 	}
 	return records.sort((a, b) =>
@@ -290,7 +284,8 @@ export const retrospectiveRequest = (root, laneId, snapshots) => {
 
 export const retrospectiveEvidence = (root, laneId, snapshots) => {
 	const request = retrospectiveRequest(root, laneId, snapshots);
-	const events = readRetroEvents(root, laneId);
+	const lifecycleGaps = [];
+	const events = readRetroEvents(root, laneId, lifecycleGaps);
 	const reviewBlockers = new Map();
 	const unstructuredReviewEventIds = new Set();
 	for (const event of events) {
@@ -394,6 +389,7 @@ export const retrospectiveEvidence = (root, laneId, snapshots) => {
 			b.failures - a.failures || a.job.localeCompare(b.job)
 		),
 		totalElapsedMs: null,
+		stageLifecycle: { ...summarizeStageLifecycle(events), storageGaps: lifecycleGaps },
 		externalOverlapObservations,
 		externalOverlapUnknowns,
 		conflictResolutions: [...conflicts].sort(([a], [b]) => a - b).map(([issue, heads]) => ({

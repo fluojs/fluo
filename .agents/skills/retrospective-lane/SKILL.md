@@ -37,6 +37,12 @@ fix-back. The lead also calls `retro-ci` when a CI failure notification arrives,
 before starting remediation. Run attempts are queried separately; failure,
 timeout and cancellation retain their original conclusions.
 
+Independently collect each actual native background stage dispatch with
+`retro-record --kind stage-lifecycle`. Follow the lead's [native capture
+procedure](../execute-lane/references/retrospective.md#native-stage-lifecycle-capture)
+for task, child and run identity. Missing native telemetry does not block
+result admission or final CI collection.
+
 Records live under `.omo/retros/<encoded-lane-id>/issue-<n>/events/`, **not**
 `.omo/lanes/` or `.omo/lanes-v4/`. Their stable content identity deduplicates
 replayed observations. They do not supply PASS, approvals, stage identity, or
