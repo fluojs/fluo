@@ -24,9 +24,11 @@ durations together. Keep raw identifiers, paths, job names and error text
 unchanged; write analysis in Korean.
 
 Use `stageLifecycle` dispatches and their original checkpoint references for
-native work, not stage outcomes or recorded timestamps. Separate engine
-run outcome from gate outcome, and task-attempt elapsed from engine-run
-elapsed. A null start, end, clock, or head is not evidence of no work, zero time,
+native work, not stage outcomes or recorded timestamps. Keep native task
+terminal observations, engine run outcomes, and lane verdicts separate.
+Missing or mismatched notification epochs are source-linked gaps, not measured
+attempts. Keep task-attempt elapsed separate from engine-run elapsed. A null
+start, end, clock, or head is not evidence of no work, zero time,
 success, or a superseded head. Describe this history as partial and cite
 the relevant event IDs; do not count overlapping scopes or interrupted gaps.
 

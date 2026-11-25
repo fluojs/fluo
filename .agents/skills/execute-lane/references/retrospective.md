@@ -112,7 +112,14 @@ retrospective gap; do not mint one.
 
 `retro-evidence.stageLifecycle` keeps run boundaries and task attempts separate.
 Only an epoch-bound terminal native task record with monotonic `run_stats`
-can supply task-attempt elapsed time; it is not engine-run elapsed time. Do not
+can supply task-attempt elapsed time; it is not engine-run elapsed time. When
+`run_start_epoch` is observed but `notification.run_epoch` is unavailable or
+different, the dispatch retains a gap with the observed epochs, task path and
+event ID, not an attempt measurement. An epoch-bound terminal status with a
+valid `terminal_at` is retained in `attempts[].terminalObservations` with its
+task path and event ID, even if duration is unavailable or conflicting. These
+are task observations, not engine run outcomes or lane verdicts. Older
+captures do not gain a terminal status retroactively. Do not
 sum runs, task attempts, CI, or parallel axes into lane elapsed time. An
 interruption followed by another run does not bridge the gap between them.
 The native transcript does not attest the executed Git head: keep `head: null`,

@@ -104,15 +104,29 @@ export const collectStageLifecycle = (input) => {
 	}
 
 	// This clock belongs to the task runner, not to any one engine run in its session.
-	const attempt = taskMatches && childSessionId !== null && index(task.run_start_epoch) &&
-		task.run_start_epoch === task.notification?.run_epoch ? {
-			epoch: task.run_start_epoch,
-			path: taskFile,
-			elapsedMs: ["completed", "error", "interrupted", "cancelled"].includes(task.status) &&
-				iso(task.terminal_at) && task.run_stats?.duration_status === "monotonic" &&
-				Number.isFinite(task.run_stats.runtime_ms) && task.run_stats.runtime_ms >= 0
-				? task.run_stats.runtime_ms : null,
-		} : null;
+	let attempt = null;
+	if (taskMatches && childSessionId !== null && index(task.run_start_epoch)) {
+		const epoch = task.run_start_epoch;
+		const notificationEpoch = task.notification?.run_epoch;
+		if (epoch !== notificationEpoch) {
+			const observed = index(notificationEpoch);
+			unknowns.push({
+				code: observed ? "attempt-notification-epoch-mismatch" : "attempt-notification-epoch-missing",
+				epoch, notificationEpoch: observed ? notificationEpoch : null, path: taskFile,
+			});
+		} else {
+			const terminal = ["completed", "error", "interrupted", "cancelled"].includes(task.status) &&
+				iso(task.terminal_at) ? { status: task.status, terminalAt: task.terminal_at } : null;
+			attempt = {
+				epoch,
+				path: taskFile,
+				elapsedMs: terminal && task.run_stats?.duration_status === "monotonic" &&
+					Number.isFinite(task.run_stats.runtime_ms) && task.run_stats.runtime_ms >= 0
+					? task.run_stats.runtime_ms : null,
+				...(terminal ? { terminal } : {}),
+			};
+		}
+	}
 	return { stage, taskId, parentSessionId, childSessionId, checkpoints, attempt, unknowns };
 };
 
@@ -151,6 +165,9 @@ const summarizeAttempts = (observations) => {
 	return [...attempts].sort(([a], [b]) => a - b).map(([epoch, events]) => {
 		const measured = events.filter(({ data }) => data.attempt.elapsedMs !== null);
 		const values = new Set(measured.map(({ data }) => data.attempt.elapsedMs));
+		const terminalObservations = events.flatMap(({ eventId, data: { attempt } }) =>
+			attempt.terminal ? [{ ...attempt.terminal, path: attempt.path, eventId }] : [])
+			.sort((a, b) => a.eventId.localeCompare(b.eventId));
 		return {
 			epoch, childSessionId: events[0].data.childSessionId,
 			elapsedMs: values.size === 1 ? [...values][0] : null,
@@ -158,6 +175,7 @@ const summarizeAttempts = (observations) => {
 			eventIds: sortedIds(events.map(({ eventId }) => eventId)),
 			sources: sortedIds(events.map(({ data }) => data.attempt.path)),
 			unknown: values.size === 1 ? null : values.size > 1 ? "conflicting-attempt-clock" : "attempt-clock-unavailable",
+			...(terminalObservations.length ? { terminalObservations } : {}),
 		};
 	});
 };
