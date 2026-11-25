@@ -3256,7 +3256,10 @@ function signalFixtureProcess(pid, signal) {
     process.kill(pid, signal);
     return true;
   } catch (error) {
-    if (error.code === 'ESRCH') return false;
+    if (error instanceof Error) {
+      if (error.code === 'ESRCH') return false;
+      if (signal === 0 && error.code === 'EPERM') return true;
+    }
     throw error;
   }
 }
@@ -3270,7 +3273,7 @@ async function waitForFixtureExit(pids, deadline) {
   } while (true);
 }
 
-test('#4153 gated watch teardown: a signaled record writer cannot leave a live fake gh at fixture removal', async () => {
+test('#4153 gated watch teardown: a signaled record writer cannot leave a live fake gh at fixture removal', async (t) => {
   const probe = createServer(socket => {
     socket.on('error', () => socket.destroy());
     let handshake = '';
@@ -3282,9 +3285,27 @@ test('#4153 gated watch teardown: a signaled record writer cannot leave a live f
   });
   const signal = AbortSignal.timeout(20_000);
   let root;
+  let removeFixture;
+  let listenerClosed = false;
+  let watchGroup;
+  let writerGroup;
   let fakeGhPid;
   let aliveAtRemoval;
   let socket;
+  let groupSignaled = false;
+  let injectedProbeError = false;
+  const kill = process.kill;
+  const killMock = t.mock.method(process, 'kill', (pid, signal) => {
+    if (pid === writerGroup && groupSignaled && signal === 0 && !injectedProbeError) {
+      injectedProbeError = true;
+      throw Object.assign(new Error('injected EPERM after writer group SIGKILL'), { code: 'EPERM' });
+    }
+    const result = kill.call(process, pid, signal);
+    if (pid === writerGroup && signal === 'SIGKILL') {
+      groupSignaled = true;
+    }
+    return result;
+  });
   probe.once('connection', accepted => { socket = accepted; });
   try {
     const listening = once(probe, 'listening', { signal });
@@ -3292,10 +3313,14 @@ test('#4153 gated watch teardown: a signaled record writer cannot leave a live f
     await listening;
     const fixtureError = await withGatedWatch({
       makeFixture: context => {
-        const f = externalFixture({ after: remove => context.after(() => {
-          if (fakeGhPid) aliveAtRemoval = signalFixtureProcess(fakeGhPid, 0);
-          remove();
-        }) });
+        const f = externalFixture({ after: remove => {
+          removeFixture = remove;
+          context.after(() => {
+            if (fakeGhPid) aliveAtRemoval = signalFixtureProcess(fakeGhPid, 0);
+            remove();
+            removeFixture = undefined;
+          });
+        } });
         root = f.root;
         const gh = join(root, 'bin/gh');
         const original = readFileSync(gh, 'utf8').replace(/^#![^\n]*\n/u, '');
@@ -3312,11 +3337,14 @@ ${original}`);
         return f;
       },
       gate: "process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverlapPullRequests'))",
-    }, async ({ tick, recordBlocker }) => {
+      onListening: (_, server) => server.once('close', () => { listenerClosed = true; }),
+    }, async ({ child, tick, recordBlocker }) => {
+      watchGroup = -child.pid;
       await tick();
       const ready = once(probe, 'gh-ready', { signal });
       const writerDone = recordBlocker().then(() => null, error => error);
       const [{ writer, gh }] = await ready;
+      writerGroup = -writer;
       fakeGhPid = gh;
       process.kill(writer, 'SIGKILL');
       const writerError = await writerDone;
@@ -3325,16 +3353,31 @@ ${original}`);
     }).then(() => null, error => error);
 
     assert.ok(fakeGhPid, fixtureError?.stack);
+    assert.ok(injectedProbeError, 'the first existence probe after writer group SIGKILL must report EPERM');
+    assert.equal(existsSync(root), Boolean(process.env.FLUO_PRODUCT_TEST_EVIDENCE),
+      'a transient EPERM must not stop teardown before the fixture can be removed');
     assert.equal(aliveAtRemoval ?? signalFixtureProcess(fakeGhPid, 0), false,
       'the delayed fake gh must exit before fixture root removal');
-    assert.equal(existsSync(root), Boolean(process.env.FLUO_PRODUCT_TEST_EVIDENCE));
     assert.match(fixtureError?.message ?? '', /record writer.*SIGKILL/u);
   } finally {
+    killMock.mock.restore();
     try {
-      // The prior head leaves this process alive; the regression owns fallback cleanup.
-      if (fakeGhPid && signalFixtureProcess(fakeGhPid, 'SIGKILL')) {
-        assert.deepEqual(await waitForFixtureExit([fakeGhPid], AbortSignal.timeout(20_000)), [],
-          'the regression failed to reap its delayed fake gh');
+      // The prior head can abort before confirming exit; the regression owns fallback cleanup.
+      if (fakeGhPid && aliveAtRemoval !== false) {
+        signalFixtureProcess(fakeGhPid, 'SIGKILL');
+        const deadline = AbortSignal.timeout(20_000);
+        // Keep fallback cleanup independent of the probe handling under test.
+        for (;;) {
+          try {
+            assert.deepEqual(await waitForFixtureExit([fakeGhPid, writerGroup, watchGroup], deadline), [],
+              'the regression failed to confirm exit of its fixture processes');
+            break;
+          } catch (error) {
+            if (!(error instanceof Error && error.code === 'EPERM') || deadline.aborted) throw error;
+            await new Promise(resolve => setTimeout(resolve, 10));
+          }
+        }
+        if (listenerClosed) removeFixture?.();
       }
     } finally {
       socket?.destroy();
