@@ -3094,8 +3094,10 @@ ${original}`);
     const recordBlocker = async () => {
       stage = 'record writer';
       signal.throwIfAborted();
+      const writerEnv = { ...f.env };
+      delete writerEnv.WATCH_PORT;
       const writer = spawnOwned([script, 'record', '--root', f.root, ...f.common,
-        '--phase', 'implement', '--result-json', '{"ok":false}'], { env: f.env, stdio: ['ignore', 'pipe', 'pipe'] });
+        '--phase', 'implement', '--result-json', '{"ok":false}'], { env: writerEnv, stdio: ['ignore', 'pipe', 'pipe'] });
       let writerStderr = '';
       writers.set(writer, new Promise(resolve => writer.once('close', (code, exitSignal) => {
         if (code !== 0 || exitSignal !== null) {
@@ -3263,6 +3265,37 @@ function signalFixtureProcess(pid, signal) {
     throw error;
   }
 }
+
+test('#4153 gated watch writer: inherited WATCH_PORT stays out of the record process', async () => {
+  await withGatedWatch({
+    makeFixture: context => {
+      const ambientWatchPort = process.env.WATCH_PORT;
+      process.env.WATCH_PORT = '41530';
+      try {
+        const f = externalFixture(context);
+        const writerWatchPortPath = join(f.root, 'bin/record-watch-port.json');
+        const observeWriterWatchPort = `data:text/javascript,${encodeURIComponent(`
+          import { writeFileSync } from 'node:fs';
+          if (process.argv[2] === 'record') {
+            writeFileSync(${JSON.stringify(writerWatchPortPath)}, JSON.stringify(process.env.WATCH_PORT ?? null));
+          }
+        `)}`;
+        f.env.NODE_OPTIONS = `--import ${observeWriterWatchPort}`;
+        return f;
+      } finally {
+        if (ambientWatchPort === undefined) delete process.env.WATCH_PORT;
+        else process.env.WATCH_PORT = ambientWatchPort;
+      }
+    },
+    gate: "process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverlapPullRequests'))",
+  }, async ({ f, tick, recordBlocker }) => {
+    await tick();
+    await recordBlocker();
+
+    const writerWatchPort = JSON.parse(readFileSync(join(f.root, 'bin/record-watch-port.json'), 'utf8'));
+    assert.equal(writerWatchPort, null, 'the record process must not inherit the watch-only WATCH_PORT');
+  });
+});
 
 async function waitForFixtureExit(pids, deadline) {
   let alive;
