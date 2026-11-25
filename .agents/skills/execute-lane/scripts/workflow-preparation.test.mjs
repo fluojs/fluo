@@ -430,6 +430,14 @@ for (const [scenario, options, diagnostic] of [
   });
 }
 
+test('Changeset fix-back rejects an unquoted scoped YAML key', (t) => {
+  const { input } = metadataFixture(t, { frontmatter: `${metadataOwner}: patch` });
+
+  assert.throws(() => prepareReviewInput(input),
+    (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+      && /invalid YAML in frontmatter/u.test(error.message));
+});
+
 for (const [scenario, change, diagnostic] of [
   ['null RED', ({ input }) => { input.fix_back_red = null; }, /fix-back RED/u],
   ['invalid RED receipt', ({ input, store }) => { input.fix_back_red = store('invalid-red.json', {}); }, /RED receipt/u],

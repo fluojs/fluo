@@ -2,6 +2,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { accessSync, constants, mkdirSync, readFileSync, readlinkSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { basename, delimiter, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
@@ -599,6 +600,13 @@ const authenticateFixBackReleaseMetadata = (input, baseHead, trees) => {
       collectPackageVersionDeltas: () => [],
       collectStableNodeEngineRangeNarrowings: () => [],
     });
+    // Resolve lazily through the CLI's dependency chain, even under isolated installs.
+    const require = createRequire(import.meta.url);
+    const cliRequire = createRequire(require.resolve('@changesets/cli'));
+    const readRequire = createRequire(cliRequire.resolve('@changesets/read'));
+    const { default: parseChangeset } = readRequire('@changesets/parse');
+    requireInput(isDeepStrictEqual(parseChangeset(contents).releases, [{ name: owner, type: 'patch' }]),
+      'fix-back release metadata: Changesets parser did not return exactly one patch intent for the README owner');
   } catch (error) {
     if (!(error instanceof Error) || error instanceof WorkflowPreparationError) throw error;
     throw new WorkflowPreparationError(`fix-back release metadata: invalid stable patch intent: ${error.message}`);
