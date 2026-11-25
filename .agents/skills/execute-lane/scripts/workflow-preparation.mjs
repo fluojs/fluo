@@ -547,8 +547,9 @@ const authenticateFixBackReleaseMetadata = (input, baseHead, trees) => {
   readGit('merge-base', '--is-ancestor', previous, head);
   const delta = readGit('diff', '--raw', '--no-abbrev', '--no-renames', '--ignore-submodules=none',
     '-z', previous, head).toString();
-  const added = /^:000000 100(?:644|755) 0{40} ([a-f0-9]{40}) A\0(\.changeset\/[^/\0]+\.md)\0$/u.exec(delta);
-  requireInput(added && pathSafe(added[2]) && basename(added[2]) !== 'README.md'
+  // Match @changesets/read's modern filename filter before checking the committed contents.
+  const added = /^:000000 100(?:644|755) 0{40} ([a-f0-9]{40}) A\0(\.changeset\/(?!\.)[^/\0]+\.md)\0$/u.exec(delta);
+  requireInput(added && pathSafe(added[2]) && !/^README\.md$/i.test(basename(added[2]))
     && input.changed_paths.includes(added[2])
     && readGit('--literal-pathspecs', 'ls-tree', '-z', previous, '--', added[2]).length === 0,
   'fix-back release metadata: expected exactly one new authored top-level regular Changeset addition');

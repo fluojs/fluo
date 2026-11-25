@@ -420,6 +420,9 @@ for (const [scenario, options, diagnostic] of [
   ['existing metadata deleted', { prior: { [metadataPath]: patchMetadata() }, delta: { [metadataPath]: null } }, /Changeset addition/u],
   ['empty delta', { prior: { [metadataPath]: patchMetadata() } }, /Changeset addition/u],
   ['Changesets README', { delta: { '.changeset/README.md': patchMetadata() } }, /Changeset addition/u],
+  ['mixed-case Changesets README', { delta: { '.changeset/readME.md': patchMetadata() } }, /Changeset addition/u],
+  ['hidden Changeset', { delta: { '.changeset/.readme-correction.md': patchMetadata() } }, /Changeset addition/u],
+  ['uppercase Changeset extension', { delta: { '.changeset/readme-correction.MD': patchMetadata() } }, /Changeset addition/u],
   ['nested metadata', { delta: { '.changeset/nested/new.md': patchMetadata() } }, /Changeset addition/u],
   ['symlink metadata', { delta: { [metadataPath]: { target: '../source.mjs' } } }, /Changeset addition/u],
 ]) {
