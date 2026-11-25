@@ -158,6 +158,7 @@ const interval = ({ scope, source, startedAt = null, completedAt = null }, reaso
 	const start = githubTimestamp(startedAt);
 	const end = githubTimestamp(completedAt);
 	const latest = githubTimestamp(bounds.completedAt);
+	const earliestEnd = githubTimestamp(bounds.earliestEnd);
 	const unknown = reason ?? (
 		startedAt === null || completedAt === null ? "missing-boundary"
 			: start === null || end === null ? "invalid-timestamp"
@@ -165,7 +166,7 @@ const interval = ({ scope, source, startedAt = null, completedAt = null }, reaso
 			: bounds.starts?.some((boundary) => {
 				const earliest = githubTimestamp(boundary);
 				return earliest !== null && start < earliest;
-			}) || (latest !== null && end > latest)
+			}) || (earliestEnd !== null && end < earliestEnd) || (latest !== null && end > latest)
 			? "contradictory-boundaries" : null
 	);
 	return { scope, source, startedAt, completedAt, elapsedMs: unknown === null ? end - start : null, reason: unknown };
@@ -176,6 +177,14 @@ const executionBlocker = ({ status, conclusion }, subject) => {
 	if (status !== "completed" || typeof conclusion !== "string") return `${subject}-not-completed`;
 	return null;
 };
+
+const stepIdentityBlocker = (number, repeated) =>
+	repeated ? "conflicting-step-identity"
+		: !Number.isSafeInteger(number) || number <= 0 ? "missing-step-identity" : null;
+
+const stepScopeBlocker = (scope) =>
+	scope === "verification-execution-step" ? "mixed-task-scope"
+		: scope === "unclassified-step" ? "step-purpose-unproven" : null;
 
 const preparationSteps = {
 	"Resolve verification plan": ["Restore immutable verification image", "Load cached image", "Prepare and archive verified image"],
@@ -207,7 +216,7 @@ const jobTiming = (run, job, identityReason) => {
 	const queue = interval({
 		scope: "job-queue", source: "github-job.queued_at/started_at",
 		startedAt: job.queued_at, completedAt: startedAt,
-	}, identityReason ?? executionBlocker(job, "job"));
+	}, identityReason ?? executionBlocker(job, "job"), { earliestEnd: run.run_started_at });
 	const runnerSetup = interval({ scope: "runner-setup", source: null }, "runner-setup-unobserved");
 	const stepNumbers = new Set();
 	const repeatedSteps = new Set();
@@ -217,11 +226,8 @@ const jobTiming = (run, job, identityReason) => {
 	}
 	const steps = (job.steps ?? []).map((step) => {
 		const scope = timingScope(run.path, name, step.name);
-		const reason = identityReason ?? (repeatedSteps.has(step.number) ? "conflicting-step-identity" : null)
-			?? (!Number.isSafeInteger(step.number) || step.number <= 0 ? "missing-step-identity" : null)
-			?? executionBlocker(step, "step")
-			?? (scope === "verification-execution-step" ? "mixed-task-scope"
-				: scope === "unclassified-step" ? "step-purpose-unproven" : null);
+		const reason = identityReason ?? stepIdentityBlocker(step.number, repeatedSteps.has(step.number))
+			?? executionBlocker(step, "step") ?? stepScopeBlocker(scope);
 		return {
 			number: step.number, name: step.name, status: step.status, conclusion: step.conclusion,
 			timing: interval({
@@ -232,6 +238,29 @@ const jobTiming = (run, job, identityReason) => {
 	});
 	return { id, name, status, conclusion, head: job.head_sha ?? null, createdAt: job.created_at ?? null,
 		startedAt, completedAt, execution, queue, runnerSetup, steps };
+};
+
+const jobIdentityReasons = ["conflicting-job-identity", "missing-job-identity", "job-identity-mismatch"];
+const timingConflict = "conflicting-attempt-timing";
+
+const corroboratesRunStart = ({ head, execution, steps, startedAt, completedAt }, run) => {
+	if (head !== run.head_sha || jobIdentityReasons.includes(execution.reason)) return false;
+	if (execution.reason === null) return true;
+	return steps.some(({ timing }) => timing.reason === null ||
+		(timing.reason === stepScopeBlocker(timing.scope) &&
+			interval(timing, null, { starts: [run.run_started_at, startedAt], completedAt }).reason === null));
+};
+
+const runQueueTiming = (run, jobs) => {
+	const unconfirmedCancellation = run.conclusion === "cancelled" &&
+		(run.status !== "completed" || !jobs.some((job) => corroboratesRunStart(job, run)));
+	return interval({
+		scope: "run-queue", source: "github-run.created_at/run_started_at",
+		startedAt: run.run_attempt === 1 ? run.created_at : null, completedAt: run.run_started_at,
+	}, run.run_attempt !== 1 ? "retry-queue-unobserved"
+		: run.conclusion === "skipped" ? "run-skipped"
+		: unconfirmedCancellation ? "run-cancelled"
+		: ["in_progress", "completed"].includes(run.status) ? null : "run-start-unconfirmed");
 };
 
 const attemptTiming = (run, jobs) => {
@@ -247,18 +276,7 @@ const attemptTiming = (run, jobs) => {
 				: !Number.isSafeInteger(id) || id <= 0 ? "missing-job-identity"
 				: Object.hasOwn(job, "head_sha") && job.head_sha !== run.head_sha ? "job-identity-mismatch"
 				: null)));
-	const cancellationHasStartEvidence = run.status === "completed" &&
-		observedJobs.some(({ head, execution }) => head === run.head_sha && execution.reason === null);
-	return {
-		runQueue: interval({
-			scope: "run-queue", source: "github-run.created_at/run_started_at",
-			startedAt: run.run_attempt === 1 ? run.created_at : null, completedAt: run.run_started_at,
-		}, run.run_attempt !== 1 ? "retry-queue-unobserved"
-			: run.conclusion === "skipped" ? "run-skipped"
-			: run.conclusion === "cancelled" && !cancellationHasStartEvidence ? "run-cancelled"
-			: ["in_progress", "completed"].includes(run.status) ? null : "run-start-unconfirmed"),
-		jobs: observedJobs,
-	};
+	return { runQueue: runQueueTiming(run, observedJobs), jobs: observedJobs };
 };
 
 /** A CI failure is keyed to a real run attempt and completed job, not a polling tick. */
@@ -352,13 +370,13 @@ const attemptCompletionSuppliers = (timing) => {
 		if (execution.reason === "job-identity-mismatch" || conclusion === "skipped") continue;
 		const start = githubTimestamp(startedAt);
 		const end = githubTimestamp(completedAt);
-		// A cancelled job can attest to completion without attesting to execution duration.
+		// Cancelled and timed-out jobs can attest to completion without attesting to execution duration.
 		// Missing or contradictory ends cannot establish ordering against siblings.
 		if (end === null || (start !== null && end < start) || (attemptStart !== null && end < attemptStart)) {
 			return [];
 		}
-		if (["conflicting-job-identity", "missing-job-identity"].includes(execution.reason)
-			|| status !== "completed" || typeof conclusion !== "string" || conclusion === "timed_out"
+		if (["conflicting-job-identity", "missing-job-identity", timingConflict].includes(execution.reason)
+			|| status !== "completed" || typeof conclusion !== "string"
 			|| (startedAt != null && (start === null || (attemptStart !== null && start < attemptStart)))) {
 			latestUnverifiedEnd = Math.max(latestUnverifiedEnd, end);
 		} else {
@@ -366,6 +384,100 @@ const attemptCompletionSuppliers = (timing) => {
 		}
 	}
 	return suppliers.some(({ end }) => end > latestUnverifiedEnd) ? suppliers : [];
+};
+
+// Compare observed instants, not missing fields or differences in timestamp spelling.
+const reconcileBoundary = (values) => {
+	const observed = new Map();
+	for (const value of values) {
+		if (value != null) observed.set(githubTimestamp(value) ?? value, value);
+	}
+	const conflict = observed.size > 1;
+	const ordered = [...observed.keys()].filter((key) => typeof key === "number").sort((a, b) => a - b);
+	return { value: conflict ? null : ([...observed.values()][0] ?? null), conflict,
+		earliest: observed.get(ordered[0]), latest: observed.get(ordered.at(-1)) };
+};
+
+const groupsBy = (items, keyFor) => {
+	const groups = new Map();
+	for (const item of items) {
+		const key = keyFor(item);
+		const group = groups.get(key) ?? [];
+		group.push(item);
+		groups.set(key, group);
+	}
+	return groups;
+};
+
+const timingStarted = ({ status }) => ["in_progress", "completed"].includes(status);
+const terminal = ({ status }) => status === "completed";
+const reconciledInterval = (template, start, end, reason, bounds) => interval({
+	...template, startedAt: start.value, completedAt: end.value,
+}, reason ?? (start.conflict || end.conflict ? timingConflict : null), bounds);
+
+const reconcileJobTiming = (observations, attemptStart) => {
+	const job = observations.findLast(terminal) ?? observations.at(-1);
+	const identityReason = new Set(observations.map(({ name }) => name)).size > 1 ? "conflicting-job-identity" : null;
+	const started = reconcileBoundary(observations.filter(timingStarted).map(({ startedAt }) => startedAt));
+	const completed = reconcileBoundary(observations.filter(terminal).map(({ completedAt }) => completedAt));
+	const queued = reconcileBoundary(observations.map(({ queue }) => queue.startedAt));
+	const reason = identityReason ?? executionBlocker(job, "job");
+	const stepsByNumber = groupsBy(observations.flatMap(({ steps }) => steps), ({ number }) => number);
+	const steps = [...stepsByNumber].flatMap(([number, rows]) => {
+		const fallback = job.steps.filter((step) => step.number === number);
+		if (fallback.some(({ timing }) => timing.reason === "conflicting-step-identity")) return fallback;
+		const attributable = rows.filter(({ timing }) => !["conflicting-step-identity", "missing-step-identity"].includes(timing.reason));
+		if (!attributable.length) return fallback;
+		const step = attributable.findLast(terminal) ?? attributable.at(-1);
+		const stepIdentity = new Set(attributable.map(({ name }) => name)).size > 1 ? "conflicting-step-identity" : null;
+		const start = reconcileBoundary(attributable.filter(timingStarted).map(({ timing }) => timing.startedAt));
+		const end = reconcileBoundary(attributable.filter(terminal).map(({ timing }) => timing.completedAt));
+		// A step can remain measured if it fits inside every observed enclosing boundary.
+		const bounds = { starts: [attemptStart, started.latest], completedAt: completed.earliest };
+		const reason = identityReason ?? stepIdentity ?? executionBlocker(step, "step");
+		const measured = reconciledInterval(step.timing, start, end, reason, bounds);
+		const scopeReason = stepScopeBlocker(step.timing.scope);
+		const timing = measured.reason === null && scopeReason !== null
+			? { ...measured, elapsedMs: null, reason: scopeReason } : measured;
+		return [{ ...step, timing }];
+	}).sort((a, b) => a.number - b.number);
+	return {
+		...job,
+		head: observations.findLast(({ head }) => head !== null)?.head ?? null,
+		createdAt: reconcileBoundary(observations.map(({ createdAt }) => createdAt)).value,
+		startedAt: started.value, completedAt: completed.value,
+		execution: reconciledInterval(job.execution, started, completed,
+			identityReason ?? (job.conclusion !== "skipped" && (started.conflict || completed.conflict) ? timingConflict : reason),
+			{ starts: [attemptStart] }),
+		queue: reconciledInterval(job.queue, queued, started, reason, { earliestEnd: attemptStart }),
+		steps,
+	};
+};
+
+const reconcileAttemptTiming = (observations, selected) => {
+	const { run, status, conclusion } = selected;
+	const created = reconcileBoundary(observations.map(({ timing }) => timing.runQueue.startedAt));
+	const started = reconcileBoundary(observations.filter(timingStarted).map(({ timing }) => timing.runQueue.completedAt));
+	const byId = groupsBy(observations.flatMap(({ timing }) => timing.jobs), ({ id }) => id);
+	const jobs = [...byId].sort(([a], [b]) => a - b).flatMap(([id, rows]) => {
+		const fallback = selected.timing.jobs.filter((job) => job.id === id);
+		if (fallback.some(({ execution }) => jobIdentityReasons.includes(execution.reason))) return fallback;
+		const attributable = rows.filter(({ execution }) => !jobIdentityReasons.includes(execution.reason));
+		// An unfinished job absent from the final inventory cannot block attempt completion.
+		if (!attributable.length || (selected.complete && !fallback.length && !attributable.some(terminal))) return fallback;
+		return [reconcileJobTiming(attributable, started.latest)];
+	});
+	const runQueue = runQueueTiming({
+		run_attempt: run.attempt, head_sha: run.head, status, conclusion,
+		created_at: created.value, run_started_at: started.value,
+	}, jobs);
+	const queueConflict = started.conflict || created.conflict;
+	return {
+		timing: { jobs, runQueue: run.attempt === 1 && queueConflict
+			? { ...runQueue, elapsedMs: null, reason: timingConflict } : runQueue },
+		elapsedStartedAt: run.attempt === 1 ? created.value : started.value,
+		elapsedConflict: queueConflict || jobs.some(({ execution }) => execution.reason === timingConflict),
+	};
 };
 
 const summarizeCiTimings = (events) => {
@@ -387,16 +499,19 @@ const summarizeCiTimings = (events) => {
 		const timed = candidates.filter(({ timing }) => timing);
 		const recent = timed.at(-1) ?? candidates.at(-1);
 		const { eventId, timing: _timing, complete, ...details } = recent;
-		const timing = completed.length && new Set(timed.map(({ timing }) => digest(timing))).size > 1
-			? null : recent.timing;
+		const allTimed = observations.filter((observation) => observation !== recent && observation.timing);
+		// Keep final status and completion provenance, but reconcile all attributed boundaries.
+		const reconciled = recent.timing && allTimed.length ? reconcileAttemptTiming([...allTimed, recent], recent) : null;
+		const timing = reconciled?.timing ?? recent.timing;
+		if (reconciled) details.elapsedStartedAt = reconciled.elapsedStartedAt;
 		let elapsed = {};
 		if (completed.length && timed.length) {
-			const suppliers = timing ? attemptCompletionSuppliers(timing) : [];
+			const suppliers = reconciled?.elapsedConflict ? [] : attemptCompletionSuppliers(timing);
 			const last = suppliers.length ? Math.max(...suppliers.map(({ end }) => end)) : null;
 			const measured = interval({
 				scope: details.elapsedScope, source: "github-job.completed_at",
 				startedAt: details.elapsedStartedAt, completedAt: last === null ? null : new Date(last).toISOString(),
-			}, !timing ? "conflicting-attempt-timing" : last === null ? "job-completion-unobserved" : null);
+			}, reconciled?.elapsedConflict ? timingConflict : last === null ? "job-completion-unobserved" : null);
 			elapsed = {
 				elapsedMs: measured.elapsedMs,
 				elapsedCompletedAt: measured.completedAt,
@@ -417,7 +532,7 @@ const summarizeCiTimings = (events) => {
 			eventIds: observations.map(({ eventId }) => eventId),
 			elapsedEventId: completed.length ? eventId : null,
 			runQueue: timing?.runQueue ?? null, jobs: timing?.jobs ?? [],
-			reason: timing ? null : timed.length ? "conflicting-attempt-timing" : "legacy-timing-unrecorded",
+			reason: reconciled?.elapsedConflict ? timingConflict : timing ? null : "legacy-timing-unrecorded",
 		};
 	}).sort((a, b) => a.issue - b.issue || a.run.id - b.run.id || a.run.attempt - b.run.attempt);
 };
