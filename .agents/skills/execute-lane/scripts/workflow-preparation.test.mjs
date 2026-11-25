@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -27,7 +27,7 @@ const vitestModules = fileURLToPath(
 	new URL('../../../../node_modules', import.meta.url),
 );
 
-function vitestRedFixture(t, scenario = 'assertion') {
+function vitestRedFixture(t, scenario = 'assertion', modulesKind = 'directory-symlink') {
 	const value = fixture(t);
 	const { input } = value;
 	const testFile = 'packages/fixture/regression.test.mjs';
@@ -71,6 +71,13 @@ function vitestRedFixture(t, scenario = 'assertion') {
 		[
 			"import { test, expect, describe, beforeEach, afterEach, beforeAll, afterAll, aroundEach, onTestFinished } from 'vitest';",
 			"import { value } from '../../source.mjs';",
+			...(scenario === 'threads'
+				? [
+						"import { mkdirSync, writeFileSync } from 'node:fs';",
+						"mkdirSync('.omo', { recursive: true });",
+						"writeFileSync('.omo/worker-ran', 'ran');",
+					]
+				: []),
 			...(scenario === 'module' ? ["import './missing.mjs';"] : []),
 			...(scenario === 'file-spoof'
 				? ["import { mkdirSync, writeFileSync } from 'node:fs';"]
@@ -166,7 +173,7 @@ function vitestRedFixture(t, scenario = 'assertion') {
 	git(value.root, 'commit', '-qm', 'Vitest correction');
 	const head = git(value.root, 'rev-parse', 'HEAD');
 	git(input.checkout, 'checkout', '--detach', '-q', head);
-	symlinkSync(vitestModules, join(input.checkout, 'node_modules'), 'dir');
+	installVitestFixture(input.checkout, modulesKind);
 	input.head_sha = head;
 	input.implementation = {
 		mode: 'fix-back',
@@ -271,7 +278,7 @@ function vitestRedFixture(t, scenario = 'assertion') {
 	);
 	const checkout = join(value.root, 'reproduction');
 	git(value.root, 'worktree', 'add', '--quiet', '--detach', checkout, previous);
-	symlinkSync(vitestModules, join(checkout, 'node_modules'), 'dir');
+	installVitestFixture(checkout, modulesKind);
 	const capture = {
 		version: 1,
 		stage: 'fix-back-red',
@@ -308,7 +315,19 @@ function vitestRedFixture(t, scenario = 'assertion') {
 		capture.failure.line =
 			source.split('\n').findIndex((line) => line.startsWith('aroundEach')) + 1;
 	const run = () => cli(value, 'fix-back-red', capture);
-	const green = () => {
+	const captureGreen = () => {
+		return cli(value, 'fix-back-green', { ...capture, stage: 'fix-back-green',
+			checkout: input.checkout, artifact_root: input.artifact_root });
+	};
+	const green = ({ reportOnly = false } = {}) => {
+		if (!reportOnly) {
+			const result = captureGreen();
+			assert.equal(result.status, 0, result.stderr);
+			input.evidence = [{ command, receipt: JSON.parse(result.stdout).receipt }];
+			return;
+		}
+		// An actual legacy-style report without a collector receipt is the
+		// preceding-head witness; keep this setup runnable without the new CLI.
 		const { NODE_TEST_CONTEXT: _context, ...environment } = process.env;
 		const result = spawnSync(argv[0], argv.slice(1), {
 			cwd: input.checkout,
@@ -362,7 +381,7 @@ function vitestRedFixture(t, scenario = 'assertion') {
 			bytes: bytes.length,
 		};
 	};
-	return { ...value, capture, run, attach, green };
+	return { ...value, capture, run, attach, green, captureGreen };
 }
 
 test('#4232 Vitest body assertion: real RED and GREEN -> common authenticated evidence', (t) => {
@@ -386,6 +405,33 @@ test('#4232 Vitest body assertion: real RED and GREEN -> common authenticated ev
 			prepared.common.readable_index,
 		);
 	}
+});
+
+test('#4232 Vitest review: GREEN without captured completion -> rejected', (t) => {
+	const value = vitestRedFixture(t);
+	value.attach();
+	value.green({ reportOnly: true });
+
+	assert.throws(
+		() => prepareReviewInput(value.input),
+		(error) => error.kind === 'input-preparation' &&
+			error.fix_back_eligible === false && /missing captured completion/u.test(error.message),
+	);
+});
+
+test('#4232 Vitest RED: threads pool -> rejected before the worker runs', (t) => {
+	const value = vitestRedFixture(t, 'threads');
+	const result = value.run();
+
+	assert.equal(result.status, 1);
+	const block = JSON.parse(result.stderr);
+	assert.equal(block.kind, 'input-preparation');
+	assert.equal(block.fix_back_eligible, false);
+	assert.match(block.error, /missing private reporter completion/u);
+	assert.match(readFileSync(join(value.capture.artifact_root, 'stderr'), 'utf8'),
+		/requires the isolated packages forks pool/u);
+	assert.equal(existsSync(join(value.capture.checkout, '.omo/worker-ran')), false);
+	assert.equal(existsSync(join(value.capture.artifact_root, 'receipt.json')), false);
 });
 
 for (const scenario of [
@@ -447,15 +493,46 @@ for (const scenario of ['green-skip', 'green-todo', 'green-other']) {
 	test(`#4232 Vitest GREEN: real ${scenario} -> rejected despite exit zero`, (t) => {
 		const value = vitestRedFixture(t, scenario);
 		value.attach();
-		value.green();
-
-		assert.throws(
-			() => prepareReviewInput(value.input),
-			(error) =>
-				error.kind === 'input-preparation' && error.fix_back_eligible === false,
-		);
+		const result = value.captureGreen();
+		assert.equal(result.status, 1);
+		const block = JSON.parse(result.stderr);
+		assert.equal(block.kind, 'input-preparation');
+		assert.equal(block.fix_back_eligible, false);
+		assert.match(block.error, /Vitest proof: module, setup or suite hook failure/u);
+		assert.equal(existsSync(join(value.input.artifact_root, 'vitest-green.json')), false);
 	});
 }
+
+test('#4232 Vitest review: two matching channels from a different run -> rejected', (t) => {
+	const value = vitestRedFixture(t);
+	value.attach();
+	value.green();
+	const root = value.input.artifact_root;
+	const first = JSON.parse(readFileSync(join(root, 'vitest-green.json'), 'utf8'));
+	const stale = join(root, 'earlier-run');
+	mkdirSync(stale);
+	for (const name of ['fix-back-vitest.json', 'fix-back-vitest-green-receipt.json']) {
+		renameSync(join(value.input.checkout, '.omo', name), join(stale, name));
+	}
+	for (const name of ['vitest-green.json', first.stdout.path, first.stderr.path,
+		first.test_results.path, first.completion.path]) {
+		renameSync(join(root, name), join(stale, name));
+	}
+	value.green();
+	const second = JSON.parse(readFileSync(join(root, 'vitest-green.json'), 'utf8'));
+	assert.notEqual(first.run_id, second.run_id);
+	assert.equal(prepareReviewInput(value.input).status, 'prepared');
+	const prefix = (ref) => ({ ...ref, path: `earlier-run/${ref.path}` });
+	value.input.evidence[0].receipt = value.store('stale-green.json', {
+		...first, stdout: prefix(first.stdout), stderr: prefix(first.stderr),
+		test_results: second.test_results, completion: second.completion,
+	});
+	assert.throws(
+		() => prepareReviewInput(value.input),
+		(error) => error.kind === 'input-preparation' && error.fix_back_eligible === false &&
+			/belongs to a different run/u.test(error.message),
+	);
+});
 
 test('#4232 Vitest preparation: authenticated reporter tampering and missing GREEN -> fail closed', (t) => {
 	const value = vitestRedFixture(t);
@@ -537,19 +614,50 @@ test('#4232 Vitest preparation: authenticated reporter tampering and missing GRE
 	}
 });
 
-test('#4232 Vitest capture: substituted checkout entrypoint -> rejected before spawn', (t) => {
-	const value = vitestRedFixture(t);
-	unlinkSync(join(value.capture.checkout, 'node_modules'));
-	mkdirSync(join(value.capture.checkout, 'node_modules/vitest'), {
-		recursive: true,
+function installVitestFixture(checkout, kind) {
+	const modules = join(checkout, 'node_modules');
+	if (kind === 'owned-directory') {
+		mkdirSync(modules);
+		symlinkSync(join(vitestModules, 'vitest'), join(modules, 'vitest'), 'dir');
+	} else {
+		symlinkSync(vitestModules, modules, 'dir');
+	}
+}
+
+function replaceVitestFixture(checkout, kind, entrypoint) {
+	const modules = join(checkout, 'node_modules');
+	const shared = realpathSync(vitestModules);
+	const expectedTarget = realpathSync(join(shared, 'vitest', 'vitest.mjs'));
+	const sharedSnapshot = () => ({
+		entries: readdirSync(shared).sort(),
+		entrypoint: readFileSync(expectedTarget),
+		resolvedEntrypoint: realpathSync(join(shared, 'vitest', 'vitest.mjs')),
 	});
+	const before = sharedSnapshot();
+	const initial = lstatSync(modules);
+	assert.equal(initial.isDirectory(), kind === 'owned-directory');
+	assert.equal(initial.isSymbolicLink(), kind === 'directory-symlink');
+	assert.equal(realpathSync(join(modules, 'vitest', 'vitest.mjs')), expectedTarget);
+	if (initial.isSymbolicLink()) {
+		assert.equal(realpathSync(modules), shared);
+		unlinkSync(modules);
+	} else {
+		assert.equal(realpathSync(modules), join(realpathSync(checkout), 'node_modules'));
+		rmSync(modules, { recursive: true });
+	}
+	mkdirSync(join(modules, 'vitest'), { recursive: true });
+	writeFileSync(join(modules, 'vitest', 'vitest.mjs'), entrypoint);
+	return () => assert.deepEqual(sharedSnapshot(), before);
+}
+
+for (const kind of ['owned-directory', 'directory-symlink']) {
+test(`#4232 Vitest capture: substituted ${kind} checkout entrypoint -> rejected before spawn`, (t) => {
+	const value = vitestRedFixture(t, 'assertion', kind);
 	const marker = join(value.capture.checkout, 'node_modules/entrypoint-ran');
-	writeFileSync(
-		join(value.capture.checkout, 'node_modules/vitest/vitest.mjs'),
+	const assertSharedUnchanged = replaceVitestFixture(value.capture.checkout, kind,
 		`import { writeFileSync } from 'node:fs';\nwriteFileSync(${
 			JSON.stringify(marker)
-		}, 'ran');\n`,
-	);
+		}, 'ran');\n`);
 
 	const result = value.run();
 
@@ -570,20 +678,15 @@ test('#4232 Vitest capture: substituted checkout entrypoint -> rejected before s
 		git(value.capture.checkout, 'diff', '--cached', '--name-only'),
 		'',
 	);
+	assertSharedUnchanged();
 });
 
-test('#4232 Vitest review: substituted corrected checkout entrypoint -> typed block', (t) => {
-	const value = vitestRedFixture(t);
+test(`#4232 Vitest review: substituted corrected ${kind} checkout entrypoint -> typed block`, (t) => {
+	const value = vitestRedFixture(t, 'assertion', kind);
 	value.attach();
 	value.green();
-	unlinkSync(join(value.input.checkout, 'node_modules'));
-	mkdirSync(join(value.input.checkout, 'node_modules/vitest'), {
-		recursive: true,
-	});
-	writeFileSync(
-		join(value.input.checkout, 'node_modules/vitest/vitest.mjs'),
-		'// inert unapproved entrypoint\n',
-	);
+	assert.equal(prepareReviewInput(value.input).status, 'prepared');
+	const assertSharedUnchanged = replaceVitestFixture(value.input.checkout, kind, '// inert unapproved entrypoint\n');
 
 	assert.throws(
 		() => prepareReviewInput(value.input),
@@ -592,7 +695,9 @@ test('#4232 Vitest review: substituted corrected checkout entrypoint -> typed bl
 			error.fix_back_eligible === false &&
 			/substituted executable or runner entrypoint/u.test(error.message),
 	);
+	assertSharedUnchanged();
 });
+}
 
 test('#4232 Vitest argv: runner, reporter and behavior substitution -> no command executed', (t) => {
 	const value = vitestRedFixture(t);

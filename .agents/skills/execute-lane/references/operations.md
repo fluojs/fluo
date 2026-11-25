@@ -177,10 +177,12 @@ Wrong: trust the root's valid installation while a checkout resolves another
 entrypoint. Unsupported regressions stop in preparation;
 they do not require a duplicate implementation in another test runner.
 
-For Vitest, capture and GREEN retain the approved reporter's exclusive output
-as `test_results:{path,sha256,bytes}` beside each receipt. Archive an earlier
-ignored `.omo/fix-back-vitest.json` before a separate run; a pre-existing
-output is rejected rather than overwritten. Both reports must authenticate
+For Vitest, use `workflow-preparation.mjs fix-back-green <input.json>` on the
+corrected review checkout and pass its returned receipt reference as the
+matching focused evidence. Both captures retain the approved reporter's output
+as `test_results:{path,sha256,bytes}`. Use a fresh corrected checkout or archive
+the previous ignored capture files before a separate run; capture never
+overwrites them. Both reports must authenticate
 the reporter implementation and prove the selected test ran exactly once.
 Only one RED body assertion at the first valid source frame is accepted;
 setup/module/suite/hook/unhandled/runtime errors, unrelated/multiple failures,
@@ -192,11 +194,13 @@ and pass-only receipts are not execution proof. Existing binding, complete
 patch, raw-stream and final-freshness checks still apply to every axis.
 
 Reserve runner fd 3 as a separate collector pipe for both RED and GREEN
-(`stdio:["ignore","pipe","pipe","pipe"]`). The reporter writes the same bytes
-there only after its exclusive output-file write succeeds. Capture compares
-file and pipe bytes; retain the private pipe output as `test_results` and keep
-ordinary stdout/stderr separately. A worker's lookalike file cannot replace
-this completion channel. See review-head for the exact collection contract.
+(`stdio:["ignore","pipe","pipe","pipe"]`). The reporter includes the collector's
+per-run ID and writes the same bytes there only after its exclusive output-file
+write succeeds. GREEN retains both channels and the exact receipt; admission
+rechecks them against the independently retained capture in the corrected
+checkout. Keep stdout/stderr separately. A worker's lookalike file cannot
+replace the completion channel. See review-head for the exact collection
+contract.
 
 New `preflight` inputs require complete `caller_searches` at the pinned base;
 the preparer authenticates repository-wide fixed-argv Git results, including

@@ -150,22 +150,26 @@ test/fixture patch, body assertion identity/first source location, and real
 same-command GREEN can be captured. Do not rewrite an unsupported regression
 in a different runner to manufacture RED.
 
-Vitest writes `.omo/fix-back-vitest.json` exclusively from its approved
-reporter; the output must not already exist. Retain that report as an
-authenticated `test_results` artifact in each RED/GREEN receipt. Copy it
-beside the receipt and retain its full bytes/hash; printing similar JSON or
-claiming exit 0 is insufficient. Remove or archive a previous ignored output
-before a separate GREEN capture. Capture rejects a pre-existing output and
-never overwrites it.
+For Vitest GREEN, run `workflow-preparation.mjs fix-back-green <input.json>`.
+Use the same input keys as `fix-back-red`, with `stage:"fix-back-green"`,
+`checkout` set to the clean corrected-head review checkout, and
+`artifact_root` set to the existing review evidence directory. Supply the
+same command, argv, test-only patch and failure identity planned for RED.
+Use the returned `receipt` reference in matching focused evidence.
 
 The collector must reserve a separate pipe at runner fd 3
 (`stdio:["ignore","pipe","pipe","pipe"]`). After its exclusive file write,
 the approved reporter writes identical complete report bytes to that pipe.
-Capture requires both to match and keeps the pipe bytes as `test_results`.
-GREEN collectors use the same channel and equality check. Worker stdout or a
+Both captures require the pipe and `.omo/fix-back-vitest.json` to match,
+including the unique collector run ID. GREEN retains separate `test_results`
+and `completion` references and preserves an exact receipt copy at
+`.omo/fix-back-vitest-green-receipt.json` in the corrected checkout. Admission
+rechecks both channels, their run ID, the retained report and receipt, and
+complete stdout/stderr references. Keep both ignored checkout files through
+review preparation; use a fresh checkout or archive prior capture files
+before a separate run. Capture never overwrites them. Worker stdout or a
 worker-created report file cannot prove reporter completion: failure of the
 exclusive write leaves the private channel empty and capture rejects it.
-Retain complete stdout/stderr separately; they are not this private channel.
 The reporter admits only the isolated `packages` forks pool before workers
 start. Thread/custom pools are unsupported because worker threads can share
 the runner's file descriptors.

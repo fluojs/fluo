@@ -210,6 +210,7 @@ export default class FixBackVitestReporter {
 			version: 1,
 			runner: "vitest",
 			reporter_sha256: reporterHash(),
+			run_id: process.env.FLUO_FIX_BACK_VITEST_RUN_ID,
 			complete: true,
 			reason,
 			unhandled: errors(unhandledErrors),
