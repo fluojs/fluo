@@ -251,9 +251,9 @@ const corroboratesRunStart = ({ head, execution, steps, startedAt, completedAt }
 			interval(timing, null, { starts: [run.run_started_at, startedAt], completedAt }).reason === null));
 };
 
-const runQueueTiming = (run, jobs) => {
+const runQueueTiming = (run, jobs, observedInProgress = false) => {
 	const unconfirmedCancellation = run.conclusion === "cancelled" &&
-		(run.status !== "completed" || !jobs.some((job) => corroboratesRunStart(job, run)));
+		(run.status !== "completed" || (!observedInProgress && !jobs.some((job) => corroboratesRunStart(job, run))));
 	return interval({
 		scope: "run-queue", source: "github-run.created_at/run_started_at",
 		startedAt: run.run_attempt === 1 ? run.created_at : null, completedAt: run.run_started_at,
@@ -362,12 +362,12 @@ export const recordCiSnapshot = (root, laneId, issue, run, jobs) => {
 	return recorded;
 };
 
-const attemptCompletionSuppliers = (timing, runCreatedAt) => {
+const attemptCompletionSuppliers = (jobs, runCreatedAt, attemptStart) => {
 	const earliest = Math.max(githubTimestamp(runCreatedAt) ?? -Infinity,
-		githubTimestamp(timing.runQueue.completedAt) ?? -Infinity);
+		githubTimestamp(attemptStart) ?? -Infinity);
 	const suppliers = [];
 	let latestUnverifiedEnd = -Infinity;
-	for (const { id, status, conclusion, startedAt, completedAt, execution } of timing.jobs) {
+	for (const { id, status, conclusion, startedAt, completedAt, execution } of jobs) {
 		if (execution.reason === "job-identity-mismatch" || conclusion === "skipped") continue;
 		const start = githubTimestamp(startedAt);
 		const end = githubTimestamp(completedAt);
@@ -460,6 +460,7 @@ const reconcileAttemptTiming = (observations, selected) => {
 	const { run, status, conclusion } = selected;
 	const created = reconcileBoundary(observations.map(({ timing }) => timing.runQueue.startedAt));
 	const started = reconcileBoundary(observations.filter(timingStarted).map(({ timing }) => timing.runQueue.completedAt));
+	const queueConflict = started.conflict || created.conflict;
 	const byId = groupsBy(observations.flatMap(({ timing }) => timing.jobs), ({ id }) => id);
 	const jobs = [...byId].sort(([a], [b]) => a - b).flatMap(([id, rows]) => {
 		const fallback = selected.timing.jobs.filter((job) => job.id === id);
@@ -469,18 +470,26 @@ const reconcileAttemptTiming = (observations, selected) => {
 		if (!attributable.length || (selected.complete && !fallback.length && !attributable.some(terminal))) return fallback;
 		return [reconcileJobTiming(attributable, started.latest)];
 	});
+	// Only an attributable live job in a same-attempt observation with valid,
+	// undisputed queue boundaries can supply the missing cancellation proof.
+	const observedInProgress = run.attempt === 1 && conclusion === "cancelled" && !queueConflict &&
+		observations.some(({ status, timing }) => status === "in_progress" && timing.runQueue.reason === null &&
+			timing.jobs.some(({ head, status, conclusion, startedAt, completedAt, execution }) =>
+				head === run.head && status === "in_progress" && conclusion === null && completedAt === null &&
+				!jobIdentityReasons.includes(execution.reason) &&
+				githubTimestamp(startedAt) !== null && githubTimestamp(startedAt) >= githubTimestamp(started.value)));
 	const runQueue = runQueueTiming({
 		run_attempt: run.attempt, head_sha: run.head, status, conclusion,
 		created_at: created.value, run_started_at: started.value,
-	}, jobs);
-	const queueConflict = started.conflict || created.conflict;
+	}, jobs, observedInProgress);
 	return {
 		timing: { jobs, runQueue: run.attempt === 1 && queueConflict
 			? { ...runQueue, elapsedMs: null, reason: timingConflict } : runQueue },
+		attemptStartBound: started.latest,
 		elapsedStartedAt: run.attempt === 1 ? created.value : started.value,
 		// A start-only conflict can leave an ordered completion candidate. Let the
 		// supplier check compare that unverified end with independently trusted ends.
-		elapsedConflict: queueConflict || jobs.some(({ completedAt, execution }) =>
+		elapsedConflict: (run.attempt === 1 ? created.conflict : started.conflict) || jobs.some(({ completedAt, execution }) =>
 			completedAt === null && execution.reason === timingConflict),
 	};
 };
@@ -527,7 +536,8 @@ const summarizeCiTimings = (events) => {
 		if (reconciled) details.elapsedStartedAt = reconciled.elapsedStartedAt;
 		let elapsed = {};
 		if (completed.length && timed.length) {
-			const suppliers = reconciled?.elapsedConflict ? [] : attemptCompletionSuppliers(timing, runCreatedAt);
+			const attemptStart = reconciled?.attemptStartBound ?? timing.runQueue.completedAt;
+			const suppliers = reconciled?.elapsedConflict ? [] : attemptCompletionSuppliers(timing.jobs, runCreatedAt, attemptStart);
 			const last = suppliers.length ? Math.max(...suppliers.map(({ end }) => end)) : null;
 			// Original creation bounds retry ordering, but is not a retry queue boundary.
 			const retryBounds = recent.run.attempt === 1 ? {} : {

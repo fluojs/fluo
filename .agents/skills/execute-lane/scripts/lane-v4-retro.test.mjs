@@ -1231,6 +1231,80 @@ test("#4286 initial run queue survives cancellation only with a proven start", (
 	assert.match(readFileSync(saved.markdown, "utf8"), /run-queue: 20000 ms .*2026-10-08T01:00:00Z.*2026-10-08T01:00:20Z/u);
 });
 
+test("#4286 cancelled initial queue retains a corroborated in-progress start", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "cancelled", run_started_at: "2026-10-08T01:00:20Z" };
+	const job = { ...ciJob(1, "cancelled"), head_sha: head, name: "Verify", steps: [] };
+	const progressing = { ...job, status: "in_progress", conclusion: null, completed_at: null };
+	const observed = { ...run, status: "in_progress", conclusion: null };
+	recordCiSnapshot(root, laneId, 1, observed, [progressing]);
+	const final = recordCiSnapshot(root, laneId, 1, run, [job]).at(-1);
+	for (const [offset, priorJob] of [
+		[1, null],
+		[2, { ...progressing, head_sha: "c".repeat(40) }],
+		[3, { ...progressing, started_at: "2026-10-08T01:00:10Z" }],
+		[4, { ...progressing, status: "queued" }],
+	]) {
+		const id = run.id + offset;
+		if (priorJob) {
+			recordCiSnapshot(root, laneId, 1, { ...observed, id }, [{ ...priorJob, run_id: id }]);
+		}
+		recordCiSnapshot(root, laneId, 1, { ...run, id }, [{ ...job, run_id: id }]);
+	}
+	const scope = structuredClone(snapshots);
+	scope[0].obs.pr.ciRuns[0].conclusion = "cancelled";
+
+	const { ciTimings } = retrospectiveEvidence(root, laneId, scope);
+	const [corroborated, ...unproven] = ciTimings;
+
+	assert.equal(corroborated.runQueue.elapsedMs, 20000);
+	assert.deepEqual([corroborated.conclusion, corroborated.runQueue.reason, corroborated.jobs[0].execution.reason],
+		["cancelled", null, "job-cancelled"]);
+	assert.deepEqual(unproven.map(({ runQueue }) => [runQueue.elapsedMs, runQueue.reason]),
+		Array.from({ length: 4 }, () => [null, "run-cancelled"]));
+	const request = retrospectiveRequest(root, laneId, scope);
+	const saved = recordRetrospective(root, request, report(request, final.eventId));
+	assert.deepEqual(JSON.parse(readFileSync(saved.report, "utf8")).ciTimings, ciTimings);
+	assert.match(readFileSync(saved.markdown, "utf8"),
+		/run-queue: 20000 ms .*2026-10-08T01:00:00Z.*2026-10-08T01:00:20Z/u);
+});
+
+test("#4286 conflicting queue starts preserve creation-to-completion elapsed", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "success", run_started_at: "2026-10-08T01:00:25Z" };
+	const job = { ...ciJob(1, "success"), head_sha: head, name: "Verify", steps: [] };
+	const earlier = { ...run, status: "in_progress", conclusion: null, run_started_at: "2026-10-08T01:00:20Z" };
+	recordCiSnapshot(root, laneId, 1, earlier, [job]);
+	const [final] = recordCiSnapshot(root, laneId, 1, run, [job]);
+	for (const [offset, attempt, changes] of [
+		[1, 1, { created_at: "2026-10-08T01:00:01Z", run_started_at: run.run_started_at }],
+		[2, 2, {}],
+		[3, 1, { run_started_at: "2026-10-08T01:04:00Z" }],
+	]) {
+		const id = run.id + offset;
+		const attributed = { ...job, run_id: id, run_attempt: attempt };
+		recordCiSnapshot(root, laneId, 1, { ...earlier, id, run_attempt: attempt, ...changes }, [attributed]);
+		recordCiSnapshot(root, laneId, 1, { ...run, id, run_attempt: attempt }, [attributed]);
+	}
+	const scope = structuredClone(snapshots);
+	scope[0].obs.pr.ciRuns[0].conclusion = "success";
+
+	const { ciTimings } = retrospectiveEvidence(root, laneId, scope);
+	const [initial, creationConflict, retryStartConflict, invalidCompletion] = ciTimings;
+
+	assert.equal(initial.elapsedMs, 180000);
+	assert.deepEqual([initial.elapsedScope, initial.elapsedStartedAt, initial.elapsedCompletedAt, initial.elapsedCompletedJobIds, initial.elapsedReason],
+		["initial-run-including-queue", run.created_at, "2026-10-08T01:03:00.000Z", [31], null]);
+	assert.deepEqual([initial.runQueue.elapsedMs, initial.runQueue.reason], [null, "conflicting-attempt-timing"]);
+	assert.deepEqual([creationConflict, retryStartConflict, invalidCompletion].map(({ elapsedMs, elapsedReason }) =>
+		[elapsedMs, elapsedReason]), [[null, "conflicting-attempt-timing"], [null, "conflicting-attempt-timing"], [null, "job-completion-unobserved"]]);
+	const request = retrospectiveRequest(root, laneId, scope);
+	const saved = recordRetrospective(root, request, report(request, final.eventId));
+	assert.deepEqual(JSON.parse(readFileSync(saved.report, "utf8")).ciTimings, ciTimings);
+	assert.match(readFileSync(saved.markdown, "utf8"),
+		/initial-run-including-queue: 180000 ms .*github-job\.completed_at: 31[^\n]*\n  - run-queue: unknown \(conflicting-attempt-timing\)/u);
+});
+
 test("#4286 fifth fix-back retains preceding boundary conflicts through final snapshots", (t) => {
 	const root = fixture(t);
 	const run = { ...ciRun(), conclusion: "success", run_started_at: "2026-10-08T01:00:20Z" };
