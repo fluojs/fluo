@@ -1066,6 +1066,62 @@ test("#4286 fix-back: cancelled job completion bounds attempt elapsed independen
 	]));
 });
 
+test("#4286 retry elapsed is unknown when an attributable job ends before the attempt", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(2), conclusion: "cancelled", run_started_at: "2026-10-08T01:00:20Z" };
+	const success = { ...ciJob(2, "success"), head_sha: head, name: "Verify", steps: [] };
+	const cancelled = { ...success, id: 42, conclusion: "cancelled",
+		started_at: null, completed_at: "2026-10-08T01:00:10Z" };
+	const snapshot = recordCiSnapshot(root, laneId, 1, run, [success, cancelled]).at(-1);
+
+	const { ciTimings: [timing], events } = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.equal(timing.elapsedMs, null);
+	assert.deepEqual([timing.elapsedCompletedAt, timing.elapsedCompletedJobIds, timing.elapsedReason],
+		[null, [], "job-completion-unobserved"]);
+	assert.equal(timing.conclusion, "cancelled");
+	assert.equal(timing.runQueue.reason, "retry-queue-unobserved");
+	assert.equal(events.find(({ eventId }) => eventId === snapshot.eventId).data.elapsedMs, 160000);
+});
+
+test("#4286 initial run queue survives cancellation only with a proven start", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "cancelled", run_started_at: "2026-10-08T01:00:20Z" };
+	const success = { ...ciJob(1, "success"), head_sha: head, name: "Verify", steps: [] };
+	const cases = [
+		{ run, job: success, reason: null },
+		{ run, job: { ...success, conclusion: "cancelled" }, reason: "run-cancelled" },
+		{ run, job: { ...success, conclusion: "skipped" }, reason: "run-cancelled" },
+		{ run, job: { ...success, head_sha: "c".repeat(40) }, reason: "run-cancelled" },
+		{ run, job: { ...success, started_at: "2026-10-08T01:00:10Z" }, reason: "run-cancelled" },
+		{ run: { ...run, conclusion: "skipped" }, job: success, reason: "run-skipped" },
+		{ run: { ...run, run_started_at: null }, job: success, reason: "missing-boundary" },
+		{ run: { ...run, run_started_at: "not-a-timestamp" }, job: success, reason: "invalid-timestamp" },
+		{ run: { ...run, run_started_at: "2026-10-08T00:59:00Z" }, job: success, reason: "reversed-boundaries" },
+	];
+	const observed = cases.map(({ run, job }, index) => {
+		const id = run.id + index;
+		return recordCiSnapshot(root, laneId, 1, { ...run, id }, [{ ...job, run_id: id }]).at(-1);
+	});
+	const scope = [{ ...snapshots[0], obs: { ...snapshots[0].obs,
+		pr: { ...snapshots[0].obs.pr, ciRuns: [{ ...snapshots[0].obs.pr.ciRuns[0], conclusion: "cancelled" }] } } }];
+
+	const { ciTimings } = retrospectiveEvidence(root, laneId, scope);
+	const [started, cancelledJob] = ciTimings;
+
+	assert.equal(started.runQueue.elapsedMs, 20000);
+	assert.deepEqual([started.conclusion, started.elapsedMs, started.runQueue.startedAt, started.runQueue.completedAt],
+		["cancelled", 180000, run.created_at, run.run_started_at]);
+	assert.deepEqual(ciTimings.map(({ runQueue }) => [runQueue.elapsedMs, runQueue.reason]),
+		cases.map(({ reason }) => [reason === null ? 20000 : null, reason]));
+	assert.deepEqual([cancelledJob.jobs[0].execution.elapsedMs, cancelledJob.jobs[0].execution.reason],
+		[null, "job-cancelled"]);
+	const request = retrospectiveRequest(root, laneId, scope);
+	const saved = recordRetrospective(root, request, report(request, observed[0].eventId));
+	assert.deepEqual(JSON.parse(readFileSync(saved.report, "utf8")).ciTimings, ciTimings);
+	assert.match(readFileSync(saved.markdown, "utf8"), /run-queue: 20000 ms .*2026-10-08T01:00:00Z.*2026-10-08T01:00:20Z/u);
+});
+
 test("#4286 retrospective evidence: legacy elapsed observations do not fabricate a timing breakdown", (t) => {
 	const root = fixture(t);
 	const legacy = recordRetroEvent(root, laneId, 1, "ci", {

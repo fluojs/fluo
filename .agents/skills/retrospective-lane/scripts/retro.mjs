@@ -241,19 +241,23 @@ const attemptTiming = (run, jobs) => {
 		observations.set(digest(job), job);
 		jobsById.set(job.id, observations);
 	}
+	const observedJobs = [...jobsById].sort(([a], [b]) => a - b).flatMap(([id, observations]) =>
+		[...observations.values()].map((job) => jobTiming(run, job,
+			observations.size > 1 ? "conflicting-job-identity"
+				: !Number.isSafeInteger(id) || id <= 0 ? "missing-job-identity"
+				: Object.hasOwn(job, "head_sha") && job.head_sha !== run.head_sha ? "job-identity-mismatch"
+				: null)));
+	const cancellationHasStartEvidence = run.status === "completed" &&
+		observedJobs.some(({ head, execution }) => head === run.head_sha && execution.reason === null);
 	return {
 		runQueue: interval({
 			scope: "run-queue", source: "github-run.created_at/run_started_at",
 			startedAt: run.run_attempt === 1 ? run.created_at : null, completedAt: run.run_started_at,
 		}, run.run_attempt !== 1 ? "retry-queue-unobserved"
-			: ["cancelled", "skipped"].includes(run.conclusion) ? `run-${run.conclusion}`
+			: run.conclusion === "skipped" ? "run-skipped"
+			: run.conclusion === "cancelled" && !cancellationHasStartEvidence ? "run-cancelled"
 			: ["in_progress", "completed"].includes(run.status) ? null : "run-start-unconfirmed"),
-		jobs: [...jobsById].sort(([a], [b]) => a - b).flatMap(([id, observations]) =>
-			[...observations.values()].map((job) => jobTiming(run, job,
-				observations.size > 1 ? "conflicting-job-identity"
-					: !Number.isSafeInteger(id) || id <= 0 ? "missing-job-identity"
-					: Object.hasOwn(job, "head_sha") && job.head_sha !== run.head_sha ? "job-identity-mismatch"
-					: null))),
+		jobs: observedJobs,
 	};
 };
 
@@ -349,11 +353,12 @@ const attemptCompletionSuppliers = (timing) => {
 		const start = githubTimestamp(startedAt);
 		const end = githubTimestamp(completedAt);
 		// A cancelled job can attest to completion without attesting to execution duration.
-		// A missing or reversed end cannot establish ordering against siblings.
-		if (end === null || (start !== null && end < start)) return [];
+		// Missing or contradictory ends cannot establish ordering against siblings.
+		if (end === null || (start !== null && end < start) || (attemptStart !== null && end < attemptStart)) {
+			return [];
+		}
 		if (["conflicting-job-identity", "missing-job-identity"].includes(execution.reason)
 			|| status !== "completed" || typeof conclusion !== "string" || conclusion === "timed_out"
-			|| (attemptStart !== null && end < attemptStart)
 			|| (startedAt != null && (start === null || (attemptStart !== null && start < attemptStart)))) {
 			latestUnverifiedEnd = Math.max(latestUnverifiedEnd, end);
 		} else {
