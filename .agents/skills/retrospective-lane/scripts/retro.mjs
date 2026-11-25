@@ -154,16 +154,18 @@ const githubTimestamp = (value) => {
 	return Number.isFinite(ms) && Number.isFinite(wall) && new Date(wall).toISOString().slice(0, 19) === match[1] ? ms : null;
 };
 
-const interval = ({ scope, source, startedAt = null, completedAt = null }, reason = null, bounds = null) => {
+const interval = ({ scope, source, startedAt = null, completedAt = null }, reason = null, bounds = {}) => {
 	const start = githubTimestamp(startedAt);
 	const end = githubTimestamp(completedAt);
-	const earliest = githubTimestamp(bounds?.startedAt);
-	const latest = githubTimestamp(bounds?.completedAt);
+	const latest = githubTimestamp(bounds.completedAt);
 	const unknown = reason ?? (
 		startedAt === null || completedAt === null ? "missing-boundary"
 			: start === null || end === null ? "invalid-timestamp"
 			: end < start ? "reversed-boundaries"
-			: (earliest !== null && start < earliest) || (latest !== null && end > latest)
+			: bounds.starts?.some((boundary) => {
+				const earliest = githubTimestamp(boundary);
+				return earliest !== null && start < earliest;
+			}) || (latest !== null && end > latest)
 			? "contradictory-boundaries" : null
 	);
 	return { scope, source, startedAt, completedAt, elapsedMs: unknown === null ? end - start : null, reason: unknown };
@@ -201,7 +203,7 @@ const jobTiming = (run, job, identityReason) => {
 	const completedAt = job.completed_at ?? null;
 	const execution = interval({
 		scope: "job-execution", source: "github-job.started_at/completed_at", startedAt, completedAt,
-	}, identityReason ?? executionBlocker(job, "job"), { startedAt: run.run_started_at });
+	}, identityReason ?? executionBlocker(job, "job"), { starts: [run.run_started_at] });
 	const queue = interval({
 		scope: "job-queue", source: "github-job.queued_at/started_at",
 		startedAt: job.queued_at, completedAt: startedAt,
@@ -225,7 +227,7 @@ const jobTiming = (run, job, identityReason) => {
 			timing: interval({
 				scope, source: "github-step.started_at/completed_at",
 				startedAt: step.started_at, completedAt: step.completed_at,
-			}, reason, { startedAt: startedAt ?? run.run_started_at, completedAt }),
+			}, reason, { starts: [run.run_started_at, startedAt], completedAt }),
 		};
 	});
 	return { id, name, status, conclusion, head: job.head_sha ?? null, createdAt: job.created_at ?? null,
@@ -359,8 +361,31 @@ const summarizeCiTimings = (events) => {
 		const { eventId, timing: _timing, ...details } = recent;
 		const timing = completed.length && new Set(timed.map(({ timing }) => digest(timing))).size > 1
 			? null : recent.timing;
+		let elapsed = {};
+		if (completed.length && timed.length) {
+			const attemptStart = githubTimestamp(timing?.runQueue.completedAt);
+			const suppliers = (timing?.jobs ?? []).flatMap(({ id, completedAt, execution }) => {
+				const end = githubTimestamp(completedAt);
+				// A directly observed completion can supply the endpoint even when job start is missing.
+				return end !== null && (attemptStart === null || end >= attemptStart)
+					&& (execution.reason === null || execution.reason === "missing-boundary")
+					? [{ id, end }] : [];
+			});
+			const last = suppliers.length ? Math.max(...suppliers.map(({ end }) => end)) : null;
+			const measured = interval({
+				scope: details.elapsedScope, source: "github-job.completed_at",
+				startedAt: details.elapsedStartedAt, completedAt: last === null ? null : new Date(last).toISOString(),
+			}, !timing ? "conflicting-attempt-timing" : last === null ? "job-completion-unobserved" : null);
+			elapsed = {
+				elapsedMs: measured.elapsedMs,
+				elapsedCompletedAt: measured.completedAt,
+				elapsedCompletedJobIds: suppliers.filter(({ end }) => end === last).map(({ id }) => id),
+				elapsedReason: measured.reason,
+			};
+		}
 		return {
 			...details,
+			...elapsed,
 			eventIds: observations.map(({ eventId }) => eventId),
 			elapsedEventId: details.elapsedScope === null ? null : eventId,
 			runQueue: timing?.runQueue ?? null, jobs: timing?.jobs ?? [],
@@ -688,11 +713,11 @@ export const recordRetrospective = (root, request, report) => {
 		"",
 		"## GitHub Actions timing",
 		"Intervals can overlap and are not summed. Runner initialization and pure shared Linux task execution are not isolated.",
-		...stored.ciTimings.flatMap(({ issue, run, eventIds, elapsedEventId, status, conclusion, elapsedMs, elapsedScope, elapsedStartedAt, elapsedCompletedAt, reason, runQueue, jobs }) => [
+		...stored.ciTimings.flatMap(({ issue, run, eventIds, elapsedEventId, status, conclusion, elapsedMs, elapsedScope, elapsedStartedAt, elapsedCompletedAt, elapsedCompletedJobIds, elapsedReason, reason, runQueue, jobs }) => [
 			"",
 			`- #${issue}, run ${run.id}, attempt ${run.attempt}, head ${run.head}, workflow ${run.workflow} (${status}/${conclusion})`,
 			elapsedScope === null ? "  - Run elapsed: unknown (run not completed)"
-				: `  - ${elapsedScope}: ${elapsedMs === null ? "unknown" : `${elapsedMs} ms`} [${elapsedStartedAt ?? "unknown"} → ${elapsedCompletedAt ?? "unknown"}]; evidence: ${elapsedEventId}`,
+				: `  - ${elapsedScope}: ${elapsedMs === null ? `unknown${elapsedReason ? ` (${elapsedReason})` : ""}` : `${elapsedMs} ms`} [${elapsedStartedAt ?? "unknown"} → ${elapsedCompletedAt ?? "unknown"}]${elapsedCompletedJobIds?.length ? `; github-job.completed_at: ${elapsedCompletedJobIds.join(", ")}` : ""}; evidence: ${elapsedEventId}`,
 			`  - ${runQueue ? describeInterval(runQueue) : `Timing breakdown: unknown (${reason})`}`,
 			`  - Timing evidence: ${eventIds.join(", ")}`,
 			...jobs.flatMap((job) => [

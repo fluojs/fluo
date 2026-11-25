@@ -950,6 +950,50 @@ console.log(JSON.stringify(args[0]==='api'?api:args[0]==='pr'?pr:{state:'CLOSED'
 	assert.deepEqual(readFileSync(path), original);
 });
 
+test("#4286 retrospective evidence uses attempt bounds and attributable completion suppliers", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), run_started_at: "2026-10-08T01:01:15Z" };
+	const job = { ...ciJob(1, "success"), head_sha: head, name: "Verify task (tooling-1) / tooling-1",
+		completed_at: "2026-10-08T01:02:30Z", steps: [{
+			number: 1, name: "Restore verification image", status: "completed", conclusion: "success",
+			started_at: "2026-10-08T01:01:02Z", completed_at: "2026-10-08T01:01:12Z",
+		}, {
+			number: 2, name: "Load verification image", status: "completed", conclusion: "success",
+			started_at: "2026-10-08T01:01:20Z", completed_at: "2026-10-08T01:01:30Z",
+		}] };
+	const supplier = { ...ciJob(1, "success"), id: 42, head_sha: head,
+		started_at: "2026-10-08T01:01:40Z" };
+	const foreign = { ...supplier, id: 43, head_sha: "c".repeat(40), completed_at: "2026-10-08T01:04:00Z" };
+	const [initial] = recordCiSnapshot(root, laneId, 1, run, [job, supplier, foreign]);
+	const [retry] = recordCiSnapshot(root, laneId, 1, { ...run, run_attempt: 2 }, [
+		{ ...foreign, run_attempt: 2 },
+	]);
+
+	const { ciTimings, events } = retrospectiveEvidence(root, laneId, snapshots);
+	const legacy = [initial, retry].map(({ eventId }) => events.find((event) => event.eventId === eventId).data);
+	const [first, second] = ciTimings;
+
+	assert.deepEqual({
+		stepTimings: first.jobs.find(({ id }) => id === 31).steps.map(({ timing }) => [timing.elapsedMs, timing.reason]),
+		foreignReason: first.jobs.find(({ id }) => id === 43).execution.reason,
+		projected: [first, second].map((timing) => [
+			timing.elapsedMs, timing.elapsedCompletedAt, timing.elapsedCompletedJobIds, timing.elapsedReason, timing.elapsedEventId,
+		]),
+		legacy: legacy.map(({ elapsedMs, elapsedScope, completedAt }) => [elapsedMs, elapsedScope, completedAt]),
+	}, {
+		stepTimings: [[null, "contradictory-boundaries"], [10000, null]],
+		foreignReason: "job-identity-mismatch",
+		projected: [
+			[180000, "2026-10-08T01:03:00.000Z", [42], null, initial.eventId],
+			[null, null, [], "job-completion-unobserved", retry.eventId],
+		],
+		legacy: [
+			[240000, "initial-run-including-queue", "2026-10-08T01:04:00.000Z"],
+			[165000, "retry-attempt-excluding-queue", "2026-10-08T01:04:00.000Z"],
+		],
+	});
+});
+
 test("#4286 retrospective evidence: legacy elapsed observations do not fabricate a timing breakdown", (t) => {
 	const root = fixture(t);
 	const legacy = recordRetroEvent(root, laneId, 1, "ci", {
