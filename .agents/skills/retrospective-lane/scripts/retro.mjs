@@ -480,6 +480,20 @@ const reconcileAttemptTiming = (observations, selected) => {
 	};
 };
 
+const projectJobTimings = (jobs, runCreatedAt) => {
+	if (runCreatedAt === undefined) return jobs;
+	const bounds = { starts: [runCreatedAt] };
+	const bound = (timing) => timing.reason === null ? interval(timing, null, bounds) : timing;
+	// Bound each interval independently. The job start is also the queue end,
+	// but an invalid job execution does not invalidate a later completed step.
+	return jobs.map((job) => ({
+		...job,
+		execution: bound(job.execution),
+		queue: bound(job.queue),
+		steps: job.steps.map((step) => ({ ...step, timing: bound(step.timing) })),
+	}));
+};
+
 const summarizeCiTimings = (events) => {
 	const attempts = new Map();
 	for (const { kind, issue, eventId, data } of events) {
@@ -503,6 +517,7 @@ const summarizeCiTimings = (events) => {
 		// Keep final status and completion provenance, but reconcile all attributed boundaries.
 		const reconciled = recent.timing && allTimed.length ? reconcileAttemptTiming([...allTimed, recent], recent) : null;
 		const timing = reconciled?.timing ?? recent.timing;
+		const creationObservations = observations.map(({ runCreatedAt }) => runCreatedAt);
 		if (reconciled) details.elapsedStartedAt = reconciled.elapsedStartedAt;
 		let elapsed = {};
 		if (completed.length && timed.length) {
@@ -510,7 +525,7 @@ const summarizeCiTimings = (events) => {
 			const last = suppliers.length ? Math.max(...suppliers.map(({ end }) => end)) : null;
 			// Original creation bounds retry ordering, but is not a retry queue boundary.
 			const retryBounds = recent.run.attempt === 1 ? {} : {
-				starts: observations.map(({ runCreatedAt }) => runCreatedAt),
+				starts: creationObservations,
 			};
 			const measured = interval({
 				scope: details.elapsedScope, source: "github-job.completed_at",
@@ -535,7 +550,8 @@ const summarizeCiTimings = (events) => {
 			...elapsed,
 			eventIds: observations.map(({ eventId }) => eventId),
 			elapsedEventId: completed.length ? eventId : null,
-			runQueue: timing?.runQueue ?? null, jobs: timing?.jobs ?? [],
+			runQueue: timing?.runQueue ?? null,
+			jobs: projectJobTimings(timing?.jobs ?? [], reconcileBoundary(creationObservations).latest),
 			reason: reconciled?.elapsedConflict ? timingConflict : timing ? null : "legacy-timing-unrecorded",
 		};
 	}).sort((a, b) => a.issue - b.issue || a.run.id - b.run.id || a.run.attempt - b.run.attempt);

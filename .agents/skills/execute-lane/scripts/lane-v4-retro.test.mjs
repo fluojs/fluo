@@ -1115,6 +1115,49 @@ test("#4286 retry elapsed is unknown when the attempt starts before the original
 	}
 });
 
+test("#4286 run creation bounds projected job and step timing without discarding valid intervals", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(2), id: 56, conclusion: "success", run_started_at: "2026-10-08T00:59:00Z" };
+	const step = {
+		number: 1, name: "Require every planned capability and job result",
+		status: "completed", conclusion: "success",
+		started_at: "2026-10-08T00:59:20Z", completed_at: "2026-10-08T00:59:30Z",
+	};
+	const early = {
+		...ciJob(2, "success"), id: 31, head_sha: head, name: "Verify",
+		queued_at: "2026-10-08T00:59:05Z", started_at: "2026-10-08T00:59:10Z",
+		completed_at: "2026-10-08T00:59:50Z", steps: [step],
+	};
+	const throughCreation = { ...early, id: 32, completed_at: "2026-10-08T01:00:20Z",
+		steps: [{ ...step, started_at: run.created_at, completed_at: "2026-10-08T01:00:10Z" }] };
+	const validExecution = { ...throughCreation, id: 33, started_at: run.created_at };
+	const validQueue = { ...validExecution, id: 34, queued_at: run.created_at, started_at: "2026-10-08T01:00:02Z" };
+	const [recorded] = recordCiSnapshot(root, laneId, 1, run, [early, throughCreation, validExecution, validQueue]
+		.map((job) => ({ ...job, run_id: run.id })));
+	// A prior poll can supply creation, but neither the job nor the attempt start can substitute for it.
+	recordCiSnapshot(root, laneId, 1, { ...run, id: 57, status: "in_progress" }, [{ ...early, run_id: 57 }]);
+	recordCiSnapshot(root, laneId, 1, { ...run, id: 57, created_at: null }, [{ ...early, run_id: 57 }]);
+	recordCiSnapshot(root, laneId, 1, { ...run, id: 58, created_at: null }, [{ ...early, run_id: 58 }]);
+
+	const { ciTimings: [single, reconciled, missingCreation], events } = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.equal(single.jobs[0].execution.elapsedMs, null);
+	const measurement = ({ elapsedMs, reason }) => [elapsedMs, reason];
+	const intervals = ({ execution, queue, steps }) => [execution, queue, steps[0].timing].map(measurement);
+	const unknown = [null, "contradictory-boundaries"];
+	assert.deepEqual(single.jobs.map(intervals), [
+		[unknown, unknown, unknown],
+		[unknown, unknown, [10000, null]],
+		[[20000, null], unknown, [10000, null]],
+		[[18000, null], [2000, null], [null, "contradictory-boundaries"]],
+	]);
+	assert.deepEqual(intervals(reconciled.jobs[0]), [unknown, unknown, unknown]);
+	assert.deepEqual(intervals(missingCreation.jobs[0]), [[40000, null], [5000, null], [10000, null]]);
+	const captured = events.find(({ eventId }) => eventId === recorded.eventId).data;
+	assert.deepEqual(intervals(captured.timing.jobs[0]), [[40000, null], [5000, null], [10000, null]]);
+	assert.deepEqual([captured.elapsedMs, captured.elapsedScope], [80000, "retry-attempt-excluding-queue"]);
+});
+
 test("#4286 initial run queue survives cancellation only with a proven start", (t) => {
 	const root = fixture(t);
 	const run = { ...ciRun(), conclusion: "cancelled", run_started_at: "2026-10-08T01:00:20Z" };
