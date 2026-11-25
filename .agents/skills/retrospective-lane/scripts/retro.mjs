@@ -384,7 +384,8 @@ const attemptCompletionSuppliers = (timing, runCreatedAt) => {
 			suppliers.push({ id, end });
 		}
 	}
-	return suppliers.some(({ end }) => end > latestUnverifiedEnd) ? suppliers : [];
+	// A trusted supplier at the same instant still establishes the latest boundary.
+	return suppliers.some(({ end }) => end >= latestUnverifiedEnd) ? suppliers : [];
 };
 
 // Compare observed instants, not missing fields or differences in timestamp spelling.
@@ -477,7 +478,10 @@ const reconcileAttemptTiming = (observations, selected) => {
 		timing: { jobs, runQueue: run.attempt === 1 && queueConflict
 			? { ...runQueue, elapsedMs: null, reason: timingConflict } : runQueue },
 		elapsedStartedAt: run.attempt === 1 ? created.value : started.value,
-		elapsedConflict: queueConflict || jobs.some(({ execution }) => execution.reason === timingConflict),
+		// A start-only conflict can leave an ordered completion candidate. Let the
+		// supplier check compare that unverified end with independently trusted ends.
+		elapsedConflict: queueConflict || jobs.some(({ completedAt, execution }) =>
+			completedAt === null && execution.reason === timingConflict),
 	};
 };
 

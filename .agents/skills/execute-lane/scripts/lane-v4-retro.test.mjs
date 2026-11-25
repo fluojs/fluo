@@ -1267,6 +1267,47 @@ test("#4286 fifth fix-back retains preceding boundary conflicts through final sn
 		[null, "conflicting-attempt-timing"]);
 });
 
+test("#4286 start-only job conflict preserves independent sibling completion", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "success", run_started_at: "2026-10-08T01:00:20Z" };
+	const job = { ...ciJob(1, "success"), head_sha: head, name: "Verify 31", steps: [] };
+	const changedStart = { ...job, started_at: "2026-10-08T01:01:10Z" };
+	const sibling = { ...job, id: 32, name: "Verify 32", started_at: "2026-10-08T01:02:00Z",
+		completed_at: "2026-10-08T01:04:00Z" };
+	const scope = [{ ...snapshots[0], obs: { ...snapshots[0].obs, pr: { ...snapshots[0].obs.pr,
+		ciRuns: [{ ...snapshots[0].obs.pr.ciRuns[0], conclusion: "success" }] } } }];
+	recordCiSnapshot(root, laneId, 1, { ...run, status: "in_progress", conclusion: null }, [job]);
+	const [final] = recordCiSnapshot(root, laneId, 1, run, [changedStart, sibling]);
+
+	const { ciTimings: [timing] } = retrospectiveEvidence(root, laneId, scope);
+
+	assert.equal(timing.elapsedMs, 240000);
+	assert.deepEqual([timing.elapsedScope, timing.elapsedCompletedAt, timing.elapsedCompletedJobIds, timing.elapsedReason],
+		["initial-run-including-queue", "2026-10-08T01:04:00.000Z", [32], null]);
+	assert.deepEqual(timing.jobs.map(({ execution }) => [execution.elapsedMs, execution.reason]),
+		[[null, "conflicting-attempt-timing"], [120000, null]]);
+	const request = retrospectiveRequest(root, laneId, scope);
+	const saved = recordRetrospective(root, request, report(request, final.eventId));
+	assert.deepEqual(JSON.parse(readFileSync(saved.report, "utf8")).ciTimings, [timing]);
+	assert.match(readFileSync(saved.markdown, "utf8"), /initial-run-including-queue: 240000 ms .*github-job\.completed_at: 32/u);
+});
+
+test("#4286 untrusted job end tied with valid completion preserves elapsed", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), id: 62, conclusion: "success", run_started_at: null };
+	const valid = { ...ciJob(1, "success"), run_id: run.id, head_sha: head, name: "Verify 31", steps: [] };
+	const tied = { ...valid, id: 32, name: "Verify 32", started_at: "2026-10-08T00:59:00Z" };
+	recordCiSnapshot(root, laneId, 1, run, [valid, tied]);
+
+	const [timing] = retrospectiveEvidence(root, laneId, snapshots).ciTimings;
+
+	assert.equal(timing.elapsedMs, 180000);
+	assert.deepEqual([timing.elapsedCompletedAt, timing.elapsedCompletedJobIds, timing.elapsedReason],
+		["2026-10-08T01:03:00.000Z", [31], null]);
+	assert.deepEqual(timing.jobs.map(({ execution }) => [execution.elapsedMs, execution.reason]),
+		[[120000, null], [null, "contradictory-boundaries"]]);
+});
+
 test("#4286 fifth fix-back uses an attributable completed step to corroborate cancelled run start", (t) => {
 	const root = fixture(t);
 	const run = { ...ciRun(), conclusion: "cancelled", run_started_at: "2026-10-08T01:00:20Z" };
