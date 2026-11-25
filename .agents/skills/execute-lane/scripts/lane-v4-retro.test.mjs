@@ -1115,7 +1115,7 @@ test("#4286 retry elapsed is unknown when the attempt starts before the original
 	}
 });
 
-test("#4286 run creation bounds projected job and step timing without discarding valid intervals", (t) => {
+test("#4286 known run creation bounds captured and projected job execution, queue, and steps", (t) => {
 	const root = fixture(t);
 	const run = { ...ciRun(2), id: 56, conclusion: "success", run_started_at: "2026-10-08T00:59:00Z" };
 	const step = {
@@ -1137,7 +1137,7 @@ test("#4286 run creation bounds projected job and step timing without discarding
 	// A prior poll can supply creation, but neither the job nor the attempt start can substitute for it.
 	recordCiSnapshot(root, laneId, 1, { ...run, id: 57, status: "in_progress" }, [{ ...early, run_id: 57 }]);
 	recordCiSnapshot(root, laneId, 1, { ...run, id: 57, created_at: null }, [{ ...early, run_id: 57 }]);
-	recordCiSnapshot(root, laneId, 1, { ...run, id: 58, created_at: null }, [{ ...early, run_id: 58 }]);
+	const [withoutCreation] = recordCiSnapshot(root, laneId, 1, { ...run, id: 58, created_at: null }, [{ ...early, run_id: 58 }]);
 
 	const { ciTimings: [single, reconciled, missingCreation], events } = retrospectiveEvidence(root, laneId, snapshots);
 
@@ -1154,8 +1154,15 @@ test("#4286 run creation bounds projected job and step timing without discarding
 	assert.deepEqual(intervals(reconciled.jobs[0]), [unknown, unknown, unknown]);
 	assert.deepEqual(intervals(missingCreation.jobs[0]), [[40000, null], [5000, null], [10000, null]]);
 	const captured = events.find(({ eventId }) => eventId === recorded.eventId).data;
-	assert.deepEqual(intervals(captured.timing.jobs[0]), [[40000, null], [5000, null], [10000, null]]);
+	assert.deepEqual(intervals(captured.timing.jobs[0]), [unknown, unknown, unknown]);
 	assert.deepEqual([captured.elapsedMs, captured.elapsedScope], [80000, "retry-attempt-excluding-queue"]);
+	assert.deepEqual(captured.timing.jobs.map(intervals), single.jobs.map(intervals));
+	const { execution, queue, steps } = captured.timing.jobs[0];
+	assert.deepEqual([execution, queue, steps[0].timing].map(({ startedAt, completedAt }) => [startedAt, completedAt]), [
+		[early.started_at, early.completed_at], [early.queued_at, early.started_at], [step.started_at, step.completed_at],
+	]);
+	const unbounded = events.find(({ eventId }) => eventId === withoutCreation.eventId).data;
+	assert.deepEqual(intervals(unbounded.timing.jobs[0]), [[40000, null], [5000, null], [10000, null]]);
 });
 
 test("#4286 projected completion rejects suppliers outside trusted run boundaries", (t) => {
@@ -1467,6 +1474,31 @@ test("#4286 reconciled elapsed cites supplying events separately from final stat
 	assert.ok(markdown.split("\n").some((line) => line.includes("initial-run-including-queue: 180000 ms") &&
 		line.includes(`start evidence: ${final.eventId}`) && line.includes(`completion evidence: ${earlier.eventId}`)));
 	assert.ok(markdown.includes(`Final status evidence: ${final.eventId}`));
+});
+
+test("#4286 a skipped poll cannot supply completion for a later successful job", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "success", run_started_at: "2026-10-08T01:00:20Z" };
+	const job = { ...ciJob(1, "success"), head_sha: head, name: "Verify", steps: [] };
+	const poll = { ...run, status: "in_progress", conclusion: null, created_at: null };
+	const skipped = { ...job, conclusion: "skipped", started_at: null };
+	const controlRun = { ...run, id: run.id + 1 };
+	const controlJob = { ...job, run_id: controlRun.id };
+	recordCiSnapshot(root, laneId, 1, poll, [skipped]);
+	const [final] = recordCiSnapshot(root, laneId, 1, run, [{ ...job, completed_at: null }]);
+	recordCiSnapshot(root, laneId, 1, { ...poll, id: controlRun.id }, [{ ...skipped, run_id: controlRun.id }]);
+	const [eligible] = recordCiSnapshot(root, laneId, 1, { ...poll, id: controlRun.id }, [controlJob]);
+	const [controlFinal] = recordCiSnapshot(root, laneId, 1, controlRun, [{ ...controlJob, completed_at: null }]);
+
+	const { ciTimings: [missing, observed] } = retrospectiveEvidence(root, laneId, snapshots);
+
+	assert.equal(missing.elapsedMs, null);
+	assert.deepEqual([missing.elapsedReason, missing.elapsedCompletedAt, missing.elapsedCompletedJobIds,
+		missing.elapsedCompletedEventIds, missing.elapsedEventId, missing.finalStatusEventId],
+		["job-completion-unobserved", null, [], [], final.eventId, final.eventId]);
+	assert.deepEqual([missing.jobs[0].completedAt, missing.jobs[0].execution.reason], [null, "missing-boundary"]);
+	assert.deepEqual([observed.elapsedMs, observed.elapsedCompletedJobIds, observed.elapsedCompletedEventIds,
+		observed.elapsedStartedEventIds], [180000, [job.id], [eligible.eventId], [controlFinal.eventId]]);
 });
 
 test("#4286 fifth fix-back counts a timed-out job completion without measuring its execution", (t) => {

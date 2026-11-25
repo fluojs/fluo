@@ -212,11 +212,13 @@ const jobTiming = (run, job, identityReason) => {
 	const completedAt = job.completed_at ?? null;
 	const execution = interval({
 		scope: "job-execution", source: "github-job.started_at/completed_at", startedAt, completedAt,
-	}, identityReason ?? executionBlocker(job, "job"), { starts: [run.run_started_at] });
+	}, identityReason ?? executionBlocker(job, "job"), { starts: [run.created_at, run.run_started_at] });
 	const queue = interval({
 		scope: "job-queue", source: "github-job.queued_at/started_at",
 		startedAt: job.queued_at, completedAt: startedAt,
-	}, identityReason ?? executionBlocker(job, "job"), { earliestEnd: run.run_started_at, completedAt });
+	}, identityReason ?? executionBlocker(job, "job"), {
+		starts: [run.created_at], earliestEnd: run.run_started_at, completedAt,
+	});
 	const runnerSetup = interval({ scope: "runner-setup", source: null }, "runner-setup-unobserved");
 	const stepNumbers = new Set();
 	const repeatedSteps = new Set();
@@ -233,7 +235,7 @@ const jobTiming = (run, job, identityReason) => {
 			timing: interval({
 				scope, source: "github-step.started_at/completed_at",
 				startedAt: step.started_at, completedAt: step.completed_at,
-			}, reason, { starts: [run.run_started_at, startedAt], completedAt }),
+			}, reason, { starts: [run.created_at, run.run_started_at, startedAt], completedAt }),
 		};
 	});
 	return { id, name, status, conclusion, head: job.head_sha ?? null, createdAt: job.created_at ?? null,
@@ -362,12 +364,18 @@ export const recordCiSnapshot = (root, laneId, issue, run, jobs) => {
 	return recorded;
 };
 
+const terminal = ({ status }) => status === "completed";
+const canSupplyJobCompletion = (job) =>
+	terminal(job) && typeof job.conclusion === "string" && job.conclusion !== "skipped" &&
+	!jobIdentityReasons.includes(job.execution.reason);
+
 const attemptCompletionSuppliers = (jobs, runCreatedAt, attemptStart) => {
 	const earliest = Math.max(githubTimestamp(runCreatedAt) ?? -Infinity,
 		githubTimestamp(attemptStart) ?? -Infinity);
 	const suppliers = [];
 	let latestUnverifiedEnd = -Infinity;
-	for (const { id, status, conclusion, startedAt, completedAt, execution } of jobs) {
+	for (const job of jobs) {
+		const { id, conclusion, startedAt, completedAt, execution } = job;
 		if (execution.reason === "job-identity-mismatch" || conclusion === "skipped") continue;
 		const start = githubTimestamp(startedAt);
 		const end = githubTimestamp(completedAt);
@@ -376,8 +384,7 @@ const attemptCompletionSuppliers = (jobs, runCreatedAt, attemptStart) => {
 		if (end === null || (start !== null && end < start) || end < earliest) {
 			return [];
 		}
-		if (["conflicting-job-identity", "missing-job-identity", timingConflict].includes(execution.reason)
-			|| status !== "completed" || typeof conclusion !== "string"
+		if (!canSupplyJobCompletion(job) || execution.reason === timingConflict
 			|| (startedAt != null && (start === null || start < earliest))) {
 			latestUnverifiedEnd = Math.max(latestUnverifiedEnd, end);
 		} else {
@@ -412,7 +419,6 @@ const groupsBy = (items, keyFor) => {
 };
 
 const timingStarted = ({ status }) => ["in_progress", "completed"].includes(status);
-const terminal = ({ status }) => status === "completed";
 const reconciledInterval = (template, start, end, reason, bounds) => interval({
 	...template, startedAt: start.value, completedAt: end.value,
 }, reason ?? (start.conflict || end.conflict ? timingConflict : null), bounds);
@@ -421,7 +427,7 @@ const reconcileJobTiming = (observations, attemptStart) => {
 	const job = observations.findLast(terminal) ?? observations.at(-1);
 	const identityReason = new Set(observations.map(({ name }) => name)).size > 1 ? "conflicting-job-identity" : null;
 	const started = reconcileBoundary(observations.filter(timingStarted).map(({ startedAt }) => startedAt));
-	const completed = reconcileBoundary(observations.filter(terminal).map(({ completedAt }) => completedAt));
+	const completed = reconcileBoundary(observations.filter(canSupplyJobCompletion).map(({ completedAt }) => completedAt));
 	const queued = reconcileBoundary(observations.map(({ queue }) => queue.startedAt));
 	const reason = identityReason ?? executionBlocker(job, "job");
 	const stepsByNumber = groupsBy(observations.flatMap(({ steps }) => steps), ({ number }) => number);
@@ -562,8 +568,7 @@ const summarizeCiTimings = (events) => {
 						: timingStarted(observation) && githubTimestamp(queue.completedAt) === start;
 				}).map(({ eventId }) => eventId).sort(),
 				elapsedCompletedEventIds: sources.filter(({ timing }) => timing.jobs.some((job) =>
-					completedJobIds.includes(job.id) && terminal(job) && job.conclusion !== "skipped" &&
-					!jobIdentityReasons.includes(job.execution.reason) && githubTimestamp(job.completedAt) === last,
+					completedJobIds.includes(job.id) && canSupplyJobCompletion(job) && githubTimestamp(job.completedAt) === last,
 				)).map(({ eventId }) => eventId).sort(),
 				elapsedReason: measured.reason,
 			};
