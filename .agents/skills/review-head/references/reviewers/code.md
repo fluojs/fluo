@@ -140,5 +140,9 @@ Every verdict includes both arrays. Each evidence entry has exactly
 `acceptance` (a non-empty criterion identifier) and `locations` (one or more
 repository-relative `file:line` strings). PASS needs at least one evidence
 entry. Observations are non-empty strings, or an empty array, and never affect
-aggregation. In fix-back mode inspect the identical authenticated
-`common.fix_back_red` and its previous-head assertion before judging the fix.
+aggregation. For an executable fix-back, inspect the authenticated
+`common.fix_back_red` and its previous-head assertion. For a Changeset-only
+fix-back, inspect the identical `common.fix_back_release_metadata`: the
+previous-to-current delta is only the committed Changeset, but the complete
+authored diff remains the review scope. Treat the metadata as Git evidence,
+not an execution receipt or exemption from review.

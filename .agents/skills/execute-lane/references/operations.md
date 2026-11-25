@@ -141,13 +141,13 @@ rechecks accepted contract and checkout/base freshness after retaining them.
 Transfer failures are non-fixable `input-preparation`, never product blockers
 or partial review success. Preserve the original accepted contract, canonical
 plan, source footprint and caller searches, complete authored diff,
-implementation/fix-back RED, required checks, receipt inventory, raw stdout/
+implementation/fix-back evidence, required checks, receipt inventory, raw stdout/
 stderr and packed evidence admission; transfer does not replace any of them.
 
 Supply review preparation's required `implementation` context with mode
 `implement`, `fix-back`, or `resolve-conflict`, previous/current heads and the
 accepted contract digest. For fix-back use the actual implementer Result's
-`previous_head_sha` and `head_sha`. Before review preparation the lead runs
+`previous_head_sha` and `head_sha`. For executable fix-back the lead runs
 `node .agents/skills/execute-lane/scripts/workflow-preparation.mjs fix-back-red <input.json>`
 in a separate clean reproduction checkout at that previous head. Supply the
 post-head regression-test/necessary-fixture patch, focused command/argv and
@@ -158,8 +158,15 @@ its nested artifacts resolve beside the receipt. Matching current-head GREEN
 evidence must retain the same command and argv. Missing, altered, unrelated,
 GREEN or setup-failure evidence stops with `input-preparation`,
 `fix_back_eligible:false` before reviewers run. All axes receive identical RED
-evidence in `common`. Ordinary implementation/conflict review needs no RED.
-This limited lead reproduction authority belongs only to review preparation;
+evidence in `common`. For a Changeset-only fix-back, omit `fix_back_red`:
+preparation authenticates a single approved top-level regular Changeset addition
+with stable `patch` intent for the public package whose root EN/KO README pair
+changed in the prior head's authored diff. It emits identical
+`common.fix_back_release_metadata` to all axes, never a test receipt. An
+invalid supplied RED cannot select this route. The full authored diff,
+focused checks, readable index, CI and release obligations still apply.
+Ordinary implementation/conflict review needs neither form of evidence. This
+limited lead reproduction authority belongs only to review preparation;
 issue-implement's `leadAuthority` and every reviewer remain unchanged.
 
 New `preflight` inputs require complete `caller_searches` at the pinned base;
