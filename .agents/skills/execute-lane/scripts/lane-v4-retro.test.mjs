@@ -994,6 +994,77 @@ test("#4286 retrospective evidence uses attempt bounds and attributable completi
 	});
 });
 
+test("#4286 fix-back: complete CI timing recovers from partial observations and preserves conflicts", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "success", run_started_at: "2026-10-08T01:00:20Z" };
+	const job = { ...ciJob(1, "success"), head_sha: head, name: "Verify", steps: [{
+		number: 1, name: "Require every planned capability and job result",
+		status: "completed", conclusion: "success",
+		started_at: "2026-10-08T01:02:30Z", completed_at: "2026-10-08T01:02:45Z",
+	}] };
+	const [empty] = recordCiSnapshot(root, laneId, 1, run, []);
+	const [unfinished] = recordCiSnapshot(root, laneId, 1, run, [
+		job, { ...job, id: 32, status: "in_progress", conclusion: null, completed_at: null },
+	]);
+	const [complete] = recordCiSnapshot(root, laneId, 1, run, [job]);
+	const [replay] = recordCiSnapshot(root, laneId, 1, run, [job]);
+	const originalEvents = readRetroEvents(root, laneId);
+
+	const [recovered] = retrospectiveEvidence(root, laneId, snapshots).ciTimings;
+	assert.equal(recovered.reason, null);
+	assert.equal(recovered.elapsedMs, 180000);
+	assert.equal(recovered.elapsedEventId, complete.eventId);
+	assert.deepEqual(recovered.jobs.map(({ id, steps }) => [id, steps[0].timing.elapsedMs]), [[31, 15000]]);
+	assert.deepEqual(new Set(recovered.eventIds), new Set([empty.eventId, unfinished.eventId, complete.eventId]));
+	assert.equal(recovered.eventIds.length, 3);
+	assert.equal(replay.eventId, complete.eventId);
+
+	const [conflict] = recordCiSnapshot(root, laneId, 1, run, [{ ...job, completed_at: "2026-10-08T01:04:00Z" }]);
+	const evidence = retrospectiveEvidence(root, laneId, snapshots);
+	const [conflicting] = evidence.ciTimings;
+	assert.equal(conflicting.reason, "conflicting-attempt-timing");
+	assert.equal(conflicting.elapsedReason, "conflicting-attempt-timing");
+	assert.equal(conflicting.elapsedMs, null);
+	assert.deepEqual(conflicting.jobs, []);
+	assert.deepEqual(new Set(conflicting.eventIds), new Set([...recovered.eventIds, conflict.eventId]));
+	assert.deepEqual(readRetroEvents(root, laneId).filter(({ eventId }) => eventId !== conflict.eventId), originalEvents);
+});
+
+test("#4286 fix-back: cancelled job completion bounds attempt elapsed independently of job execution", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "cancelled", run_started_at: "2026-10-08T01:00:20Z" };
+	const success = { ...ciJob(1, "success"), head_sha: head };
+	const end = "2026-10-08T01:08:00Z";
+	const cancelled = { ...success, id: 32, conclusion: "cancelled", completed_at: end };
+	const cases = [
+		{ job: cancelled, legacy: 480000, elapsed: 480000 },
+		{ job: { ...cancelled, started_at: null }, legacy: 480000, elapsed: 480000 },
+		{ job: { ...cancelled, completed_at: null }, legacy: 180000, elapsed: null },
+		{ job: { ...cancelled, completed_at: "not-a-timestamp" }, legacy: 180000, elapsed: null },
+		{ job: { ...cancelled, started_at: "2026-10-08T01:09:00Z" }, legacy: 480000, elapsed: null },
+		{ job: { ...cancelled, started_at: "2026-10-08T01:00:10Z" }, legacy: 480000, elapsed: null },
+	];
+	for (const [index, { job, legacy }] of cases.entries()) {
+		const id = run.id + index;
+		const stored = recordCiSnapshot(root, laneId, 1, { ...run, id }, [
+			{ ...success, run_id: id }, { ...job, run_id: id },
+		]).at(-1);
+		const original = JSON.parse(readFileSync(stored.path, "utf8")).data;
+		assert.equal(original.elapsedMs, legacy);
+		assert.equal(original.elapsedScope, "initial-run-including-queue");
+	}
+
+	assert.deepEqual(retrospectiveEvidence(root, laneId, snapshots).ciTimings.map((timing) => {
+		const job = timing.jobs.find(({ id }) => id === cancelled.id);
+		return [timing.elapsedMs, timing.elapsedCompletedAt, timing.elapsedCompletedJobIds, timing.elapsedReason,
+			job.conclusion, job.execution.elapsedMs, job.execution.reason];
+	}), cases.map(({ elapsed }) => [
+		elapsed, elapsed === null ? null : "2026-10-08T01:08:00.000Z",
+		elapsed === null ? [] : [cancelled.id], elapsed === null ? "job-completion-unobserved" : null,
+		"cancelled", null, "job-cancelled",
+	]));
+});
+
 test("#4286 retrospective evidence: legacy elapsed observations do not fabricate a timing breakdown", (t) => {
 	const root = fixture(t);
 	const legacy = recordRetroEvent(root, laneId, 1, "ci", {

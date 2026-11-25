@@ -340,6 +340,29 @@ export const recordCiSnapshot = (root, laneId, issue, run, jobs) => {
 	return recorded;
 };
 
+const attemptCompletionSuppliers = (timing) => {
+	const attemptStart = githubTimestamp(timing.runQueue.completedAt);
+	const suppliers = [];
+	let latestUnverifiedEnd = -Infinity;
+	for (const { id, status, conclusion, startedAt, completedAt, execution } of timing.jobs) {
+		if (execution.reason === "job-identity-mismatch" || conclusion === "skipped") continue;
+		const start = githubTimestamp(startedAt);
+		const end = githubTimestamp(completedAt);
+		// A cancelled job can attest to completion without attesting to execution duration.
+		// An unverified in-attempt completion may be the last; don't substitute a sibling.
+		if (end === null) return [];
+		if (["conflicting-job-identity", "missing-job-identity"].includes(execution.reason)
+			|| status !== "completed" || typeof conclusion !== "string" || conclusion === "timed_out"
+			|| (attemptStart !== null && end < attemptStart)
+			|| (startedAt != null && (start === null || end < start || (attemptStart !== null && start < attemptStart)))) {
+			latestUnverifiedEnd = Math.max(latestUnverifiedEnd, end);
+		} else {
+			suppliers.push({ id, end });
+		}
+	}
+	return suppliers.some(({ end }) => end > latestUnverifiedEnd) ? suppliers : [];
+};
+
 const summarizeCiTimings = (events) => {
 	const attempts = new Map();
 	for (const { kind, issue, eventId, data } of events) {
@@ -348,29 +371,22 @@ const summarizeCiTimings = (events) => {
 		const elapsedStartedAt = run.attempt === 1 ? data.createdAt : timing?.runQueue.completedAt;
 		const key = digest({ issue, id: run.id, attempt: run.attempt, head: run.head, workflow: run.workflow });
 		const observations = attempts.get(key) ?? [];
-		observations.push({ issue, run, eventId, timing, elapsedMs: elapsedMs ?? null, elapsedScope: elapsedScope ?? null,
+		observations.push({ issue, run, eventId, timing, complete: data.complete, elapsedMs: elapsedMs ?? null, elapsedScope: elapsedScope ?? null,
 			status, conclusion: conclusion ?? null,
 			elapsedStartedAt: elapsedStartedAt ?? null, elapsedCompletedAt: data.completedAt ?? null });
 		attempts.set(key, observations);
 	}
 	return [...attempts.values()].map((observations) => {
-		const completed = observations.filter(({ elapsedScope }) => elapsedScope !== null);
+		const completed = observations.filter(({ complete, elapsedScope }) => complete !== false && elapsedScope !== null);
 		const candidates = completed.length ? completed : observations;
 		const timed = candidates.filter(({ timing }) => timing);
 		const recent = timed.at(-1) ?? candidates.at(-1);
-		const { eventId, timing: _timing, ...details } = recent;
+		const { eventId, timing: _timing, complete, ...details } = recent;
 		const timing = completed.length && new Set(timed.map(({ timing }) => digest(timing))).size > 1
 			? null : recent.timing;
 		let elapsed = {};
 		if (completed.length && timed.length) {
-			const attemptStart = githubTimestamp(timing?.runQueue.completedAt);
-			const suppliers = (timing?.jobs ?? []).flatMap(({ id, completedAt, execution }) => {
-				const end = githubTimestamp(completedAt);
-				// A directly observed completion can supply the endpoint even when job start is missing.
-				return end !== null && (attemptStart === null || end >= attemptStart)
-					&& (execution.reason === null || execution.reason === "missing-boundary")
-					? [{ id, end }] : [];
-			});
+			const suppliers = timing ? attemptCompletionSuppliers(timing) : [];
 			const last = suppliers.length ? Math.max(...suppliers.map(({ end }) => end)) : null;
 			const measured = interval({
 				scope: details.elapsedScope, source: "github-job.completed_at",
@@ -382,12 +398,19 @@ const summarizeCiTimings = (events) => {
 				elapsedCompletedJobIds: suppliers.filter(({ end }) => end === last).map(({ id }) => id),
 				elapsedReason: measured.reason,
 			};
+		} else if (complete === false) {
+			elapsed = {
+				elapsedMs: null,
+				elapsedCompletedAt: null,
+				elapsedCompletedJobIds: [],
+				elapsedReason: "job-completion-unobserved",
+			};
 		}
 		return {
 			...details,
 			...elapsed,
 			eventIds: observations.map(({ eventId }) => eventId),
-			elapsedEventId: details.elapsedScope === null ? null : eventId,
+			elapsedEventId: completed.length ? eventId : null,
 			runQueue: timing?.runQueue ?? null, jobs: timing?.jobs ?? [],
 			reason: timing ? null : timed.length ? "conflicting-attempt-timing" : "legacy-timing-unrecorded",
 		};
