@@ -1311,6 +1311,90 @@ describe('@fluojs/mongoose', () => {
     },
   );
 
+  it.each(['manual', 'delegated'])(
+    'keeps the admitted child session after synchronous parent failure in a %s transaction',
+    async (mode) => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const acquireSession = vi.fn(() => createFakeSession(events)).mockReturnValueOnce(session);
+      const create = vi.fn((_docs: unknown[], _options?: { session?: MongooseSessionLike }) => []);
+      const connection: MongooseConnectionLike = {
+        startSession: async () => acquireSession(),
+        model: () => ({ create }),
+      };
+      if (mode === 'delegated') {
+        connection.transaction = async (fn) => {
+          const acquired = acquireSession();
+          await acquired.startTransaction();
+          try {
+            const result = await fn(acquired);
+            await acquired.commitTransaction();
+            return result;
+          } catch (error) {
+            await acquired.abortTransaction();
+            throw error;
+          } finally {
+            await acquired.endSession();
+          }
+        };
+      }
+      const mongoose = new MongooseConnection(connection);
+      const parentFailure = new Error('synchronous non-database parent failure');
+      const newCallback = vi.fn(async () => {});
+      let savedSession: MongooseSessionLike | undefined;
+      const document = {
+        async save(options?: { session?: MongooseSessionLike }) {
+          savedSession = options?.session;
+          return document;
+        },
+      };
+      const docs = [{ name: 'Ada' }];
+      let child: Promise<PromiseSettledResult<void>[]> | undefined;
+
+      const outer = mongoose.transaction(() => {
+        const retainedCreate = mongoose.model('User').create;
+        child = mongoose.requestTransaction(async () => {
+          try {
+            await mongoose.saveDocument(document);
+          } catch (error) {
+            // Let the old head fail at the native save assertion, not at the wrapper error.
+            if (!(error instanceof Error &&
+              error.message === 'Mongoose document saves require an active transaction session.')) {
+              throw error;
+            }
+          }
+          retainedCreate(docs);
+          return Promise.allSettled([
+            mongoose.transaction(newCallback),
+            mongoose.requestTransaction(newCallback),
+          ]);
+        });
+        void Promise.allSettled([child]);
+        throw parentFailure;
+      });
+      await Promise.allSettled([outer]);
+      const attempts = await child;
+
+      expect(savedSession).toBe(session);
+      expect(create).toHaveBeenCalledExactlyOnceWith(docs, { session });
+      const drainingError = expect.objectContaining({
+        message: 'Mongoose transactions are unavailable while an owning transaction drains a nested request.',
+      });
+      expect(attempts).toEqual([
+        { status: 'rejected', reason: drainingError },
+        { status: 'rejected', reason: drainingError },
+      ]);
+      expect(acquireSession).toHaveBeenCalledTimes(1);
+      expect(newCallback).not.toHaveBeenCalled();
+      await expect(outer).rejects.toBe(parentFailure);
+      expect(events).toEqual(['transaction:start', 'transaction:abort', 'session:end']);
+      expect(mongoose.createPlatformStatusSnapshot().details).toMatchObject({
+        activeRequestTransactions: 0,
+        activeSessions: 0,
+      });
+    },
+  );
+
   it('uses Mongoose connection.transaction when available without overriding explicit session flow', async () => {
     const events: string[] = [];
     const session = createFakeSession(events);

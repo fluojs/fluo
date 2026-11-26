@@ -506,8 +506,9 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       currentScope.activeSession.retainRequestTransaction(active);
 
       const request = raceWithAbortAndDrainCallback(() => {
-        // Only the user callback keeps session visibility when the owner closes admission.
-        const requestCallback = { running: currentScope.owner.open };
+        // Cancellation or owner closure can occur between admission and this queued invocation.
+        abortContext.signal.throwIfAborted();
+        const requestCallback = { running: true };
         return this.sessions.run({ ...currentScope, requestCallback }, async () => {
           try {
             return await fn();
