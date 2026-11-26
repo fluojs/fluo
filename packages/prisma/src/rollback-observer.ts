@@ -72,11 +72,43 @@ export function createPrismaRollbackObserver<TFactory extends object>(factory: T
       const scope = scopes.getStore();
       // Ordinary native transactions outside Fluo remain untouched.
       if (!scope) return transaction;
-      const options: unknown = Reflect.get(transaction, 'options');
-      if (typeof options !== 'object' || options === null || Reflect.get(options, 'usePhantomQuery') !== false
-        || typeof Reflect.get(transaction, 'executeRaw') !== 'function'
-        || typeof Reflect.get(transaction, 'rollback') !== 'function') {
-        throw new TransactionRollbackCapabilityError();
+      let usesExplicitRollback = false;
+      try {
+        const options: unknown = Reflect.get(transaction, 'options');
+        usesExplicitRollback = typeof options === 'object' && options !== null
+          && Reflect.get(options, 'usePhantomQuery') === false;
+        if (!usesExplicitRollback || typeof Reflect.get(transaction, 'executeRaw') !== 'function'
+          || typeof Reflect.get(transaction, 'rollback') !== 'function') {
+          throw new TransactionRollbackCapabilityError();
+        }
+      } catch (inspectionError) {
+        const errors: unknown[] = [inspectionError];
+        // Prisma never receives this handle. With adapter-pg, SQL closes the transaction
+        // and rollback() separately returns the connection to the pool.
+        if (usesExplicitRollback) {
+          try {
+            const executeRaw: unknown = Reflect.get(transaction, 'executeRaw');
+            if (typeof executeRaw === 'function') {
+              await Reflect.apply(executeRaw, transaction, [{ sql: 'ROLLBACK', args: [], argTypes: [] }]);
+            }
+          } catch (sqlError) {
+            errors.push(sqlError);
+          }
+        }
+        try {
+          const rollback: unknown = Reflect.get(transaction, 'rollback');
+          if (typeof rollback === 'function') {
+            await Reflect.apply(rollback, transaction, []);
+          }
+        } catch (cleanupError) {
+          errors.push(cleanupError);
+        }
+        if (errors.length > 1) {
+          throw new AggregateError(errors, 'Prisma rollback capability inspection and transaction cleanup failed.', {
+            cause: inspectionError,
+          });
+        }
+        throw inspectionError;
       }
       const attempt: Attempt = { claimed: false, rollbackSql: false, cleanup: false, errors: [] };
       scope.push(attempt);

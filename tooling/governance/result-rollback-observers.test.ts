@@ -124,6 +124,147 @@ describe('public rollback observation capabilities', () => {
     expect(calls).toBe(0);
   });
 
+  it.each([
+    ['transaction', 'phantom'],
+    ['requestTransaction', 'unknown-options'],
+    ['transaction', 'inspection-and-sync-cleanup-failure'],
+    ['requestTransaction', 'inspection-and-async-cleanup-failure'],
+    ['transaction', 'sql-and-cleanup-failure'],
+    ['requestTransaction', 'missing-cleanup'],
+    ['transaction', 'start-failure'],
+    ['native', 'passthrough'],
+  ] as const)('Prisma %s settles rejected adapter acquisition: %s', async (entry, scenario) => {
+    const inspectionError = new Error('malformed adapter options');
+    const sqlError = new Error('native rollback SQL failed');
+    const cleanupError = new Error('native rollback cleanup failed');
+    const startError = new Error('native acquisition failed');
+    let signalCleanupStarted = () => {};
+    let signalFinishCleanup = () => {};
+    const cleanupStarted = new Promise<'cleanup'>((resolve) => { signalCleanupStarted = () => resolve('cleanup'); });
+    const finishCleanup = new Promise<void>((resolve) => { signalFinishCleanup = resolve; });
+    const events: string[] = [];
+    let held = 0;
+    let inspectExecuteRaw = true;
+    const tx = {
+      get options(): unknown {
+        if (scenario === 'inspection-and-sync-cleanup-failure' || scenario === 'inspection-and-async-cleanup-failure') {
+          throw inspectionError;
+        }
+        if (scenario === 'unknown-options') return undefined;
+        return { usePhantomQuery: scenario === 'phantom' || scenario === 'passthrough' };
+      },
+      get executeRaw() {
+        if (scenario === 'sql-and-cleanup-failure' && inspectExecuteRaw) {
+          inspectExecuteRaw = false;
+          throw inspectionError;
+        }
+        return function (this: object, { sql, args, argTypes }: { sql: string; args: unknown[]; argTypes: unknown[] }) {
+          expect(this).toBe(tx);
+          expect(args).toEqual([]);
+          expect(argTypes).toEqual([]);
+          events.push(sql);
+          if (scenario === 'sql-and-cleanup-failure') throw sqlError;
+          return 0;
+        };
+      },
+      ...(scenario !== 'missing-cleanup' && {
+        rollback() {
+          expect(this).toBe(tx);
+          events.push('cleanup');
+          signalCleanupStarted();
+          if (scenario === 'inspection-and-sync-cleanup-failure') throw cleanupError;
+          return finishCleanup.then(() => {
+            if (scenario === 'inspection-and-async-cleanup-failure' || scenario === 'sql-and-cleanup-failure') throw cleanupError;
+            held--;
+          });
+        },
+      }),
+      commit() { events.push('commit'); },
+    };
+    const observed = createPrismaRollbackObserver({
+      adapterName: '@prisma/adapter-pg',
+      async connect() {
+        return { async startTransaction() {
+          if (scenario === 'start-failure') throw startError;
+          events.push('acquire');
+          held++;
+          return tx;
+        } };
+      },
+    });
+    const adapter = await observed.adapter.connect();
+    const service = new PrismaService({
+      async $transaction<T>(run: (handle: object) => Promise<T>) {
+        const handle = await adapter.startTransaction();
+        const result = await run(handle);
+        handle.commit();
+        return result;
+      },
+    }, { strictTransactions: true, rollbackObserver: observed.rollbackObserver });
+    const callback = async () => { events.push('callback'); return { ok: false }; };
+    const boundary = { shouldRollback: () => { events.push('predicate'); return true; } };
+
+    const pending = entry === 'native' ? adapter.startTransaction()
+      : entry === 'transaction' ? service.transaction(callback, undefined, boundary)
+        : service.requestTransaction(callback, undefined, undefined, boundary);
+    const settled = pending.then(
+      (result) => ({ result, held }),
+      (error: unknown) => ({ error, held }),
+    );
+    if (scenario === 'phantom' || scenario === 'unknown-options') {
+      try {
+        expect(await Promise.race([cleanupStarted, settled])).toBe('cleanup');
+        const checkpoint = new Promise<'blocked'>((resolve) => setImmediate(() => resolve('blocked')));
+        expect(await Promise.race([settled, checkpoint])).toBe('blocked');
+      } finally {
+        signalFinishCleanup();
+      }
+    } else {
+      signalFinishCleanup();
+    }
+    const outcome = await settled;
+
+    switch (scenario) {
+      case 'phantom':
+      case 'unknown-options':
+        expect(outcome).toEqual({ error: expect.any(PrismaCapabilityError), held: 0 });
+        expect(events).toEqual(['acquire', 'cleanup']);
+        break;
+      case 'inspection-and-sync-cleanup-failure':
+      case 'inspection-and-async-cleanup-failure':
+      case 'sql-and-cleanup-failure': {
+        const error = 'error' in outcome ? outcome.error : undefined;
+        expect(error).toBeInstanceOf(AggregateError);
+        if (!(error instanceof AggregateError)) throw new TypeError('Missing aggregated transaction errors.');
+        expect(error.cause).toBe(inspectionError);
+        expect(error.errors[0]).toBe(inspectionError);
+        if (scenario === 'sql-and-cleanup-failure') {
+          expect(error.errors).toHaveLength(3);
+          expect(error.errors[1]).toBe(sqlError);
+          expect(error.errors[2]).toBe(cleanupError);
+          expect(events).toEqual(['acquire', 'ROLLBACK', 'cleanup']);
+        } else {
+          expect(error.errors).toHaveLength(2);
+          expect(error.errors[1]).toBe(cleanupError);
+          expect(events).toEqual(['acquire', 'cleanup']);
+        }
+        break;
+      }
+      case 'missing-cleanup':
+        expect(outcome).toHaveProperty('error', expect.any(PrismaCapabilityError));
+        expect(events).toEqual(['acquire', 'ROLLBACK']);
+        break;
+      case 'start-failure':
+        expect(outcome).toEqual({ error: startError, held: 0 });
+        expect(events).toEqual([]);
+        break;
+      case 'passthrough':
+        expect('result' in outcome && outcome.result).toBe(tx);
+        expect(events).toEqual(['acquire']);
+        break;
+    }
+  });
+
   it.each(['confirmed', 'missing-rollback', 'missing-release', 'rollback-error', 'release-error'] as const)(
     'Drizzle distinguishes %s from positive SQL rollback and pooled release', async (mode) => {
       const nativeError = new Error('native failure');
