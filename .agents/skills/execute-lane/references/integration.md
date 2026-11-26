@@ -129,6 +129,20 @@ plus one. Independent reviews first returned in one snapshot share a sequence.
 Neither timestamps nor clock movement affect ordering. New heads and recovered
 issues receive new grants rather than inheriting their former place.
 
+The lead's [`record-review-preparation-blocker`](./operations.md#release-a-review-grant-when-prior-head-red-is-unavailable)
+uses the same coordinated observation inside the lock without applying
+snapshot invalidations or creating grants. It atomically saves the exact review
+input-preparation blocker, retires its sequence for the addressed issue, and
+changes only the addressed grant's `active` field to `false`. The blocked issue
+stops occupying its slot. An eligible
+sibling receives a grant only when `plan`, `plan-all` or `watch` actually
+returns its `review`. Clearing the blocker keeps the inactive sequence as
+part of the lane-wide maximum and does not give the old grant priority back.
+The issue's retired sequence survives clear and regrant. Subsequent executable
+review results must identify the active grant used for preparation, even when
+the head and policy have not changed. A result from an older wave cannot change
+sibling selection or make the issue publishable.
+
 Failed observations remove only that issue from occupancy and preserve its
 `observation-failed`; they do not block another sibling's review. The merged
 sibling ancestry gate below remains mandatory. Recompute targets on each

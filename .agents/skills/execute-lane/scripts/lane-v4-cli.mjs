@@ -7,6 +7,7 @@
 //   plan-all        --root . --lane <path> [--with-retro]
 //   watch           --root . --lane <path> [--interval 60] [--once] [--stall-after 15]
 //   record          --root . --lane <path> --issue <n> --phase <p> --result-json <json>
+//   record-review-preparation-blocker --root . --lane <path> --issue <n> --value <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind local-checks|local-ci-waiver|review --head <sha> --value <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind preflight --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
@@ -114,6 +115,32 @@ const retroInput = (root, args) => {
 			? readFileSync(resolve(root, arg(args, "--value-file")), "utf8")
 			: arg(args, "--value"),
 	);
+};
+
+const parseReviewPreparationBlocker = (args) => {
+	const required = new Set(["--lane", "--issue", "--value"]);
+	const remaining = new Set([...required, "--root"]);
+	for (let i = 0; i < args.length; i += 2) {
+		if (!remaining.delete(args[i]) || !args[i + 1] || args[i + 1].startsWith("--")) {
+			throw new TypeError("Invalid review-preparation blocker arguments");
+		}
+		required.delete(args[i]);
+	}
+	const issue = arg(args, "--issue", "");
+	if (required.size || !/^[1-9][0-9]*$/u.test(issue) || !Number.isSafeInteger(Number(issue))) {
+		throw new TypeError("Invalid review-preparation blocker arguments");
+	}
+	const input = JSON.parse(arg(args, "--value"));
+	const fields = ["reason", "fix_back_eligible", "head_sha", "policy_sha256", "sequence"];
+	if (!input || typeof input !== "object" || Object.keys(input).length !== fields.length ||
+		!fields.every(field => Object.hasOwn(input, field)) ||
+		input.reason !== "prior-head-red-unavailable" || input.fix_back_eligible !== false ||
+		typeof input.head_sha !== "string" || !/^[a-f0-9]{40}$/u.test(input.head_sha) ||
+		typeof input.policy_sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(input.policy_sha256) ||
+		!Number.isSafeInteger(input.sequence) || input.sequence < 1) {
+		throw new TypeError("Invalid review-preparation blocker input");
+	}
+	return { type: "input-preparation", phase: "review", ...input };
 };
 
 const run = (cwd, cmd, cmdArgs, trim = true) => {
@@ -1130,6 +1157,8 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 
 const main = async () => {
 	const [command, ...args] = process.argv.slice(2);
+	const preparationBlocker = command === "record-review-preparation-blocker"
+		? parseReviewPreparationBlocker(args) : null;
 	const root = resolve(arg(args, "--root", "."));
 	const observationProcess = randomUUID();
 	const recordObservation = (laneId, row) => recordRetroEvent(root, laneId, row.issue, "observation", {
@@ -1221,7 +1250,7 @@ const main = async () => {
 	}
 
 	const lanePath = resolve(root, arg(args, "--lane"));
-	const release = ["record", "set-fact", "approve-merge", "clear-blocker"].includes(command)
+	const release = (preparationBlocker || ["record", "set-fact", "approve-merge", "clear-blocker"].includes(command))
 		? await lockLane(lanePath) : null;
 	try {
 	const lane = loadLane(lanePath);
@@ -1237,14 +1266,7 @@ const main = async () => {
 		}
 	};
 
-	// Watch runs for a long time: re-load the lane file every tick so
-	// facts/approvals recorded by concurrent operator commands are seen.
-	const snapshotAll = (withObservations = false, previous = null) => {
-		const unlock = lane.preflight_overlap === 1 ? lockLane(lanePath) : null;
-		let fresh;
-		let coordinated;
-		try {
-		fresh = loadLane(lanePath);
+	const observeCoordinated = (fresh, { invalidate = false } = {}) => {
 		assertPredictedConflicts(fresh.predicted_conflicts, Object.keys(fresh.issues).map(Number));
 		const snapshots = Object.keys(fresh.issues).map((key) => {
 			const n = Number(key);
@@ -1298,10 +1320,23 @@ const main = async () => {
 				changed = true;
 			}
 		};
-		if (fresh.preflight_overlap === 1) legacy.forEach(deactivate);
-		coordinated = coordinatePreflightOverlap(fresh, legacy);
+		if (invalidate && fresh.preflight_overlap === 1) legacy.forEach(deactivate);
+		const coordinated = coordinatePreflightOverlap(fresh, legacy);
+		if (invalidate && fresh.preflight_overlap === 1) coordinated.forEach(deactivate);
+		return { coordinated, changed };
+	};
+
+	// Watch runs for a long time: re-load the lane file every tick so
+	// facts/approvals recorded by concurrent operator commands are seen.
+	const snapshotAll = (withObservations = false, previous = null) => {
+		const unlock = lane.preflight_overlap === 1 ? lockLane(lanePath) : null;
+		let fresh;
+		let coordinated;
+		try {
+		fresh = loadLane(lanePath);
+		let changed;
+		({ coordinated, changed } = observeCoordinated(fresh, { invalidate: true }));
 		if (fresh.preflight_overlap === 1) {
-			coordinated.forEach(deactivate);
 			const outputIssue = command === "plan" ? Number(arg(args, "--issue")) : null;
 			const watchReviews = command === "watch" ? new Set(summarizeTransitions(previous, coordinated).changes
 				.filter(change => change.to === "review").map(change => change.issue)) : null;
@@ -1479,6 +1514,65 @@ const main = async () => {
 
 	const issue = Number(arg(args, "--issue"));
 	const entry = issueEntry(lane, issue);
+	const reviewParked = entry.blocker?.type === "input-preparation" && entry.blocker.phase === "review" &&
+		entry.blocker.reason === "prior-head-red-unavailable";
+	const observeReviewAdmission = () => {
+		const retired = entry.facts?.["retired-review-sequence"];
+		if (reviewParked || lane.preflight_overlap !== 1 || (!retired && !args.includes("--review-sequence"))) {
+			return { obs: observeIssue(root, lane, issue), admits: !reviewParked };
+		}
+		// Submissions need the current coordinated decision, but only planning can update grants.
+		const { coordinated } = observeCoordinated(lane);
+		const row = coordinated.find(row => row.issue === issue);
+		const { obs, decision } = row;
+		const raw = arg(args, "--review-sequence", "");
+		const sequence = Number(raw);
+		const readiness = reviewReadinessState(row);
+		const admits = decision.action === "review" && obs.issueState === "OPEN" &&
+			(!obs.pr || obs.pr.state === "OPEN") && readiness.current && sequence === readiness.sequence &&
+			String(sequence) === raw && (!retired || sequence > retired.value);
+		return { obs, admits };
+	};
+
+	if (preparationBlocker) {
+		if (lane.preflight_overlap !== 1) {
+			throw new TypeError("Review-preparation blocker requires preflight_overlap: 1");
+		}
+		const replay = isDeepStrictEqual(entry.blocker, preparationBlocker);
+		if (entry.blocker != null && !replay) {
+			throw new TypeError("Issue already has a different blocker");
+		}
+		const grant = entry.facts?.["review-readiness"];
+		const { head_sha, policy_sha256, sequence } = preparationBlocker;
+		if (grant?.head !== head_sha || grant.value.policy_sha256 !== policy_sha256 ||
+			grant.value.sequence !== sequence || grant.value.active !== !replay) {
+			throw new TypeError("Review-preparation blocker requires the exact review grant");
+		}
+		// For a replay, observe past this blocker without giving back its priority.
+		const observedLane = replay ? { ...lane, issues: { ...lane.issues, [issue]: { ...entry, blocker: null } } } : lane;
+		const { coordinated } = observeCoordinated(observedLane);
+		const { obs, decision } = coordinated.find(row => row.issue === issue);
+		if (!(decision.action === "review" || (replay && decision.action === "wait-preflight-overlap")) ||
+			obs.issueState !== "OPEN" || (obs.pr && (obs.pr.state !== "OPEN" || obs.pr.headSha === head_sha)) ||
+			!obs.worktree || obs.headSha !== head_sha || obs.preflightPolicy?.sha256 !== policy_sha256) {
+			throw new TypeError("Issue is not eligible for a review-preparation blocker on this grant");
+		}
+		const commonDir = run(root, "git", ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+		const checkout = run(obs.worktree, "git", ["rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel", "HEAD"]);
+		if (!commonDir || checkout !== `${commonDir}\n${realpathSync(obs.worktree)}\n${head_sha}` ||
+			run(obs.worktree, "git", ["branch", "--show-current"]) !== obs.branch ||
+			run(obs.worktree, "git", ["--no-optional-locks", "status", "--porcelain=v1"]) !== "") {
+			throw new TypeError("Issue is not eligible without its current clean implementation checkout");
+		}
+		if (!replay) {
+			entry.blocker = preparationBlocker;
+			grant.value.active = false;
+			entry.facts["retired-review-sequence"] = { value: sequence };
+			saveLane(lanePath, lane);
+		}
+		process.stdout.write("ok\n");
+		return;
+	}
 
 	if (command === "retro-record") {
 		const kind = arg(args, "--kind");
@@ -1512,18 +1606,28 @@ const main = async () => {
 	if (command === "record") {
 		const phase = arg(args, "--phase");
 		const result = JSON.parse(arg(args, "--result-json"));
-		const observed = observeIssue(root, lane, issue);
+		const { obs: observed, admits } = phase === "review"
+			? observeReviewAdmission() : { obs: observeIssue(root, lane, issue), admits: true };
+		if (!admits) {
+			// Retired results are evidence of the old wave, not inputs to the current one.
+			recordRetroEvent(root, lane.lane_id, issue, "stage", {
+				phase, result, head: observed.headSha, attempts: entry.attempts,
+			});
+			process.stdout.write(`${JSON.stringify({ issue, attempts: entry.attempts, blocker: entry.blocker }, null, 2)}\n`);
+			return;
+		}
 		invalidateReadiness(issue);
 		validateStageMeasurements(result?.measurements, observed.headSha);
 		const unavailable = result?.error?.code === "dispatch-target-unavailable";
+		const stoppedByContract = lane.retry_policy?.stop_on_child_contract_error === true
+			&& (typeof result?.ok !== "boolean" || result.error?.type === "child-contract-error");
 		if (unavailable) {
 			if (!["preflight", "implement", "fix-back", "review"].includes(phase)) {
 				throw new TypeError("Unavailable child target requires a child stage");
 			}
 			if (result.ok !== false) throw new TypeError("Unavailable target cannot be a successful result");
 			validateUnavailableTarget(phase, result.error, observed.preflightPolicy?.active_axes);
-		} else if (result?.ok === true && !(lane.retry_policy?.stop_on_child_contract_error === true
-			&& result.error?.type === "child-contract-error")) {
+		} else if (result?.ok === true && !stoppedByContract) {
 			if (["preflight", "implement", "fix-back", "review"].includes(phase)
 				&& Object.hasOwn(result, "category")) {
 				throw new TypeError("Category workers cannot supply registered stage successes");
@@ -1548,9 +1652,7 @@ const main = async () => {
 		const next = unavailable
 			? { ...entry, blocker: { ...result.error, type: "input-preparation", phase } }
 			: applyChildResult(entry, phase, result, { retryPolicy: lane.retry_policy ?? undefined, now: Date.now() });
-		const childContractError = next.blocker?.type === "child-contract-error"
-			&& lane.retry_policy?.stop_on_child_contract_error === true
-			&& (typeof result?.ok !== "boolean" || result?.error?.type === "child-contract-error");
+		const childContractError = next.blocker?.type === "child-contract-error" && stoppedByContract;
 		if (!childContractError && phase === "resolve-conflict" && result?.ok === true) {
 			const obs = observeIssue(root, lane, issue);
 			if (result.head_sha !== obs.headSha) throw new TypeError("Conflict result requires current head_sha");
@@ -1592,6 +1694,13 @@ const main = async () => {
 					evidence: result.evidence,
 				},
 			};
+		}
+		if (reviewParked) {
+			// A late child result is not an operator release of the parked review.
+			if (next.blocker.phase !== "review") {
+				next.deferred_stage_blocker = next.blocker;
+			}
+			next.blocker = entry.blocker;
 		}
 		lane.issues[String(issue)] = next;
 		invalidateReadiness(issue, ["fix-back", "resolve-conflict"].includes(phase));
@@ -1679,7 +1788,8 @@ const main = async () => {
 		} else {
 			const head = arg(args, "--head");
 			let storedValue;
-			const obs = observeIssue(root, lane, issue);
+			const { obs, admits } = kind === "review"
+				? observeReviewAdmission() : { obs: observeIssue(root, lane, issue), admits: true };
 			if (head !== obs.headSha || !obs.preflightPolicy) {
 				throw new TypeError(
 					`${kind} requires current head and valid preflight`,
@@ -1732,6 +1842,11 @@ const main = async () => {
 				}
 				// Share the record path's evidence requirements, never the legacy reader.
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy, obs.reviewRetention);
+				if (!admits) {
+					// The retrospective event above is not executable review evidence.
+					process.stdout.write("ok\n");
+					return;
+				}
 				delete entry.facts["local-checks"];
 				delete entry.facts["local-ci-waiver"];
 			}
@@ -1761,7 +1876,15 @@ const main = async () => {
 		}
 		const blocker = entry.blocker;
 		invalidateReadiness(issue, true);
-		entry.blocker = null;
+		entry.blocker = reviewParked ? entry.deferred_stage_blocker ?? null : null;
+		if (reviewParked) {
+			if (lane.preflight_overlap === 1) {
+				// A blocker saved by an older CLI did not yet persist the retirement.
+				entry.facts ??= {};
+				entry.facts["retired-review-sequence"] ??= { value: blocker.sequence };
+			}
+			delete entry.deferred_stage_blocker;
+		}
 		entry.attempts[phase] = 0;
 		if (entry.retry_telemetry) delete entry.retry_telemetry[phase];
 		saveLane(lanePath, lane);
