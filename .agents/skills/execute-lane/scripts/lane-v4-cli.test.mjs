@@ -3550,6 +3550,60 @@ const readinessFixture = (t, predictions = { 42: ['docs/shared.md'], 43: ['docs/
   return { ...f, planIssue, implementIssue, recordIssue, readiness, all };
 };
 
+const parkReviewPreparation = f => {
+  const { head, value: { policy_sha256, sequence } } = f.readiness(42);
+  const request = { reason: 'prior-head-red-unavailable', fix_back_eligible: false,
+    head_sha: head, policy_sha256, sequence };
+  f.cli('record-review-preparation-blocker', [...f.common, '--value', JSON.stringify(request)]);
+};
+
+test('#4323 parked review: late terminal implementation stop survives review clear', t => {
+  const f = readinessFixture(t, { 42: ['docs/guide.md'] });
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.retry_policy = { retry_count_is_terminal: false, max_same_failure_repeats: null,
+    max_wall_clock_minutes: null, stop_on_child_contract_error: true };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  f.implementIssue(42);
+  assert.equal(f.planIssue(42).decision.action, 'review');
+  parkReviewPreparation(f);
+
+  f.recordIssue(42, 'implement', { ok: false, error: { type: 'child-contract-error' } });
+  f.recordIssue(42, 'review', { ok: false });
+  assert.equal(f.planIssue(42).decision.reason, 'input-preparation');
+  f.cli('clear-blocker', [...f.common, '--phase', 'review']);
+
+  assert.deepEqual(f.planIssue(42).decision, { action: 'blocked', reason: 'child-contract-error',
+    blocker: { type: 'child-contract-error', phase: 'implement' } });
+  assert.equal(f.readiness(42).value.active, false);
+  f.cli('clear-blocker', [...f.common, '--phase', 'implement']);
+  assert.equal(f.planIssue(42).decision.action, 'review');
+});
+
+test('#4323 parked review: late PASS is retrospective and publication requires fresh review', t => {
+  const file = 'src/shared.ts';
+  const f = readinessFixture(t, { 42: [file], 43: [file] });
+  for (const issue of [42, 43]) f.implementIssue(issue, file);
+  const late = f.review();
+  parkReviewPreparation(f);
+  assert.equal(f.planIssue(43).decision.action, 'review');
+  const siblingSequence = f.readiness(43).value.sequence;
+
+  f.set('review', late, late.head_sha);
+  f.cli('clear-blocker', [...f.common, '--phase', 'review']);
+
+  assert.equal(f.planIssue(42).decision.action, 'wait-preflight-overlap');
+  assert.equal(f.readiness(42).value.active, false);
+  const reviews = readRetroEvents(f.root, 'fixture').filter(event => event.kind === 'review');
+  assert.deepEqual(reviews.map(event => event.data), [late]);
+  f.state.issues = { 43: { ...f.state.issue, state: 'CLOSED' } };
+  f.update();
+  assert.equal(f.planIssue(42).decision.action, 'review');
+  assert.equal(f.readiness(42).value.sequence, siblingSequence + 1);
+  const fresh = f.review();
+  f.set('review', fresh, fresh.head_sha);
+  assert.equal(f.planIssue(42).decision.action, 'create-pr');
+});
+
 test('#4323 review preparation: exact grant releases the live overlap and recovery re-enters at a new sequence', () =>
   withGatedWatch({
     makeFixture: context => {

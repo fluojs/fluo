@@ -1514,6 +1514,8 @@ const main = async () => {
 
 	const issue = Number(arg(args, "--issue"));
 	const entry = issueEntry(lane, issue);
+	const reviewParked = entry.blocker?.type === "input-preparation" && entry.blocker.phase === "review" &&
+		entry.blocker.reason === "prior-head-red-unavailable";
 
 	if (preparationBlocker) {
 		if (lane.preflight_overlap !== 1) {
@@ -1667,9 +1669,11 @@ const main = async () => {
 				},
 			};
 		}
-		if (entry.blocker?.type === "input-preparation" && entry.blocker.phase === "review" &&
-			entry.blocker.reason === "prior-head-red-unavailable") {
+		if (reviewParked) {
 			// A late child result is not an operator release of the parked review.
+			if (next.blocker.phase !== "review") {
+				next.deferred_stage_blocker = next.blocker;
+			}
 			next.blocker = entry.blocker;
 		}
 		lane.issues[String(issue)] = next;
@@ -1811,6 +1815,11 @@ const main = async () => {
 				}
 				// Share the record path's evidence requirements, never the legacy reader.
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy, obs.reviewRetention);
+				if (reviewParked) {
+					// The retrospective event above is not executable review evidence.
+					process.stdout.write("ok\n");
+					return;
+				}
 				delete entry.facts["local-checks"];
 				delete entry.facts["local-ci-waiver"];
 			}
@@ -1840,7 +1849,10 @@ const main = async () => {
 		}
 		const blocker = entry.blocker;
 		invalidateReadiness(issue, true);
-		entry.blocker = null;
+		entry.blocker = reviewParked ? entry.deferred_stage_blocker ?? null : null;
+		if (reviewParked) {
+			delete entry.deferred_stage_blocker;
+		}
 		entry.attempts[phase] = 0;
 		if (entry.retry_telemetry) delete entry.retry_telemetry[phase];
 		saveLane(lanePath, lane);

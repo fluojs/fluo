@@ -594,10 +594,13 @@ error. Do not edit the ledger or simulate a stage result to release a slot.
 Retain the failed preparation evidence and any separate unresolved product
 blockers. A diagnostic mutation is not official RED, and this command supplies
 neither a RED waiver nor admission to review, publication, CI or merge. Once
-the preparation problem is resolved, use `clear-blocker --phase review`,
-then obtain a fresh `review` via `plan`. The old grant stays inactive, including
-when the head or policy changes, and an active overlapping sibling keeps its
-priority. Run [official review preparation](../../review-head/SKILL.md) again
+the preparation problem is resolved, use `clear-blocker --phase review`.
+Any independent stage stop recorded while review was parked still requires
+clearing its own phase. A review result received while parked is retained for
+retrospective use, not admitted as an executable review fact. Then obtain a
+fresh `review` via `plan`. The old grant stays inactive, including when the
+head or policy changes, and an active overlapping sibling keeps its priority.
+Run [official review preparation](../../review-head/SKILL.md) again
 under the fresh binding, with the required previous-head RED, same-selection
 GREEN, and all selected axes. Clearing the blocker carries no evidence forward.
 
