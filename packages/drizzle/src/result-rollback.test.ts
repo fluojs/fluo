@@ -7,7 +7,9 @@ import {
   Transaction,
   type TransactionBoundaryOptions,
   TransactionRollbackCapabilityError,
+  type TransactionRollbackObserver,
   TransactionRollbackOnlyError,
+  TransactionRollbackUnconfirmedError,
 } from './index.js';
 import { createDrizzleDatabaseFacade } from './facade.js';
 
@@ -27,7 +29,7 @@ function deferred() {
   return { promise, resolve: release };
 }
 
-function nativeFixture(beforeRollback?: () => Promise<void>) {
+function nativeFixture(beforeRollback?: () => Promise<void>, rollbackObserver: TransactionRollbackObserver = observerDouble) {
   const events: string[] = [];
   let sequence = 0;
   const database = {
@@ -50,7 +52,7 @@ function nativeFixture(beforeRollback?: () => Promise<void>) {
     new DrizzleDatabase<typeof database, { readonly id: number }>(
       database,
       undefined,
-      { strictTransactions: false, rollbackObserver: observerDouble },
+      { strictTransactions: false, rollbackObserver },
     ),
   );
   return { database, drizzle, events };
@@ -280,6 +282,92 @@ describe('Drizzle opt-in Result rollback', { timeout: 2_000 }, () => {
     expect(events).toEqual(['begin:1', 'rollback:1']);
   });
 
+  it.each(['root', 'nested-only', 'unconfirmed', 'callback-error', 'predicate-error'] as const)(
+    'preserves the %s outcome when a request aborts during owner drain',
+    async (mode) => {
+      const controller = new AbortController();
+      const drainEntered = deferred();
+      const childRelease = deferred();
+      const rollbackEntered = deferred();
+      const rollbackRelease = deferred();
+      const confirmRollback = () => {
+        events.push('confirm:rollback');
+        if (mode === 'unconfirmed' || !events.includes('rollback:1')) {
+          throw new TransactionRollbackUnconfirmedError();
+        }
+        return true as const;
+      };
+      const { drizzle, events } = nativeFixture(async () => {
+        rollbackEntered.resolve();
+        await rollbackRelease.promise;
+      }, { ...observerDouble, beginAttempt: () => ({ confirmRollback }) });
+      const closeOwnerMethod = 'closeTransactionBoundaryOwner';
+      const closeOwner = drizzle[closeOwnerMethod].bind(drizzle);
+      drizzle[closeOwnerMethod] = (owner) => {
+        const closing = closeOwner(owner);
+        drainEntered.resolve();
+        return closing;
+      };
+      const first = { source: 'first child' };
+      const root = { source: 'root' };
+      const failure = new Error(`${mode} failure`);
+      let child: Promise<void> | undefined;
+      let settled = false;
+      const run = drizzle.requestTransaction(async () => {
+        await drizzle.transaction(async () => first, undefined, { shouldRollback: () => true });
+        await drizzle.transaction(async () => ({ source: 'second child' }), undefined, { shouldRollback: () => true });
+        drizzle.afterCommit(() => { events.push('unreachable hook'); });
+        child = drizzle.transaction(async () => { await childRelease.promise; });
+        if (mode === 'callback-error') {
+          throw failure;
+        }
+        return root;
+      }, controller.signal, undefined, {
+        shouldRollback: () => {
+          if (mode === 'predicate-error') {
+            throw failure;
+          }
+          return mode === 'root' || mode === 'unconfirmed';
+        },
+      });
+      const observed = Promise.allSettled([run]).finally(() => { settled = true; });
+
+      try {
+        await drainEntered.promise;
+        controller.abort(new Error('aborted during rollback-only owner drain'));
+        expect(events).toEqual(['begin:1']);
+        expect(settled).toBe(false);
+        childRelease.resolve();
+
+        await rollbackEntered.promise;
+        expect(events).toEqual(['begin:1']);
+        expect(settled).toBe(false);
+        rollbackRelease.resolve();
+
+        const [outcome] = await observed;
+        if (mode === 'root') {
+          await expect(run).resolves.toBe(root);
+        } else if (mode === 'nested-only') {
+          if (outcome?.status !== 'rejected' || !(outcome.reason instanceof TransactionRollbackOnlyError)) {
+            throw new Error('Expected a TransactionRollbackOnlyError.');
+          }
+          expect(outcome.reason.result).toBe(first);
+        } else if (mode === 'unconfirmed') {
+          await expect(run).rejects.toBeInstanceOf(TransactionRollbackUnconfirmedError);
+        } else {
+          await expect(run).rejects.toBe(failure);
+        }
+        expect(events).toEqual(mode === 'callback-error' || mode === 'predicate-error'
+          ? ['begin:1', 'rollback:1']
+          : ['begin:1', 'rollback:1', 'confirm:rollback']);
+      } finally {
+        childRelease.resolve();
+        rollbackRelease.resolve();
+        await Promise.allSettled([observed, child]);
+      }
+    },
+  );
+
   it.each(['transaction', 'requestTransaction'] as const)(
     'returns its own opted root failure rather than the first nested failure through %s',
     async (entry) => {
@@ -327,22 +415,25 @@ describe('Drizzle opt-in Result rollback', { timeout: 2_000 }, () => {
   );
 
   it.each(['commit', 'rollback', 'cleanup'] as const)(
-    'propagates the native %s failure instead of recovering a callback value',
+    'propagates the native %s failure even if the request aborts during native settlement',
     async (phase) => {
       // Given: the native runner reports its own failure at a controlled settlement stage.
       const nativeFailure = new Error(`native ${phase} failed`);
+      const controller = new AbortController();
       const events: string[] = [];
       const database = {
         async transaction<T>(callback: (handle: object) => Promise<T>): Promise<T> {
           try {
             const result = await callback({});
             if (phase === 'commit') {
+              controller.abort(new Error('aborted during commit'));
               throw nativeFailure;
             }
             return result;
           } catch (error) {
             events.push('rollback');
             if (phase === 'rollback' || phase === 'cleanup') {
+              controller.abort(new Error('aborted during rollback or cleanup'));
               throw nativeFailure;
             }
             throw error;
@@ -355,7 +446,7 @@ describe('Drizzle opt-in Result rollback', { timeout: 2_000 }, () => {
       const run = drizzle.requestTransaction(async () => {
         drizzle.afterCommit(() => { events.push('hook'); });
         return { rejected: phase !== 'commit' };
-      }, undefined, undefined, { shouldRollback: (value) => value.rejected });
+      }, controller.signal, undefined, { shouldRollback: (value) => value.rejected });
 
       // Then: only the exact root-owned signal is recoverable, never the native failure.
       await expect(run).rejects.toBe(nativeFailure);
