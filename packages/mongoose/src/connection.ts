@@ -305,7 +305,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    */
   currentSession(): MongooseSessionLike | undefined {
     const scope = this.sessions.getStore();
-    return scope && (scope.requestCallback?.running ?? scope.owner.open) ? scope.session : undefined;
+    return scope && (scope.owner.open || scope.requestCallback?.running) ? scope.session : undefined;
   }
 
   /**
@@ -443,6 +443,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return evaluateResult(currentSession.owner, await fn(), boundary?.shouldRollback);
     }
 
+    this.assertNotDrainingRequest(currentSession);
     if (typeof this.connection.transaction === 'function') {
       return this.runConnectionTransaction(fn, undefined, boundary);
     }
@@ -524,6 +525,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return request;
     }
 
+    this.assertNotDrainingRequest(currentScope);
     this.assertRequestTransactionsAvailable();
 
     const abortContext = createRequestAbortContext(signal);
@@ -618,6 +620,13 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   private assertRequestTransactionsAvailable(): void {
     if (this.lifecycleState !== 'ready') {
       throw new Error(TRANSACTION_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private assertNotDrainingRequest(scope: AmbientSessionScope | undefined): void {
+    // These calls are on the new-owner path; a running child can use its session but cannot open a new one.
+    if (scope?.requestCallback?.running) {
+      throw new Error('Mongoose transactions are unavailable while an owning transaction drains a nested request.');
     }
   }
 

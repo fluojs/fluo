@@ -1024,8 +1024,19 @@ describe('@fluojs/mongoose', () => {
   it('keeps completed nested request transactions visible until the outer manual transaction settles', async () => {
     const events: string[] = [];
     const transactionReleased = deferred<void>();
+    const saveReleased = deferred<void>();
+    const ownerClosed = deferred<void>();
     const nestedRequest = deferred<{ result: Promise<string> }>();
+    const saveCompleted = deferred<void>();
     const session = createFakeSession(events);
+    let savedSession: MongooseSessionLike | undefined;
+    let sessionAfterClose: Promise<MongooseSessionLike | undefined> | undefined;
+    const document = {
+      async save(options?: { session?: MongooseSessionLike }) {
+        savedSession = options?.session;
+        return document;
+      },
+    };
 
     const connection: MongooseConnectionLike = {
       async startSession() {
@@ -1037,9 +1048,25 @@ describe('@fluojs/mongoose', () => {
     const mongoose = new MongooseConnection<typeof connection>(connection);
 
     const outerTransaction = mongoose.transaction(async () => {
-      const result = mongoose.requestTransaction(async () => 'request-result');
+      let save: Promise<unknown> | undefined;
+      const result = mongoose.requestTransaction(async () => {
+        save = saveReleased.promise.then(() => mongoose.transaction(() => mongoose.saveDocument(document)));
+        sessionAfterClose = ownerClosed.promise.then(() => mongoose.currentSession());
+        return 'request-result';
+      });
       nestedRequest.resolve({ result });
       await result;
+      saveReleased.resolve();
+      try {
+        await save;
+      } catch (error) {
+        // Keep the missing-session regression at the native save assertion below.
+        if (!(error instanceof Error && error.message === 'Mongoose document saves require an active transaction session.')) {
+          throw error;
+        }
+      } finally {
+        saveCompleted.resolve();
+      }
       await transactionReleased.promise;
       return 'outer-result';
     });
@@ -1048,6 +1075,7 @@ describe('@fluojs/mongoose', () => {
     try {
       const { result } = await nestedRequest.promise;
       await expect(result).resolves.toBe('request-result');
+      await saveCompleted.promise;
       expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
         details: {
           activeRequestTransactions: 1,
@@ -1058,6 +1086,8 @@ describe('@fluojs/mongoose', () => {
     } finally {
       transactionReleased.resolve();
       await outerOutcome;
+      ownerClosed.resolve();
+      await sessionAfterClose;
     }
 
     await expect(outerTransaction).resolves.toBe('outer-result');
@@ -1073,6 +1103,8 @@ describe('@fluojs/mongoose', () => {
       'transaction:commit',
       'session:end',
     ]);
+    await expect(sessionAfterClose).resolves.toBeUndefined();
+    expect(savedSession).toBe(session);
   });
 
   it.each(['manual', 'delegated'])(
@@ -1192,6 +1224,89 @@ describe('@fluojs/mongoose', () => {
         finishParentWork.resolve();
         releaseChild.resolve();
         await outerOutcome;
+      }
+    },
+  );
+
+  it.each(['manual', 'delegated'])(
+    'rejects new boundaries from a draining nested request in a %s transaction without shutdown',
+    async (mode) => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const acquireSession = vi.fn(() => createFakeSession(events)).mockReturnValueOnce(session);
+      const connection: MongooseConnectionLike = { startSession: async () => acquireSession() };
+      if (mode === 'delegated') {
+        connection.transaction = async (fn) => {
+          const acquired = acquireSession();
+          await acquired.startTransaction();
+          try {
+            const result = await fn(acquired);
+            await acquired.commitTransaction();
+            return result;
+          } catch (error) {
+            await acquired.abortTransaction();
+            throw error;
+          } finally {
+            await acquired.endSession();
+          }
+        };
+      }
+
+      const mongoose = new MongooseConnection(connection);
+      const childStarted = deferred<void>();
+      const releaseChild = deferred<void>();
+      const failParent = deferred<void>();
+      const parentFailure = new Error('independent parent work failed');
+      const newCallback = vi.fn(async () => undefined);
+      let childOutcome: Promise<PromiseSettledResult<unknown>[]> | undefined;
+      let ambient: MongooseSessionLike | undefined;
+
+      const outer = mongoose.transaction(async () => {
+        childOutcome = Promise.allSettled([mongoose.requestTransaction(async () => {
+          childStarted.resolve();
+          await releaseChild.promise;
+          const attempts = await Promise.allSettled([
+            mongoose.transaction(newCallback),
+            mongoose.requestTransaction(newCallback),
+          ]);
+          ambient = mongoose.currentSession();
+          return attempts;
+        })]);
+        await failParent.promise;
+        throw parentFailure;
+      });
+      const outerOutcome = Promise.allSettled([outer]);
+
+      try {
+        await Promise.race([childStarted.promise, outerOutcome]);
+        failParent.resolve();
+        // Let the parent rejection close admission while the child is still gated.
+        await setImmediate();
+        expect(events).toEqual(['transaction:start']);
+        expect(mongoose.createPlatformStatusSnapshot().details.lifecycleState).toBe('ready');
+
+        releaseChild.resolve();
+        await expect(outer).rejects.toBe(parentFailure);
+        await expect(childOutcome).resolves.toEqual([{
+          status: 'fulfilled',
+          value: [
+            { status: 'rejected', reason: expect.any(Error) },
+            { status: 'rejected', reason: expect.any(Error) },
+          ],
+        }]);
+        expect(ambient).toBe(session);
+        expect(acquireSession).toHaveBeenCalledTimes(1);
+        expect(newCallback).not.toHaveBeenCalled();
+        expect(events).toEqual(['transaction:start', 'transaction:abort', 'session:end']);
+        expect(mongoose.createPlatformStatusSnapshot().details).toMatchObject({
+          activeRequestTransactions: 0,
+          activeSessions: 0,
+        });
+      } finally {
+        failParent.resolve();
+        releaseChild.resolve();
+        await outerOutcome;
+        await childOutcome;
       }
     },
   );
