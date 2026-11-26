@@ -51,11 +51,13 @@ type AmbientSessionScope = {
   activeSession: ActiveSessionScopeHandle;
   session: MongooseSessionLike;
   readonly owner: TransactionOwner;
+  readonly requestCallback?: { running: boolean };
 };
 
-// Each native callback attempt owns a mutable registration queue and closes it before commit begins.
+// Each native callback attempt owns its registrations and pending request work.
 type TransactionOwner = RollbackOwner & {
   readonly callbacks: AfterCommitCallback[];
+  readonly pendingRequests: Set<Promise<unknown>>;
   afterCommitEnabled: boolean;
   resultRollbackEnabled: boolean;
   open: boolean;
@@ -304,7 +306,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    */
   currentSession(): MongooseSessionLike | undefined {
     const scope = this.sessions.getStore();
-    return scope?.owner.open ? scope.session : undefined;
+    return scope && (scope.owner.open || scope.requestCallback?.running) ? scope.session : undefined;
   }
 
   /**
@@ -441,6 +443,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return evaluateResult(currentSession.owner, await fn(), boundary?.shouldRollback);
     }
 
+    this.assertNotDrainingRequest(currentSession);
     if (typeof this.connection.transaction === 'function') {
       return this.runConnectionTransaction(fn, undefined, boundary);
     }
@@ -500,19 +503,30 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
 
       const abortContext = createRequestAbortContext(signal);
       const active = this.trackActiveRequestTransaction(abortContext.controller);
+      currentScope.activeSession.retainRequestTransaction(active);
 
-      try {
-        return evaluateResult(
-          currentScope.owner,
-          await raceWithAbortAndDrainCallback(fn, abortContext.signal),
-          boundary?.shouldRollback,
-        );
-      } finally {
-        abortContext.cleanup();
-        currentScope.activeSession.retainRequestTransaction(active);
-      }
+      const request = raceWithAbortAndDrainCallback(() => {
+        // Cancellation or owner closure can occur between admission and this queued invocation.
+        abortContext.signal.throwIfAborted();
+        const requestCallback = { running: true };
+        return this.sessions.run({ ...currentScope, requestCallback }, async () => {
+          try {
+            return await fn();
+          } finally {
+            requestCallback.running = false;
+          }
+        });
+      }, abortContext.signal)
+        .then((result) => evaluateResult(currentScope.owner, result, boundary?.shouldRollback))
+        .finally(() => {
+          abortContext.cleanup();
+          currentScope.owner.pendingRequests.delete(request);
+        });
+      currentScope.owner.pendingRequests.add(request);
+      return request;
     }
 
+    this.assertNotDrainingRequest(currentScope);
     this.assertRequestTransactionsAvailable();
 
     const abortContext = createRequestAbortContext(signal);
@@ -614,6 +628,13 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
+  private assertNotDrainingRequest(scope: AmbientSessionScope | undefined): void {
+    // These calls are on the new-owner path; a running child can use its session but cannot open a new one.
+    if (scope?.requestCallback?.running) {
+      throw new Error('Mongoose transactions are unavailable while an owning transaction drains a nested request.');
+    }
+  }
+
   private async runManualSessionTransaction<T>(
     session: MongooseSessionLike,
     fn: () => Promise<T>,
@@ -624,6 +645,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     const activeSession = this.trackActiveSession();
     const owner: TransactionOwner = {
       callbacks: [],
+      pendingRequests: new Set(),
       afterCommitEnabled: boundary?.requireAfterCommit === true,
       resultRollbackEnabled: boundary?.shouldRollback !== undefined,
       open: true,
@@ -741,6 +763,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
           delegatedCleanup ??= observeDelegatedSessionCleanup(session);
           const attempt: TransactionOwner = {
             callbacks: [],
+            pendingRequests: new Set(),
             afterCommitEnabled: boundary?.requireAfterCommit === true,
             resultRollbackEnabled: boundary?.shouldRollback !== undefined,
             open: true,
@@ -782,14 +805,21 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     resultBoundary: ResultBoundary<T>,
   ): Promise<T> {
     try {
-      const result = resultBoundary.evaluate(await fn());
+      let result: T;
+      try {
+        result = resultBoundary.evaluate(await fn());
+      } finally {
+        owner.open = false;
+        // Close admission before draining. Child rejection must not replace the owner's outcome.
+        if (owner.pendingRequests.size > 0) {
+          await Promise.allSettled(owner.pendingRequests);
+        }
+      }
       resultBoundary.assertCommittable();
       return result;
     } catch (error) {
       owner.callbacks.length = 0;
       throw error;
-    } finally {
-      owner.open = false;
     }
   }
 
