@@ -5,7 +5,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject, type MaybePromise } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown } from '@fluojs/core';
-import { raceWithAbort } from '@fluojs/runtime';
+import { createAbortError, raceWithAbort } from '@fluojs/runtime';
 import {
   type ActiveRequestTransaction,
   type ActiveRequestTransactionHandle,
@@ -541,6 +541,10 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
 
     try {
       if (typeof this.connection.transaction === 'function') {
+        if (abortContext.signal.aborted) {
+          throw createAbortError(abortContext.signal.reason);
+        }
+
         let delegatedCallbackStarted = false;
         let resultRollbackEnabled = boundary?.shouldRollback !== undefined;
         const delegatedTransaction = this.runConnectionTransaction(() => {
