@@ -438,8 +438,9 @@ const reconcileJobTiming = (observations, attemptStart) => {
 		if (!attributable.length) return fallback;
 		const step = attributable.findLast(terminal) ?? attributable.at(-1);
 		const stepIdentity = new Set(attributable.map(({ name }) => name)).size > 1 ? "conflicting-step-identity" : null;
-		const start = reconcileBoundary(attributable.filter(timingStarted).map(({ timing }) => timing.startedAt));
-		const end = reconcileBoundary(attributable.filter(terminal).map(({ timing }) => timing.completedAt));
+		const timingSources = attributable.filter(({ conclusion }) => conclusion !== "skipped");
+		const start = reconcileBoundary(timingSources.filter(timingStarted).map(({ timing }) => timing.startedAt));
+		const end = reconcileBoundary(timingSources.filter(terminal).map(({ timing }) => timing.completedAt));
 		// A step can remain measured if it fits inside every observed enclosing boundary.
 		const bounds = { starts: [attemptStart, started.latest], completedAt: completed.earliest };
 		const reason = identityReason ?? stepIdentity ?? executionBlocker(step, "step");

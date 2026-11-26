@@ -1501,6 +1501,30 @@ test("#4286 a skipped poll cannot supply completion for a later successful job",
 		observed.elapsedStartedEventIds], [180000, [job.id], [eligible.eventId], [controlFinal.eventId]]);
 });
 
+test("#4286 retrospectiveEvidence: skipped step poll stays visible without supplying later step timing", (t) => {
+	const root = fixture(t);
+	const run = { ...ciRun(), conclusion: "success", run_started_at: "2026-10-08T01:00:20Z" };
+	const step = { number: 2, name: "Load verification image", status: "completed" };
+	const startedAt = "2026-10-08T01:01:20Z";
+	const skippedCompletion = "2026-10-08T01:01:30Z";
+	const job = { ...ciJob(1, "success"), head_sha: head, name: "Verify task (tooling-1) / tooling-1" };
+	const [skipped] = recordCiSnapshot(root, laneId, 1, { ...run, status: "in_progress", conclusion: null }, [
+		{ ...job, steps: [{ ...step, conclusion: "skipped", started_at: null, completed_at: skippedCompletion }] },
+	]);
+	recordCiSnapshot(root, laneId, 1, run, [
+		{ ...job, steps: [{ ...step, conclusion: "success", started_at: startedAt, completed_at: null }] },
+	]);
+
+	const { ciTimings: [attempt], events } = retrospectiveEvidence(root, laneId, snapshots);
+
+	const [raw] = events.find(({ eventId }) => eventId === skipped.eventId).data.timing.jobs[0].steps;
+	assert.deepEqual([raw.conclusion, raw.timing.completedAt], ["skipped", skippedCompletion]);
+	const [projected] = attempt.jobs[0].steps;
+	assert.equal(projected.timing.elapsedMs, null);
+	assert.deepEqual([projected.conclusion, projected.timing.startedAt, projected.timing.completedAt, projected.timing.reason],
+		["success", startedAt, null, "missing-boundary"]);
+});
+
 test("#4286 fifth fix-back counts a timed-out job completion without measuring its execution", (t) => {
 	const root = fixture(t);
 	const run = { ...ciRun(), run_started_at: "2026-10-08T01:00:20Z" };
