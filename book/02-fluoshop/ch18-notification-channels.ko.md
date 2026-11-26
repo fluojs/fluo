@@ -18,7 +18,9 @@ FluoBlog에서 글을 구독하던 독자는 티셔츠를 주문한 뒤 이메�
 
 `@fluojs/notifications`는 `channel`, `id`, `recipients`, `subject`, `template`, `payload`, `metadata` 등을 가진 요청을 받아 등록된 채널로 보낸다. 이메일이나 Slack 구현을 스스로 발견하거나 설치하지 않는다. `NotificationChannel` 값을 `channels`에 명시적으로 넣어야 한다. 이 장에서는 직접 채널 인터페이스를 흉내 내지 않고 `@fluojs/email`의 `EMAIL_CHANNEL`, `@fluojs/slack`의 `SLACK_CHANNEL`, `@fluojs/discord`의 `DISCORD_CHANNEL`을 사용한다. 그래야 부분 이메일 수락, recipient 해석, 전송 취소 같은 실제 패키지 동작을 함께 검증할 수 있다.
 
-세 채널의 대상 지정은 서로 다르다. 이메일 recipient는 이메일 주소다. Slack의 하나의 dispatch는 단일 recipient에서 하나의 대상 채널을 해석하고, 없으면 기본 채널로 폴백한다. Discord recipient는 이메일 주소나 사용자 ID가 아니라 이 통합에서의 thread 경로이며, 단일 recipient에서 해석하고 없으면 기본 thread로 폴백한다. 여러 Slack 채널이나 Discord thread에 보내려면 요청을 각각 만들거나 해당 서비스의 `sendMany`를 사용한다. 하나의 요청에 여러 recipient를 넣는 것이 세 시스템에서 같은 의미라고 가정하지 않는다.
+세 채널의 대상 지정은 서로 다르다. 이메일 recipient는 이메일 주소다. Slack의 하나의 dispatch는 단일 recipient에서 하나의 대상 채널을 해석하고, 없으면 기본 채널로 폴백한다. Discord recipient는 이메일 주소나 사용자 ID가 아니라 thread ID다. Discord는 `recipients` 각 항목의 앞뒤 공백을 제거하고 빈 항목을 제외한다. 남은 항목이 둘 이상이면 `DiscordMessageValidationError`로 거부하고, 하나만 남으면 그 값이 `defaultThreadId`보다 우선한다. 아무것도 남지 않으면 설정된 `defaultThreadId`를 사용한다.
+
+남은 수신자와 기본 thread가 모두 없으면 유효한 메시지는 `threadId`가 지정되지 않은 상태로 설정된 transport에 전달된다. 내장 webhook transport는 이 메시지에 `thread_id` 쿼리 파라미터를 새로 추가하지 않는다. 하나의 dispatch가 여러 Discord thread로 자동 fan-out되지는 않는다. 여러 Slack 채널이나 Discord thread에 보내려면 요청을 각각 만들거나 해당 서비스의 `sendMany`를 사용한다. 하나의 요청에 여러 recipient를 넣는 것이 세 시스템에서 같은 의미라고 가정하지 않는다.
 
 아래 `src/notifications/order-notifications.ts`는 **완전한 애플리케이션 파일**이다. DB 조회나 전송을 하지 않고, 확인된 결제 사건과 기존 계정에서 얻은 수신자 정보로 세 요청을 만든다. 이 장의 `PaidNotice`는 알림용 스냅샷이며 저장소의 주문 모델을 대체하지 않는다. `totalMinor`는 JSON 경계를 넘은 십진 문자열이다. 통화와 금액은 이미 결제 처리 경계에서 검증된 값이며, 코드에서 소수로 다시 계산하지 않는다. 현재 `ProductVariant.priceMinor`를 조회해 과거 결제 금액을 다시 산출하지도 않는다.
 

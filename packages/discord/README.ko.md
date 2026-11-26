@@ -180,8 +180,8 @@ export class AppModule {}
 
 Behavioral contract 메모:
 
-- 하나의 notification dispatch는 `recipients`의 단일 항목으로 정확히 하나의 Discord thread 경로에 매핑됩니다.
-- `recipients`가 없으면 `DiscordService.sendNotification(...)`는 `defaultThreadId`로 폴백합니다.
+- `DiscordService.sendNotification(...)`은 `recipients` 각 항목의 앞뒤 공백을 제거하고 빈 항목을 제외합니다. 남은 항목이 둘 이상이면 `DiscordMessageValidationError`로 거부합니다. 하나만 남으면 그 값이 `defaultThreadId`보다 우선하며, 아무것도 남지 않으면 설정된 `defaultThreadId`를 사용합니다.
+- 남은 수신자와 기본 thread가 모두 없으면 유효한 메시지는 `threadId`가 지정되지 않은 상태로 설정된 transport에 전달됩니다. 내장 webhook transport는 이 메시지에 `thread_id` 쿼리 파라미터를 새로 추가하지 않습니다.
 - notification metadata는 payload metadata, dispatch metadata, template/subject marker를 합쳐 구성됩니다. 중복 key에서는 dispatch metadata가 payload metadata를 덮어쓰고, 최종 `subject` / `template` marker가 둘 모두를 덮어씁니다. `template`은 renderer가 구성된 경우에만 렌더링됩니다.
 - Template rendering은 서비스가 ready일 때만 시작합니다. Render input에는 `signal`이 포함되므로 renderer는 transport delivery 전에 caller-cancelled 작업을 중단할 수 있습니다.
 - 여러 Discord thread로 fan-out이 필요한 notification workflow라면 thread별 concrete Discord message를 만들어 `DiscordService.sendMany(...)`로 보내거나 별도 notification dispatch를 실행해야 합니다. 하나의 notification dispatch는 multi-recipient fan-out을 암묵적으로 확장하지 않습니다.
