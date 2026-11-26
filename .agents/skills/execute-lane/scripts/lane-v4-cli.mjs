@@ -1516,19 +1516,22 @@ const main = async () => {
 	const entry = issueEntry(lane, issue);
 	const reviewParked = entry.blocker?.type === "input-preparation" && entry.blocker.phase === "review" &&
 		entry.blocker.reason === "prior-head-red-unavailable";
-	const reviewGrantAdmits = (obs) => {
-		if (reviewParked) return false;
-		if (lane.preflight_overlap !== 1) return true;
+	const observeReviewAdmission = () => {
 		const retired = entry.facts?.["retired-review-sequence"];
-		if (!retired && !args.includes("--review-sequence")) return true;
+		if (reviewParked || lane.preflight_overlap !== 1 || (!retired && !args.includes("--review-sequence"))) {
+			return { obs: observeIssue(root, lane, issue), admits: !reviewParked };
+		}
+		// Submissions need the current coordinated decision, but only planning can update grants.
+		const { coordinated } = observeCoordinated(lane);
+		const row = coordinated.find(row => row.issue === issue);
+		const { obs, decision } = row;
 		const raw = arg(args, "--review-sequence", "");
 		const sequence = Number(raw);
-		if (!Number.isSafeInteger(sequence) || sequence <= 0 || String(sequence) !== raw) return false;
-		if (obs.issueState !== "OPEN" || (obs.pr && obs.pr.state !== "OPEN")) return false;
-		const readiness = reviewReadinessState({
-			issue, obs: { ...obs, facts: entry.facts }, decision: decideNext(entry, obs),
-		});
-		return readiness.current && sequence === readiness.sequence && (!retired || sequence > retired.value);
+		const readiness = reviewReadinessState(row);
+		const admits = decision.action === "review" && obs.issueState === "OPEN" &&
+			(!obs.pr || obs.pr.state === "OPEN") && readiness.current && sequence === readiness.sequence &&
+			String(sequence) === raw && (!retired || sequence > retired.value);
+		return { obs, admits };
 	};
 
 	if (preparationBlocker) {
@@ -1603,8 +1606,9 @@ const main = async () => {
 	if (command === "record") {
 		const phase = arg(args, "--phase");
 		const result = JSON.parse(arg(args, "--result-json"));
-		const observed = observeIssue(root, lane, issue);
-		if (phase === "review" && !reviewGrantAdmits(observed)) {
+		const { obs: observed, admits } = phase === "review"
+			? observeReviewAdmission() : { obs: observeIssue(root, lane, issue), admits: true };
+		if (!admits) {
 			// Retired results are evidence of the old wave, not inputs to the current one.
 			recordRetroEvent(root, lane.lane_id, issue, "stage", {
 				phase, result, head: observed.headSha, attempts: entry.attempts,
@@ -1784,7 +1788,8 @@ const main = async () => {
 		} else {
 			const head = arg(args, "--head");
 			let storedValue;
-			const obs = observeIssue(root, lane, issue);
+			const { obs, admits } = kind === "review"
+				? observeReviewAdmission() : { obs: observeIssue(root, lane, issue), admits: true };
 			if (head !== obs.headSha || !obs.preflightPolicy) {
 				throw new TypeError(
 					`${kind} requires current head and valid preflight`,
@@ -1837,7 +1842,7 @@ const main = async () => {
 				}
 				// Share the record path's evidence requirements, never the legacy reader.
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy, obs.reviewRetention);
-				if (!reviewGrantAdmits(obs)) {
+				if (!admits) {
 					// The retrospective event above is not executable review evidence.
 					process.stdout.write("ok\n");
 					return;

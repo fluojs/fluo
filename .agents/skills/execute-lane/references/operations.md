@@ -617,8 +617,10 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs set-fact --root . --lan
 
 `record` records stage completion/retries, not executable review evidence; if
 using both commands, record the stage result before installing the review fact.
-`set-fact` installs the validated review fact only if the supplied sequence
-matches a current active grant for the observed head and effective policy.
+Sequence-protected submissions must match an active grant for the observed
+head and effective policy, and the fresh coordinated decision under the write
+lock must still be `review`. For example, a newly merged sibling may require
+base integration even if there has been no intervening `plan`.
 Missing, retired or otherwise nonmatching submissions are retrospective only
 and cannot change the review decision, retries or sibling priority. Independent
 dispatch or child-contract stops keep their existing handling. An `ok` from

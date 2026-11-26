@@ -3649,6 +3649,56 @@ test('#4323 review admission: clear before submit and same-head regrant reject t
   assert.equal(f.planIssue(42).decision.action, 'create-pr');
 });
 
+test('#4323 review admission: prose-only sibling merge after regrant rejects submissions before plan', t => {
+  const file = 'docs/guides/shared.md';
+  const f = readinessFixture(t, { 42: [file], 43: [file] });
+  for (const issue of [42, 43]) {
+    f.implementIssue(issue, file);
+  }
+  assert.equal(f.planIssue(42).decision.action, 'review');
+  const original = f.readiness(42);
+  parkReviewPreparation(f);
+  f.cli('clear-blocker', [...f.common, '--phase', 'review']);
+  const review = f.review();
+  const fresh = f.readiness(42);
+  assert.deepEqual(fresh, { ...original, value: { ...original.value, sequence: original.value.sequence + 1 } });
+  const grant = [...f.common, '--review-sequence', String(fresh.value.sequence)];
+  const record = result => JSON.parse(f.cli('record', [...grant, '--phase', 'review',
+    '--result-json', JSON.stringify(result)]).stdout);
+  const submit = () => f.cli('set-fact', [...grant, '--kind', 'review',
+    '--head', review.head_sha, '--value', JSON.stringify(review)]);
+  assert.equal(record({ ok: false }).attempts.review, 1, 'unchanged current grant admits a retry');
+  assert.equal(f.planIssue(43).decision.action, 'review', 'prose-only predictions do not serialize reviews');
+
+  const mergeCommit = f.git(f.root, 'rev-parse', 'issue-43');
+  f.git(f.root, 'merge', '--ff-only', 'issue-43');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const sibling = { number: 143, state: 'MERGED', headRefOid: mergeCommit,
+    mergeCommit: { oid: mergeCommit }, mergeable: 'MERGEABLE', statusCheckRollup: [] };
+  f.state.prs = { 'issue-43': sibling };
+  const before = readFileSync(f.lanePath);
+
+  for (const oid of [mergeCommit, 'f'.repeat(40)]) {
+    sibling.mergeCommit = { oid };
+    f.update();
+    submit();
+    assert.equal(readFileSync(f.lanePath).equals(before), true,
+      'PASS cannot enter the lane before the sibling ancestry is integrated');
+    for (const outcome of [{ ok: false }, { ok: true, ...review }]) {
+      record(outcome);
+      assert.equal(readFileSync(f.lanePath).equals(before), true,
+        `stale stage outcome cannot change review attempts: ok=${outcome.ok}`);
+    }
+  }
+
+  sibling.mergeCommit = { oid: mergeCommit };
+  f.update();
+  const { decision } = f.planIssue(42);
+  assert.equal(decision.action, 'resolve-conflict');
+  assert.equal(decision.reason, 'preflight-overlap-base-integration');
+  assert.deepEqual(decision.siblings, [{ issue: 43, commit: mergeCommit }]);
+});
+
 test('#4323 review record: only the current grant can retry or stop review after same-head regrant', t => {
   const file = 'src/shared.ts';
   const f = readinessFixture(t, { 42: [file] });
