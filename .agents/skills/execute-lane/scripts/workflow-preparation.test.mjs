@@ -71,6 +71,15 @@ function vitestRedFixture(t, scenario = 'assertion', modulesKind = 'directory-sy
 		[
 			"import { test, expect, describe, beforeEach, afterEach, beforeAll, afterAll, aroundEach, onTestFinished } from 'vitest';",
 			"import { value } from '../../source.mjs';",
+			...(scenario.startsWith('async-')
+				? ["import { readFile } from 'node:fs/promises';"]
+				: []),
+			...(scenario === 'async-hook'
+				? ["beforeEach(async () => { await readFile(import.meta.filename); expect(value).toBe(3); });"]
+				: []),
+			...(scenario === 'async-fixture'
+				? ["const fixtureTest = test.extend({ input: async ({}, use) => { await readFile(import.meta.filename); expect(value).toBe(3); await use(value); } });"]
+				: []),
 			...(scenario === 'threads'
 				? [
 						"import { mkdirSync, writeFileSync } from 'node:fs';",
@@ -117,7 +126,14 @@ function vitestRedFixture(t, scenario = 'assertion', modulesKind = 'directory-sy
 			...(scenario === 'clean-hook'
 				? ['beforeEach(() => { expect(true).toBe(true); });']
 				: []),
-			`${testCall}(${scenario === 'green-other' ? "value === 3 ? 'other regression' : 'value regression'" : "'value regression'"}, ${scenario === 'shared-hook' ? 'check);' : '() => {'}`,
+			`${scenario === 'async-fixture' ? 'fixtureTest' : testCall}(${scenario === 'green-other' ? "value === 3 ? 'other regression' : 'value regression'" : "'value regression'"}, ${
+				scenario === 'shared-hook' ? 'check);' :
+				scenario === 'async-body' ? 'async () => {' :
+				scenario === 'async-fixture' ? '({ input }) => {' : '() => {'
+			}`,
+			...(scenario === 'async-body'
+				? ['  await readFile(import.meta.filename);']
+				: []),
 			...(scenario === 'unhandled'
 				? [
 						"process.emit('unhandledRejection', new Error('unhandled failure'));",
@@ -144,6 +160,8 @@ function vitestRedFixture(t, scenario = 'assertion', modulesKind = 'directory-sy
 										scenario.startsWith('around-') ||
 										scenario === 'spoof'
 									? 'expect(true).toBe(true);'
+									: scenario === 'async-fixture' ? 'expect(input).toBe(3);'
+									: scenario === 'async-hook' ? 'expect(true).toBe(true);'
 									: body
 						}`,
 						'});',
@@ -303,6 +321,12 @@ function vitestRedFixture(t, scenario = 'assertion', modulesKind = 'directory-sy
 		},
 	};
 	if (scenario === 'wrong-line') capture.failure.line += 1;
+	if (scenario === 'async-body') capture.failure.line += 1;
+	if (scenario === 'async-hook' || scenario === 'async-fixture')
+		capture.failure.line =
+			source.split('\n').findIndex((line) => line.startsWith(
+				scenario === 'async-hook' ? 'beforeEach(' : 'const fixtureTest',
+			)) + 1;
 	if (scenario === 'shared-hook')
 		capture.failure.line =
 			source.split('\n').findIndex((line) => line.startsWith('const check')) +
@@ -407,6 +431,15 @@ test('#4232 Vitest body assertion: real RED and GREEN -> common authenticated ev
 	}
 });
 
+test('Vitest direct body assertion after awaited file I/O is admissible RED', (t) => {
+	const value = vitestRedFixture(t, 'async-body');
+	const result = value.run();
+
+	assert.equal(result.status, 0, result.stderr);
+	const receipt = JSON.parse(readFileSync(join(value.capture.artifact_root, 'receipt.json'), 'utf8'));
+	assert.deepEqual(receipt.failure, value.capture.failure);
+});
+
 test('#4232 Vitest review: GREEN without captured completion -> rejected', (t) => {
 	const value = vitestRedFixture(t);
 	value.attach();
@@ -443,6 +476,8 @@ for (const scenario of [
 	'hook-afterEach',
 	'hook-beforeAll',
 	'hook-afterAll',
+	'async-hook',
+	'async-fixture',
 	'shared-hook',
 	'finished-hook',
 	'around-setup',
@@ -468,6 +503,14 @@ for (const scenario of [
 		assert.equal(block.kind, 'input-preparation');
 		assert.equal(block.fix_back_eligible, false);
 		assert.match(block.error, /Vitest/u);
+		if (scenario === 'async-hook' || scenario === 'async-fixture') {
+			const report = JSON.parse(readFileSync(join(value.capture.checkout, '.omo/fix-back-vitest.json'), 'utf8'));
+			const [error] = report.tests[0].errors;
+			assert.equal(error.name, 'AssertionError');
+			assert.equal(error.locations[0].file, value.capture.failure.file);
+			assert.equal(error.locations[0].line, value.capture.failure.line);
+			assert.equal(error.body, false);
+		}
 		if (scenario === 'file-spoof')
 			assert.match(block.error, /missing private reporter completion/u);
 		assert.equal(existsSync(join(value.capture.artifact_root, 'stdout')), true);

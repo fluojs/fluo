@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { createRequire, registerHooks } from "node:module";
 import { dirname, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 export const reportPath = ".omo/fix-back-vitest.json";
@@ -11,6 +12,74 @@ export const reporterPath = new URL(
 );
 export const reporterHash = () =>
 	createHash("sha256").update(readFileSync(reporterPath)).digest("hex");
+
+export const vitestBodyPreload = new URL("#body-provenance", reporterPath).href;
+const bodyProof = "fluoFixBackBodyRunId";
+const installedVitest = () => createRequire(require.resolve("vitest/package.json"));
+
+// The collector preloads this in the isolated fork. Instrument only the
+// audited runner artifact, in memory, without replacing the runner or config.
+if (import.meta.url === vitestBodyPreload) {
+	const runnerURL = pathToFileURL(resolve(
+		dirname(installedVitest().resolve("@vitest/runner")),
+		"chunk-artifact.js",
+	)).href;
+	const runID = process.env.FLUO_FIX_BACK_VITEST_RUN_ID;
+	registerHooks({
+		load(url, context, nextLoad) {
+			const loaded = nextLoad(url, context);
+			if (url !== runnerURL) return loaded;
+			const source = Buffer.from(loaded.source).toString("utf8");
+			if (createHash("sha256").update(source).digest("hex") !==
+				"bf6af6d2f4469911879a67e83b8f9e7b20332cf42795032c53457b10ccc1c617") {
+				throw new Error("fix-back Vitest: unsupported installed runner body provenance");
+			}
+			const fixtureEnd = source.indexOf("function isAutoFixture(");
+			const replacements = source.slice(0, fixtureEnd).replace(
+				"function withFixtures(fn, options) {",
+				`const fluoBodyErrors = new WeakMap();
+function withFixtures(fn, options) {
+	const invoke = options?.bodyTask ? async (context) => {
+		try {
+			return await fn(context);
+		} catch (error) {
+			fluoBodyErrors.set(options.bodyTask, error);
+			throw error;
+		}
+	} : fn;`,
+			).replaceAll("return fn(context);", "return invoke(context);");
+			// Do not wrap the registered function itself: Vitest inspects its
+			// parameters to determine which fixtures to initialize before invoke.
+			const instrumented = (replacements + source.slice(fixtureEnd))
+				.replace(
+					"withFixtures(handler, { context }), task",
+					"withFixtures(handler, { context, bodyTask: task }), task",
+				)
+				.replace(
+					"failTask(test.result, e, runner.config.diffOptions);\n\t\t\t\t}\n\t\t\t\ttry {\n\t\t\t\t\tawait runner.onTaskFinished",
+					`failTask(test.result, e, runner.config.diffOptions,
+						fluoBodyErrors.has(test) && fluoBodyErrors.get(test) === e);
+					fluoBodyErrors.delete(test);
+				}
+				try {
+					await runner.onTaskFinished`,
+				)
+				.replace(
+					"function failTask(result, err, diffOptions) {",
+					"function failTask(result, err, diffOptions, fromBody = false) {",
+				)
+				.replace(
+					"result.errors.push(...errors);",
+					`for (const error of errors) {
+						error.${bodyProof} = fromBody && e === err && !(e instanceof AggregateError)
+							? ${JSON.stringify(runID)} : null;
+					}
+					result.errors.push(...errors);`,
+				);
+			return { ...loaded, source: instrumented };
+		},
+	});
+}
 
 /** Authenticate a complete runner report at the RED/GREEN evidence boundary. */
 export function validateVitestProof(report, failure, state) {
@@ -124,31 +193,15 @@ export default class FixBackVitestReporter {
 				"fix-back Vitest: requires the isolated packages forks pool",
 			);
 		}
-		const installed = createRequire(require.resolve("vitest/package.json"));
+		const installed = installedVitest();
 		this.parseStacktrace =
 			installed("@vitest/utils/source-map").parseStacktrace;
-		this.runnerSource = resolve(
-			dirname(installed.resolve("@vitest/runner")),
-			"chunk-artifact.js",
-		);
-		const lines = readFileSync(this.runnerSource, "utf8").split("\n");
-		const callbacks = lines.flatMap((line, index) =>
-			line.trim() ===
-					'await $("test.callback", () => limitMaxConcurrency(() => fn()));'
-				? [index + 1]
-				: []
-		);
-		if (callbacks.length !== 1) {
-			throw new Error(
-				"fix-back Vitest: unsupported installed body invocation",
-			);
-		}
-		this.bodyLine = callbacks[0];
 		this.context = context;
 	}
 
 	onTestRunEnd(modules, unhandledErrors, reason) {
 		const context = this.context;
+		const runID = process.env.FLUO_FIX_BACK_VITEST_RUN_ID;
 		const file = (id) => relative(context.config.root, id);
 		const errors = (items) =>
 			(items ?? []).map((error) => {
@@ -167,10 +220,8 @@ export default class FixBackVitestReporter {
 					name: error.name ?? null,
 					code: error.code ?? null,
 					stack: typeof error.stack === "string" ? error.stack : null,
-					body: frames.some((frame) =>
-						frame.file === this.runnerSource &&
-						frame.line === this.bodyLine
-					) &&
+					body: typeof runID === "string" &&
+						error[bodyProof] === runID &&
 						firstSource?.file === error.stacks?.[0]?.file,
 					locations: (error.stacks ?? [])
 						.filter(
@@ -210,7 +261,7 @@ export default class FixBackVitestReporter {
 			version: 1,
 			runner: "vitest",
 			reporter_sha256: reporterHash(),
-			run_id: process.env.FLUO_FIX_BACK_VITEST_RUN_ID,
+			run_id: runID,
 			complete: true,
 			reason,
 			unhandled: errors(unhandledErrors),

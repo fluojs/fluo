@@ -184,8 +184,10 @@ as `test_results:{path,sha256,bytes}`. Use a fresh corrected checkout or archive
 the previous ignored capture files before a separate run; capture never
 overwrites them. Both reports must authenticate
 the reporter implementation and prove the selected test ran exactly once.
-Only one RED body assertion at the first valid source frame is accepted;
-setup/module/suite/hook/unhandled/runtime errors, unrelated/multiple failures,
+Only one RED body assertion at the first valid source frame is accepted.
+The approved runner traces the test callback after fixture setup, including
+assertions after awaited I/O. Setup/module/suite/hook/fixture/unhandled/runtime
+errors, unrelated/multiple failures,
 wrong file/name/line and incomplete reports fail closed. Successful hooks and
 error words in assertion values do not invalidate an assertion. GREEN must
 contain the same actually passing selection, with no remaining runner errors.

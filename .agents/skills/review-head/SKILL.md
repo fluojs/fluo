@@ -186,12 +186,14 @@ reported as test failures. Vitest batches final task state before replaying
 events, so hook-event `result().errors` is not proof of where an error arose;
 the report preserves terminal hook states and suite errors. Successful hooks
 and assertion expected/actual values containing error names remain valid.
-The reporter derives the unique `test.callback` invocation location from the
-actual installed runner and requires that call site in the unfiltered error
-stack. Unknown provenance, around-hook and test-finished hook assertions fail
-closed even when their source line matches. The first
-unfiltered source file must agree with the source-mapped first frame, so a
-later matching frame cannot hide a filtered helper.
+The collector instruments the verified installed runner in memory to trace
+the registered test function's original error, after fixture setup and through
+awaited I/O. It requires the worker to record that same error as the test
+callback failure for the current run; the invocation frame need not survive
+in the stack. Unsupported runner source, unknown provenance, fixture errors,
+around-hook and test-finished hook assertions fail closed. The first unfiltered
+source file must agree with the source-mapped first frame, so a later matching
+frame cannot hide a filtered helper.
 GREEN must show that same selected test actually passed with no remaining
 runner errors. Malformed/incomplete reports fail closed.
 

@@ -10,7 +10,7 @@ import { assertIssueImplementIdentity, assertIssueImplementInput, assertIssueImp
 import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
 import { observeReviewRetention } from './lane-v4-cli.mjs';
 import { retentionFreshAxes } from '../../review-head/scripts/contracts.mjs';
-import { reportPath, reporterPath, validateVitestProof } from './fix-back-vitest-reporter.mjs';
+import { reportPath, reporterPath, validateVitestProof, vitestBodyPreload } from './fix-back-vitest-reporter.mjs';
 
 export class WorkflowPreparationError extends TypeError {
   constructor(reason) {
@@ -654,7 +654,8 @@ const runEvidenceCommand = (checkout, argv, runner) => {
   const { NODE_TEST_CONTEXT: _context, ...environment } = process.env;
   const runID = runner === 'vitest' ? randomBytes(32).toString('hex') : null;
   if (runID !== null) {
-    delete environment.NODE_OPTIONS;
+    // Never inherit caller preloads. Forks receive only the collector's body observer.
+    environment.NODE_OPTIONS = `--import=${vitestBodyPreload}`;
     delete environment.NODE_PATH;
     environment.FLUO_FIX_BACK_VITEST_RUN_ID = runID;
   }
