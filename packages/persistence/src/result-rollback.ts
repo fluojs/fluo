@@ -60,7 +60,8 @@ export class ResultBoundary<T> {
   constructor(private readonly owner: RollbackOwner, private readonly shouldRollback?: (value: T) => boolean) {}
 
   evaluate(value: T): T {
-    if (this.shouldRollback?.(value)) {
+    const { shouldRollback } = this;
+    if (shouldRollback?.(value)) {
       this.owner.rollbackOnly ??= new TransactionRollbackOnlyError(value);
       this.failure = { value, error: this.owner.rollbackOnly };
     }
