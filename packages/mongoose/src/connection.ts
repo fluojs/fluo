@@ -180,9 +180,13 @@ function resolveModelFactory(connection: MongooseConnectionLike): MongooseConnec
   return connection.model;
 }
 
+function hasSessionTransactionMethods(session: MongooseSessionLike): boolean {
+  return isObjectLike(session) && ['startTransaction', 'commitTransaction', 'abortTransaction', 'endSession']
+    .every((method) => typeof Reflect.get(session, method) === 'function');
+}
+
 function assertRollbackSessionCapability(session: MongooseSessionLike): void {
-  if (!isObjectLike(session) || ['startTransaction', 'commitTransaction', 'abortTransaction', 'endSession']
-    .some((method) => typeof Reflect.get(session, method) !== 'function')) {
+  if (!hasSessionTransactionMethods(session)) {
     throw new TransactionRollbackCapabilityError();
   }
 }
@@ -625,8 +629,14 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
 
     try {
       let result: T;
+      let afterCommitCapabilityMissing = false;
       try {
-        if (owner.resultRollbackEnabled) assertRollbackSessionCapability(session);
+        if (owner.resultRollbackEnabled) {
+          assertRollbackSessionCapability(session);
+        } else if (owner.afterCommitEnabled && !hasSessionTransactionMethods(session)) {
+          afterCommitCapabilityMissing = true;
+          throw new AfterCommitCapabilityError('Mongoose transaction requires active native after-commit support.');
+        }
         result = await observeRollback(this.connectionOptions.rollbackObserver, () => {
           owner.observation = this.connectionOptions.rollbackObserver?.beginAttempt(session, this.connection);
           return this.sessions.run({ activeSession, session, owner }, () =>
@@ -635,7 +645,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         });
       } catch (error) {
         owner.callbacks.length = 0;
-        if (owner.resultRollbackEnabled) {
+        if (owner.resultRollbackEnabled || afterCommitCapabilityMissing) {
           try {
             if (typeof session.endSession === 'function') await session.endSession();
           } catch (cleanupError) {
