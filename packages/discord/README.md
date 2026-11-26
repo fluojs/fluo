@@ -250,7 +250,7 @@ For richer API integrations such as bot-backed REST delivery, implement the expo
 
 ### Configurable webhook retry policy
 
-The built-in webhook transport retries transient `408`, `429`, and `5xx` responses and transport-level exceptions. Omit `retry` to preserve the default of three total attempts with a 250ms exponential-backoff base delay. Configure one workload-specific policy at transport construction when its latency or tolerance differs:
+The built-in webhook transport retries transient `408`, `429`, and `5xx` responses and non-cancellation fetch exceptions. Omit `retry` to preserve the default of three total attempts with a 250ms exponential-backoff base delay. Configure one workload-specific policy at transport construction when its latency or tolerance differs:
 
 ```typescript
 const transport = createDiscordWebhookTransport({
@@ -267,9 +267,10 @@ const transport = createDiscordWebhookTransport({
 
 Behavioral contract notes:
 
-- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using the configured bounded exponential backoff before surfacing an error. Permanent upstream responses are not retried.
+- Retries use the configured bounded exponential backoff. Permanent upstream responses are not retried. A request payload that cannot be serialized to JSON rejects immediately with a redacted `DiscordTransportError`, before any POST or backoff.
 - Retry backoff observes `DiscordSendOptions.signal`; an already-aborted signal rejects immediately instead of waiting for the next backoff timer.
-- Successful webhook responses are exposed through `DiscordSendResult.response`; caller-visible `DiscordTransportError` messages still omit raw upstream response bodies by default, including after rate-limit retries fail.
+- If reading a response body fails and `DiscordSendOptions.signal` is aborted, the send rejects with `signal.reason` unchanged. If the signal is not aborted and the read fails with an `AbortError`, the send rejects with that error unchanged. Neither case produces a successful receipt, another POST, or backoff. This changes only the caller's result; it does not prove Discord did not accept the message or cancel or delete a message Discord already accepted.
+- Readable success bodies are exposed through `DiscordSendResult.response`, with a warning for non-JSON bodies. If a success body is empty or unreadable for a reason unrelated to cancellation, `response` and provider IDs available only from the response are `undefined`, without an empty-body warning. Non-cancellation read failures do not change HTTP status classification. Caller-visible `DiscordTransportError` messages omit raw upstream response bodies by default, including after rate-limit retries fail.
 - Malformed or non-absolute `webhookUrl` values are rejected immediately as `DiscordConfigurationError` instead of being retried as delivery failures.
 
 ### Intentional limitations

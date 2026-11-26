@@ -250,7 +250,7 @@ bot 기반 REST 전달처럼 더 풍부한 API 연동이 필요하다면 export�
 
 ### 구성 가능한 webhook 재시도 정책
 
-내장 webhook transport는 일시적인 `408`, `429`, `5xx` 응답과 transport-level exception을 재시도합니다. `retry`를 생략하면 총 세 번 시도하고 250ms를 base로 지수 backoff하는 기존 기본값을 유지합니다. workload의 latency 또는 허용 가능한 재시도 수준이 다르다면 transport 생성 시 하나의 정책을 구성하세요.
+내장 webhook transport는 일시적인 `408`, `429`, `5xx` 응답과 취소가 아닌 fetch 예외를 재시도합니다. `retry`를 생략하면 총 세 번 시도하고 250ms를 base로 지수 backoff하는 기존 기본값을 유지합니다. workload의 latency 또는 허용 가능한 재시도 수준이 다르다면 transport 생성 시 하나의 정책을 구성하세요.
 
 ```typescript
 const transport = createDiscordWebhookTransport({
@@ -267,9 +267,10 @@ const transport = createDiscordWebhookTransport({
 
 Behavioral contract 메모:
 
-- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 응답뿐 아니라 transport-level exception도 구성한 bounded exponential backoff로 재시도한 뒤 호출자에게 에러를 노출합니다. 영구적인 upstream 응답은 재시도하지 않습니다.
+- 재시도에는 구성한 bounded exponential backoff가 적용됩니다. 영구적인 upstream 응답은 재시도하지 않습니다. 요청 payload를 JSON으로 직렬화할 수 없으면 첫 POST나 backoff 전에 민감한 세부 정보를 제거한 `DiscordTransportError`로 즉시 reject됩니다.
 - Retry backoff는 `DiscordSendOptions.signal`을 관찰합니다. 이미 abort된 signal은 다음 backoff timer를 기다리지 않고 즉시 reject됩니다.
-- 성공한 webhook 응답은 `DiscordSendResult.response`로 노출됩니다. rate-limit 재시도가 끝내 실패한 경우를 포함해, 호출자에게 보이는 `DiscordTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
+- 응답 본문 읽기가 실패했고 `DiscordSendOptions.signal`이 abort된 경우에는 `signal.reason` 그대로 reject됩니다. signal이 abort되지 않았는데 본문 읽기가 `AbortError`로 실패하면 그 오류 그대로 reject됩니다. 두 경우 모두 성공 영수증이나 추가 POST, backoff가 발생하지 않습니다. 이는 호출자의 결과만 바꾸며, Discord가 메시지를 수락하지 않았음을 보장하거나 이미 수락한 메시지를 취소·삭제하지 않습니다.
+- 읽을 수 있는 성공 응답 본문은 `DiscordSendResult.response`에 노출되며, 비JSON 본문에는 경고가 붙습니다. 성공 본문이 비었거나 취소와 무관한 이유로 읽지 못한 경우 `response`와 응답에서만 얻을 수 있는 provider ID는 `undefined`이며 빈 본문 경고는 추가되지 않습니다. 취소와 무관한 읽기 실패는 HTTP 상태 분류를 바꾸지 않습니다. rate-limit 재시도가 끝내 실패한 경우를 포함해, 호출자에게 보이는 `DiscordTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
 - 잘못되었거나 절대 URL이 아닌 `webhookUrl` 값은 전달 실패로 재시도하지 않고 즉시 `DiscordConfigurationError`로 거부됩니다.
 
 ### 의도적인 제한 사항
