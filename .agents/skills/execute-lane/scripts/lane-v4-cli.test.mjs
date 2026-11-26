@@ -3600,7 +3600,52 @@ test('#4323 parked review: late PASS is retrospective and publication requires f
   assert.equal(f.planIssue(42).decision.action, 'review');
   assert.equal(f.readiness(42).value.sequence, siblingSequence + 1);
   const fresh = f.review();
-  f.set('review', fresh, fresh.head_sha);
+  f.cli('set-fact', [...f.common, '--kind', 'review', '--head', fresh.head_sha, '--value', JSON.stringify(fresh), '--review-sequence', String(siblingSequence + 1)]);
+  assert.equal(f.planIssue(42).decision.action, 'create-pr');
+});
+
+test('#4323 review admission: clear before submit and same-head regrant reject the old PASS', t => {
+  const file = 'src/shared.ts';
+  const f = readinessFixture(t, { 42: [file], 43: [file] });
+  for (const issue of [42, 43]) f.implementIssue(issue, file);
+  const late = f.review();
+  const original = f.planIssue(42).obs.facts['review-readiness'].value.sequence;
+  const submit = (review, sequence) => f.cli('set-fact', [...f.common, '--kind', 'review',
+    '--head', review.head_sha, '--review-sequence', String(sequence), '--value', JSON.stringify(review)]);
+  parkReviewPreparation(f);
+  assert.equal(f.planIssue(43).decision.action, 'review');
+
+  f.cli('clear-blocker', [...f.common, '--phase', 'review']);
+  submit(late, original);
+  assert.equal(f.planIssue(42).decision.action, 'wait-preflight-overlap',
+    'clearing first must not let a late PASS bypass the active sibling');
+
+  f.state.issues = { 43: { ...f.state.issue, state: 'CLOSED' } };
+  f.update();
+  const fresh = f.planIssue(42);
+  const sequence = fresh.obs.facts['review-readiness'].value.sequence;
+  assert.equal(fresh.decision.action, 'review');
+  assert.equal(fresh.obs.headSha, late.head_sha);
+  assert.equal(fresh.obs.preflightPolicy.sha256, late.preflight_sha256);
+  assert.notEqual(sequence, original);
+
+  submit(late, original);
+  assert.equal(f.planIssue(42).decision.action, 'review',
+    'a new grant on the same head and policy must not admit the old PASS');
+  f.set('review', late, late.head_sha);
+  assert.equal(f.planIssue(42).decision.action, 'review', 'an unbound PASS cannot bypass the grant check');
+
+  const record = (result, grant) => f.cli('record', [...f.common, '--phase', 'review',
+    '--result-json', JSON.stringify(result), '--review-sequence', String(grant)]);
+  record({ ok: false }, sequence);
+  const beforeStaleRecord = readFileSync(f.lanePath);
+  record({ ok: true, ...late }, original);
+  assert.deepEqual(readFileSync(f.lanePath), beforeStaleRecord, 'stale stage success must not reset review attempts');
+  record({ ok: true, ...late }, sequence);
+  assert.equal(f.planIssue(42).obs.attempts.review, 0);
+  assert.equal(f.planIssue(42).decision.action, 'review', 'record is not an executable review fact');
+
+  submit(f.review(), sequence);
   assert.equal(f.planIssue(42).decision.action, 'create-pr');
 });
 
@@ -3640,6 +3685,7 @@ test('#4323 review preparation: exact grant releases the live overlap and recove
     record();
     expected.issues[42].blocker = blocker;
     expected.issues[42].facts['review-readiness'].value.active = false;
+    expected.issues[42].facts['retired-review-sequence'] = { value: request.sequence };
     assert.deepEqual(JSON.parse(readFileSync(f.lanePath)), expected);
     const blockedBytes = readFileSync(f.lanePath);
     record();

@@ -1516,6 +1516,20 @@ const main = async () => {
 	const entry = issueEntry(lane, issue);
 	const reviewParked = entry.blocker?.type === "input-preparation" && entry.blocker.phase === "review" &&
 		entry.blocker.reason === "prior-head-red-unavailable";
+	const reviewGrantAdmits = (obs) => {
+		if (reviewParked) return false;
+		if (lane.preflight_overlap !== 1) return true;
+		const retired = entry.facts?.["retired-review-sequence"];
+		if (!retired && !args.includes("--review-sequence")) return true;
+		const raw = arg(args, "--review-sequence", "");
+		const sequence = Number(raw);
+		if (!Number.isSafeInteger(sequence) || sequence <= 0 || String(sequence) !== raw) return false;
+		if (obs.issueState !== "OPEN" || (obs.pr && obs.pr.state !== "OPEN")) return false;
+		const readiness = reviewReadinessState({
+			issue, obs: { ...obs, facts: entry.facts }, decision: decideNext(entry, obs),
+		});
+		return readiness.current && sequence === readiness.sequence && (!retired || sequence > retired.value);
+	};
 
 	if (preparationBlocker) {
 		if (lane.preflight_overlap !== 1) {
@@ -1550,6 +1564,7 @@ const main = async () => {
 		if (!replay) {
 			entry.blocker = preparationBlocker;
 			grant.value.active = false;
+			entry.facts["retired-review-sequence"] = { value: sequence };
 			saveLane(lanePath, lane);
 		}
 		process.stdout.write("ok\n");
@@ -1592,14 +1607,15 @@ const main = async () => {
 		invalidateReadiness(issue);
 		validateStageMeasurements(result?.measurements, observed.headSha);
 		const unavailable = result?.error?.code === "dispatch-target-unavailable";
+		const stoppedByContract = lane.retry_policy?.stop_on_child_contract_error === true
+			&& (typeof result?.ok !== "boolean" || result.error?.type === "child-contract-error");
 		if (unavailable) {
 			if (!["preflight", "implement", "fix-back", "review"].includes(phase)) {
 				throw new TypeError("Unavailable child target requires a child stage");
 			}
 			if (result.ok !== false) throw new TypeError("Unavailable target cannot be a successful result");
 			validateUnavailableTarget(phase, result.error, observed.preflightPolicy?.active_axes);
-		} else if (result?.ok === true && !(lane.retry_policy?.stop_on_child_contract_error === true
-			&& result.error?.type === "child-contract-error")) {
+		} else if (result?.ok === true && !stoppedByContract) {
 			if (["preflight", "implement", "fix-back", "review"].includes(phase)
 				&& Object.hasOwn(result, "category")) {
 				throw new TypeError("Category workers cannot supply registered stage successes");
@@ -1621,12 +1637,18 @@ const main = async () => {
 				assertAgentIdentity(dispatchFor(phase), result.agent);
 			}
 		}
+		if (phase === "review" && !unavailable && !stoppedByContract && !reviewGrantAdmits(observed)) {
+			// A retired review wave cannot change retries or sibling priority.
+			recordRetroEvent(root, lane.lane_id, issue, "stage", {
+				phase, result, head: observed.headSha, attempts: entry.attempts,
+			});
+			process.stdout.write(`${JSON.stringify({ issue, attempts: entry.attempts, blocker: entry.blocker }, null, 2)}\n`);
+			return;
+		}
 		const next = unavailable
 			? { ...entry, blocker: { ...result.error, type: "input-preparation", phase } }
 			: applyChildResult(entry, phase, result, { retryPolicy: lane.retry_policy ?? undefined, now: Date.now() });
-		const childContractError = next.blocker?.type === "child-contract-error"
-			&& lane.retry_policy?.stop_on_child_contract_error === true
-			&& (typeof result?.ok !== "boolean" || result?.error?.type === "child-contract-error");
+		const childContractError = next.blocker?.type === "child-contract-error" && stoppedByContract;
 		if (!childContractError && phase === "resolve-conflict" && result?.ok === true) {
 			const obs = observeIssue(root, lane, issue);
 			if (result.head_sha !== obs.headSha) throw new TypeError("Conflict result requires current head_sha");
@@ -1815,7 +1837,7 @@ const main = async () => {
 				}
 				// Share the record path's evidence requirements, never the legacy reader.
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy, obs.reviewRetention);
-				if (reviewParked) {
+				if (!reviewGrantAdmits(obs)) {
 					// The retrospective event above is not executable review evidence.
 					process.stdout.write("ok\n");
 					return;
@@ -1851,6 +1873,11 @@ const main = async () => {
 		invalidateReadiness(issue, true);
 		entry.blocker = reviewParked ? entry.deferred_stage_blocker ?? null : null;
 		if (reviewParked) {
+			if (lane.preflight_overlap === 1) {
+				// A blocker saved by an older CLI did not yet persist the retirement.
+				entry.facts ??= {};
+				entry.facts["retired-review-sequence"] ??= { value: blocker.sequence };
+			}
 			delete entry.deferred_stage_blocker;
 		}
 		entry.attempts[phase] = 0;

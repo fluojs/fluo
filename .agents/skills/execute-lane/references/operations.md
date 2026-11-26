@@ -586,8 +586,8 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs record-review-preparati
 The command re-observes the checkout and GitHub under the lane lock and
 requires that exact grant to still be eligible for coordinated `review`. An
 OPEN PR at an older head is allowed; an already published current head is not.
-The blocker and the deactivated grant are saved together. The command allocates
-no sequence and consumes no retry or fix-back attempt. An exact replay on the
+The blocker, the deactivated grant, and its retired sequence are saved together.
+The command allocates no sequence and consumes no retry or fix-back attempt. An exact replay on the
 same live binding is a no-op; a stale request or a different blocker is an
 error. Do not edit the ledger or simulate a stage result to release a slot.
 
@@ -596,13 +596,37 @@ blockers. A diagnostic mutation is not official RED, and this command supplies
 neither a RED waiver nor admission to review, publication, CI or merge. Once
 the preparation problem is resolved, use `clear-blocker --phase review`.
 Any independent stage stop recorded while review was parked still requires
-clearing its own phase. A review result received while parked is retained for
-retrospective use, not admitted as an executable review fact. Then obtain a
-fresh `review` via `plan`. The old grant stays inactive, including when the
-head or policy changes, and an active overlapping sibling keeps its priority.
+clearing its own phase. Then obtain a fresh `review` via `plan`. The old grant
+stays inactive, including when the head or policy changes, and an active
+overlapping sibling keeps its priority.
 Run [official review preparation](../../review-head/SKILL.md) again
 under the fresh binding, with the required previous-head RED, same-selection
 GREEN, and all selected axes. Clearing the blocker carries no evidence forward.
+
+For an issue whose review grant was retired this way, the lead must submit
+`--review-sequence <sequence>` with new review results. Retain it from the
+original authenticated `review` observation used for that wave's official
+preparation, alongside its issue, head and effective policy. Never take it from
+a fresh `plan` after reviews return or attach it to envelopes from an earlier
+wave, even if the head and policy are unchanged. Keep the review JSON unchanged.
+
+```text
+node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs record --root . --lane <lane.json> --issue <n> --phase review --review-sequence <sequence> --result-json '<stage result JSON>'
+node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs set-fact --root . --lane <lane.json> --issue <n> --kind review --head <head> --review-sequence <sequence> --value '<review envelope JSON>'
+```
+
+`record` records stage completion/retries, not executable review evidence; if
+using both commands, record the stage result before installing the review fact.
+`set-fact` installs the validated review fact only if the supplied sequence
+matches a current active grant for the observed head and effective policy.
+Missing, retired or otherwise nonmatching submissions are retrospective only
+and cannot change the review decision, retries or sibling priority. Independent
+dispatch or child-contract stops keep their existing handling. An `ok` from
+`set-fact` alone does not prove admission. If the original observation is
+unavailable or its grant is no longer current, retain the old results for the
+retrospective and wait for an eligible review, then prepare and review again.
+Lanes without the marker and issues whose grants have never been retired by
+this blocker do not need the new option.
 
 Required PR, issue and dependency GitHub observations fail closed.
 `plan` and `plan-all` return the `observation-failed` action with
