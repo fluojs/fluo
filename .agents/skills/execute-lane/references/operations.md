@@ -80,7 +80,12 @@ Evidence entries identify checked acceptance with repository-relative
 affect the aggregate verdict. `set-fact --kind review` applies
 the same strict new-input admission. Missing, wrong-axis, unregistered, or
 category substitute identity cannot record success. Keep raw failures as
-retrospective evidence under the existing retry contract.
+retrospective evidence under the existing retry contract. Independently bind the
+actual `taskId` returned by each native background spawn to the lane, issue,
+stage (and individual review axis). Follow
+[native stage lifecycle capture](retrospective.md#native-stage-lifecycle-capture)
+while the child is live and again after settlement or interruption. Telemetry
+is best effort: result admission and retries never wait for it.
 
 If a target is unregistered or cannot run, do not use a category worker.
 Record the lead's observation as
@@ -125,6 +130,25 @@ in `../../issue-preflight/SKILL.md` and `../../review-head/SKILL.md`; executable
 validation lives in the preparation source. Reuse the accepted contract and
 canonical `obs.preflightPolicy`; do not alter engine actions or ledgers.
 
+The unchanged `review <input.json>` command selects bounded file transfer when
+the actual inline output would exceed 49,999 UTF-8 bytes or 1,500 lines.
+Small inputs keep the original prepared JSON and need no new argument or
+decoder. For `kind:"review-transfer"`, preserve the returned transfer reference,
+binding and absolute artifact root and pass the identical transfer to all
+selected axes with their returned registered dispatch routes. Before dispatch,
+use `review-read` to authenticate the manifest and complete unit inventory.
+Each reviewer must read every ordered unit without clipping before judging.
+The complete protocol, fixed per-file/total limits, manifest authentication,
+reader input and reconstruction are in
+`../../review-head/SKILL.md#bounded-complete-review-transfer`.
+The CLI retains only transfer files, never lane facts or Git changes. It
+rechecks accepted contract and checkout/base freshness after retaining them.
+Transfer failures are non-fixable `input-preparation`, never product blockers
+or partial review success. Preserve the original accepted contract, canonical
+plan, source footprint and caller searches, complete authored diff,
+implementation/fix-back RED, required checks, receipt inventory, raw stdout/
+stderr and packed evidence admission; transfer does not replace any of them.
+
 Supply review preparation's required `implementation` context with mode
 `implement`, `fix-back`, or `resolve-conflict`, previous/current heads and the
 accepted contract digest. For fix-back use the actual implementer Result's
@@ -142,6 +166,48 @@ GREEN or setup-failure evidence stops with `input-preparation`,
 evidence in `common`. Ordinary implementation/conflict review needs no RED.
 This limited lead reproduction authority belongs only to review preparation;
 issue-implement's `leadAuthority` and every reviewer remain unchanged.
+
+Before fix-back dispatch, confirm the permitted runner, complete projected
+test/necessary-fixture patch, named body assertion's first source file/positive
+line and real corrected-head GREEN using identical command/argv. Node TAP
+retains its existing command forms. Packages Vitest uses only the fixed
+installed entrypoint, packages project, one projected test file/name selection,
+approved reporter and output path, and bounded worker options specified in
+`../../review-head/SKILL.md`. Authenticate that entrypoint relative to the
+actual execution checkout before spawn, and to the corrected review checkout
+when authenticating GREEN. Both must resolve to the preparer's approved
+installation; the repository root does not need its own `node_modules`.
+Good: separate reproduction/review worktrees link to that installation.
+Wrong: trust the root's valid installation while a checkout resolves another
+entrypoint. Unsupported regressions stop in preparation;
+they do not require a duplicate implementation in another test runner.
+
+For Vitest, use `workflow-preparation.mjs fix-back-green <input.json>` on the
+corrected review checkout and pass its returned receipt reference as the
+matching focused evidence. Both captures retain the approved reporter's output
+as `test_results:{path,sha256,bytes}`. Use a fresh corrected checkout or archive
+the previous ignored capture files before a separate run; capture never
+overwrites them. Both reports must authenticate
+the reporter implementation and prove the selected test ran exactly once.
+Only one RED body assertion at the first valid source frame is accepted.
+The approved runner traces the test callback after fixture setup, including
+assertions after awaited I/O. Setup/module/suite/hook/fixture/unhandled/runtime
+errors, unrelated/multiple failures,
+wrong file/name/line and incomplete reports fail closed. Successful hooks and
+error words in assertion values do not invalidate an assertion. GREEN must
+contain the same actually passing selection, with no remaining runner errors.
+Substituted executable/entrypoint/reporter/behavior options, stdout lookalikes
+and pass-only receipts are not execution proof. Existing binding, complete
+patch, raw-stream and final-freshness checks still apply to every axis.
+
+Reserve runner fd 3 as a separate collector pipe for both RED and GREEN
+(`stdio:["ignore","pipe","pipe","pipe"]`). The reporter includes the collector's
+per-run ID and writes the same bytes there only after its exclusive output-file
+write succeeds. GREEN retains both channels and the exact receipt; admission
+rechecks them against the independently retained capture in the corrected
+checkout. Keep stdout/stderr separately. A worker's lookalike file cannot
+replace the completion channel. See review-head for the exact collection
+contract.
 
 New `preflight` inputs require complete `caller_searches` at the pinned base;
 the preparer authenticates repository-wide fixed-argv Git results, including

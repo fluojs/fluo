@@ -85,26 +85,30 @@ function isBoundaryOptions<TResult>(value: unknown): value is TransactionBoundar
  * This is a TC39 standard method decorator (2023-11) and does not use legacy decorator metadata or `reflect-metadata`.
  * The canonical form is `@Transaction((self) => self.prisma, nativeOptions, boundary)`, which selects an explicit
  * service before forwarding Prisma-native options and Fluo boundary policy as separate inputs. `@Transaction()` and
- * options-only calls remain compatibility forms for existing single-target services.
+ * options-only calls remain compatibility forms for existing single-target services, with boundary policy second.
+ * Without an accessor, a third argument is rejected rather than silently discarding policy.
  * An explicit accessor that returns `null` or `undefined` is rejected before any transaction runner or decorated method
  * body starts; automatic service discovery is never used as a fallback for an empty accessor result.
  * Calls made while a transaction context is already active reuse the existing Prisma transaction through `PrismaService`.
  * Passing Prisma transaction options to a nested call is rejected by `PrismaService.transaction(...)` so option intent is not
  * silently ignored.
  *
- * @param input Explicit service accessor, or a compatibility native-options input.
- * @param options Prisma interactive transaction options for an explicit target, or a compatibility boundary input.
- * @param boundary Fluo-owned capability requirement and typed Result rollback predicate for an explicit target.
+ * @param args Explicit accessor, native options and Fluo boundary policy; or compatibility native options and boundary policy.
  * @returns A standard method decorator that runs the original method inside a Prisma transaction boundary.
+ * @throws TypeError When a third argument is supplied without an accessor function.
  */
 export function Transaction<THost, TOptions = unknown, TResult = unknown>(
-  input?: TransactionAccessor<THost, TOptions> | TOptions,
-  options?: TOptions | TransactionBoundaryOptions<TResult>,
-  boundary?: TransactionBoundaryOptions<TResult>,
+  ...args:
+    | [input: TransactionAccessor<THost, TOptions>, options?: TOptions | TransactionBoundaryOptions<TResult>, boundary?: TransactionBoundaryOptions<TResult>]
+    | [input?: TOptions, options?: TransactionBoundaryOptions<TResult>]
 ): <TArgs extends unknown[], TReturn extends TResult>(
   value: TransactionMethod<THost, TArgs, TReturn>,
   context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TReturn>>,
 ) => TransactionMethod<THost, TArgs, TReturn> {
+  const [input, options, boundary] = args;
+  if (typeof input !== 'function' && args.length > 2) {
+    throw new TypeError('@Transaction() requires an accessor function when a third argument is supplied. Pass boundary policy as the second argument without an accessor.');
+  }
   const accessor = typeof input === 'function'
     ? input as TransactionAccessor<THost, TOptions>
     : undefined;

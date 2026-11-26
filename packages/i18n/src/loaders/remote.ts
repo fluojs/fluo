@@ -248,9 +248,13 @@ export class RemoteI18nLoader implements I18nLoader {
  * @remarks
  * This wrapper never changes `RemoteI18nLoader` defaults. Applications choose it explicitly when they want catalog
  * caching at the loading boundary and can invalidate entries through `invalidate(...)` or `clear()`.
+ * The first load at or after each TTL-length sweep interval releases expired entries, even on cache hits.
+ * There is no background eviction while the wrapper is idle.
  */
 export class CachedRemoteI18nLoader implements CachedI18nLoader {
   private readonly cache = new Map<string, { readonly catalog: I18nMessageTree; readonly expiresAt: number }>();
+  private readonly pendingLoads = new Map<string, { count: number }>();
+  private nextSweepAt = Number.NEGATIVE_INFINITY;
   private readonly getCacheKey: (input: CachedI18nLoaderKeyInput) => string;
   private readonly loader: I18nLoader;
   private readonly now: () => number;
@@ -302,20 +306,47 @@ export class CachedRemoteI18nLoader implements CachedI18nLoader {
     validateLoaderNamespace(namespace, 'Cached remote i18n');
 
     const cacheKey = this.getCacheKey({ locale, namespace, version: this.version });
-    const cached = this.cache.get(cacheKey);
     const currentTime = this.now();
+
+    if (currentTime >= this.nextSweepAt) {
+      this.nextSweepAt = currentTime + this.ttlMs;
+      for (const [key, entry] of this.cache) {
+        if (currentTime >= entry.expiresAt) {
+          this.cache.delete(key);
+        }
+      }
+    }
+
+    const cached = this.cache.get(cacheKey);
 
     if (cached !== undefined && cached.expiresAt > currentTime) {
       return cached.catalog;
     }
 
-    const catalog = await this.loader.load(locale, namespace, options);
-    this.cache.set(cacheKey, { catalog, expiresAt: this.now() + this.ttlMs });
-    return catalog;
+    const pending = this.pendingLoads.get(cacheKey) ?? { count: 0 };
+    this.pendingLoads.set(cacheKey, pending);
+    pending.count += 1;
+
+    try {
+      const catalog = await this.loader.load(locale, namespace, options);
+      if (this.pendingLoads.get(cacheKey) === pending) {
+        const expiresAt = this.now() + this.ttlMs;
+        // The caller-owned clock can invalidate the key while computing expiry.
+        if (this.pendingLoads.get(cacheKey) === pending) {
+          this.cache.set(cacheKey, { catalog, expiresAt });
+        }
+      }
+      return catalog;
+    } finally {
+      pending.count -= 1;
+      if (pending.count === 0 && this.pendingLoads.get(cacheKey) === pending) {
+        this.pendingLoads.delete(cacheKey);
+      }
+    }
   }
 
   /**
-   * Invalidates one cached catalog entry using the same key policy as `load(...)`.
+   * Invalidates one catalog cache key without cancelling any pending loads for it.
    *
    * @param locale Locale identifier for the cache entry.
    * @param namespace Namespace identifier for the cache entry.
@@ -323,13 +354,16 @@ export class CachedRemoteI18nLoader implements CachedI18nLoader {
   invalidate(locale: I18nLocale, namespace: I18nTranslationKey): void {
     validateLoaderLocale(locale, 'Cached remote i18n');
     validateLoaderNamespace(namespace, 'Cached remote i18n');
-    this.cache.delete(this.getCacheKey({ locale, namespace, version: this.version }));
+    const cacheKey = this.getCacheKey({ locale, namespace, version: this.version });
+    this.cache.delete(cacheKey);
+    this.pendingLoads.delete(cacheKey);
   }
 
   /**
-   * Clears every cache entry owned by this wrapper.
+   * Invalidates all catalog cache keys owned by this wrapper without cancelling pending loads.
    */
   clear(): void {
     this.cache.clear();
+    this.pendingLoads.clear();
   }
 }

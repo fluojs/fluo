@@ -111,8 +111,8 @@ DiscordModule.forRootAsync({
 Behavioral contract 메모:
 
 - `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `DiscordService`, `DiscordChannel`, `DISCORD_CHANNEL`을 기본 global로 export합니다. fluo 옵션인 `global?: boolean`을 사용하고, migrated code가 Discord provider를 importing module 안에만 유지해야 할 때만 `global: false`를 설정하세요. NestJS `isGlobal`은 지원하지 않습니다.
-- `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석합니다.
-- `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API이며 `continueOnError`를 지원합니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다.
+- `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석하고, transport가 반환한 `ok: false` 영수증도 반환값으로 보존합니다.
+- `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API입니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다. 기본 모드와 `continueOnError: false`에서는 예외 또는 `ok: false` 영수증을 받으면 후속 메시지를 전송하기 전에 배치를 중단합니다. 실패 영수증은 provider 응답 내용을 노출하지 않는 `DiscordTransportError`로 거부됩니다. `continueOnError: true`에서는 두 종류의 실패 모두 입력 메시지와 오류를 `failures`에 기록하고 후속 메시지를 시도합니다. 성공 영수증만 `results`와 `succeeded`에 포함하며, 실패는 `failed`에 집계합니다. `ok`를 생략한 영수증은 기존처럼 `ok: true`로 정규화합니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, bootstrap verification 실패와 애플리케이션 shutdown 전반에서 factory-owned 리소스를 정확히 한 번 닫습니다. shutdown 전에 시작된 factory 생성 transport가 아직 완료되지 않았더라도 이를 기다리며, 진행 중인 bootstrap verification이 settle된 뒤에만 factory-owned transport를 닫습니다. Verification 실패 후 owned cleanup도 실패하면 status diagnostics는 이를 `shutdown-cleanup`으로 재분류하지 않고 최초 `initialization` failure phase를 유지하며, reject된 factory creation도 initialization failure로 유지됩니다.
 - send는 bootstrap이 transport를 `ready`로 표시한 뒤에만 허용됩니다. bootstrap 전, startup 중, bootstrap 실패 후, shutdown 중, shutdown 후 시도는 전달 전에 거부됩니다.
 - `ready` 상태에서 허용된 직접 send 또는 notification dispatch는 factory-owned transport resource를 닫기 전에 renderer와 transport delivery가 끝날 때까지 drain합니다. 전달 실패는 caller의 결과로 남고 shutdown 실패로 전파하지 않습니다.
@@ -250,7 +250,7 @@ bot 기반 REST 전달처럼 더 풍부한 API 연동이 필요하다면 export�
 
 ### 구성 가능한 webhook 재시도 정책
 
-내장 webhook transport는 일시적인 `408`, `429`, `5xx` 응답과 transport-level exception을 재시도합니다. `retry`를 생략하면 총 세 번 시도하고 250ms를 base로 지수 backoff하는 기존 기본값을 유지합니다. workload의 latency 또는 허용 가능한 재시도 수준이 다르다면 transport 생성 시 하나의 정책을 구성하세요.
+내장 webhook transport는 일시적인 `408`, `429`, `5xx` 응답과 취소가 아닌 fetch 예외를 재시도합니다. `retry`를 생략하면 총 세 번 시도하고 250ms를 base로 지수 backoff하는 기존 기본값을 유지합니다. workload의 latency 또는 허용 가능한 재시도 수준이 다르다면 transport 생성 시 하나의 정책을 구성하세요.
 
 ```typescript
 const transport = createDiscordWebhookTransport({
@@ -267,9 +267,10 @@ const transport = createDiscordWebhookTransport({
 
 Behavioral contract 메모:
 
-- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 응답뿐 아니라 transport-level exception도 구성한 bounded exponential backoff로 재시도한 뒤 호출자에게 에러를 노출합니다. 영구적인 upstream 응답은 재시도하지 않습니다.
+- 재시도에는 구성한 bounded exponential backoff가 적용됩니다. 영구적인 upstream 응답은 재시도하지 않습니다. 요청 payload를 JSON으로 직렬화할 수 없으면 첫 POST나 backoff 전에 민감한 세부 정보를 제거한 `DiscordTransportError`로 즉시 reject됩니다.
 - Retry backoff는 `DiscordSendOptions.signal`을 관찰합니다. 이미 abort된 signal은 다음 backoff timer를 기다리지 않고 즉시 reject됩니다.
-- 성공한 webhook 응답은 `DiscordSendResult.response`로 노출됩니다. rate-limit 재시도가 끝내 실패한 경우를 포함해, 호출자에게 보이는 `DiscordTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
+- 응답 본문 읽기가 실패했고 `DiscordSendOptions.signal`이 abort된 경우에는 `signal.reason` 그대로 reject됩니다. signal이 abort되지 않았는데 본문 읽기가 `AbortError`로 실패하면 그 오류 그대로 reject됩니다. 두 경우 모두 성공 영수증이나 추가 POST, backoff가 발생하지 않습니다. 이는 호출자의 결과만 바꾸며, Discord가 메시지를 수락하지 않았음을 보장하거나 이미 수락한 메시지를 취소·삭제하지 않습니다.
+- 읽을 수 있는 성공 응답 본문은 `DiscordSendResult.response`에 노출되며, 비JSON 본문에는 경고가 붙습니다. 성공 본문이 비었거나 취소와 무관한 이유로 읽지 못한 경우 `response`와 응답에서만 얻을 수 있는 provider ID는 `undefined`이며 빈 본문 경고는 추가되지 않습니다. 취소와 무관한 읽기 실패는 HTTP 상태 분류를 바꾸지 않습니다. rate-limit 재시도가 끝내 실패한 경우를 포함해, 호출자에게 보이는 `DiscordTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
 - 잘못되었거나 절대 URL이 아닌 `webhookUrl` 값은 전달 실패로 재시도하지 않고 즉시 `DiscordConfigurationError`로 거부됩니다.
 
 ### 의도적인 제한 사항
@@ -356,4 +357,4 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `packages/discord/src/status.test.ts`: health/readiness 계약 예제.
 ## 호환되는 서비스 사본
 
-`DiscordService`와 `DiscordChannel`은 호환 사본 class injection을 지원하며 Discord channel token은 격리된 상태를 유지합니다.
+`DiscordService`와 `DiscordChannel`은 호환 사본 class injection을 지원합니다. 같은 realm에 로드된 호환 패키지 사본은 동일한 공개 `DISCORD_CHANNEL` 주입 키를 공유합니다. 같은 주입 범위에서는 토큰을 어느 사본에서 import했는지만으로 서로 다른 Discord client를 선택할 수 없습니다. 주입 키를 공유한다는 사실이 별도 모듈 범위의 `DiscordService` 또는 `DiscordChannel` 인스턴스까지 같다는 뜻은 아닙니다.

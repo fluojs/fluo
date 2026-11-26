@@ -38,9 +38,10 @@ After canonical `plan` selects review, and before spawning any reviewer, run:
 node .agents/skills/execute-lane/scripts/workflow-preparation.mjs review <review-input.json>
 ```
 
-The entry is read-only: it returns a prepared dispatch payload on stdout or a
-nonzero JSON `input-preparation` block on stderr. It neither dispatches children
-nor writes facts. Do not turn a preparation block into an implementation
+The entry returns a prepared dispatch payload on stdout or a nonzero JSON
+`input-preparation` block on stderr. Large outputs additionally retain bounded
+transfer files under `artifact_root`; Git and lane facts remain read-only.
+It never dispatches children. Do not turn a preparation block into an implementation
 fix-back or a product defect. Complete or re-observe the input first.
 
 Supply exactly `version:1`, `stage:"review"`, absolute `root`, `checkout`,
@@ -119,6 +120,83 @@ optionally with `--test-name-pattern=...`; use that same command and argv in the
 corrected head's passing focused receipt. Prepare tooling regression tests
 with this runner; do not substitute a shell command that prints a failure.
 
+Packages regressions may instead use this exact Vitest argv shape:
+
+```text
+[<node executable>, "node_modules/vitest/vitest.mjs", "run",
+ "--project=packages", <one projected packages test file>,
+ "--testNamePattern=<selection>",
+ "--reporter=<absolute approved fix-back-vitest-reporter.mjs>",
+ "--outputFile=.omo/fix-back-vitest.json", "--maxWorkers=1",
+ "--no-file-parallelism"]
+```
+
+The executable and installed entrypoint must resolve to the preparer's actual
+Node and installed Vitest. Resolve the relative entrypoint from the actual
+execution checkout: the previous-head reproduction checkout before capture
+spawns, and the corrected-head review checkout during GREEN authentication.
+The repository root need not have its own dependency installation; separate
+worktrees may link to the preparer's approved installation. A valid root
+installation cannot authorize a different checkout entrypoint.
+The reporter is the approved sibling of
+`workflow-preparation.mjs`, not a caller-selected replacement. No extra runner
+options, alternative entrypoints or shell wrappers are accepted. The command
+is the argv joined by spaces, using `node` or the absolute executable for its
+first token and single-quoting tokens outside `[\w./=:-]+` (embedded single
+quotes use shell `'\''` escaping). Retain this exact string and argv for GREEN.
+
+Before assigning fix-back, confirm that runner, the complete projected
+test/fixture patch, body assertion identity/first source location, and real
+same-command GREEN can be captured. Do not rewrite an unsupported regression
+in a different runner to manufacture RED.
+
+For Vitest GREEN, run `workflow-preparation.mjs fix-back-green <input.json>`.
+Use the same input keys as `fix-back-red`, with `stage:"fix-back-green"`,
+`checkout` set to the clean corrected-head review checkout, and
+`artifact_root` set to the existing review evidence directory. Supply the
+same command, argv, test-only patch and failure identity planned for RED.
+Use the returned `receipt` reference in matching focused evidence.
+
+The collector must reserve a separate pipe at runner fd 3
+(`stdio:["ignore","pipe","pipe","pipe"]`). After its exclusive file write,
+the approved reporter writes identical complete report bytes to that pipe.
+Both captures require the pipe and `.omo/fix-back-vitest.json` to match,
+including the unique collector run ID. GREEN retains separate `test_results`
+and `completion` references and preserves an exact receipt copy at
+`.omo/fix-back-vitest-green-receipt.json` in the corrected checkout. Admission
+rechecks both channels, their run ID, the retained report and receipt, and
+complete stdout/stderr references. Keep both ignored checkout files through
+review preparation; use a fresh checkout or archive prior capture files
+before a separate run. Capture never overwrites them. Worker stdout or a
+worker-created report file cannot prove reporter completion: failure of the
+exclusive write leaves the private channel empty and capture rejects it.
+The reporter admits only the isolated `packages` forks pool before workers
+start. Thread/custom pools are unsupported because worker threads can share
+the runner's file descriptors.
+
+The report binds the actual reporter implementation hash and complete runner
+outcome, modules, suites, unhandled errors and selected tests. Exactly one
+specified test must run once, with matching repository-relative file/name;
+other collected tests may only be skipped by selection. The selected test
+cannot be skipped/todo, retried, repeated or marked `fails`. RED requires one
+genuine assertion with its first valid source frame at the supplied file/line.
+Later matching frames cannot hide an earlier helper location. Module/setup,
+hook, runtime and unhandled failures are rejected, including hook assertions
+reported as test failures. Vitest batches final task state before replaying
+events, so hook-event `result().errors` is not proof of where an error arose;
+the report preserves terminal hook states and suite errors. Successful hooks
+and assertion expected/actual values containing error names remain valid.
+The collector instruments the verified installed runner in memory to trace
+the registered test function's original error, after fixture setup and through
+awaited I/O. It requires the worker to record that same error as the test
+callback failure for the current run; the invocation frame need not survive
+in the stack. Unsupported runner source, unknown provenance, fixture errors,
+around-hook and test-finished hook assertions fail closed. The first unfiltered
+source file must agree with the source-mapped first frame, so a later matching
+frame cannot hide a filtered helper.
+GREEN must show that same selected test actually passed with no remaining
+runner errors. Malformed/incomplete reports fail closed.
+
 The capture applies the patch to the reproduction index, executes argv, retains
 complete stdout/stderr and patch bytes in the new artifact directory, and emits
 `receipt.json` only for one named assertion failure at the supplied positive
@@ -140,6 +218,12 @@ and matches command/argv to a passing focused receipt. All axes receive the
 same `common.fix_back_red:{reference,receipt}`. A child's failed claim or
 producer string alone supplies no execution evidence.
 
+Vitest receipts add exactly `test_results:{path,sha256,bytes}` to these RED
+keys. Node TAP receipt keys and accepted argv remain unchanged. Preparation
+authenticates and rechecks the Vitest artifact along with the existing raw
+streams/patch/head/tree/contract bindings and shares it in the same common
+evidence/readable index with every active reviewer axis.
+
 `common.readable_index` is decoder-free machine metadata derived from those
 authenticated receipts and raw artifacts, with exact head/tree, distinct
 `contract_sha256` and `policy_sha256`, actual command outcomes/durations and
@@ -159,6 +243,74 @@ Give each selected child the returned `reviewers[i].input` unchanged: every
 axis receives the same `common` contract/policy, source footprint, authored
 diff, checkout and focused evidence. Do not substitute an implementer-reported
 path list, the contract digest for the policy digest, or another checkout.
+
+### Bounded complete review transfer
+
+The existing `review <review-input.json>` invocation needs no new arguments.
+Small results retain exactly `status:"prepared",kind:"review-input",common,
+reviewers` and require no decoder. If its actual pretty-printed UTF-8 output
+would exceed 49,999 bytes or 1,500 lines, the CLI instead returns
+`{status:"prepared",kind:"review-transfer",artifact_root,transfer,reviewers}`.
+Each reviewer entry retains its registered `reviewer`/`dispatch` and the
+identical `transfer`. Pass that object and the absolute artifact root unchanged
+to every selected axis, together with the captured exact-head identity.
+API callers may use `prepareReviewTransfer(input)` for the same selection;
+`prepareReviewInput(input)` keeps its original in-memory result.
+
+`transfer` has exactly `version:1`, `manifest:{path,bytes,sha256}`,
+`prepared:{bytes,sha256}`, and `binding:{issue,head_sha,tree_sha,
+contract_sha256,policy_sha256,axes}`. Preserve the lead-provided transfer as the
+authentication anchor; never regenerate its digests from suspect files.
+Contract and effective policy identities stay distinct. The manifest is itself
+authenticated by its external byte length and SHA-256. It contains `version`,
+the identical `binding` and `prepared`, `limits`, `total_bytes`, and the complete
+ordered `units` inventory. Each entry has `index`, UTF-8 assembly `offset`,
+`content_bytes`, `lines`, and `reference:{path,bytes,sha256}`. Each referenced
+compact JSON unit has exactly `{version:1,index,offset,text}`. Concatenate
+decoded `text` strings in inventory order to reconstruct the complete compact
+JSON serialization of the original prepared result, including every repeated
+reviewer input. No summary, omitted command, or changed meaning is permitted.
+
+Every manifest, unit, dispatch envelope and reader output is at most 49,999
+actual UTF-8 bytes and 1,500 lines, including JSON escaping and wrappers.
+Stored units and manifests use compact JSON with one line. A fragment contains
+at most 16,000 UTF-8 content bytes and never splits a Unicode code point.
+The complete prepared serialization is at most 2,097,152 bytes, with at most
+132 units; manifest plus all unit file bytes must not exceed 8,388,608.
+These version 1 limits are fixed, not caller overrides. Exceeding any limit
+blocks the whole transfer; a partial directory is never successful input.
+Files live in `artifact_root/review-transfer-<prepared-sha256>/`.
+
+Before consuming any unit or judging the implementation, authenticate and
+validate the entire manifest and every unit, then the assembled byte length,
+SHA-256 and reconstructed binding/common inputs. `readReviewTransfer(root,
+transfer)` performs this check and returns the original prepared object for
+programmatic consumers. For bounded tool reads, supply exactly
+`{version:1,stage:"review-read",artifact_root,transfer,index}` to:
+
+```text
+node .agents/skills/execute-lane/scripts/workflow-preparation.mjs review-read <reader-input.json>
+```
+
+`index:null` returns the authenticated manifest; each integer index returns its
+authenticated unit. Every call validates the complete transfer before emitting
+any stdout. Read every index in order without clipping, decode each JSON `text`,
+and consume the complete reconstructed common/readable_index; a manifest alone
+is not review evidence. All three axes consume the same bytes. Retain full
+underlying diff, receipts, packed inventory and raw streams beside the transfer.
+
+Missing, unreadable, truncated, altered, duplicated, omitted, reordered,
+misbound, wrong-length or oversized files/references produce nonzero structured
+stderr with `kind:"input-preparation",fix_back_eligible:false` and no success
+stdout. Stop before any verdict and return this input gap to the lead; never
+turn it into product BLOCK, implementation fix-back or implicit PASS.
+Transfer authentication preserves the prepared snapshot; it replaces none of
+the footprint/caller searches, authoritative accepted contract, canonical plan,
+base/head/tree, complete authored diff, policy/axes, implementation mode,
+fix-back RED, required checks, raw/packed evidence admission or final freshness
+recheck described above. The producer rechecks head/base/clean status and the
+accepted contract after retaining and reading the transfer. The lead still
+revalidates head and preflight before accepting the review aggregate.
 
 ## Review wave
 

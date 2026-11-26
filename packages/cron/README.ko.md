@@ -59,6 +59,12 @@ npm install @fluojs/cron
 
 Dynamic registry task identity는 이제 첫 번째 `name` 인자만 사용합니다. `addCron`, `addInterval`, `addTimeout` 호출에서 `options.name`을 제거하세요. Redis locking을 활성화하려면 `distributed: { enabled: true }`를 사용하고, 비활성 상태를 유지하려면 `distributed`를 생략하세요. boolean `distributed: true`와 `distributed: false`는 더 이상 허용되지 않습니다. Decorator metadata를 읽는 integration 코드는 `getSchedulingTaskMetadata(...)`, `getSchedulingTaskMetadataEntries(...)`, `schedulingMetadataSymbol`을 사용해야 합니다. Cron 전용 metadata alias와 metadata writer는 더 이상 public API가 아닙니다. `normalizeCronModuleOptions(...)`와 `NormalizedCronModuleOptions`는 application configuration API가 아닌 runtime internal입니다.
 
+### Scheduling 계약 마이그레이션
+
+`SchedulingTaskDescriptor` 필드는 이제 `readonly`이며 `get`과 `getAll`이 반환하는 frozen snapshot과 일치합니다. Descriptor를 직접 구성하거나 수정하던 코드는 로컬 계산을 위해 mutable copy를 만들거나(`const local = { ...descriptor }; local.ms = 5_000`), 실제 예약 상태를 변경하려면 `updateIntervalMs`, `updateCronExpression`, `enable`, `disable` 같은 registry method를 사용하세요. 복사본 수정은 registry에 반영되지 않습니다. `getAll()`은 계속 새로운 mutable array를 반환하므로 해당 배열의 정렬, push, splice는 허용됩니다.
+
+`@Cron`, `addCron`, `updateCronExpression`은 표현식만 받습니다. 우연히 허용되던 ISO absolute-time 문자열은 더 이상 허용되지 않으며, 타입을 우회한 `Date`도 거부합니다. 절대시각 예약은 startup-relative timeout으로 대체하지 말고 application-owned code에서 소유하세요. 지원되는 Croner 표현식 문법(다섯/여섯 필드, nickname, 이름, 범위, step, 확장 문법)은 유지됩니다. `2_147_483_647`을 넘는 값을 포함한 양의 정수 millisecond 지연도 계속 지원합니다. fluo는 요청한 전체 지연을 줄이지 않고 취소 가능한 host timer 구간으로 나눕니다.
+
 ## 사용 시점
 
 - 정기적인 백그라운드 작업(예: 데이터베이스 정리, 리포트 생성)이 필요할 때 사용합니다.
@@ -235,6 +241,10 @@ class AppModule {}
 ```
 
 singleton provider/controller만 스케줄링됩니다. Request-scoped 및 transient scheduled class는 경고와 함께 건너뜁니다.
+
+Discovery는 duplicate-provider policy 적용 후 container의 유효한 class registration을 따릅니다. 탈락한 선언은 schedule을 추가하거나 승자의 scope 또는 injection을 덮어쓰지 못합니다. 적격 singleton multi-provider contribution은 각각 자기 instance를 실행합니다. Non-class 및 request/transient 형제는 DI contribution 위치를 유지하며 scheduling을 위해 resolve되지 않습니다. 서로 다른 Symbol method는 설명이 같아도 실제 method identity를 유지합니다.
+
+Task hook 순서는 `beforeRun` → body → `onSuccess` 또는 `onError` → `afterRun`입니다. Throw 또는 reject된 이유는 `0`, `false`, `''`, `null`, `undefined`를 포함하여 그대로 `onError`에 전달됩니다. Distributed renewal은 비동기 success/error hook과 after hook 동안 계속되며 실행 정산 후 token-safe release 전에 중단됩니다.
 
 ## 공개 API 개요
 

@@ -76,10 +76,18 @@ function resolveWebhookUrl(
   return url.toString();
 }
 
-async function readResponseBody(response: DiscordFetchResponse): Promise<string> {
+async function readResponseBody(response: DiscordFetchResponse, signal: AbortSignal | undefined): Promise<string> {
   try {
     return await response.text();
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) {
+      throw signal.reason;
+    }
+
+    if (typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError') {
+      throw error;
+    }
+
     return '';
   }
 }
@@ -170,7 +178,7 @@ function parseJsonRecord(body: string): Record<string, unknown> | undefined {
  * @param options Webhook URL plus an optional injected fetch implementation for portable runtimes.
  * @returns A Discord transport that posts JSON payloads to one Discord webhook endpoint.
  * @throws {DiscordConfigurationError} When the webhook url is empty or no fetch implementation is available.
- * @throws {DiscordTransportError} When Discord responds with a non-success HTTP status.
+ * @throws {DiscordTransportError} When a send cannot serialize its payload to JSON or delivery fails.
  *
  * @example
  * ```ts
@@ -194,12 +202,19 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
 
   return {
     async send(message: NormalizedDiscordMessage, context: DiscordTransportContext) {
+      let requestBody: string;
+      try {
+        requestBody = JSON.stringify(createWebhookPayload(message));
+      } catch {
+        throw new DiscordTransportError('Discord webhook payload could not be serialized to JSON.');
+      }
+
       for (let attempt = 1; attempt <= retry.attempts; attempt += 1) {
         let response: DiscordFetchResponse;
 
         try {
           response = await fetchLike(resolveWebhookUrl(parsedWebhookUrl, message, wait), {
-            body: JSON.stringify(createWebhookPayload(message)),
+            body: requestBody,
             headers: {
               'content-type': 'application/json; charset=utf-8',
             },
@@ -219,7 +234,7 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
           throw new DiscordTransportError(createTransportFailureMessage(attempt));
         }
 
-        const body = await readResponseBody(response);
+        const body = await readResponseBody(response, context.signal);
 
         if (!response.ok) {
           if (attempt < retry.attempts && isTransientStatus(response.status)) {

@@ -2,7 +2,7 @@ import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/core';
 
-import { SlackLifecycleError, SlackMessageValidationError } from './errors.js';
+import { SlackLifecycleError, SlackMessageValidationError, SlackTransportError } from './errors.js';
 import { createSlackPlatformStatusSnapshot } from './status.js';
 import { SLACK_OPTIONS } from './tokens.js';
 import type {
@@ -269,6 +269,8 @@ export class SlackService implements OnModuleInit, OnApplicationShutdown {
    * @param messages Ordered message list to deliver through the configured transport.
    * @param options Optional tolerant batch controls such as `continueOnError`.
    * @returns A batch summary containing successes and any captured failures.
+   * @throws {SlackTransportError} When a transport returns an unsuccessful receipt and `continueOnError` is disabled.
+   * @throws {SlackMessageValidationError} When any message has no Slack-visible content, even with `continueOnError`.
    * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    *
    * @example
@@ -286,14 +288,27 @@ export class SlackService implements OnModuleInit, OnApplicationShutdown {
 
     for (const message of messages) {
       try {
-        results.push(await this.send(message, options));
+        const result = await this.send(message, options);
+        assertNotAborted(options.signal);
+
+        if (result.ok === false) {
+          throw new SlackTransportError('Slack transport reported an unsuccessful delivery.');
+        }
+
+        results.push(result);
       } catch (error) {
         const failure = {
           error: error instanceof Error ? error : new Error('Slack delivery failed.'),
           message,
         };
 
-        if (options.signal?.aborted || isAbortError(failure.error) || !(options.continueOnError ?? false)) {
+        if (
+          options.signal?.aborted
+          || isAbortError(failure.error)
+          || failure.error instanceof SlackMessageValidationError
+          || failure.error instanceof SlackLifecycleError
+          || !(options.continueOnError ?? false)
+        ) {
           throw failure.error;
         }
 
@@ -481,6 +496,7 @@ export class SlackService implements OnModuleInit, OnApplicationShutdown {
       locale: notification.locale,
       metadata: notification.metadata,
       payload: notification.payload,
+      signal,
       subject: notification.subject,
       template: notification.template,
     });

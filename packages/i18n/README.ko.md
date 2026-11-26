@@ -429,6 +429,8 @@ const cachedLoader = CachedRemoteI18nLoader.create({
 cachedLoader.invalidate('en', 'common');
 ```
 
+카탈로그는 TTL이 만료되는 즉시 캐시 적중 대상에서 제외됩니다. 첫 `load()` 호출이 해당 wrapper의 `ttlMs` 길이 정리 주기를 시작합니다. 각 주기가 끝난 시점이나 그 이후의 첫 `load()` 호출은 캐시 적중이어도 만료된 모든 카탈로그의 참조를 제거하고 다음 주기를 시작합니다. 유휴 상태에서 항목을 제거하는 백그라운드 타이머는 없으며, 가비지 컬렉션 시점도 보장하지 않습니다.
+
 Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 전에 validate됩니다. Namespace는 `admin/common` 같은 safe relative path segment를 사용할 수 있습니다. `.`, `..`, absolute path, empty segment, `common.json` 같은 extension-bearing name, traversal attempt는 `I18N_INVALID_LOADER_OPTIONS`로 거부됩니다.
 
 ## Catalog Type Generation
@@ -468,14 +470,16 @@ Generated declaration text에는 fully qualified key union, namespace union, nam
 ```ts
 import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';
 
-const typedI18n = {
+const typedI18n: I18nCatalogTypedService = {
   translate: i18n.translate.bind(i18n),
   translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
-} satisfies I18nCatalogTypedService;
+};
 
 typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
 typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });
 ```
+
+명시적인 타입 주석은 bound `translate`를 generated catalog key로 좁힙니다. `satisfies`만 사용하면 객체의 호환성을 검사하지만 넓은 `key: string` signature는 유지됩니다.
 
 이 helper declaration은 type-only이며 application-owned입니다. Runtime wrapper를 추가하지 않고, framework bridge를 import하지 않으며, 넓은 runtime `I18nService.translate(key: string, options)` signature도 바꾸지 않습니다.
 

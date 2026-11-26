@@ -200,6 +200,15 @@ export interface I18nCatalogTypedService {
     const i18nModulePath = join(rootDir, 'i18n-module.d.ts');
     const validConsumerPath = join(rootDir, 'valid-consumer.ts');
     const invalidConsumerPath = join(rootDir, 'invalid-consumer.ts');
+    const facade = [
+      "import type { I18nTranslateOptions } from '@fluojs/i18n';",
+      `import type { ${serviceName} } from './generated-i18n-catalog.d.ts';`,
+      'declare const i18n: { translate(key: string, options: I18nTranslateOptions): string };',
+      `const typedI18n: ${serviceName} = {`,
+      '  translate: i18n.translate.bind(i18n),',
+      '  translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),',
+      '};',
+    ].join('\n');
     await Promise.all([
       writeFile(join(rootDir, 'generated-i18n-catalog.d.ts'), declarations, 'utf8'),
       writeFile(
@@ -210,8 +219,7 @@ export interface I18nCatalogTypedService {
       writeFile(
         validConsumerPath,
         [
-          `import type { ${serviceName} } from './generated-i18n-catalog.d.ts';`,
-          `declare const typedI18n: ${serviceName};`,
+          facade,
           "typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });",
           "typedI18n.translate('common.cancel', { locale: 'en' });",
           "typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });",
@@ -222,8 +230,7 @@ export interface I18nCatalogTypedService {
       writeFile(
         invalidConsumerPath,
         [
-          `import type { ${serviceName} } from './generated-i18n-catalog.d.ts';`,
-          `declare const typedI18n: ${serviceName};`,
+          facade,
           "typedI18n.translate('admin/common.dashboard.missing', { locale: 'en' });",
           "typedI18n.translateInNamespace('common', 'dashboard.title', { locale: 'en' });",
         ].join('\n'),
@@ -256,9 +263,13 @@ export interface I18nCatalogTypedService {
     const diagnostics = ts.getPreEmitDiagnostics(program);
 
     // Then: only invalid fully qualified and namespace-scoped keys produce diagnostics.
-    expect(diagnostics.map((diagnostic) => ({ code: diagnostic.code, file: diagnostic.file?.fileName }))).toEqual([
-      { code: 2345, file: invalidConsumerPath },
-      { code: 2345, file: invalidConsumerPath },
+    expect(diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      file: diagnostic.file?.fileName,
+      argument: diagnostic.file?.text.slice(diagnostic.start, (diagnostic.start ?? 0) + (diagnostic.length ?? 0)),
+    }))).toEqual([
+      { code: 2345, file: invalidConsumerPath, argument: "'admin/common.dashboard.missing'" },
+      { code: 2345, file: invalidConsumerPath, argument: "'dashboard.title'" },
     ]);
   });
 

@@ -1,5 +1,7 @@
 import { Cron, CronExpression, Interval, SCHEDULING_REGISTRY, type SchedulingRegistry } from '@fluojs/cron';
 import { FluoFactory } from '@fluojs/runtime';
+import { Container } from '@fluojs/di';
+import { REDIS_CLIENT } from '@fluojs/redis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +9,8 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { startRedisFixture } from '../../../../testing/redis-native-fixture.mjs';
+import { CronDistributedLockManager } from '../../../../../packages/cron/src/distributed-lock-manager';
+import { normalizeCronModuleOptions } from '../../../../../packages/cron/src/module';
 import { createCronGuideApp, createDistributedCronGuideApp } from './cron-guide-app';
 import { boundedWait, createDeferred } from './helpers';
 
@@ -138,6 +142,13 @@ describe('cron guide fixtures: dynamic registry semantics', () => {
       expect(() => registry.updateCronExpression('guide.cron', '0 */2 * * *')).toThrow();
       expect(registry.get('guide.cron')?.expression).toBe('0 * * * *');
 
+      expect(registry.disable('guide.cron')).toBe(true);
+      registry.updateCronExpression('guide.cron', '0 */2 * * *');
+      expect(registry.enable('guide.cron')).toBe(true);
+      expect(registry.get('guide.cron')).toMatchObject({ expression: '0 */2 * * *', enabled: true });
+      expect(registry.disable('guide.cron')).toBe(true);
+      expect(registry.remove('guide.cron')).toBe(true);
+      expect(registry.get('guide.cron')).toBeUndefined();
       expect(registry.remove('guide.absent')).toBe(false);
     } finally {
       await context.close();
@@ -153,7 +164,7 @@ describe('cron guide fixtures: native distributed locking', () => {
   beforeAll(async () => {
     fixture = await startRedisFixture({
       containerName,
-      diagnosticPath: resolve('.artifacts/redis-native-fixture/docs-package-guides-async-work.json'),
+      diagnosticPath: resolve('.omo/issue-4234/redis-native-fixture.json'),
       execFile: exec,
       spawn,
     });
@@ -162,6 +173,44 @@ describe('cron guide fixtures: native distributed locking', () => {
   afterAll(async () => {
     await fixture?.cleanup();
   });
+
+  it('production Redis release: expired acquisition -> preserves the newer same-owner token', async () => {
+    if (!fixture) { throw new Error('Expected the native Redis fixture'); }
+    const { AppModule } = createDistributedCronGuideApp({ host: '127.0.0.1', port: fixture.port });
+    const context = await FluoFactory.createApplicationContext(AppModule);
+    const redis = await context.get<{
+      get(key: string): Promise<string | null>;
+      pexpire(key: string, ttl: number): Promise<number>;
+    }>(REDIS_CLIENT);
+    const container = new Container();
+    container.register({ provide: REDIS_CLIENT, useValue: redis });
+    const options = normalizeCronModuleOptions({
+      distributed: { enabled: true, ownerId: 'same-native-owner', lockTtlMs: 1_000 },
+    });
+    const locks = new CronDistributedLockManager(options, container, { debug() {}, log() {}, warn() {}, error() {} });
+    const descriptor = {
+      kind: 'cron' as const, taskName: 'native-stale', distributed: true,
+      lockKey: 'fluo:cron:guide:native-stale', lockTtlMs: 1_000,
+    };
+
+    try {
+      await locks.resolveClient();
+      const previous = await locks.tryAcquireLock(descriptor);
+      if (!previous) { throw new Error('Expected the original acquisition'); }
+      await redis.pexpire(descriptor.lockKey, 0);
+      const current = await locks.tryAcquireLock(descriptor);
+      if (!current) { throw new Error('Expected a new acquisition after Redis expiry'); }
+      expect(current.token).not.toBe(previous.token);
+      expect(await locks.releaseLock(previous)).toBe(true);
+      expect(await redis.get(descriptor.lockKey)).toBe(current.token);
+      expect(await locks.releaseLock(current)).toBe(true);
+      expect(await redis.get(descriptor.lockKey)).toBeNull();
+    } finally {
+      await locks.releaseOwnedLocks();
+      await container.dispose();
+      await context.close();
+    }
+  }, 30_000);
 
   it('holds a Redis lease while a distributed tick runs and releases it for the next tick', async () => {
     const { AppModule, LockProbe: Probe } = createDistributedCronGuideApp({ host: '127.0.0.1', port: fixture!.port });

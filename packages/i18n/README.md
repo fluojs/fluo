@@ -429,6 +429,8 @@ const cachedLoader = CachedRemoteI18nLoader.create({
 cachedLoader.invalidate('en', 'common');
 ```
 
+A catalog stops being a cache hit as soon as its TTL expires. The first `load()` starts a cleanup interval of `ttlMs` for that wrapper. The first `load()` at or after the end of each interval, even a cache hit, drops references to all expired catalogs and starts the next interval. No background timer evicts entries while idle, and this does not guarantee when garbage collection runs.
+
 Like the filesystem loader, locale and namespace values are validated before the provider is called. Namespaces may use safe relative path segments such as `admin/common`; `.`/`..`, absolute paths, empty segments, extension-bearing names such as `common.json`, and traversal attempts are rejected with `I18N_INVALID_LOADER_OPTIONS`.
 
 ## Catalog Type Generation
@@ -468,14 +470,16 @@ The generated declaration text includes fully qualified key unions, namespace un
 ```ts
 import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';
 
-const typedI18n = {
+const typedI18n: I18nCatalogTypedService = {
   translate: i18n.translate.bind(i18n),
   translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
-} satisfies I18nCatalogTypedService;
+};
 
 typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
 typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });
 ```
+
+The explicit type annotation narrows the bound `translate` to generated catalog keys. Using `satisfies` alone checks the object's compatibility but preserves the broad `key: string` signature.
 
 These helper declarations are type-only and application-owned. They do not add runtime wrappers, do not import framework bridges, and do not change the broad runtime `I18nService.translate(key: string, options)` signature.
 

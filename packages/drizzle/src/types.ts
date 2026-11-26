@@ -2,6 +2,7 @@ import type { TransactionRollbackObserver } from './result-rollback.js';
 import type { MaybePromise } from '@fluojs/core';
 import type { PersistencePlatformStatusSnapshot } from '@fluojs/runtime';
 import type { AfterCommitCallback, TransactionBoundaryOptions } from './after-commit.js';
+import type { DefaultTransactionDatabase, DefaultTransactionOptions } from './transaction-types.js';
 
 type DrizzleTransactionCallback<TTransactionDatabase, TResult> = (database: TTransactionDatabase) => Promise<TResult>;
 
@@ -24,10 +25,14 @@ export interface DrizzleDatabaseLike<TTransactionDatabase = unknown, TTransactio
  * Module options for registering a Drizzle handle and optional shutdown disposal hook.
  *
  * @typeParam TDatabase Root Drizzle database handle registered in the module.
- * @typeParam TTransactionDatabase Transaction-scoped database handle resolved by `current()`.
- * @typeParam TTransactionOptions Options forwarded to `database.transaction(...)`.
+ * @typeParam TTransactionDatabase Transaction-scoped handle inferred from the native callback by default.
+ * @typeParam TTransactionOptions Native runner options inferred from the registered handle by default.
  */
-export interface DrizzleModuleOptions<TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>, TTransactionDatabase = TDatabase, TTransactionOptions = unknown> {
+export interface DrizzleModuleOptions<
+  TDatabase extends object & DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+  TTransactionDatabase = DefaultTransactionDatabase<TDatabase>,
+  TTransactionOptions = DefaultTransactionOptions<TDatabase>,
+> {
   /** Root Drizzle database handle shared outside ambient transaction scopes. */
   database: TDatabase;
   /** Optional shutdown hook used to close pools or driver resources during application shutdown. */
@@ -57,10 +62,14 @@ export interface DrizzleModuleOptions<TDatabase extends DrizzleDatabaseLike<TTra
  * Public Drizzle wrapper contract exposed through dependency injection.
  *
  * @typeParam TDatabase Root Drizzle database handle registered in the module.
- * @typeParam TTransactionDatabase Transaction-scoped database handle resolved inside transaction boundaries.
- * @typeParam TTransactionOptions Options forwarded to `database.transaction(...)`.
+ * @typeParam TTransactionDatabase Transaction-scoped handle inferred from the native callback by default.
+ * @typeParam TTransactionOptions Native runner options inferred from the registered handle by default.
  */
-export interface DrizzleHandleProvider<TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>, TTransactionDatabase = TDatabase, TTransactionOptions = unknown> {
+export interface DrizzleHandleProvider<
+  TDatabase extends object & DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+  TTransactionDatabase = DefaultTransactionDatabase<TDatabase>,
+  TTransactionOptions = DefaultTransactionOptions<TDatabase>,
+> {
   /**
    * Registers work synchronously on the active native owner for execution after commit.
    *

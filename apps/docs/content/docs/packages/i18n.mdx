@@ -229,6 +229,8 @@ cached.invalidate('en', 'common'); // application-owned invalidation
 
 Cache entries are keyed by `(locale, namespace, version)`, the TTL starts only after a successful load, and `invalidate(...)`/`clear()` stay application-owned - stale-while-revalidate or CDN policies belong in the provider, at the boundary that knows them.
 
+A catalog stops being a cache hit at TTL expiry. The wrapper's first `load()` starts a `ttlMs` cleanup interval. The first `load()` at or after each interval ends, including a cache hit, releases references to all expired catalogs and starts the next interval. There is no background eviction while idle and no guarantee of garbage collection timing.
+
 ## Catalog type generation
 
 `@fluojs/i18n/typegen` produces deterministic TypeScript declarations from catalog trees - fully qualified key unions (`admin/common.dashboard.title`), namespace unions, namespace-to-leaf-key maps, and opt-in typed facade types:
@@ -247,13 +249,15 @@ The directory variant scans `${rootDir}/${locale}/**/*.json`, validates every fi
 ```ts title="fragment: typed facade"
 import type { I18nCatalogTypedService } from './generated-i18n-catalog.d';
 
-const typedI18n = {
+const typedI18n: I18nCatalogTypedService = {
   translate: i18n.translate.bind(i18n),
   translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
-} satisfies I18nCatalogTypedService;
+};
 
 typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
 ```
+
+The explicit type annotation narrows the bound `translate` to generated catalog keys. Using `satisfies` alone checks the object's compatibility but preserves the broad `key: string` signature.
 
 Invalid catalog shapes and unsafe locale/namespace paths reject with the loader error codes; invalid output names reject with `I18N_INVALID_OPTIONS`.
 

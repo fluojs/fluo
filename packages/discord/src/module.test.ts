@@ -1,7 +1,7 @@
 import { type Constructor, getModuleMetadata, Inject, type Token } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
 import { NotificationsModule, NotificationsService } from '@fluojs/notifications';
-import { FluoFactory, defineModule } from '@fluojs/runtime';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DiscordChannel } from './channel.js';
@@ -840,7 +840,7 @@ describe('DiscordModule', () => {
     });
   });
 
-  it('creates a webhook-first transport with an explicit fetch-compatible boundary', async () => {
+  it('maps a successful webhook response to a DiscordChannel delivery and externalId', async () => {
     const calls: Array<{ body?: string; input: string; method?: string }> = [];
     const rawResponseBody = '{ "channel_id": "chan-1", "guild_id": "guild-1", "id": "msg-1" }';
     const fetchLike: DiscordFetchLike = async (input, init) => {
@@ -859,19 +859,30 @@ describe('DiscordModule', () => {
       webhookUrl: 'https://discord.com/api/webhooks/123/abc',
     });
 
-    const result = await transport.send(
-      {
-        attachments: [],
-        components: [],
-        content: 'Webhook path',
-        embeds: [],
-        threadId: 'thread-ops',
-      },
+    const container = new Container();
+    container.register(...moduleProviders(DiscordModule.forRoot({ transport })));
+    const service = await container.resolve(DiscordService);
+    const channel = await container.resolve(DiscordChannel);
+    await service.onModuleInit();
+
+    const result = await channel.send(
+      { channel: 'discord', payload: { content: 'Webhook path' }, recipients: ['thread-ops'] },
       {},
     );
 
-    expect(result).toMatchObject({ messageId: 'msg-1', ok: true, statusCode: 200, threadId: 'thread-ops' });
-    expect(result.response).toBe(rawResponseBody);
+    expect(result).toMatchObject({
+      externalId: 'msg-1',
+      receipt: {
+        channelId: 'chan-1',
+        guildId: 'guild-1',
+        messageId: 'msg-1',
+        ok: true,
+        response: rawResponseBody,
+        statusCode: 200,
+        threadId: 'thread-ops',
+      },
+      status: 'delivered',
+    });
     expect(calls).toEqual([
       {
         body: JSON.stringify({ content: 'Webhook path' }),
@@ -879,6 +890,34 @@ describe('DiscordModule', () => {
         method: 'POST',
       },
     ]);
+  });
+
+  it('rejects a DiscordChannel send cancelled during webhook body reading without delivering or reposting', async () => {
+    const controller = new AbortController();
+    const reason = new Error('caller cancelled the channel send');
+    const fetchLike = vi.fn<DiscordFetchLike>(async (_input, init) => ({
+      ok: true,
+      status: 200,
+      async text() {
+        controller.abort(reason);
+        init?.signal?.throwIfAborted();
+        return '{"id":"msg-1"}';
+      },
+    }));
+    const transport = createDiscordWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    });
+    const container = new Container();
+    container.register(...moduleProviders(DiscordModule.forRoot({ transport })));
+    const service = await container.resolve(DiscordService);
+    const channel = await container.resolve(DiscordChannel);
+    await service.onModuleInit();
+
+    await expect(
+      channel.send({ channel: 'discord', payload: { content: 'Webhook path' } }, { signal: controller.signal }),
+    ).rejects.toBe(reason);
+    expect(fetchLike).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.objectContaining({ method: 'POST' }));
   });
 
   it('serializes the documented Discord webhook payload fields through the built-in transport', async () => {
@@ -1140,6 +1179,85 @@ describe('DiscordModule', () => {
     expect(transport.sent).toEqual(['ok-1', 'fail-2', 'ok-3']);
   });
 
+  it.each([undefined, false])(
+    'sendMany stops after an unsuccessful receipt when continueOnError is %s',
+    async (continueOnError) => {
+      const send = vi
+        .fn<DiscordTransport['send']>()
+        .mockResolvedValueOnce({ ok: false, response: 'private provider details' })
+        .mockResolvedValueOnce({ messageId: 'success-2', ok: true });
+      const container = new Container();
+      const moduleType = DiscordModule.forRoot({ transport: { send } });
+      container.register(...moduleProviders(moduleType));
+      const service = await container.resolve(DiscordService);
+      await service.onModuleInit();
+
+      await expect(
+        service.sendMany([{ content: 'Denied' }, { content: 'Later' }], { continueOnError }),
+      ).rejects.toThrowError(new DiscordTransportError('Discord transport reported an unsuccessful delivery.'));
+      expect(send).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('sendMany records an unsuccessful receipt and continues when continueOnError is true', async () => {
+    const send = vi
+      .fn<DiscordTransport['send']>()
+      .mockResolvedValueOnce({ ok: false, response: 'private provider details' })
+      .mockResolvedValueOnce({ messageId: 'success-2', ok: true });
+    const messages = [{ content: 'Denied' }, { content: 'Later' }];
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({ transport: { send } });
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendMany(messages, { continueOnError: true });
+
+    expect(result).toEqual({
+      failed: 1,
+      failures: [
+        {
+          error: expect.any(DiscordTransportError),
+          message: messages[0],
+        },
+      ],
+      results: [expect.objectContaining({ messageId: 'success-2', ok: true })],
+      succeeded: 1,
+    });
+    expect(result.failures[0]?.error.message).toBe('Discord transport reported an unsuccessful delivery.');
+    expect(send.mock.calls.map(([message]) => message.content)).toEqual(['Denied', 'Later']);
+  });
+
+  it('send preserves an unsuccessful transport receipt', async () => {
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({ transport: new UnsuccessfulTransport() });
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.send({ content: 'Denied' });
+
+    expect(result).toMatchObject({ ok: false, response: 'denied', statusCode: 200 });
+  });
+
+  it('sendMany counts a receipt without ok as a normalized success', async () => {
+    const send = vi.fn<DiscordTransport['send']>().mockResolvedValue({ messageId: 'implicit-success' });
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({ transport: { send } });
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendMany([{ content: 'Delivered' }]);
+
+    expect(result).toEqual({
+      failed: 0,
+      failures: [],
+      results: [expect.objectContaining({ messageId: 'implicit-success', ok: true })],
+      succeeded: 1,
+    });
+  });
+
   it('propagates sendMany abort signals between sequential Discord deliveries', async () => {
     const controller = new AbortController();
     const transport = new AbortAfterFirstDiscordTransport(controller);
@@ -1238,14 +1356,28 @@ describe('DiscordModule', () => {
     expect(transport.verifyCalls).toBe(0);
   });
 
-  it('preserves direct transport ownership across bootstrap and shutdown lifecycle hooks', async () => {
-    const transport = new PassiveTransport();
+  it.each((['forRoot', 'forRootAsync'] as const).flatMap((registration) => [
+    {},
+    { create: false },
+    { create: undefined },
+    { create: null },
+    { create: 'not-a-factory' },
+    { create: 42 },
+    { create: {} },
+  ].map((fields) => ({ fields, registration }))))('$registration preserves direct transport ownership with non-callable create: $fields', async ({ fields, registration }) => {
+    const transport = Object.assign(new PassiveTransport(), fields, {
+      kind: 'misleading-factory',
+      ownsResources: true,
+    });
     const container = new Container();
-    const moduleType = DiscordModule.forRoot({
+    const options = {
       defaultThreadId: 'thread-owned-by-app',
       transport,
       verifyOnModuleInit: true,
-    });
+    };
+    const moduleType = registration === 'forRoot'
+      ? DiscordModule.forRoot(options)
+      : DiscordModule.forRootAsync({ useFactory: async () => options });
 
     container.register(...moduleProviders(moduleType));
     const service = await container.resolve(DiscordService);
@@ -1286,6 +1418,52 @@ describe('DiscordModule', () => {
       new DiscordTransportError('Discord transport is shutting down or already stopped.'),
     );
     expect(transport.sent).toEqual(['App-owned transport']);
+  });
+
+  it.each((['forRoot', 'forRootAsync'] as const).flatMap((registration) => [
+    { metadata: {}, expectedKind: 'custom-factory', expectedOwnership: true },
+    { metadata: { kind: ' receiver-factory ', ownsResources: false }, expectedKind: 'receiver-factory', expectedOwnership: false },
+    { metadata: { kind: '   ', ownsResources: true }, expectedKind: 'custom-factory', expectedOwnership: true },
+  ].map((entry) => ({ ...entry, registration }))))('$registration prefers callable create over send with factory metadata: $metadata', async ({
+    metadata,
+    expectedKind,
+    expectedOwnership,
+    registration,
+  }) => {
+    const created = new PassiveTransport();
+    const create = vi.fn(function(this: { created: DiscordTransport }) {
+      return this.created;
+    });
+    const factory = Object.assign(new PassiveTransport(), { create, created }, metadata);
+    const options = { transport: factory };
+    const moduleType = registration === 'forRoot'
+      ? DiscordModule.forRoot(options)
+      : DiscordModule.forRootAsync({ useFactory: async () => options });
+    const container = new Container();
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await service.onModuleInit();
+    await service.send({ content: 'Factory-created transport' });
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(create.mock.contexts).toEqual([factory]);
+    expect(factory.sent).toEqual([]);
+    expect(created.sent).toEqual(['Factory-created transport']);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'ready', transportKind: expectedKind },
+      ownership: { externallyManaged: !expectedOwnership, ownsResources: expectedOwnership },
+      readiness: { status: 'ready' },
+    });
+
+    await service.onApplicationShutdown();
+
+    expect(created.closeCalls).toBe(expectedOwnership ? 1 : 0);
+    expect(factory.closeCalls).toBe(0);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopped' },
+      readiness: { status: 'not-ready' },
+    });
   });
 
   it('rejects sends while a concurrent shutdown is still closing the transport', async () => {
@@ -1397,7 +1575,9 @@ describe('DiscordModule', () => {
 
   it('preserves the cause when bootstrap verification fails', async () => {
     const cause = new Error('webhook credentials revoked');
+    const close = vi.fn(async () => undefined);
     const transport: DiscordTransport = {
+      close,
       async send() {
         return { ok: true, warnings: [] };
       },
@@ -1418,9 +1598,14 @@ describe('DiscordModule', () => {
       cause,
       message: 'Discord transport failed to initialize.',
     });
+    expect(close).not.toHaveBeenCalled();
+
     await expect(service.send({ content: 'After failed bootstrap' })).rejects.toThrowError(
       new DiscordTransportError('Discord transport failed to initialize.'),
     );
+
+    await service.onApplicationShutdown();
+    expect(close).not.toHaveBeenCalled();
   });
 
   it('reports shutdown cleanup failures separately from failed bootstrap diagnostics', async () => {

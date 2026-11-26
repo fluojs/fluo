@@ -17,6 +17,102 @@ function barrier() {
 }
 
 describe('Prisma afterCommit', () => {
+  it.each([undefined, { timeout: 1000 }])(
+    'Transaction: no accessor and native options %j rejects a third argument before the method runs',
+    async (nativeOptions) => {
+      const prisma = new PrismaService({
+        async $transaction<T>(callback: (client: object) => Promise<T>): Promise<T> {
+          return callback({});
+        },
+      });
+      for (const misplaced of [undefined, {}, { requireAfterCommit: true }, { shouldRollback: () => true }]) {
+        let started = false;
+
+        await expect(async () => {
+          class Service {
+            readonly prisma = prisma;
+
+            @Reflect.apply(Transaction, undefined, [nativeOptions, undefined, misplaced])
+            async save() { started = true; }
+          }
+          await new Service().save();
+        }).rejects.toThrow(TypeError);
+        expect(started).toBe(false);
+      }
+    },
+  );
+
+  it.each(['empty', 'options', 'accessor', 'implicit-policy', 'canonical-policy', 'accessor-policy'] as const)(
+    'Transaction: supported %s form preserves commit hooks and Result rollback',
+    async (form) => {
+      for (const shouldRollback of [true, false, undefined]) {
+        const events: string[] = [];
+        let rolledBack = false;
+        const nativeOptions = { timeout: 1000 };
+        const prisma = new PrismaService({
+          async $transaction<T>(callback: (client: object) => Promise<T>, options?: typeof nativeOptions): Promise<T> {
+            expect(options).toBe(form === 'options' || form === 'implicit-policy' || form === 'canonical-policy' ? nativeOptions : undefined);
+            try {
+              const result = await callback({});
+              events.push('commit');
+              return result;
+            } catch (error) {
+              rolledBack = true;
+              events.push('rollback');
+              throw error;
+            }
+          },
+        }, {
+          strictTransactions: false,
+          rollbackObserver: {
+            run: (callback) => callback(),
+            beginAttempt: () => ({
+              confirmRollback() {
+                if (!rolledBack) { throw new Error('Native rollback was not observed'); }
+                return true;
+              },
+            }),
+          },
+        });
+        const result = { ok: false };
+        const boundary: TransactionBoundaryOptions<typeof result> = {
+          requireAfterCommit: true,
+          ...(shouldRollback === undefined ? {} : { shouldRollback: () => shouldRollback }),
+        };
+        const decorator = form === 'empty' ? Transaction()
+          : form === 'options' ? Transaction(nativeOptions)
+          : form === 'accessor' ? Transaction(() => prisma)
+          : form === 'implicit-policy' ? Transaction(nativeOptions, boundary)
+          : form === 'canonical-policy' ? Transaction(() => prisma, nativeOptions, boundary)
+          : Transaction(() => prisma, boundary);
+        class Service {
+          readonly prisma = prisma;
+
+          @decorator
+          async save() {
+            prisma.afterCommit(() => { events.push('hook'); });
+            return result;
+          }
+        }
+
+        expect(await new Service().save()).toBe(result);
+        expect(events).toEqual(shouldRollback && form.endsWith('-policy') ? ['rollback'] : ['commit', 'hook']);
+      }
+    },
+  );
+
+  it('Transaction: strict argument tuples reject a third argument without an accessor', () => {
+    type NativeOptions = { timeout: number };
+    type Boundary = TransactionBoundaryOptions<{ ok: boolean }>;
+    type Args = Parameters<typeof Transaction<unknown, NativeOptions, { ok: boolean }>>;
+
+    expectTypeOf<[NativeOptions, undefined, Boundary]>().not.toExtend<Args>();
+    expectTypeOf<[undefined, undefined, Boundary]>().not.toExtend<Args>();
+    expectTypeOf<[NativeOptions, Boundary, Boundary]>().not.toExtend<Args>();
+    expectTypeOf<[NativeOptions, undefined, undefined]>().not.toExtend<Args>();
+    expectTypeOf<[NativeOptions, Boundary]>().toExtend<Args>();
+  });
+
   it('awaits nested FIFO hooks only after the outer native commit', async () => {
     const events: string[] = [];
     const root = {

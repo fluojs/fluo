@@ -147,19 +147,19 @@ export interface CronTaskDescriptor {
 
 /** Read-only task descriptor exposed by the scheduling registry. */
 export interface SchedulingTaskDescriptor {
-  enabled: boolean;
-  kind: SchedulingTaskKind;
-  name: string;
-  source: 'decorator' | 'dynamic';
-  distributed: boolean;
-  lockKey: string;
-  lockTtlMs: number;
-  expression?: string;
-  ms?: number;
-  timezone?: string;
-  moduleName?: string;
-  targetName?: string;
-  methodName?: string;
+  readonly enabled: boolean;
+  readonly kind: SchedulingTaskKind;
+  readonly name: string;
+  readonly source: 'decorator' | 'dynamic';
+  readonly distributed: boolean;
+  readonly lockKey: string;
+  readonly lockTtlMs: number;
+  readonly expression?: string;
+  readonly ms?: number;
+  readonly timezone?: string;
+  readonly moduleName?: string;
+  readonly targetName?: string;
+  readonly methodName?: string;
 }
 
 /**

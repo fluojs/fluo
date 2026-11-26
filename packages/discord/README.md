@@ -111,8 +111,8 @@ DiscordModule.forRootAsync({
 Behavioral contract notes:
 
 - `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, and `DISCORD_CHANNEL` globally by default. Use the fluo `global?: boolean` option and set `global: false` only when migrated code must keep Discord providers local to importing modules; NestJS `isGlobal` is not supported.
-- `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
-- `DiscordService.sendMany(...)` is a direct `DiscordMessage[]` batch API that sends messages sequentially and supports `continueOnError`; it is not a multi-recipient `@fluojs/notifications` dispatch shortcut.
+- `DiscordService.send(...)` resolves `defaultThreadId` before delivery and preserves transport receipts with `ok: false` as return values.
+- `DiscordService.sendMany(...)` is a direct `DiscordMessage[]` batch API that sends messages sequentially; it is not a multi-recipient `@fluojs/notifications` dispatch shortcut. Exceptions and receipts with `ok: false` stop the batch before later messages are sent by default, including with `continueOnError: false`. An unsuccessful receipt rejects with `DiscordTransportError` without exposing provider response details. With `continueOnError: true`, both forms of failure are recorded in `failures` with the input message and error, and later messages are attempted. Only successful receipts appear in `results` and count toward `succeeded`; failures count toward `failed`. Receipts that omit `ok` continue to normalize to `ok: true`.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources exactly once across bootstrap verification failure and application shutdown, including any in-flight factory-created transport before shutdown began. Shutdown waits for in-flight bootstrap verification to settle before closing a factory-owned transport. If verification fails and the subsequent owned cleanup also fails, status diagnostics preserve the first `initialization` failure phase instead of reclassifying it as `shutdown-cleanup`; a rejected factory creation likewise remains an initialization failure.
 - Sends are accepted only after bootstrap marks the transport `ready`; attempts before bootstrap, during startup, after failed bootstrap, while shutting down, or after shutdown are rejected before delivery.
 - A direct send or notification dispatch accepted while `ready` drains its renderer and transport delivery before factory-owned transport resources close. Delivery rejection remains the caller's result and does not make shutdown fail.
@@ -250,7 +250,7 @@ For richer API integrations such as bot-backed REST delivery, implement the expo
 
 ### Configurable webhook retry policy
 
-The built-in webhook transport retries transient `408`, `429`, and `5xx` responses and transport-level exceptions. Omit `retry` to preserve the default of three total attempts with a 250ms exponential-backoff base delay. Configure one workload-specific policy at transport construction when its latency or tolerance differs:
+The built-in webhook transport retries transient `408`, `429`, and `5xx` responses and non-cancellation fetch exceptions. Omit `retry` to preserve the default of three total attempts with a 250ms exponential-backoff base delay. Configure one workload-specific policy at transport construction when its latency or tolerance differs:
 
 ```typescript
 const transport = createDiscordWebhookTransport({
@@ -267,9 +267,10 @@ const transport = createDiscordWebhookTransport({
 
 Behavioral contract notes:
 
-- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using the configured bounded exponential backoff before surfacing an error. Permanent upstream responses are not retried.
+- Retries use the configured bounded exponential backoff. Permanent upstream responses are not retried. A request payload that cannot be serialized to JSON rejects immediately with a redacted `DiscordTransportError`, before any POST or backoff.
 - Retry backoff observes `DiscordSendOptions.signal`; an already-aborted signal rejects immediately instead of waiting for the next backoff timer.
-- Successful webhook responses are exposed through `DiscordSendResult.response`; caller-visible `DiscordTransportError` messages still omit raw upstream response bodies by default, including after rate-limit retries fail.
+- If reading a response body fails and `DiscordSendOptions.signal` is aborted, the send rejects with `signal.reason` unchanged. If the signal is not aborted and the read fails with an `AbortError`, the send rejects with that error unchanged. Neither case produces a successful receipt, another POST, or backoff. This changes only the caller's result; it does not prove Discord did not accept the message or cancel or delete a message Discord already accepted.
+- Readable success bodies are exposed through `DiscordSendResult.response`, with a warning for non-JSON bodies. If a success body is empty or unreadable for a reason unrelated to cancellation, `response` and provider IDs available only from the response are `undefined`, without an empty-body warning. Non-cancellation read failures do not change HTTP status classification. Caller-visible `DiscordTransportError` messages omit raw upstream response bodies by default, including after rate-limit retries fail.
 - Malformed or non-absolute `webhookUrl` values are rejected immediately as `DiscordConfigurationError` instead of being retried as delivery failures.
 
 ### Intentional limitations
@@ -356,4 +357,4 @@ The package intentionally keeps `createDiscordProviders(...)`, `DISCORD_OPTIONS`
 - `packages/discord/src/status.test.ts`: Health/readiness contract examples.
 ## Compatible service copies
 
-`DiscordService` and `DiscordChannel` support compatible-copy class injection; Discord channel tokens remain isolated.
+`DiscordService` and `DiscordChannel` support compatible-copy class injection. Compatible package copies loaded in the same realm share the same public `DISCORD_CHANNEL` injection key. Within the same injection scope, importing the token from a different copy does not select a different Discord client. Sharing the injection key does not mean that `DiscordService` or `DiscordChannel` instances in separate module scopes are the same.

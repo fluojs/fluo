@@ -5,6 +5,19 @@ import type { I18nErrorCode, I18nMessageTree } from '../types.js';
 import type { I18nLoader, I18nLoaderLoadOptions } from './remote.js';
 import { CachedRemoteI18nLoader, RemoteI18nLoader } from './remote.js';
 
+function createDeferredCatalog() {
+  let resolveCatalog: ((catalog: I18nMessageTree) => void) | undefined;
+  const promise = new Promise<I18nMessageTree>((resolve) => {
+    resolveCatalog = resolve;
+  });
+
+  if (resolveCatalog === undefined) {
+    throw new TypeError('Promise executor did not initialize its resolver synchronously.');
+  }
+
+  return { promise, resolve: resolveCatalog };
+}
+
 async function expectI18nRejection(action: () => Promise<unknown>, code: I18nErrorCode): Promise<void> {
   try {
     await action();
@@ -166,7 +179,7 @@ describe('@fluojs/i18n/loaders/remote', () => {
     expect(providerCalls).toBe(2);
   });
 
-  it('supports caller-owned cache keys and explicit invalidation', async () => {
+  it('shares a custom cache key and lets either request invalidate it', async () => {
     let providerCalls = 0;
     const loader = new RemoteI18nLoader({
       provider: ({ locale, namespace }) => {
@@ -175,19 +188,69 @@ describe('@fluojs/i18n/loaders/remote', () => {
       },
     });
     const cached = new CachedRemoteI18nLoader({
-      getCacheKey: ({ locale, namespace, version }) => `${version}:${locale}:${namespace}`,
+      getCacheKey: ({ version }) => `shared:${version}`,
       loader,
       ttlMs: 1_000,
       version: 'catalog-2026-05-11',
     });
 
     await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/1' });
-    await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/1' });
+    await expect(cached.load('en', 'admin')).resolves.toEqual({ title: 'ko/common/1' });
     cached.invalidate('ko', 'common');
-    await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/2' });
-    cached.clear();
+    await expect(cached.load('en', 'admin')).resolves.toEqual({ title: 'en/admin/2' });
+    await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'en/admin/2' });
+    cached.invalidate('en', 'admin');
     await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/3' });
-    expect(providerCalls).toBe(3);
+    cached.clear();
+    await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/4' });
+    expect(providerCalls).toBe(4);
+  });
+
+  describe.each(['invalidate', 'clear'] as const)('%s cache invalidation', (operation) => {
+    it.each(['fresh first', 'stale first'] as const)('never caches the invalidated load (%s)', async (completionOrder) => {
+      const stale = createDeferredCatalog();
+      const fresh = createDeferredCatalog();
+      const provider = vi.fn(async (): Promise<I18nMessageTree> => ({ title: 'unexpected extra load' }))
+        .mockImplementationOnce(() => stale.promise)
+        .mockImplementationOnce(() => fresh.promise);
+      const loader = RemoteI18nLoader.create({ provider });
+      const cached = CachedRemoteI18nLoader.create({ loader, ttlMs: 100, now: () => 0 });
+
+      const staleLoad = cached.load('en', 'common');
+      cached[operation]('en', 'common');
+
+      if (completionOrder === 'stale first') {
+        stale.resolve({ title: 'old' });
+        await expect(staleLoad).resolves.toEqual({ title: 'old' });
+      }
+
+      const freshLoad = cached.load('en', 'common');
+      fresh.resolve({ title: 'new' });
+      await expect(freshLoad).resolves.toEqual({ title: 'new' });
+
+      if (completionOrder === 'fresh first') {
+        stale.resolve({ title: 'old' });
+        await expect(staleLoad).resolves.toEqual({ title: 'old' });
+      }
+
+      await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'new' });
+      expect(provider).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('keeps an in-flight load cacheable when a different key is invalidated', async () => {
+    const pending = createDeferredCatalog();
+    const provider = vi.fn(() => pending.promise);
+    const loader = RemoteI18nLoader.create({ provider });
+    const cached = CachedRemoteI18nLoader.create({ loader, ttlMs: 100, now: () => 0 });
+
+    const unaffectedLoad = cached.load('en', 'admin');
+    cached.invalidate('en', 'common');
+    pending.resolve({ title: 'Admin' });
+
+    await expect(unaffectedLoad).resolves.toEqual({ title: 'Admin' });
+    await expect(cached.load('en', 'admin')).resolves.toEqual({ title: 'Admin' });
+    expect(provider).toHaveBeenCalledTimes(1);
   });
 
   it('fails with a stable code for missing remote catalogs', async () => {

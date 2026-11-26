@@ -28,6 +28,7 @@ import {
 } from './result-rollback.js';
 import { createDrizzlePlatformStatusSnapshot } from './status.js';
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS } from './tokens.js';
+import type { DefaultTransactionDatabase, DefaultTransactionOptions } from './transaction-types.js';
 import type {
   DrizzleDatabaseLike,
   DrizzleHandleProvider,
@@ -129,15 +130,15 @@ function createRequestAbortSignalView(parentSignal: AbortSignal, signal?: AbortS
  * Transaction-aware Drizzle wrapper that integrates request scoping and shutdown handling with the Fluo runtime.
  *
  * @typeParam TDatabase Root Drizzle database handle registered in the module.
- * @typeParam TTransactionDatabase Transaction-scoped database handle resolved inside `database.transaction(...)` callbacks.
- * @typeParam TTransactionOptions Options forwarded to the underlying Drizzle transaction runner.
+ * @typeParam TTransactionDatabase Transaction-scoped handle inferred from the native callback by default.
+ * @typeParam TTransactionOptions Native runner options inferred from the registered handle by default.
  */
 @FrameworkService({ id: '@fluojs/drizzle/DrizzleDatabase', version: 1 })
 @Inject(DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS)
 export class DrizzleDatabase<
-  TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
-  TTransactionDatabase = TDatabase,
-  TTransactionOptions = unknown,
+  TDatabase extends object & DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+  TTransactionDatabase = DefaultTransactionDatabase<TDatabase>,
+  TTransactionOptions = DefaultTransactionOptions<TDatabase>,
 > implements DrizzleHandleProvider<TDatabase, TTransactionDatabase, TTransactionOptions>, OnApplicationShutdown
 {
   private readonly transactions = new AsyncLocalStorage<TransactionContext<TDatabase, TTransactionDatabase>>();
@@ -474,6 +475,7 @@ export class DrizzleDatabase<
             await this.closeTransactionBoundaryOwner(owner);
           }
           attemptBoundary.assertCommittable();
+          this.throwIfRequestAborted(abortContext.signal);
           return value;
         },
         options,
@@ -845,12 +847,12 @@ export class DrizzleDatabase<
  * methods (`current()`, `transaction(...)`, `requestTransaction(...)`, and status snapshots) are needed.
  *
  * @typeParam TDatabase Root Drizzle database handle registered in the module.
- * @typeParam TTransactionDatabase Transaction-scoped database handle resolved inside `database.transaction(...)` callbacks.
- * @typeParam TTransactionOptions Options forwarded to the underlying Drizzle transaction runner.
+ * @typeParam TTransactionDatabase Transaction-scoped handle inferred from the native callback by default.
+ * @typeParam TTransactionOptions Native runner options inferred from the registered handle by default.
  */
 export type DrizzleDatabaseFacade<
-  TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
-  TTransactionDatabase = TDatabase,
-  TTransactionOptions = unknown,
+  TDatabase extends object & DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+  TTransactionDatabase = DefaultTransactionDatabase<TDatabase>,
+  TTransactionOptions = DefaultTransactionOptions<TDatabase>,
 > = DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions> &
   Omit<TDatabase, keyof DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>>;
