@@ -874,9 +874,92 @@ console.log(JSON.stringify(args[0]==='api'?api:args[0]==='pr'?pr:{state:'CLOSED'
 	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("RETRO-READY ")).slice("RETRO-READY ".length)), request);
 	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("LANE-SETTLED ")).slice("LANE-SETTLED ".length)),
 		[{ issue: 1, action: "done" }]);
+	const legacy = invoke("retro-evidence");
+	assert.equal(legacy.events.length, 4);
+	assert.ok(legacy.events.every(({ kind }) => kind !== "stage-lifecycle"));
+	assert.equal(legacy.stageLifecycle?.coverage, "partial");
+	assert.equal(legacy.stageLifecycle.observedStarts, null);
+	const native = (suffix, stage, checkpoints, { task = {}, reverse = false } = {}) => {
+		const taskId = `st_${suffix}`;
+		const parentSessionId = "lead-session";
+		const childSessionId = `child-${suffix}`;
+		const taskFile = resolve(root, `${suffix}.json`);
+		const sessionFile = resolve(root, `${suffix}.jsonl`);
+		const agentType = {
+			"review:code": "fluo-code-reviewer", "review:contract": "fluo-contract-reviewer",
+			"fix-back": "fluo-issue-implementer", implement: "fluo-issue-implementer", preflight: "fluo-issue-preflight",
+		}[stage];
+		writeFileSync(taskFile, JSON.stringify({
+			task_id: taskId, child_session_id: childSessionId, parent_session_id: parentSessionId,
+			agent_type: agentType, background_mode: "background", ...task,
+		}));
+		const entries = checkpoints.map(([seq, runId, runActive, endedBy, epoch = 1]) => ({
+			type: "custom", customType: "session-lifecycle", id: `${runId}-${seq}`,
+			timestamp: `2026-10-08T01:00:0${seq}.000Z`,
+			data: { taskId, parentSessionId, sessionId: childSessionId, role: "child",
+				epoch, seq, runId, runActive, persisted: true, restoring: false,
+				...(endedBy ? { lastTurnEnd: { endedBy, deadlineStop: false, budgetSpent: false } } : {}) },
+		}));
+		if (checkpoints.length > 0) writeFileSync(sessionFile, [
+			{ type: "session", id: childSessionId, spawnedBy: { taskId, parentSessionId } },
+			...(reverse ? entries.reverse() : entries),
+		].map((entry) => JSON.stringify(entry)).join("\n"));
+		return invoke("retro-record", ["--issue", "1", "--kind", "stage-lifecycle", "--value", JSON.stringify({
+			stage, taskId, parentSessionId, taskFile, sessionFile,
+		})]);
+	};
+	const endOnly = native("a", "review:code", [[2, "first", false, "provider-error"]]);
+	const code = native("a", "review:code", [
+		[1, "first", true], [2, "first", false, "provider-error"],
+		[3, "retry", true], [4, "retry", false, "system-abort"],
+		[5, "resumed", true], [6, "resumed", false, "clean"],
+	], { reverse: true });
+	assert.equal(native("a", "review:code", [
+		[1, "first", true], [2, "first", false, "provider-error"],
+		[3, "retry", true], [4, "retry", false, "system-abort"],
+		[5, "resumed", true], [6, "resumed", false, "clean"],
+	], { reverse: true }).eventId, code.eventId);
+	const contract = native("b", "review:contract", [[1, "parallel", true], [2, "parallel", false, "clean"]], {
+		task: { run_start_epoch: 0, notification: { run_epoch: 0 }, status: "completed",
+			terminal_at: "2026-10-08T01:00:05.000Z", run_stats: { duration_status: "monotonic", runtime_ms: 137 } },
+	});
+	const missing = native("c", "preflight", [], { task: { status: "completed" } });
+	native("d", "implement", [[1, "active", true]]);
+	native("e", "fix-back", [[1, "end-only", false, "provider-error"]]);
+	native("f", "fix-back", [[1, "conflict", true], [2, "conflict", false, "clean", 2]]);
+	const damagedId = "0".repeat(64);
+	const damaged = resolve(root, ".omo", "retros", laneId, "issue-1", "events", `lifecycle-${damagedId}.json`);
+	writeFileSync(damaged, "{");
+
+	const observed = invoke("retro-evidence");
+	const [reviewCode, reviewContract, preflight, implement, fixBack, conflict] = observed.stageLifecycle.dispatches;
+	assert.equal(observed.stageLifecycle.observedStarts, 5);
+	assert.equal(observed.stageLifecycle.coverage, "partial");
+	assert.equal(observed.totalElapsedMs, null);
+	assert.deepEqual(reviewCode.runs.map(({ runId, outcome, elapsedMs, head }) =>
+		[runId, outcome, elapsedMs, head]), [
+		["first", "failed", null, null], ["resumed", "completed", null, null],
+		["retry", "interrupted", null, null],
+	]);
+	assert.deepEqual(reviewCode.runs[0].eventIds, [code.eventId, endOnly.eventId].sort());
+	assert.equal(reviewCode.runs[0].start.entryId, "first-1");
+	assert.equal(reviewCode.runs[0].end.entryId, "first-2");
+	assert.equal(reviewContract.stage, "review:contract");
+	assert.deepEqual(reviewContract.attempts.map(({ elapsedMs, clock, eventIds }) =>
+		[elapsedMs, clock, eventIds]), [[137, "native-task-monotonic", [contract.eventId]]]);
+	assert.deepEqual(preflight.runs, []);
+	assert.equal(preflight.unknowns.find(({ code }) => code === "source-unreadable").eventId, missing.eventId);
+	assert.equal(implement.runs[0].end, null);
+	assert.equal(implement.runs[0].outcome, null);
+	assert.equal(fixBack.runs[0].start, null);
+	assert.equal(fixBack.runs[0].outcome, null);
+	assert.deepEqual(conflict.runs[0].unknowns, ["conflicting-checkpoints"]);
+	assert.deepEqual(observed.stageLifecycle.storageGaps.map(({ code, eventId }) =>
+		[code, eventId]), [["capture-unreadable", damagedId]]);
+	assert.deepEqual(readFileSync(path), original);
 	invoke("retro-ci", ["--issue", "1"]);
 	const evidence = invoke("retro-evidence");
-	assert.equal(evidence.events.length, 4);
+	assert.deepEqual(evidence.events.filter(({ kind }) => kind !== "stage-lifecycle"), legacy.events);
 	assert.equal(evidence.totalElapsedMs, null);
 	assert.deepEqual(evidence.ciFailurePatterns.map(({ failures, cancellations }) => [failures, cancellations]), [[0, 1]]);
 	const timing = evidence.ciTimings ?? [];
@@ -949,6 +1032,137 @@ console.log(JSON.stringify(args[0]==='api'?api:args[0]==='pr'?pr:{state:'CLOSED'
 	assert.equal(readFileSync(saved.markdown, "utf8"), markdown);
 	assert.deepEqual(readFileSync(path), original);
 });
+
+const captureTaskAttempt = (root, sessionFile, runtimeMs, task = {}) => {
+	const taskId = "st_a";
+	const parentSessionId = "lead-session";
+	const taskFile = resolve(root, "task.json");
+	writeFileSync(taskFile, JSON.stringify({
+		task_id: taskId, parent_session_id: parentSessionId, child_session_id: "child-attempt",
+		agent_type: "fluo-code-reviewer", background_mode: "background",
+		run_start_epoch: 1, notification: { run_epoch: 1 }, status: "completed",
+		terminal_at: "2026-10-08T01:00:05.000Z",
+		run_stats: { duration_status: "monotonic", runtime_ms: runtimeMs },
+		...task,
+	}));
+	return recordRetroEvent(root, laneId, 1, "stage-lifecycle", {
+		stage: "review:code", taskId, parentSessionId, taskFile, sessionFile,
+	});
+};
+
+const writeAttemptStart = (root) => {
+	const sessionFile = resolve(root, "child.jsonl");
+	writeFileSync(sessionFile, [
+		{ type: "session", id: "child-attempt", spawnedBy: { taskId: "st_a", parentSessionId: "lead-session" } },
+		{ type: "custom", customType: "session-lifecycle", id: "engine-start",
+			data: { taskId: "st_a", parentSessionId: "lead-session", sessionId: "child-attempt", role: "child",
+				runId: "engine-run", epoch: 1, seq: 1, runActive: true, persisted: true, restoring: false } },
+	].map((entry) => JSON.stringify(entry)).join("\n"));
+	return sessionFile;
+};
+
+test("retro-evidence: missing and mismatched notification epochs retain unmeasured attempt gaps", (t) => {
+	const root = fixture(t);
+	const sessionFile = writeAttemptStart(root);
+	const taskFile = resolve(root, "task.json");
+	const missing = captureTaskAttempt(root, sessionFile, 137, { notification: undefined });
+	const stale = captureTaskAttempt(root, sessionFile, 137, { notification: { run_epoch: 0 } });
+
+	const { observedStarts, dispatches: [dispatch] } = retrospectiveEvidence(root, laneId, snapshots).stageLifecycle;
+	assert.equal(observedStarts, 1);
+	assert.deepEqual(dispatch.attempts, []);
+	assert.deepEqual([...dispatch.unknowns].sort((a, b) => a.code.localeCompare(b.code)), [
+		{ code: "attempt-notification-epoch-mismatch", epoch: 1, notificationEpoch: 0, path: taskFile, eventId: stale.eventId },
+		{ code: "attempt-notification-epoch-missing", epoch: 1, notificationEpoch: null, path: taskFile, eventId: missing.eventId },
+	]);
+});
+
+test("retro-evidence: completed and error task observations with equal duration remain distinct", (t) => {
+	const root = fixture(t);
+	const sessionFile = writeAttemptStart(root);
+	const completed = captureTaskAttempt(root, sessionFile, 137);
+	const error = captureTaskAttempt(root, sessionFile, 137, { status: "error" });
+	assert.notEqual(completed.eventId, error.eventId);
+	assert.equal(captureTaskAttempt(root, sessionFile, 137, {
+		status: "error", notification: { run_epoch: 1, message: "private child output" },
+	}).eventId, error.eventId);
+
+	const { dispatches: [dispatch] } = retrospectiveEvidence(root, laneId, snapshots).stageLifecycle;
+	assert.equal(dispatch.runs[0].outcome, null);
+	assert.equal(dispatch.attempts.length, 1);
+	assert.equal(dispatch.attempts[0].elapsedMs, 137);
+	assert.deepEqual([...dispatch.attempts[0].terminalObservations].sort((a, b) => a.status.localeCompare(b.status)), [
+		{ status: "completed", terminalAt: "2026-10-08T01:00:05.000Z", path: resolve(root, "task.json"), eventId: completed.eventId },
+		{ status: "error", terminalAt: "2026-10-08T01:00:05.000Z", path: resolve(root, "task.json"), eventId: error.eventId },
+	]);
+});
+
+test("retro-record: non-string task ID is rejected and valid lifecycle evidence stays readable", (t) => {
+	const root = fixture(t);
+	const valid = captureTaskAttempt(root, null, 137);
+	const invalid = { stage: "review:code", taskId: ["st_b"], parentSessionId: "lead-session" };
+
+	assert.throws(() => recordRetroEvent(root, laneId, 1, "stage-lifecycle", invalid), {
+		name: "TypeError",
+		message: /native task ID/u,
+	});
+
+	const { events, stageLifecycle } = retrospectiveEvidence(root, laneId, snapshots);
+	assert.deepEqual(events.map(({ eventId }) => eventId), [valid.eventId]);
+	assert.deepEqual(stageLifecycle.dispatches.map(({ taskId, attempts }) =>
+		[taskId, attempts.map(({ elapsedMs }) => elapsedMs)]), [["st_a", [137]]]);
+});
+
+test("retro-evidence: verified task attempt without an engine start retains duration and source", (t) => {
+	const root = fixture(t);
+	const capture = captureTaskAttempt(root, null, 137);
+
+	const { observedStarts, dispatches: [dispatch] } = retrospectiveEvidence(root, laneId, snapshots).stageLifecycle;
+
+	assert.equal(observedStarts, null);
+	assert.deepEqual(dispatch.runs, []);
+	assert.deepEqual(dispatch.attempts, [{
+		epoch: 1, childSessionId: "child-attempt", elapsedMs: 137, clock: "native-task-monotonic",
+		eventIds: [capture.eventId], sources: [resolve(root, "task.json")], unknown: null,
+		terminalObservations: [{
+			status: "completed", terminalAt: "2026-10-08T01:00:05.000Z",
+			path: resolve(root, "task.json"), eventId: capture.eventId,
+		}],
+	}]);
+});
+
+for (const { name, captures, unknown } of [
+	{
+		name: "conflicting same-epoch task durations",
+		captures: [[137, "monotonic"], [151, "monotonic"]],
+		unknown: "conflicting-attempt-clock",
+	},
+	{
+		name: "non-monotonic task duration",
+		captures: [[137, "unavailable"]],
+		unknown: "attempt-clock-unavailable",
+	},
+]) {
+	test(`retro-evidence: ${name} do not supply elapsed time (${unknown})`, (t) => {
+		const root = fixture(t);
+		const sessionFile = writeAttemptStart(root);
+		const eventIds = captures.map(([ms, status]) => captureTaskAttempt(root, sessionFile, ms, {
+			run_stats: { duration_status: status, runtime_ms: ms },
+		}).eventId).sort();
+
+		const { observedStarts, dispatches: [dispatch] } = retrospectiveEvidence(root, laneId, snapshots).stageLifecycle;
+
+		assert.equal(observedStarts, 1);
+		assert.deepEqual(dispatch.attempts, [{
+			epoch: 1, childSessionId: "child-attempt", elapsedMs: null, clock: null,
+			eventIds, sources: [resolve(root, "task.json")], unknown,
+			terminalObservations: eventIds.map((eventId) => ({
+				status: "completed", terminalAt: "2026-10-08T01:00:05.000Z",
+				path: resolve(root, "task.json"), eventId,
+			})),
+		}]);
+	});
+}
 
 test("#4286 retrospective evidence uses attempt bounds and attributable completion suppliers", (t) => {
 	const root = fixture(t);

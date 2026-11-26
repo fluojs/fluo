@@ -5,6 +5,91 @@ import type { DiscordFetchLike } from './types.js';
 import { createDiscordWebhookTransport } from './webhook.js';
 
 describe('Discord webhook retries', () => {
+  it.each(['circular', 'BigInt', 'throwing toJSON'] as const)(
+    'rejects a %s payload immediately without posting, backing off, or exposing request details',
+    async (payloadKind) => {
+      vi.useFakeTimers();
+
+      try {
+        const webhookUrl = 'https://discord.com/api/webhooks/123/private-token';
+        const content = 'private-payload';
+        const originalError = new Error(`toJSON failed: ${webhookUrl} ${content}`);
+        const circular: Record<string, unknown> = {};
+        circular.self = circular;
+        const embeds = {
+          circular,
+          BigInt: { value: 1n },
+          'throwing toJSON': {
+            toJSON() {
+              throw originalError;
+            },
+          },
+        };
+        const fetchLike = vi.fn<DiscordFetchLike>();
+        const transport = createDiscordWebhookTransport({
+          fetch: fetchLike,
+          retry: { attempts: 3, baseDelayMs: 250 },
+          webhookUrl,
+        });
+
+        const outcome = transport
+          .send({ attachments: [], components: [], content, embeds: [embeds[payloadKind]] }, {})
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+        await vi.advanceTimersByTimeAsync(0);
+        const backoffs = vi.getTimerCount();
+        await vi.runAllTimersAsync();
+
+        const error = await outcome;
+        expect(error).toBeInstanceOf(DiscordTransportError);
+        if (error instanceof DiscordTransportError) {
+          expect(error.message).toMatch(/serializ\w*.*JSON/i);
+          expect(error.message).not.toMatch(/attempt|private-token|private-payload|toJSON failed/i);
+          expect(error).not.toHaveProperty('cause');
+        }
+        expect(backoffs).toBe(0);
+        expect(fetchLike).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each([
+    { body: '', response: undefined, warnings: [] },
+    { body: new Error('body unavailable'), response: undefined, warnings: [] },
+    {
+      body: 'provider acknowledged',
+      response: 'provider acknowledged',
+      warnings: ['Discord webhook returned a non-JSON success body.'],
+    },
+  ])('preserves the successful receipt when the body is $body', async ({ body, response, warnings }) => {
+    const transport = createDiscordWebhookTransport({
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        async text() {
+          if (body instanceof Error) {
+            throw body;
+          }
+
+          return body;
+        },
+      }),
+      webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    });
+
+    const receipt = await transport.send({ attachments: [], components: [], content: 'Success', embeds: [] }, {});
+
+    expect(receipt).toMatchObject({ ok: true, response, statusCode: 200, warnings });
+    expect(receipt.channelId).toBeUndefined();
+    expect(receipt.guildId).toBeUndefined();
+    expect(receipt.messageId).toBeUndefined();
+    expect(receipt.threadId).toBeUndefined();
+  });
+
   it('retries transient HTTP responses at exact exponential backoff boundaries', async () => {
     vi.useFakeTimers();
 
@@ -323,7 +408,7 @@ describe('Discord webhook retries', () => {
     ).toThrowError(new DiscordConfigurationError(message));
   });
 
-  it.each([408, 429, 502])('retries transient HTTP %s responses before succeeding', async (status) => {
+  it.each([408, 429, 502])('retries transient HTTP %s even when reading the body fails', async (status) => {
     vi.useFakeTimers();
 
     try {
@@ -333,7 +418,7 @@ describe('Discord webhook retries', () => {
           ok: false,
           status,
           async text() {
-            return 'temporary provider response';
+            throw new Error('transient response body unavailable');
           },
         })
         .mockResolvedValueOnce({
@@ -444,13 +529,13 @@ describe('Discord webhook retries', () => {
     }
   });
 
-  it('does not retry permanent HTTP failures', async () => {
+  it('does not retry permanent HTTP failures when reading the body fails', async () => {
     const fetchLike = vi.fn<DiscordFetchLike>().mockResolvedValue({
       ok: false,
       status: 400,
       statusText: 'Bad Request',
       async text() {
-        return '{"token":"secret","detail":"invalid request"}';
+        throw new Error('permanent response body unavailable');
       },
     });
     const transport = createDiscordWebhookTransport({

@@ -121,6 +121,83 @@ optionally with `--test-name-pattern=...`; use that same command and argv in the
 corrected head's passing focused receipt. Prepare tooling regression tests
 with this runner; do not substitute a shell command that prints a failure.
 
+Packages regressions may instead use this exact Vitest argv shape:
+
+```text
+[<node executable>, "node_modules/vitest/vitest.mjs", "run",
+ "--project=packages", <one projected packages test file>,
+ "--testNamePattern=<selection>",
+ "--reporter=<absolute approved fix-back-vitest-reporter.mjs>",
+ "--outputFile=.omo/fix-back-vitest.json", "--maxWorkers=1",
+ "--no-file-parallelism"]
+```
+
+The executable and installed entrypoint must resolve to the preparer's actual
+Node and installed Vitest. Resolve the relative entrypoint from the actual
+execution checkout: the previous-head reproduction checkout before capture
+spawns, and the corrected-head review checkout during GREEN authentication.
+The repository root need not have its own dependency installation; separate
+worktrees may link to the preparer's approved installation. A valid root
+installation cannot authorize a different checkout entrypoint.
+The reporter is the approved sibling of
+`workflow-preparation.mjs`, not a caller-selected replacement. No extra runner
+options, alternative entrypoints or shell wrappers are accepted. The command
+is the argv joined by spaces, using `node` or the absolute executable for its
+first token and single-quoting tokens outside `[\w./=:-]+` (embedded single
+quotes use shell `'\''` escaping). Retain this exact string and argv for GREEN.
+
+Before assigning fix-back, confirm that runner, the complete projected
+test/fixture patch, body assertion identity/first source location, and real
+same-command GREEN can be captured. Do not rewrite an unsupported regression
+in a different runner to manufacture RED.
+
+For Vitest GREEN, run `workflow-preparation.mjs fix-back-green <input.json>`.
+Use the same input keys as `fix-back-red`, with `stage:"fix-back-green"`,
+`checkout` set to the clean corrected-head review checkout, and
+`artifact_root` set to the existing review evidence directory. Supply the
+same command, argv, test-only patch and failure identity planned for RED.
+Use the returned `receipt` reference in matching focused evidence.
+
+The collector must reserve a separate pipe at runner fd 3
+(`stdio:["ignore","pipe","pipe","pipe"]`). After its exclusive file write,
+the approved reporter writes identical complete report bytes to that pipe.
+Both captures require the pipe and `.omo/fix-back-vitest.json` to match,
+including the unique collector run ID. GREEN retains separate `test_results`
+and `completion` references and preserves an exact receipt copy at
+`.omo/fix-back-vitest-green-receipt.json` in the corrected checkout. Admission
+rechecks both channels, their run ID, the retained report and receipt, and
+complete stdout/stderr references. Keep both ignored checkout files through
+review preparation; use a fresh checkout or archive prior capture files
+before a separate run. Capture never overwrites them. Worker stdout or a
+worker-created report file cannot prove reporter completion: failure of the
+exclusive write leaves the private channel empty and capture rejects it.
+The reporter admits only the isolated `packages` forks pool before workers
+start. Thread/custom pools are unsupported because worker threads can share
+the runner's file descriptors.
+
+The report binds the actual reporter implementation hash and complete runner
+outcome, modules, suites, unhandled errors and selected tests. Exactly one
+specified test must run once, with matching repository-relative file/name;
+other collected tests may only be skipped by selection. The selected test
+cannot be skipped/todo, retried, repeated or marked `fails`. RED requires one
+genuine assertion with its first valid source frame at the supplied file/line.
+Later matching frames cannot hide an earlier helper location. Module/setup,
+hook, runtime and unhandled failures are rejected, including hook assertions
+reported as test failures. Vitest batches final task state before replaying
+events, so hook-event `result().errors` is not proof of where an error arose;
+the report preserves terminal hook states and suite errors. Successful hooks
+and assertion expected/actual values containing error names remain valid.
+The collector instruments the verified installed runner in memory to trace
+the registered test function's original error, after fixture setup and through
+awaited I/O. It requires the worker to record that same error as the test
+callback failure for the current run; the invocation frame need not survive
+in the stack. Unsupported runner source, unknown provenance, fixture errors,
+around-hook and test-finished hook assertions fail closed. The first unfiltered
+source file must agree with the source-mapped first frame, so a later matching
+frame cannot hide a filtered helper.
+GREEN must show that same selected test actually passed with no remaining
+runner errors. Malformed/incomplete reports fail closed.
+
 The capture applies the patch to the reproduction index, executes argv, retains
 complete stdout/stderr and patch bytes in the new artifact directory, and emits
 `receipt.json` only for one named assertion failure at the supplied positive
@@ -141,6 +218,12 @@ complete patch and failure output, commit/tree/ancestry and issue/contract/head,
 and matches command/argv to a passing focused receipt. All axes receive the
 same `common.fix_back_red:{reference,receipt}`. A child's failed claim or
 producer string alone supplies no execution evidence.
+
+Vitest receipts add exactly `test_results:{path,sha256,bytes}` to these RED
+keys. Node TAP receipt keys and accepted argv remain unchanged. Preparation
+authenticates and rechecks the Vitest artifact along with the existing raw
+streams/patch/head/tree/contract bindings and shares it in the same common
+evidence/readable index with every active reviewer axis.
 
 For a Changeset-only fix-back, leave `fix_back_red` absent. Review preparation
 checks the complete previous-to-current Git delta: exactly one approved, newly

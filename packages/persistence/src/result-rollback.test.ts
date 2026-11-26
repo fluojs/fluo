@@ -3,18 +3,34 @@ import { TransactionRollbackOnlyError, TransactionRollbackUnconfirmedError } fro
 import { evaluateResult, ResultBoundary, type RollbackOwner } from './internal.js';
 
 describe('shared Result rollback policy', () => {
-  it('preserves the root value after its exact signal and confirmed rollback', async () => {
+  it('calls the same nested and root predicate without a receiver and recovers the original root value', async () => {
     const nested = { ok: false };
     const root = { ok: false };
+    const calls: { readonly receiver: unknown; readonly value: typeof root }[] = [];
+    function shouldRollback(this: unknown, value: typeof root): boolean {
+      'use strict';
+      calls.push({ receiver: this, value });
+      return !value.ok;
+    }
+
     const confirmRollback = vi.fn(() => true as const);
     const owner: RollbackOwner = { observation: { confirmRollback } };
-    evaluateResult(owner, nested, () => true);
-    const boundary = new ResultBoundary(owner, () => true);
+    const nestedResult = evaluateResult(owner, nested, shouldRollback);
+    const signal = owner.rollbackOnly;
+    const boundary = new ResultBoundary(owner, shouldRollback);
     boundary.evaluate(root);
 
-    const result = await boundary.recover(owner.rollbackOnly);
+    await expect(Promise.resolve().then(() => boundary.assertCommittable())).rejects.toBe(signal);
+    const result = await boundary.recover(signal);
 
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.value).toBe(nested);
+    expect(calls[0]?.receiver).toBeUndefined();
+    expect(calls[1]?.value).toBe(root);
+    expect(calls[1]?.receiver).toBeUndefined();
+    expect(nestedResult).toBe(nested);
     expect(result).toBe(root);
+    expect(owner.rollbackOnly).toBe(signal);
     expect(owner.rollbackOnly?.result).toBe(nested);
     expect(confirmRollback).toHaveBeenCalledTimes(1);
   });
