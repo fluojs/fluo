@@ -167,6 +167,48 @@ evidence in `common`. Ordinary implementation/conflict review needs no RED.
 This limited lead reproduction authority belongs only to review preparation;
 issue-implement's `leadAuthority` and every reviewer remain unchanged.
 
+Before fix-back dispatch, confirm the permitted runner, complete projected
+test/necessary-fixture patch, named body assertion's first source file/positive
+line and real corrected-head GREEN using identical command/argv. Node TAP
+retains its existing command forms. Packages Vitest uses only the fixed
+installed entrypoint, packages project, one projected test file/name selection,
+approved reporter and output path, and bounded worker options specified in
+`../../review-head/SKILL.md`. Authenticate that entrypoint relative to the
+actual execution checkout before spawn, and to the corrected review checkout
+when authenticating GREEN. Both must resolve to the preparer's approved
+installation; the repository root does not need its own `node_modules`.
+Good: separate reproduction/review worktrees link to that installation.
+Wrong: trust the root's valid installation while a checkout resolves another
+entrypoint. Unsupported regressions stop in preparation;
+they do not require a duplicate implementation in another test runner.
+
+For Vitest, use `workflow-preparation.mjs fix-back-green <input.json>` on the
+corrected review checkout and pass its returned receipt reference as the
+matching focused evidence. Both captures retain the approved reporter's output
+as `test_results:{path,sha256,bytes}`. Use a fresh corrected checkout or archive
+the previous ignored capture files before a separate run; capture never
+overwrites them. Both reports must authenticate
+the reporter implementation and prove the selected test ran exactly once.
+Only one RED body assertion at the first valid source frame is accepted.
+The approved runner traces the test callback after fixture setup, including
+assertions after awaited I/O. Setup/module/suite/hook/fixture/unhandled/runtime
+errors, unrelated/multiple failures,
+wrong file/name/line and incomplete reports fail closed. Successful hooks and
+error words in assertion values do not invalidate an assertion. GREEN must
+contain the same actually passing selection, with no remaining runner errors.
+Substituted executable/entrypoint/reporter/behavior options, stdout lookalikes
+and pass-only receipts are not execution proof. Existing binding, complete
+patch, raw-stream and final-freshness checks still apply to every axis.
+
+Reserve runner fd 3 as a separate collector pipe for both RED and GREEN
+(`stdio:["ignore","pipe","pipe","pipe"]`). The reporter includes the collector's
+per-run ID and writes the same bytes there only after its exclusive output-file
+write succeeds. GREEN retains both channels and the exact receipt; admission
+rechecks them against the independently retained capture in the corrected
+checkout. Keep stdout/stderr separately. A worker's lookalike file cannot
+replace the completion channel. See review-head for the exact collection
+contract.
+
 New `preflight` inputs require complete `caller_searches` at the pinned base;
 the preparer authenticates repository-wide fixed-argv Git results, including
 tooling and governance fixtures. The read-only child returns `contract_input`

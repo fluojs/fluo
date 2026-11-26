@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { accessSync, constants, mkdirSync, readFileSync, readlinkSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, delimiter, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
@@ -10,6 +10,7 @@ import { assertIssueImplementIdentity, assertIssueImplementInput, assertIssueImp
 import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
 import { observeReviewRetention } from './lane-v4-cli.mjs';
 import { retentionFreshAxes } from '../../review-head/scripts/contracts.mjs';
+import { reportPath, reporterPath, validateVitestProof, vitestBodyPreload } from './fix-back-vitest-reporter.mjs';
 
 export class WorkflowPreparationError extends TypeError {
   constructor(reason) {
@@ -513,6 +514,7 @@ export function readPreparationArtifact(root, reference, label) {
     const inside = relative(canonicalRoot, file);
     requireInput(inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside),
       `${label}: artifact escaped root`);
+    requireInput(statSync(file).isFile(), `${label}: artifact must be a regular file`);
     bytes = readFileSync(file);
   } catch (error) {
     if (error instanceof WorkflowPreparationError) throw error;
@@ -583,7 +585,32 @@ const redAssertion = (receipt, stdout) => {
   'RED receipt: expected one named runner assertion failure, without setup/unrelated failures');
 };
 
-const redCommand = (command, argv, paths) => {
+const redCommand = (command, argv, paths, checkout) => {
+  if (Array.isArray(argv) && argv[1] === 'node_modules/vitest/vitest.mjs') {
+    const quoted = (args) => args.map((arg) => /^[\w./=:-]+$/u.test(arg)
+      ? arg : `'${arg.replaceAll("'", "'\\''")}'`).join(' ');
+    requireInput(argv.length === 10 && argv.every((arg) => typeof arg === 'string' && arg.length > 0)
+      && argv[2] === 'run' && argv[3] === '--project=packages'
+      && paths.includes(argv[4]) && /^packages\/.+\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(argv[4])
+      && /^--testNamePattern=.+$/u.test(argv[5])
+      && argv[6] === `--reporter=${fileURLToPath(reporterPath)}`
+      && argv[7] === `--outputFile=${reportPath}`
+      && argv[8] === '--maxWorkers=1' && argv[9] === '--no-file-parallelism'
+      && [quoted(['node', ...argv.slice(1)]), quoted(argv)].includes(command),
+    'RED Vitest command: use the canonical packages runner, selection and reporter');
+    requireInput(isAbsolute(argv[0]), 'RED Vitest command: Node executable must be an absolute path');
+    try {
+      const executable = realpathSync(argv[0]);
+      requireInput(executable === realpathSync(process.execPath)
+        && realpathSync(resolve(checkout, argv[1])) === realpathSync(
+          fileURLToPath(new URL('../../../../node_modules/vitest/vitest.mjs', import.meta.url))),
+      'RED Vitest command: substituted executable or runner entrypoint');
+      return { runner: 'vitest', executable };
+    } catch (error) {
+      if (error instanceof WorkflowPreparationError) throw error;
+      throw new WorkflowPreparationError(`RED Vitest command: unavailable runner: ${error.message}`);
+    }
+  }
   requireInput(typeof command === 'string' && command.trim() && Array.isArray(argv)
     && argv.length >= 4 && argv.every((arg) => typeof arg === 'string' && arg.length > 0)
     && basename(argv[0]) === basename(process.execPath) && argv[1] === '--test'
@@ -591,6 +618,72 @@ const redCommand = (command, argv, paths) => {
     && argv.slice(3).every((arg) => paths.includes(arg) || /^--test-name-pattern=.+/u.test(arg))
     && argv.slice(3).some((arg) => paths.includes(arg)),
   'RED command: use the focused Node test TAP runner and projected regression paths');
+  return { runner: 'tap', executable: argv[0] };
+};
+
+const vitestProof = (bytes, failure, state) => {
+  try { return validateVitestProof(JSON.parse(bytes), failure, state); }
+  catch (error) { throw new WorkflowPreparationError(`Vitest proof: ${error.message}`); }
+};
+
+const greenSealPath = '.omo/fix-back-vitest-green-receipt.json';
+const absent = (path) => {
+  try { lstatSync(path); return false; }
+  catch (error) { if (error.code === 'ENOENT') return true; throw error; }
+};
+const freshVitestOutput = (checkout, paths, label) => {
+  for (const path of paths) {
+    const output = resolve(checkout, path);
+    const parent = dirname(output);
+    requireInput((absent(parent) || realpathSync(parent) === parent) && absent(output),
+      `${label}: pre-existing reporter output or non-local output directory`);
+  }
+};
+const checkoutFile = (checkout, path, label) => {
+  try {
+    const output = realpathSync(resolve(checkout, path));
+    requireInput(relative(checkout, output) === path && statSync(output).isFile(),
+      `${label}: output must be a contained regular file`);
+    return readFileSync(output);
+  } catch (error) {
+    if (error instanceof WorkflowPreparationError) throw error;
+    throw new WorkflowPreparationError(`${label}: missing output: ${error.message}`);
+  }
+};
+const runEvidenceCommand = (checkout, argv, { runner, executable }) => {
+  const started = performance.now();
+  // node:test's context must not leak into an independent runner.
+  const { NODE_TEST_CONTEXT: _context, ...environment } = process.env;
+  const runID = runner === 'vitest' ? randomBytes(32).toString('hex') : null;
+  if (runID !== null) {
+    // Never inherit caller preloads. Forks receive only the collector's body observer.
+    environment.NODE_OPTIONS = `--import=${vitestBodyPreload}`;
+    delete environment.NODE_PATH;
+    environment.FLUO_FIX_BACK_VITEST_RUN_ID = runID;
+  }
+  const result = spawnSync(executable, argv.slice(1), {
+    cwd: checkout, env: environment, maxBuffer: 64 * 1024 * 1024,
+    ...(runID !== null ? { timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe', 'pipe'] } : {}),
+  });
+  return { result, runID, duration: performance.now() - started };
+};
+const requireVitestRun = (report, runID, label) => {
+  let observed;
+  try { observed = JSON.parse(report)?.run_id; }
+  catch (error) { throw new WorkflowPreparationError(`${label}: invalid reporter completion: ${error.message}`); }
+  requireInput(digest(runID) && observed === runID, `${label}: reporter completion belongs to a different run`);
+};
+const vitestCompletion = (checkout, result, runID, label) => {
+  const completion = result.output[3];
+  requireInput(Buffer.isBuffer(completion) && completion.length > 0, `${label}: missing private reporter completion`);
+  const report = checkoutFile(checkout, reportPath, label);
+  requireInput(report.equals(completion), `${label}: reporter output differs from private completion`);
+  requireVitestRun(report, runID, label);
+  return { report, completion };
+};
+const artifactWriter = (root) => (path, bytes) => {
+  writeFileSync(resolve(root, path), bytes, { flag: 'wx' });
+  return { path, bytes: bytes.length, sha256: sha256(bytes) };
 };
 
 // This lead preparation mode is separate from issue-implement/reviewer authority.
@@ -615,21 +708,17 @@ const captureFixBackRed = (input) => {
   'RED capture: requires a clean separate previous-head checkout in the same repository');
   const patch = readPreparationArtifact(root, input.regression_patch, 'RED patch');
   const paths = regressionPatch(root, input.implementation, patch, input.failure);
-  redCommand(input.command, input.argv, paths);
+  const execution = redCommand(input.command, input.argv, paths, checkout);
+  const { runner } = execution;
+  if (runner === 'vitest') {
+    requireInput(input.argv[4] === input.failure.file, 'RED Vitest command: wrong projected file');
+    freshVitestOutput(checkout, [reportPath], 'RED Vitest command');
+  }
   // Exclusive creation prevents overwriting an earlier command's evidence.
   mkdirSync(input.artifact_root);
-  const store = (path, bytes) => {
-    writeFileSync(resolve(input.artifact_root, path), bytes, { flag: 'wx' });
-    return { path, bytes: bytes.length, sha256: sha256(bytes) };
-  };
+  const store = artifactWriter(input.artifact_root);
   execFileSync('git', ['apply', '--index', '-'], { cwd: checkout, input: patch });
-  const started = performance.now();
-  // A preparation CLI invoked from node:test must start an independent runner.
-  const { NODE_TEST_CONTEXT: _testContext, ...environment } = process.env;
-  const result = spawnSync(input.argv[0], input.argv.slice(1), {
-    cwd: checkout, env: environment, maxBuffer: 64 * 1024 * 1024,
-  });
-  const duration = performance.now() - started;
+  const { result, runID, duration } = runEvidenceCommand(checkout, input.argv, execution);
   const stdout = store('stdout', result.stdout ?? Buffer.alloc(0));
   const stderr = store('stderr', result.stderr ?? Buffer.alloc(0));
   requireInput(!result.error, `RED capture: spawn/stream failure: ${result.error?.message}`);
@@ -643,9 +732,73 @@ const captureFixBackRed = (input) => {
     previous_tree_sha: previousTree, contract_sha256: input.contract.sha256,
     command: input.command, argv: input.argv, regression_patch: store('regression.patch', patch),
     exit_code: result.status, signal: result.signal, duration_ms: duration, stdout, stderr, failure: input.failure };
-  redAssertion(receipt, result.stdout.toString());
+  if (runner === 'vitest') {
+    requireInput(receipt.exit_code === 1 && receipt.signal === null,
+      'RED Vitest capture: expected completed failing runner');
+    const { report } = vitestCompletion(checkout, result, runID, 'RED Vitest capture');
+    receipt.test_results = store('vitest.json', report);
+    vitestProof(report, receipt.failure, 'failed');
+  } else {
+    redAssertion(receipt, result.stdout.toString());
+  }
   const reference = store('receipt.json', Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`));
   return { status: 'captured', kind: 'fix-back-red', receipt: reference };
+};
+
+const correctedCheckout = (root, checkout, head, tree) => {
+  requireInput(realpathSync(resolve(root, text(root, 'rev-parse', '--git-common-dir')))
+    === realpathSync(resolve(checkout, text(checkout, 'rev-parse', '--git-common-dir')))
+    && text(checkout, 'rev-parse', 'HEAD') === head
+    && text(checkout, 'rev-parse', 'HEAD^{tree}') === tree
+    && text(checkout, 'status', '--porcelain=v1') === '', 'GREEN Vitest capture: wrong/dirty corrected checkout');
+};
+
+const captureFixBackGreen = (input) => {
+  exact(input, ['version', 'stage', 'root', 'checkout', 'artifact_root', 'issue', 'contract',
+    'implementation', 'command', 'argv', 'regression_patch', 'failure'], 'GREEN capture');
+  requireInput(input.version === 1 && input.stage === 'fix-back-green'
+    && [input.root, input.checkout, input.artifact_root].every((path) => typeof path === 'string' && isAbsolute(path)),
+  'GREEN capture: invalid stage/paths');
+  validatePreflight(input.contract);
+  requireInput(input.issue === input.contract.issue && input.implementation?.mode === 'fix-back',
+    'GREEN capture: wrong issue/mode');
+  const root = realpathSync(input.root);
+  const checkout = realpathSync(input.checkout);
+  const head = input.implementation.head_sha;
+  implementationBinding(root, input.implementation, head, input.contract);
+  const tree = text(root, 'rev-parse', `${head}^{tree}`);
+  correctedCheckout(root, checkout, head, tree);
+  const patch = readPreparationArtifact(root, input.regression_patch, 'GREEN projection');
+  const paths = regressionPatch(root, input.implementation, patch, input.failure);
+  const execution = redCommand(input.command, input.argv, paths, checkout);
+  requireInput(execution.runner === 'vitest'
+    && input.argv[4] === input.failure.file, 'GREEN Vitest command: expected the projected Vitest file');
+  freshVitestOutput(checkout, [reportPath, greenSealPath], 'GREEN Vitest capture');
+  const artifactRoot = realpathSync(input.artifact_root);
+  for (const name of ['vitest-green.json', 'vitest-green.stdout', 'vitest-green.stderr', 'vitest-green.report',
+    'vitest-green.fd3']) {
+    requireInput(absent(resolve(artifactRoot, name)), 'GREEN Vitest capture: pre-existing evidence');
+  }
+  const store = artifactWriter(artifactRoot);
+  const { result, runID, duration } = runEvidenceCommand(checkout, input.argv, execution);
+  const stdout = store('vitest-green.stdout', result.stdout ?? Buffer.alloc(0));
+  const stderr = store('vitest-green.stderr', result.stderr ?? Buffer.alloc(0));
+  requireInput(!result.error && result.status === 0 && result.signal === null,
+    `GREEN Vitest capture: incomplete or unsuccessful runner (exit=${result.status}, signal=${result.signal}): ${result.error?.message ?? ''}`);
+  const { report, completion } = vitestCompletion(checkout, result, runID, 'GREEN Vitest capture');
+  vitestProof(report, input.failure, 'passed');
+  correctedCheckout(root, checkout, head, tree);
+  redCommand(input.command, input.argv, paths, checkout);
+  const receipt = { version: 1, complete: true, command: input.command, argv: input.argv,
+    head_sha: head, tree_sha: tree, contract_sha256: input.contract.sha256,
+    status: 'passed', exit_code: result.status, signal: result.signal, duration_ms: duration, stdout, stderr,
+    test_results: store('vitest-green.report', report), completion: store('vitest-green.fd3', completion),
+    capture_checkout: checkout, run_id: runID };
+  const bytes = Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`);
+  // The live checkout anchors the exact collector receipt independently of
+  // references carried by the review evidence package.
+  writeFileSync(resolve(checkout, greenSealPath), bytes, { flag: 'wx' });
+  return { status: 'captured', kind: 'fix-back-green', receipt: store('vitest-green.json', bytes) };
 };
 
 /**
@@ -709,16 +862,25 @@ export function prepareReviewInput(input) {
     }
     exact(red, ['version', 'complete', 'producer', 'issue', 'previous_head_sha', 'head_sha',
       'previous_tree_sha', 'contract_sha256', 'command', 'argv', 'regression_patch', 'exit_code',
-      'signal', 'duration_ms', 'stdout', 'stderr', 'failure'], 'RED receipt');
+      'signal', 'duration_ms', 'stdout', 'stderr', 'failure',
+      ...(red.argv?.[1] === 'node_modules/vitest/vitest.mjs' ? ['test_results'] : [])], 'RED receipt');
     requireInput(red.issue === input.issue && red.previous_head_sha === input.implementation.previous_head_sha
       && red.head_sha === input.head_sha && red.previous_tree_sha === previousTree
       && red.contract_sha256 === input.contract.sha256, 'RED receipt: stale issue/head/tree/contract');
     redRoot = dirname(resolve(input.artifact_root, redReference.path));
     const patch = readPreparationArtifact(redRoot, red.regression_patch, 'RED patch');
     const paths = regressionPatch(root, input.implementation, patch, red.failure);
-    redCommand(red.command, red.argv, paths);
+    const { runner } = redCommand(red.command, red.argv, paths, checkout);
     readPreparationArtifact(redRoot, red.stderr, 'RED stderr');
-    redAssertion(red, readPreparationArtifact(redRoot, red.stdout, 'RED stdout').toString());
+    const stdout = readPreparationArtifact(redRoot, red.stdout, 'RED stdout').toString();
+    if (runner === 'vitest') {
+      requireInput(red.version === 1 && red.complete === true && red.producer === 'lead'
+        && red.exit_code === 1 && red.signal === null && Number.isFinite(red.duration_ms) && red.duration_ms >= 0
+        && red.argv[4] === red.failure.file, 'RED Vitest receipt: incomplete capture');
+      vitestProof(readPreparationArtifact(redRoot, red.test_results, 'RED Vitest results'), red.failure, 'failed');
+    } else {
+      redAssertion(red, stdout);
+    }
   } else {
     requireInput(!Object.hasOwn(input, 'fix_back_red'), 'RED receipt is only valid for fix-back');
   }
@@ -778,6 +940,19 @@ export function prepareReviewInput(input) {
       throw new WorkflowPreparationError(`${label}: invalid JSON: ${error.message}`);
     }
   };
+  const greenWitness = (receipt, receiptBytes, read = readEvidence) => {
+    requireInput(receipt.test_results && receipt.completion && digest(receipt.run_id)
+      && receipt.capture_checkout === checkout, 'GREEN Vitest proof: missing captured completion for the corrected checkout');
+    const report = read(receipt.test_results, 'test results');
+    const completion = read(receipt.completion, 'GREEN Vitest private completion');
+    requireInput(receipt.test_results.path !== receipt.completion.path && completion.equals(report),
+      'GREEN Vitest proof: reporter output differs from private completion');
+    requireVitestRun(report, receipt.run_id, 'GREEN Vitest proof');
+    requireInput(checkoutFile(checkout, reportPath, 'GREEN Vitest proof').equals(report)
+      && checkoutFile(checkout, greenSealPath, 'GREEN Vitest proof').equals(receiptBytes),
+    'GREEN Vitest proof: evidence does not match the retained corrected-checkout capture');
+    return vitestProof(report, red.failure, 'passed');
+  };
   const nodeSummary = (stdout, source) => {
     const summary = {};
     for (const match of stdout.matchAll(/^(?:#|\u2139)\s+(tests|suites|pass|fail|cancelled|skipped|todo)\s+(\d+)\s*$/gmu)) {
@@ -785,13 +960,15 @@ export function prepareReviewInput(input) {
     }
     return Object.hasOwn(summary, 'tests') ? { source, summary } : null;
   };
+  let capturedGreen;
   for (const check of input.evidence) {
     exact(check, ['command', 'receipt'], 'focused evidence');
     requireInput(input.required_checks.includes(check.command) && !observedCommands.has(check.command),
       'review preparation: unexpected/duplicate focused command');
     observedCommands.add(check.command);
     let receipt;
-    try { receipt = JSON.parse(readEvidence(check.receipt, 'focused receipt')); }
+    const receiptBytes = readEvidence(check.receipt, 'focused receipt');
+    try { receipt = JSON.parse(receiptBytes); }
     catch (error) {
       if (error instanceof WorkflowPreparationError) throw error;
       throw new WorkflowPreparationError(`focused receipt: incomplete JSON: ${error.message}`);
@@ -808,7 +985,11 @@ export function prepareReviewInput(input) {
     const stdout = readEvidence(receipt.stdout, 'focused stdout').toString();
     readEvidence(receipt.stderr, 'focused stderr');
     let testResults = null;
-    if (receipt.test_results) {
+    if (red?.test_results && check.command === red.command) {
+      const report = greenWitness(receipt, receiptBytes);
+      capturedGreen = { receipt, receiptBytes };
+      testResults = { source: receipt.test_results, stats: report.stats };
+    } else if (receipt.test_results) {
       const report = readReport(receipt.test_results, 'test results');
       requireInput(report && Array.isArray(report.suites) && report.stats && typeof report.stats === 'object',
         'test results: missing actual reporter metadata');
@@ -886,7 +1067,14 @@ export function prepareReviewInput(input) {
   if (red) {
     requireInput(observedCommands.has(red.command), 'RED receipt: no matching passing focused command');
     readPreparationArtifact(input.artifact_root, redReference, 'fix-back RED');
-    for (const name of ['regression_patch', 'stdout', 'stderr']) readPreparationArtifact(redRoot, red[name], `RED ${name}`);
+    for (const name of ['regression_patch', 'stdout', 'stderr', ...(red.test_results ? ['test_results'] : [])]) {
+      readPreparationArtifact(redRoot, red[name], `RED ${name}`);
+    }
+    if (capturedGreen) {
+      redCommand(red.command, red.argv, [red.failure.file], checkout);
+      greenWitness(capturedGreen.receipt, capturedGreen.receiptBytes,
+        (reference, label) => readPreparationArtifact(input.artifact_root, reference, label));
+    }
   }
   // Recheck after reading evidence: moving the checkout during preparation is blocked.
   requireInput(text(checkout, 'rev-parse', 'HEAD') === input.head_sha
@@ -1086,8 +1274,9 @@ export function prepareReviewTransfer(input) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const [stage, path] = process.argv.slice(2);
-    requireInput(['preflight', 'finalize-preflight', 'implement', 'implement-result', 'review', 'review-read', 'fix-back-red'].includes(stage) && path && process.argv.length === 4,
-      'Usage: node workflow-preparation.mjs <preflight|finalize-preflight|implement|implement-result|review|review-read|fix-back-red> <input.json>');
+    requireInput(['preflight', 'finalize-preflight', 'implement', 'implement-result', 'review', 'review-read', 'fix-back-red',
+      'fix-back-green'].includes(stage) && path && process.argv.length === 4,
+    'Usage: node workflow-preparation.mjs <preflight|finalize-preflight|implement|implement-result|review|review-read|fix-back-red|fix-back-green> <input.json>');
     const input = JSON.parse(readFileSync(path, 'utf8'));
     if (stage === 'preflight') {
       exact(input, ['version', 'stage', 'root', 'footprint'], 'preflight preparation');
@@ -1116,6 +1305,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       case 'implement': result = prepareImplement(input); break;
       case 'implement-result': result = prepareImplementResult(input); break;
       case 'fix-back-red': result = captureFixBackRed(input); break;
+      case 'fix-back-green': result = captureFixBackGreen(input); break;
       case 'preflight':
         result = { status: 'prepared', kind: 'preflight-input',
           dispatch: registeredDispatch(input.root, dispatchFor('preflight')),
