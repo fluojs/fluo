@@ -598,16 +598,18 @@ const redCommand = (command, argv, paths, checkout) => {
       && argv[8] === '--maxWorkers=1' && argv[9] === '--no-file-parallelism'
       && [quoted(['node', ...argv.slice(1)]), quoted(argv)].includes(command),
     'RED Vitest command: use the canonical packages runner, selection and reporter');
+    requireInput(isAbsolute(argv[0]), 'RED Vitest command: Node executable must be an absolute path');
     try {
-      requireInput(realpathSync(argv[0]) === realpathSync(process.execPath)
+      const executable = realpathSync(argv[0]);
+      requireInput(executable === realpathSync(process.execPath)
         && realpathSync(resolve(checkout, argv[1])) === realpathSync(
           fileURLToPath(new URL('../../../../node_modules/vitest/vitest.mjs', import.meta.url))),
       'RED Vitest command: substituted executable or runner entrypoint');
+      return { runner: 'vitest', executable };
     } catch (error) {
       if (error instanceof WorkflowPreparationError) throw error;
       throw new WorkflowPreparationError(`RED Vitest command: unavailable runner: ${error.message}`);
     }
-    return 'vitest';
   }
   requireInput(typeof command === 'string' && command.trim() && Array.isArray(argv)
     && argv.length >= 4 && argv.every((arg) => typeof arg === 'string' && arg.length > 0)
@@ -616,7 +618,7 @@ const redCommand = (command, argv, paths, checkout) => {
     && argv.slice(3).every((arg) => paths.includes(arg) || /^--test-name-pattern=.+/u.test(arg))
     && argv.slice(3).some((arg) => paths.includes(arg)),
   'RED command: use the focused Node test TAP runner and projected regression paths');
-  return 'tap';
+  return { runner: 'tap', executable: argv[0] };
 };
 
 const vitestProof = (bytes, failure, state) => {
@@ -648,7 +650,7 @@ const checkoutFile = (checkout, path, label) => {
     throw new WorkflowPreparationError(`${label}: missing output: ${error.message}`);
   }
 };
-const runEvidenceCommand = (checkout, argv, runner) => {
+const runEvidenceCommand = (checkout, argv, { runner, executable }) => {
   const started = performance.now();
   // node:test's context must not leak into an independent runner.
   const { NODE_TEST_CONTEXT: _context, ...environment } = process.env;
@@ -659,7 +661,7 @@ const runEvidenceCommand = (checkout, argv, runner) => {
     delete environment.NODE_PATH;
     environment.FLUO_FIX_BACK_VITEST_RUN_ID = runID;
   }
-  const result = spawnSync(argv[0], argv.slice(1), {
+  const result = spawnSync(executable, argv.slice(1), {
     cwd: checkout, env: environment, maxBuffer: 64 * 1024 * 1024,
     ...(runID !== null ? { timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe', 'pipe'] } : {}),
   });
@@ -706,7 +708,8 @@ const captureFixBackRed = (input) => {
   'RED capture: requires a clean separate previous-head checkout in the same repository');
   const patch = readPreparationArtifact(root, input.regression_patch, 'RED patch');
   const paths = regressionPatch(root, input.implementation, patch, input.failure);
-  const runner = redCommand(input.command, input.argv, paths, checkout);
+  const execution = redCommand(input.command, input.argv, paths, checkout);
+  const { runner } = execution;
   if (runner === 'vitest') {
     requireInput(input.argv[4] === input.failure.file, 'RED Vitest command: wrong projected file');
     freshVitestOutput(checkout, [reportPath], 'RED Vitest command');
@@ -715,7 +718,7 @@ const captureFixBackRed = (input) => {
   mkdirSync(input.artifact_root);
   const store = artifactWriter(input.artifact_root);
   execFileSync('git', ['apply', '--index', '-'], { cwd: checkout, input: patch });
-  const { result, runID, duration } = runEvidenceCommand(checkout, input.argv, runner);
+  const { result, runID, duration } = runEvidenceCommand(checkout, input.argv, execution);
   const stdout = store('stdout', result.stdout ?? Buffer.alloc(0));
   const stderr = store('stderr', result.stderr ?? Buffer.alloc(0));
   requireInput(!result.error, `RED capture: spawn/stream failure: ${result.error?.message}`);
@@ -767,7 +770,8 @@ const captureFixBackGreen = (input) => {
   correctedCheckout(root, checkout, head, tree);
   const patch = readPreparationArtifact(root, input.regression_patch, 'GREEN projection');
   const paths = regressionPatch(root, input.implementation, patch, input.failure);
-  requireInput(redCommand(input.command, input.argv, paths, checkout) === 'vitest'
+  const execution = redCommand(input.command, input.argv, paths, checkout);
+  requireInput(execution.runner === 'vitest'
     && input.argv[4] === input.failure.file, 'GREEN Vitest command: expected the projected Vitest file');
   freshVitestOutput(checkout, [reportPath, greenSealPath], 'GREEN Vitest capture');
   const artifactRoot = realpathSync(input.artifact_root);
@@ -776,7 +780,7 @@ const captureFixBackGreen = (input) => {
     requireInput(absent(resolve(artifactRoot, name)), 'GREEN Vitest capture: pre-existing evidence');
   }
   const store = artifactWriter(artifactRoot);
-  const { result, runID, duration } = runEvidenceCommand(checkout, input.argv, 'vitest');
+  const { result, runID, duration } = runEvidenceCommand(checkout, input.argv, execution);
   const stdout = store('vitest-green.stdout', result.stdout ?? Buffer.alloc(0));
   const stderr = store('vitest-green.stderr', result.stderr ?? Buffer.alloc(0));
   requireInput(!result.error && result.status === 0 && result.signal === null,
@@ -866,7 +870,7 @@ export function prepareReviewInput(input) {
     redRoot = dirname(resolve(input.artifact_root, redReference.path));
     const patch = readPreparationArtifact(redRoot, red.regression_patch, 'RED patch');
     const paths = regressionPatch(root, input.implementation, patch, red.failure);
-    const runner = redCommand(red.command, red.argv, paths, checkout);
+    const { runner } = redCommand(red.command, red.argv, paths, checkout);
     readPreparationArtifact(redRoot, red.stderr, 'RED stderr');
     const stdout = readPreparationArtifact(redRoot, red.stdout, 'RED stdout').toString();
     if (runner === 'vitest') {

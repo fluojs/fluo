@@ -408,6 +408,26 @@ function vitestRedFixture(t, scenario = 'assertion', modulesKind = 'directory-sy
 	return { ...value, capture, run, attach, green, captureGreen };
 }
 
+test('#4232 Vitest capture: non-absolute Node argv[0] -> typed block before projection or capture', (t) => {
+	const value = vitestRedFixture(t);
+	value.capture.argv[0] = 'node';
+
+	const red = value.run();
+	const green = value.captureGreen();
+
+	for (const result of [red, green]) {
+		assert.equal(result.status, 1, result.stderr);
+		const error = JSON.parse(result.stderr);
+		assert.equal(error.kind, 'input-preparation');
+		assert.equal(error.fix_back_eligible, false);
+		assert.match(error.error, /Node executable must be an absolute path/u);
+	}
+	assert.equal(git(value.capture.checkout, 'status', '--porcelain=v1'), '');
+	assert.equal(existsSync(value.capture.artifact_root), false);
+	assert.equal(existsSync(join(value.input.artifact_root, 'vitest-green.json')), false);
+	assert.equal(existsSync(join(value.input.checkout, '.omo/fix-back-vitest.json')), false);
+});
+
 test('#4232 Vitest body assertion: real RED and GREEN -> common authenticated evidence', (t) => {
 	const value = vitestRedFixture(t);
 	// The repository root need not install dependencies used by separate worktrees.
