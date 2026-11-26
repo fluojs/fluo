@@ -11,7 +11,7 @@
 //   set-fact        --root . --lane <path> --issue <n> --kind preflight --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
 //   clear-blocker   --root . --lane <path> --issue <n> --phase <p>
-//   retro-record    --root . --lane <path> --issue <n> --kind review|implementer|incident --value <json>
+//   retro-record    --root . --lane <path> --issue <n> --kind review|implementer|incident|stage-lifecycle --value <json>
 //   retro-ci        --root . --lane <path> --issue <n>
 //   retro-plan      --root . --lane <path>
 //   retro-evidence  --root . --lane <path>
@@ -1482,7 +1482,7 @@ const main = async () => {
 
 	if (command === "retro-record") {
 		const kind = arg(args, "--kind");
-		if (!["review", "implementer", "incident"].includes(kind)) {
+		if (!["review", "implementer", "incident", "stage-lifecycle"].includes(kind)) {
 			throw new TypeError("Use retro-ci for authoritative CI snapshots");
 		}
 		const result = recordRetroEvent(

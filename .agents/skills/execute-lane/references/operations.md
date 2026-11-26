@@ -80,7 +80,12 @@ Evidence entries identify checked acceptance with repository-relative
 affect the aggregate verdict. `set-fact --kind review` applies
 the same strict new-input admission. Missing, wrong-axis, unregistered, or
 category substitute identity cannot record success. Keep raw failures as
-retrospective evidence under the existing retry contract.
+retrospective evidence under the existing retry contract. Independently bind the
+actual `taskId` returned by each native background spawn to the lane, issue,
+stage (and individual review axis). Follow
+[native stage lifecycle capture](retrospective.md#native-stage-lifecycle-capture)
+while the child is live and again after settlement or interruption. Telemetry
+is best effort: result admission and retries never wait for it.
 
 If a target is unregistered or cannot run, do not use a category worker.
 Record the lead's observation as
