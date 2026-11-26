@@ -1,0 +1,13 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "verbatimModuleSyntax": true,
+    "types": ["node"]
+  },
+  "files": [
+    "./libsql.test-fixture.ts",
+    "../../../prisma/fixtures/after-commit/drizzle-native-transaction-types.test-fixture.ts"
+  ]
+}

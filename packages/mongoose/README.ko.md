@@ -235,7 +235,9 @@ await this.conn.transaction(async () => {
 
 래핑된 연결이 `connection.transaction(...)`을 구현하고 있다면 fluo는 이를 엄격한 트랜잭션 경계로 취급합니다. 그렇지 않고 `startSession()`이 없는 경우 트랜잭션은 기본값(`strictTransactions: false`)에서 callback 직접 실행으로 fail-open합니다. 이 모드는 local fake나 staged migration에는 유용하지만 rollback 원자성은 제공하지 않습니다. 열린 fail-open 수동 `transaction(...)` callback도 종료 중에 drain되므로 `dispose(connection)`은 해당 callback이 settle된 뒤 실행됩니다. MongoDB transaction 보장이 필요한 production 흐름에서는 `strictTransactions: true`를 설정하세요. 그러면 transaction 지원 누락이 readiness `not-ready`와 helper 예외로 드러납니다.
 
-지원되는 facade 메서드에서 fluo는 기존 Mongoose 작업 옵션을 보존하고 올바른 options 인자에 ambient `{ session }`만 병합합니다. `create(...)`는 Mongoose의 array overload인 `create([docs], options?)`를 통해서만 session을 주입합니다. Positional `create(docA, docB)` 인자는 마지막 문서에 `timestamps` 같은 option-like field가 있어도 그대로 전달되며 자동 session 주입을 받지 않습니다. 트랜잭션 참여가 필요하면 array overload를 사용하세요. 활성 트랜잭션 내부에서 명시적으로 `{ session: null }`을 전달하거나 다른 세션 객체를 사용하면, `findOne(filter, projection, options)`의 세 번째 options 인자를 포함해 의도치 않은 트랜잭션 탈출을 방지하는 세션 충돌 에러를 발생시킵니다. Repository code에서 typed operation result가 필요하면 result-specialized `MongooseModelFacade`를 `model<TModel>(...)` 타입 인자로 전달하세요.
+트랜잭션 안에서 얻은 facade와 미리 꺼내 둔 지원 메서드는 모델 조회, 메서드 조회 또는 쿼리 실행 시점이 아니라 작업을 호출하는 시점에 같은 wrapper의 활성 세션을 사용합니다. 활성 세션이 없거나 세션을 소유한 callback이 닫혔다면 세션 주입이나 충돌 검사 없이 원래 인자를 그대로 전달합니다.
+
+지원되는 facade 메서드에서 fluo는 기존 Mongoose 작업 옵션을 보존하고 올바른 options 인자에 ambient `{ session }`만 병합합니다. `create(...)`는 Mongoose의 array overload인 `create([docs], options?)`를 통해서만 session을 주입합니다. Positional `create(docA, docB)` 인자는 마지막 문서에 `timestamps` 같은 option-like field가 있어도 그대로 전달되며 자동 session 주입을 받지 않습니다. 트랜잭션 참여가 필요하면 array overload를 사용하세요. facade는 호출 시점의 활성 세션과 동일한 세션을 명시적으로 전달하면 허용합니다. `findOne(filter, projection, options)`의 세 번째 인자와 같이 지원되는 options 자리에 `{ session: null }`이나 다른 세션 객체를 전달하면 의도치 않은 트랜잭션 이탈을 막기 위해 세션 충돌 오류를 던집니다. Repository code에서 typed operation result가 필요하면 result-specialized `MongooseModelFacade`를 `model<TModel>(...)` 타입 인자로 전달하세요.
 
 ### 반환값으로 롤백 선택
 
@@ -351,7 +353,7 @@ Root `@fluojs/mongoose`의 추가 export:
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
 - `MongooseConnection.createPlatformStatusSnapshot()` — platform observability surface를 위해 health/readiness, resource ownership, 활성 request/session drain 수, strict transaction 지원 진단을 보고합니다.
-- `MongooseConnection.model<TModel>(name, ...args)` — 트랜잭션 밖에서는 callable하고 result-specializable한 `MongooseModelFacade`를 반환하고, 활성 트랜잭션 안에서는 underlying Mongoose connection을 변형하지 않으면서 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 세션을 주입하는 버전을 반환합니다.
+- `MongooseConnection.model<TModel>(name, ...args)` — 활성 트랜잭션 밖에서는 원본 모델을, 안에서는 facade를 반환합니다. facade는 원본 모델이나 connection을 변형하지 않고 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`의 지원되는 overload가 호출될 때 활성 세션을 조회합니다.
 - `Transaction`
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongoosePlatformStatusSnapshot(...)`

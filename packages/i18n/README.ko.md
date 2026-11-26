@@ -470,14 +470,16 @@ Generated declaration text에는 fully qualified key union, namespace union, nam
 ```ts
 import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';
 
-const typedI18n = {
+const typedI18n: I18nCatalogTypedService = {
   translate: i18n.translate.bind(i18n),
   translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
-} satisfies I18nCatalogTypedService;
+};
 
 typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
 typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });
 ```
+
+명시적인 타입 주석은 bound `translate`를 generated catalog key로 좁힙니다. `satisfies`만 사용하면 객체의 호환성을 검사하지만 넓은 `key: string` signature는 유지됩니다.
 
 이 helper declaration은 type-only이며 application-owned입니다. Runtime wrapper를 추가하지 않고, framework bridge를 import하지 않으며, 넓은 runtime `I18nService.translate(key: string, options)` signature도 바꾸지 않습니다.
 

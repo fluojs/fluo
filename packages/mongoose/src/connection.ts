@@ -124,7 +124,7 @@ function resolveSessionOptions(opts: unknown, ambient: MongooseSessionLike): Rec
   return { ...options, session: ambient };
 }
 
-function createAmbientSessionModelFacade<TModel extends MongooseModelFacade>(model: TModel, ambient: MongooseSessionLike): TModel {
+function createAmbientSessionModelFacade<TModel extends MongooseModelFacade>(model: TModel, getCurrentSession: () => MongooseSessionLike | undefined): TModel {
   return new Proxy(model, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
@@ -134,10 +134,11 @@ function createAmbientSessionModelFacade<TModel extends MongooseModelFacade>(mod
       }
 
       return (...args: unknown[]) => {
+        const ambient = getCurrentSession();
         const operationArgs = [...args];
         const optionsIndex = resolveOptionsIndex(prop, operationArgs);
 
-        if (optionsIndex === undefined) {
+        if (!ambient || optionsIndex === undefined) {
           return value.apply(target, operationArgs);
         }
 
@@ -357,7 +358,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   }
 
   /**
-   * Returns a model from the root connection, injecting the ambient transaction session into conservative operations.
+   * Returns a model from the root connection. A facade attaches the active session when a supported operation is called.
    *
    * @typeParam TModel Consumer-defined facade result contract for the wrapped model.
    * @param name Model name passed to the underlying Mongoose connection.
@@ -373,9 +374,8 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
 
     const model = modelFactory.call(this.connection, name, ...args) as MongooseModelFacade;
-    const ambient = this.currentSession();
 
-    return ambient ? createAmbientSessionModelFacade(model, ambient) : model;
+    return this.currentSession() ? createAmbientSessionModelFacade(model, () => this.currentSession()) : model;
   }
 
   /** Aborts active request transactions, waits for settlement, then runs the optional dispose hook. */
