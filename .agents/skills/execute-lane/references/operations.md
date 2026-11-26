@@ -174,7 +174,7 @@ Ordinary implementation/conflict review needs neither form of evidence. This
 limited lead reproduction authority belongs only to review preparation;
 issue-implement's `leadAuthority` and every reviewer remain unchanged.
 
-Before fix-back dispatch, confirm the permitted runner, complete projected
+Before executable fix-back dispatch, confirm the permitted runner, complete projected
 test/necessary-fixture patch, named body assertion's first source file/positive
 line and real corrected-head GREEN using identical command/argv. Node TAP
 retains its existing command forms. Packages Vitest uses only the fixed
