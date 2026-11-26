@@ -536,42 +536,110 @@ describe('Drizzle afterCommit', { timeout: 2_000 }, () => {
     expect(recorded.every((value) => value === options)).toBe(true);
   });
 
-  it.each(['hook', 'required', 'nested-required', 'legacy'] as const)(
+  it.each(['hook', 'required', 'legacy'] as const)(
+    'rolls back a %s request aborted while the native owner drains a child',
+    async (mode) => {
+      const drainEntered = deferred();
+      const childRelease = deferred();
+      const controller = new AbortController();
+      const reason = new Error('aborted while draining a child');
+      const { drizzle, events } = nativeFixture(async () => { events.push('commit:entered'); });
+      const closeOwnerMethod = 'closeTransactionBoundaryOwner';
+      const closeOwner = drizzle[closeOwnerMethod].bind(drizzle);
+      drizzle[closeOwnerMethod] = (owner) => {
+        const closing = closeOwner(owner);
+        drainEntered.resolve();
+        return closing;
+      };
+      let child: Promise<PromiseSettledResult<void>[]> | undefined;
+      let settled = false;
+      const run = drizzle.requestTransaction(async () => {
+        if (mode === 'hook') {
+          drizzle.afterCommit(() => { events.push('hook'); });
+        }
+        child = Promise.allSettled([drizzle.requestTransaction(async () => {
+          events.push('child:entered');
+          await childRelease.promise;
+          events.push('child:finished');
+        })]);
+        events.push('root:returning');
+        return 'ready to commit';
+      }, controller.signal, undefined, mode === 'required' ? { requireAfterCommit: true } : undefined);
+      const observed = Promise.allSettled([run]).finally(() => { settled = true; });
+
+      try {
+        await drainEntered.promise;
+        if (!child) {
+          throw new Error('Inherited request was not started.');
+        }
+        expect(events).toEqual(['begin:1', 'child:entered', 'root:returning']);
+
+        controller.abort(reason);
+        expect(await child).toMatchObject([{ status: 'rejected', reason: { name: 'AbortError', message: reason.message } }]);
+        expect(events).toEqual(['begin:1', 'child:entered', 'root:returning']);
+        expect(settled).toBe(false);
+        childRelease.resolve();
+
+        const [outcome] = await observed;
+        expect(events).toEqual(['begin:1', 'child:entered', 'root:returning', 'child:finished', 'rollback:1']);
+        expect(outcome).toMatchObject({ status: 'rejected', reason: { name: 'AbortError', message: reason.message } });
+      } finally {
+        childRelease.resolve();
+        await Promise.allSettled([observed, child]);
+      }
+    },
+  );
+
+  it.each(['hook', 'hook-failure', 'required', 'nested-required', 'legacy'] as const)(
     'handles abort during native commit for a %s boundary',
     async (mode) => {
       // Given: user work has finished, but the native commit promise is still pending.
       const commitEntered = deferred();
       const commitRelease = deferred();
       const controller = new AbortController();
+      const reason = new Error('aborted during native commit');
+      const hookFailure = new Error('hook failed after native commit');
+      const result = { status: 'committed' };
       const { drizzle, events } = nativeFixture(async () => {
         commitEntered.resolve();
         await commitRelease.promise;
       });
       const run = drizzle.requestTransaction(async () => {
-        if (mode === 'hook') {
-          drizzle.afterCommit(() => { events.push('hook'); });
+        if (mode === 'hook' || mode === 'hook-failure') {
+          drizzle.afterCommit(() => {
+            events.push('hook:first');
+            if (mode === 'hook-failure') {
+              throw hookFailure;
+            }
+          });
+          drizzle.afterCommit(() => { events.push('hook:second'); });
         } else if (mode === 'nested-required') {
           await drizzle.transaction(async () => {}, undefined, { requireAfterCommit: true });
         }
-        return 'committed';
+        return result;
       }, controller.signal, undefined, mode === 'required' ? { requireAfterCommit: true } : undefined);
-      const observed = Promise.allSettled([run]);
+      let settled = false;
+      const observed = Promise.allSettled([run]).finally(() => { settled = true; });
       try {
         await commitEntered.promise;
 
         // When: cancellation arrives while the native driver is committing successfully.
-        controller.abort(new Error('aborted during native commit'));
+        controller.abort(reason);
+        expect(events).toEqual(['begin:1']);
+        expect(settled).toBe(false);
         commitRelease.resolve();
-        const [outcome] = await observed;
 
         // Then: opt-in boundaries honor confirmed commit; no-hook legacy behavior is unchanged.
         if (mode === 'legacy') {
-          expect(outcome).toMatchObject({ status: 'rejected', reason: { name: 'AbortError' } });
+          await expect(run).rejects.toMatchObject({ name: 'AbortError', message: reason.message });
+        } else if (mode === 'hook-failure') {
+          await expect(run).rejects.toBeInstanceOf(AfterCommitError);
+          await expect(run).rejects.toMatchObject({ committed: true, errors: [hookFailure] });
         } else {
-          expect(outcome).toEqual({ status: 'fulfilled', value: 'committed' });
+          await expect(run).resolves.toBe(result);
         }
-        expect(events).toEqual(mode === 'hook'
-          ? ['begin:1', 'commit:1', 'hook']
+        expect(events).toEqual(mode === 'hook' || mode === 'hook-failure'
+          ? ['begin:1', 'commit:1', 'hook:first', 'hook:second']
           : ['begin:1', 'commit:1']);
       } finally {
         commitRelease.resolve();
