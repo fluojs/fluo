@@ -180,8 +180,8 @@ Supported notification payload fields:
 
 Behavioral contract notes:
 
-- One notification dispatch maps to exactly one Discord thread route from a single entry in `recipients`.
-- If `recipients` is omitted, `DiscordService.sendNotification(...)` falls back to `defaultThreadId`.
+- `DiscordService.sendNotification(...)` trims leading and trailing whitespace from each entry in `recipients` and drops empty entries. It rejects two or more remaining entries with `DiscordMessageValidationError`. One remaining entry takes precedence over `defaultThreadId`; if none remain, the service uses `defaultThreadId` when configured.
+- If neither a recipient nor a default thread is available, a valid message reaches the configured transport with `threadId` unset. The built-in webhook transport does not add a `thread_id` query parameter for that message.
 - Notification metadata is merged from payload metadata, dispatch metadata, and template/subject markers. On duplicate keys, dispatch metadata overrides payload metadata, and final `subject` / `template` markers override both. `template` is rendered only when a renderer is configured.
 - Template rendering starts only while the service is ready. The render input includes `signal`, so renderers can stop caller-cancelled work before transport delivery.
 - If a notification workflow needs fan-out across multiple Discord threads, create one concrete Discord message per thread with `DiscordService.sendMany(...)` or issue separate notification dispatches; a single notification dispatch never expands multi-recipient fan-out implicitly.

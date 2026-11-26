@@ -328,7 +328,7 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
    * @param notification Shared notification envelope interpreted by the Discord package.
    * @param options Optional abort signal propagated to rendering and transport work.
    * @returns A normalized delivery receipt for the resulting Discord message.
-   * @throws {DiscordMessageValidationError} When the notification cannot resolve one target thread or any Discord-visible content.
+   * @throws {DiscordMessageValidationError} When more than one recipient remains after trimming and dropping empty entries, or when the resolved message has no Discord-visible content.
    *
    * @example
    * ```ts
