@@ -393,7 +393,7 @@ describe('COLD public Result rollback declarations', () => {
       { source: 'Mongoose.Transaction(undefined, undefined, {});', codes: [2554] },
       {
         source: 'Prisma.Transaction<unknown, NativeOptions>({ shouldRollback: () => true });',
-        codes: [2353],
+        codes: [2345],
       },
       {
         source: 'Drizzle.Transaction<unknown, NativeOptions>(undefined, { shouldRollback: () => true });',
