@@ -1604,6 +1604,14 @@ const main = async () => {
 		const phase = arg(args, "--phase");
 		const result = JSON.parse(arg(args, "--result-json"));
 		const observed = observeIssue(root, lane, issue);
+		if (phase === "review" && !reviewGrantAdmits(observed)) {
+			// Retired results are evidence of the old wave, not inputs to the current one.
+			recordRetroEvent(root, lane.lane_id, issue, "stage", {
+				phase, result, head: observed.headSha, attempts: entry.attempts,
+			});
+			process.stdout.write(`${JSON.stringify({ issue, attempts: entry.attempts, blocker: entry.blocker }, null, 2)}\n`);
+			return;
+		}
 		invalidateReadiness(issue);
 		validateStageMeasurements(result?.measurements, observed.headSha);
 		const unavailable = result?.error?.code === "dispatch-target-unavailable";
@@ -1636,14 +1644,6 @@ const main = async () => {
 			} else if (["preflight", "implement", "fix-back"].includes(phase)) {
 				assertAgentIdentity(dispatchFor(phase), result.agent);
 			}
-		}
-		if (phase === "review" && !unavailable && !stoppedByContract && !reviewGrantAdmits(observed)) {
-			// A retired review wave cannot change retries or sibling priority.
-			recordRetroEvent(root, lane.lane_id, issue, "stage", {
-				phase, result, head: observed.headSha, attempts: entry.attempts,
-			});
-			process.stdout.write(`${JSON.stringify({ issue, attempts: entry.attempts, blocker: entry.blocker }, null, 2)}\n`);
-			return;
 		}
 		const next = unavailable
 			? { ...entry, blocker: { ...result.error, type: "input-preparation", phase } }

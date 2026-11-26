@@ -3649,6 +3649,54 @@ test('#4323 review admission: clear before submit and same-head regrant reject t
   assert.equal(f.planIssue(42).decision.action, 'create-pr');
 });
 
+test('#4323 review record: only the current grant can retry or stop review after same-head regrant', t => {
+  const file = 'src/shared.ts';
+  const f = readinessFixture(t, { 42: [file] });
+  const lane = JSON.parse(readFileSync(f.lanePath));
+  lane.retry_policy = { retry_count_is_terminal: false, max_same_failure_repeats: null,
+    max_wall_clock_minutes: null, stop_on_child_contract_error: true };
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  f.implementIssue(42, file);
+  assert.equal(f.planIssue(42).decision.action, 'review');
+  const original = f.readiness(42);
+  parkReviewPreparation(f);
+  f.cli('clear-blocker', [...f.common, '--phase', 'review']);
+  assert.equal(f.planIssue(42).decision.action, 'review');
+  const fresh = f.readiness(42);
+  assert.deepEqual(fresh, { ...original, value: { ...original.value, sequence: original.value.sequence + 1 } });
+
+  const record = (result, sequence) => JSON.parse(f.cli('record', [...f.common, '--phase', 'review',
+    '--result-json', JSON.stringify(result), '--review-sequence', String(sequence)]).stdout);
+  const terminal = { ok: false, error: { type: 'child-contract-error' } };
+  const unavailable = { ok: false, error: { kind: 'input-preparation', code: 'dispatch-target-unavailable',
+    subagent_type: 'fluo-contract-reviewer', fix_back_eligible: false } };
+  const staleResults = [terminal, unavailable, {}, { ok: false }];
+  const stageEvents = () => readRetroEvents(f.root, 'fixture').filter(event => event.kind === 'stage');
+  const priorEvents = stageEvents().length;
+  const laneBefore = readFileSync(f.lanePath);
+
+  for (const stale of staleResults) {
+    record(stale, original.value.sequence);
+    assert.equal(readFileSync(f.lanePath).equals(laneBefore), true,
+      `retired review outcome must not change the lane: ${JSON.stringify(stale)}`);
+  }
+  assert.deepEqual(stageEvents().slice(priorEvents).map(event => event.data.result), staleResults);
+
+  const stopped = record(terminal, fresh.value.sequence);
+  assert.equal(stopped.attempts.review, 1);
+  assert.deepEqual(stopped.blocker, { type: 'child-contract-error', phase: 'review' });
+  assert.equal(f.readiness(42).value.active, false);
+  assert.equal(f.planIssue(42).decision.reason, 'child-contract-error');
+
+  f.cli('clear-blocker', [...f.common, '--phase', 'review']);
+  assert.equal(f.planIssue(42).decision.action, 'review');
+  const unassigned = record(unavailable, f.readiness(42).value.sequence);
+  assert.equal(unassigned.attempts.review, 0);
+  assert.deepEqual(unassigned.blocker, { ...unavailable.error, type: 'input-preparation', phase: 'review' });
+  assert.equal(f.readiness(42).value.active, false);
+  assert.equal(f.planIssue(42).decision.reason, 'input-preparation');
+});
+
 test('#4323 review preparation: exact grant releases the live overlap and recovery re-enters at a new sequence', () =>
   withGatedWatch({
     makeFixture: context => {
