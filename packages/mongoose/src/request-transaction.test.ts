@@ -9,7 +9,7 @@ import {
   UseInterceptors,
 } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { MongooseConnection, MongooseModule } from './index.js';
 import type { MongooseSessionLike } from './types.js';
@@ -95,6 +95,28 @@ describe('application-owned Mongoose request transaction boundary', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('rejects a pre-aborted request transaction without starting native delegation', async () => {
+    const transaction = vi.fn(() => new Promise<never>(() => {
+      // Keep accidental native startup pending so the call count is the failure, not a native rejection.
+    }));
+    const callback = vi.fn(async () => 'result');
+    const mongoose = new MongooseConnection({ transaction });
+    const signal = AbortSignal.abort(new Error('request cancelled before delegation'));
+
+    const request = mongoose.requestTransaction(callback, signal);
+
+    await expect(request).rejects.toMatchObject({
+      name: 'AbortError',
+      message: 'request cancelled before delegation',
+    });
+    expect(transaction).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+    expect(mongoose.createPlatformStatusSnapshot().details).toMatchObject({
+      activeRequestTransactions: 0,
+      activeSessions: 0,
+    });
   });
 
   it('forwards caller cancellation and settles the explicit request transaction', async () => {
