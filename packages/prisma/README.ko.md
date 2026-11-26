@@ -300,6 +300,8 @@ try {
 
 ### 종료와 status 계약
 
+같은 `PrismaService`를 동시에 초기화하면 진행 중인 `$connect()`의 성공 또는 실패를 함께 받습니다. 초기화에 성공한 뒤에는 다시 연결하지 않으며, shutdown이 시작된 뒤에는 종료가 완료되지 않았거나 실패했더라도 새 `$connect()`를 시작하지 않습니다.
+
 `PrismaService.requestTransaction(...)`은 정상 serving 전과 중에는 사용할 수 있지만, 애플리케이션 shutdown이 시작된 뒤에는 새 요청 범위 트랜잭션을 거부합니다. 새 outer 수동 `transaction(...)` 및 서비스 `@Transaction()` boundary도 shutdown 시작 후에는 거부됩니다. 이미 열린 boundary는 `$disconnect()` 전에 drain되므로 shutdown이 활성 Prisma transaction과 경합하지 않습니다. Shutdown은 진행 중인 `$connect()`가 settle될 때까지 기다린 뒤 `$disconnect()`를 실행하며, shutdown 시작 뒤 늦게 완료된 connect는 ready 상태를 복원하거나 새 transaction work를 허용할 수 없습니다. 종료 중에는 열린 요청 트랜잭션을 abort하고, 가장 바깥 transaction boundary가 settle될 때까지 추적한 다음 `$disconnect()` 실행 전에 drain합니다. 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 동일합니다. 해당 호출은 ambient Prisma transaction client를 재사용하고, 바깥 boundary가 끝날 때까지 `details.activeRequestTransactions`에 표시되며, 두 번째 Prisma transaction을 열지 않습니다. 등록된 클라이언트에 native `$transaction` runner가 없는 경우(`strictTransactions: false` fallback), 취소는 abort 경합을 통해 호출자에게 즉시 오류를 반환하지만 요청은 실제 callback이 settle될 때까지 추적됩니다. abort 이후에도 실행 중인 fallback callback은 `details.activeRequestTransactions`를 0보다 크게 유지하며, 완료 또는 reject되기 전까지 `$disconnect()`를 지연시킵니다. 이 fallback drain은 실제 callback만 기다리며, rollback 원자성이나 강제 callback 중단, timeout, 추가 호스트 런타임 지원을 추가하지 않으므로 callback이 스스로 정지 시점을 결정해야 합니다.
 
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
@@ -384,6 +386,8 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 ### `Transaction`
 
 - `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target 형식입니다. Accessor가 Prisma wrapper를 선택하고 native 옵션과 Fluo policy를 분리해 마지막에 둡니다. Accessor가 `null` 또는 `undefined`를 반환하면 트랜잭션 러너와 데코레이터가 적용된 메서드 본문이 시작되기 전에 거부되며, 비어 있는 accessor 반환값에 대해 자동 service 탐색이 폴백으로 사용되지 않습니다. 기존 options-only, 무인자, accessor-plus-boundary 호출은 legacy 호환 overload로 남습니다.
+
+- 지원하는 호출은 `Transaction()`, `Transaction(nativeOptions)`, `Transaction(nativeOptions, boundary)`, `Transaction(accessor)`, `Transaction(accessor, nativeOptions, boundary)`, `Transaction(accessor, boundary)`입니다. Accessor 함수가 없으면 boundary policy는 둘째 인자에 둡니다. 세 번째 인자(명시적 `undefined` 포함)는 정책을 조용히 버리는 대신 strict TypeScript에서 거부하고, 런타임에서는 메서드 본문 실행 전 decorator 생성 시점에 `TypeError`를 던집니다.
 
 - 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 일반 코드는 accessor를 전달하며 자동 service/facade 탐색은 기존 단일 target 서비스에만 호환 동작으로 남습니다.
 

@@ -429,6 +429,8 @@ const cachedLoader = CachedRemoteI18nLoader.create({
 cachedLoader.invalidate('en', 'common');
 ```
 
+A catalog stops being a cache hit as soon as its TTL expires. The first `load()` starts a cleanup interval of `ttlMs` for that wrapper. The first `load()` at or after the end of each interval, even a cache hit, drops references to all expired catalogs and starts the next interval. No background timer evicts entries while idle, and this does not guarantee when garbage collection runs.
+
 Like the filesystem loader, locale and namespace values are validated before the provider is called. Namespaces may use safe relative path segments such as `admin/common`; `.`/`..`, absolute paths, empty segments, extension-bearing names such as `common.json`, and traversal attempts are rejected with `I18N_INVALID_LOADER_OPTIONS`.
 
 ## Catalog Type Generation

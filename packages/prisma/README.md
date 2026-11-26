@@ -300,6 +300,8 @@ try {
 
 ### Shutdown and Status Contracts
 
+Concurrent initialization calls on the same `PrismaService` share the outcome of one in-flight `$connect()`, whether it succeeds or fails. Further initialization does not reconnect after successful initialization, and does not start a new `$connect()` once shutdown begins, even if shutdown is still pending or has failed.
+
 `PrismaService.requestTransaction(...)` is available before and during normal serving, but new request-scoped transactions are rejected once application shutdown has started. New outer manual `transaction(...)` and service `@Transaction()` boundaries are also rejected after shutdown begins; boundaries that were already open are drained before `$disconnect()` so shutdown does not race an active Prisma transaction. Shutdown also waits for an in-flight `$connect()` to settle before `$disconnect()`; once shutdown starts, a late connect completion cannot restore ready state or admit new transaction work. During shutdown, open request transactions are aborted, tracked until their outer transaction boundary has settled, and drained before `$disconnect()` runs. This includes nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary: they reuse the ambient Prisma transaction client, stay visible in `details.activeRequestTransactions` until the outer boundary finishes, and do not open a second Prisma transaction. When the registered client has no native `$transaction` runner (the `strictTransactions: false` fallback), cancellation still rejects the caller immediately through the abort race, but the request remains tracked until the actual callback settles: an aborted fallback callback that is still running keeps `details.activeRequestTransactions` above zero and holds `$disconnect()` until it completes or rejects. This fallback drain waits for the real callback only; it does not add rollback atomicity, forced callback interruption, timeouts, or additional host runtime support, so callbacks decide for themselves when to stop.
 
 `createPrismaPlatformStatusSnapshot(...)` and `PrismaService.createPlatformStatusSnapshot()` expose the same lifecycle contract to diagnostics surfaces:
@@ -384,6 +386,8 @@ Use `PrismaService<TClient>` when a provider only needs wrapper methods such as 
 ### `Transaction`
 
 - `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target form. The accessor selects the Prisma wrapper, native options remain separate, and Fluo policy is last. An accessor returning `null` or `undefined` is rejected before the transaction runner or decorated method body starts; automatic service discovery is never used as a fallback for an empty accessor result. Existing options-only, no-argument, and accessor-plus-boundary calls remain legacy compatibility overloads.
+
+- Supported calls are `Transaction()`, `Transaction(nativeOptions)`, `Transaction(nativeOptions, boundary)`, `Transaction(accessor)`, `Transaction(accessor, nativeOptions, boundary)`, and `Transaction(accessor, boundary)`. Without an accessor function, boundary policy belongs in the second argument. A third argument (including explicit `undefined`) is rejected by strict TypeScript and throws `TypeError` at decorator creation, before the method body can run, rather than silently discarding policy.
 
 - Standard TC39 method decorator for service-layer transaction boundaries. Normal code supplies an accessor; automatic service/facade discovery is retained only for existing single-target services.
 
