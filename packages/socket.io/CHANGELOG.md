@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+## 2.0.3
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- [#4214](https://github.com/fluojs/fluo/pull/4214) [`cab9169`](https://github.com/fluojs/fluo/commit/cab9169b32e9a75a213c834e8e8057b1fe817c80) Thanks [@ayden94](https://github.com/ayden94)! - Limit failed Bun initialization rollback to resources acquired by that attempt, preserving existing host bindings when validation fails. Observe asynchronous Socket.IO close failures alongside the original initialization error and allow initialization to retry after partial binding cleanup.
+
+- [#4208](https://github.com/fluojs/fluo/pull/4208) [`8b69f01`](https://github.com/fluojs/fluo/commit/8b69f013dcf8b11342018bc2ea235d15d332a50e) Thanks [@ayden94](https://github.com/ayden94)! - Correct room helper documentation and TSDoc to describe the existing namespace selection and argument contracts: broadcast requires a resolvable namespace, join and leave can locate a socket by ID without handler context, and getRooms accepts only a socket ID for registry lookup. Runtime behavior and public signatures are unchanged.
+
+- [#4229](https://github.com/fluojs/fluo/pull/4229) [`0b71be0`](https://github.com/fluojs/fluo/commit/0b71be0b2713d37690bd855cfcfde8bd052c3cc9) Thanks [@ayden94](https://github.com/ayden94)! - Include in-progress Bun initialization in the shared `shutdown.timeoutMs` bound. Runtime shutdown hooks now fix one deadline on first entry and give pending initialization, Socket.IO close, and accepted gateway work drain only the remaining budget, so hooks still complete when initialization never settles. Initialization that succeeds after the deadline no longer re-exposes server access or reinstalls gateway state; its managed server, Bun engine, and pre-listen binding are cleaned up, and retained state stays available to `SocketIoLifecycleService.retryShutdown()` when late cleanup fails.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca), [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526), [`c3110b6`](https://github.com/fluojs/fluo/commit/c3110b6737144be4383c3f4d684ffbb9bf57278e), [`1271a87`](https://github.com/fluojs/fluo/commit/1271a87d1599cbd7ff85fe11dd20bb3aaddc1fbe), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`1fe212d`](https://github.com/fluojs/fluo/commit/1fe212d4b49e6e2d1ef577d6ee62962e6da5bafb), [`93f2213`](https://github.com/fluojs/fluo/commit/93f22136266b93238c8db6a11160949867ce97ba), [`ba031fb`](https://github.com/fluojs/fluo/commit/ba031fb350893b10914a49f7db2d9a872ccd7845), [`559fd2d`](https://github.com/fluojs/fluo/commit/559fd2df4c7a230a6bbdb4b89a23f1a5f8991f32), [`8817120`](https://github.com/fluojs/fluo/commit/8817120f21180ced38dda95b9fbbfb1133bb2a82), [`c0e0cb7`](https://github.com/fluojs/fluo/commit/c0e0cb7e67f07752c554a811a1d04e9e0e8f4337), [`7c3ded4`](https://github.com/fluojs/fluo/commit/7c3ded4f98f96ff702d3cf6466ef2e158045883e), [`31082f9`](https://github.com/fluojs/fluo/commit/31082f9e405d90edfea1646c60536316614bf7d1), [`021afd7`](https://github.com/fluojs/fluo/commit/021afd76b8c48684c1e14f051412236bd5108357), [`d642f02`](https://github.com/fluojs/fluo/commit/d642f0281c34206b9684fe2bd116a9b230c29f0e), [`c28bf37`](https://github.com/fluojs/fluo/commit/c28bf37a82d62932b30138191e28451d5c2f3b5b), [`24646e5`](https://github.com/fluojs/fluo/commit/24646e5a87e1a85bc0b822e07f619f92800e0d3c), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e), [`ab19f61`](https://github.com/fluojs/fluo/commit/ab19f610ec89c246a771f1664d1c8a780a696285), [`aae54e4`](https://github.com/fluojs/fluo/commit/aae54e49c42016cca2f1935f440c10c577c25212), [`0d716d5`](https://github.com/fluojs/fluo/commit/0d716d5356539223b96634b9b0ad31141469ceae)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/websockets@3.0.0
+  - @fluojs/di@3.2.0
+  - @fluojs/http@3.3.0
+  - @fluojs/platform-bun@3.1.1
+
 ## 2.0.2
 
 ### Patch Changes

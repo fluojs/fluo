@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+## 4.0.1
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4263](https://github.com/fluojs/fluo/pull/4263) [`dd8933a`](https://github.com/fluojs/fluo/commit/dd8933a61f6a80333551a6c03948102595dc37d6) Thanks [@ayden94](https://github.com/ayden94)! - Make `EmailService.sendNotification(...)` merge transport metadata with `notification.metadata` applied first and `payload.metadata` second, matching the documented payload-overrides-notification-fallbacks contract. A colliding ordinary metadata key now delivers the email-specific payload value to the transport, keys unique to either side remain preserved, and the `notification.template`-derived `template` key is still applied last.
+
+  Callers that previously relied on notification metadata winning for colliding ordinary keys now receive the payload value instead; rename one of the colliding keys if both values must reach the transport.
+
+- [#4300](https://github.com/fluojs/fluo/pull/4300) [`3f5ae01`](https://github.com/fluojs/fluo/commit/3f5ae018bbb1a351c71d7c3f208995f0e81f441f) Thanks [@ayden94](https://github.com/ayden94)! - Preserve binary email attachment views through JSON queue storage and restore Uint8Array content before transport delivery.
+
+  Reject unsupported or malformed stored attachment payloads before transport delivery, and preserve structurally assignable public queue jobs.
+
+  Keep direct notification and native/string attachment objects unchanged when no wire bytes require decoding, preserving inherited fields.
+
+  Preserve original notification JSON projections when no native encoding is needed, and retain getter-based attachment filenames and MIME types through single and bulk queue serialization.
+
+  Compose native attachment encoding with the original email JSON projections once, preserving projected envelope values, intentional omissions, and opaque data behavior.
+
+  Encode only attachments selected by JSON projections, and preserve genuine cross-realm Uint8Array views using their intrinsic length despite shadowed properties.
+
+- [#4262](https://github.com/fluojs/fluo/pull/4262) [`1dd0171`](https://github.com/fluojs/fluo/commit/1dd0171d9038ccba51945eb5ee21694af66ce91b) Thanks [@ayden94](https://github.com/ayden94)! - Prevent cancelled or shutting-down email deliveries from reaching transports after
+  asynchronous preparation. Drain reentrant provider operations before closing owned
+  transports, preserve verification failure causes during shutdown, and prevent
+  failed shutdown initialization from restarting transport creation.
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca), [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526), [`1271a87`](https://github.com/fluojs/fluo/commit/1271a87d1599cbd7ff85fe11dd20bb3aaddc1fbe), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`8ed2fa5`](https://github.com/fluojs/fluo/commit/8ed2fa57c4e485839de546447cfd929fe2f7453a), [`536900f`](https://github.com/fluojs/fluo/commit/536900fe282790415eb94bbafb4640196c6b2af2), [`e2da5f2`](https://github.com/fluojs/fluo/commit/e2da5f29f7e5613ab15a84d77df7317cc19e5029), [`d24e1de`](https://github.com/fluojs/fluo/commit/d24e1dea0057ae1cbbd0aa200f32970b51b9caa7), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/di@3.2.0
+  - @fluojs/notifications@2.0.4
+
 ## 4.0.0
 
 ### Major Changes

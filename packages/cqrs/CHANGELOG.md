@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+## 3.0.4
+
+### Patch Changes
+
+- [#4060](https://github.com/fluojs/fluo/pull/4060) [`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70) Thanks [@ayden94](https://github.com/ayden94)! - Make internal payload cloning deterministic by always preserving supported nested class prototypes, own symbol properties, and circular references, regardless of runtime structuredClone behavior. Document the shared clone contract and CQRS value-object isolation; functions remain shared references, while Buffer and private-field behavior remains unspecified pending [#4015](https://github.com/fluojs/fluo/issues/4015).
+
+- [#4116](https://github.com/fluojs/fluo/pull/4116) [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36) Thanks [@ayden94](https://github.com/ayden94)! - Copy Node `Buffer` values and other typed array subclasses in the shared fallback clone without calling the subclass constructor, so cloning a `Buffer` no longer emits the `DEP0005` deprecation warning. Instances whose class declares ECMAScript private members are now returned by reference instead of as a detached copy that threw a `TypeError` when private state was read. Detection is conservative so no private member is missed: a class whose source contains `#` followed by an identifier character anywhere, including text such as a `/#tag/` regular expression, is returned by reference, as is any instance whose class cannot be identified because its prototype `constructor` is missing or shadowed; prototype methods and accessors are inspected as well. Objects with any own getter or setter, or with an own function property whose source mentions `this` or a private name (for example an object stamped with private fields through a constructor return override, even when a helper reads them), are also returned by reference, while own callbacks mentioning neither still allow copying. State reached only indirectly through closures, external helpers, or WeakMaps without such source markers is a documented limitation. Typed arrays and DataViews created in another realm are copied without relying on prototype identity, and ArrayBuffer, typed array, and DataView subclasses keep their prototype and own string/symbol properties (including circular references) without calling the subclass constructor. The core and CQRS READMEs document the decided behavior.
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca), [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526), [`1271a87`](https://github.com/fluojs/fluo/commit/1271a87d1599cbd7ff85fe11dd20bb3aaddc1fbe), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/event-bus@3.1.4
+  - @fluojs/di@3.2.0
+
 ## 3.0.3
 
 ### Patch Changes

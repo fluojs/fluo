@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+## 4.0.0
+
+### Major Changes
+
+- [#4275](https://github.com/fluojs/fluo/pull/4275) [`7268946`](https://github.com/fluojs/fluo/commit/7268946d324f649aad5edb3c9b555ada27e924b6) Thanks [@ayden94](https://github.com/ayden94)! - Align scheduling descriptors with immutable snapshots and restore scheduling contracts for long delays, timeout generations, effective singleton/multi DI registrations, distinct Symbol methods, falsy hook failures, full hook lease renewal, and failed default scheduler registration cleanup.
+
+  Migration: `SchedulingTaskDescriptor` fields are now `readonly`, including directly constructed descriptors. Use a mutable spread copy for local edits, or registry mutation methods to change a schedule; editing a copy does not change registry state. `getAll()` still returns a mutable array. ISO absolute-time strings and type-bypassed `Date` inputs are rejected by `@Cron`, `addCron`, and `updateCronExpression`; move those schedules to application-owned absolute scheduling. Supported Croner expression grammar and positive integer millisecond delays, including values above the host timer limit, remain supported. The default scheduler's started named live replacement limitation remains: disable, update the expression, then enable.
+
+  마이그레이션: 직접 구성하는 descriptor를 포함하여 `SchedulingTaskDescriptor` 필드는 이제 `readonly`입니다. 로컬 수정에는 spread로 만든 mutable copy를 사용하고 실제 예약 변경에는 registry mutation method를 사용하세요. 복사본 수정은 registry 상태를 바꾸지 않으며 `getAll()`의 반환 배열은 계속 mutable입니다. `@Cron`, `addCron`, `updateCronExpression`은 ISO absolute-time 문자열과 타입을 우회한 `Date`를 거부하므로 절대시각 예약은 application-owned code로 옮기세요. 지원되는 Croner 표현식 문법과 host timer 상한을 넘는 양의 정수 millisecond 지연은 유지됩니다. 기본 scheduler의 started named live replacement 제약도 유지되므로 disable, expression update, enable 순서로 변경하세요.
+
+- [#4058](https://github.com/fluojs/fluo/pull/4058) [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4) Thanks [@ayden94](https://github.com/ayden94)! - Bound platform ready/health probes and runtime HTTP readiness callbacks with independent 5000 ms default deadlines. Platform registrations now accept readiness timeout/criticality options, and direct HealthModule registrations accept readinessCheckTimeoutMs. Timeouts retain bounded component/phase diagnostics and report not-ready/unhealthy or HTTP 503 unavailable without cancelling underlying operations.
+
+  Release Cron alongside the mandatory Runtime major dependency, as required by the stable release lane compatibility policy. This companion major does not change scheduling APIs.
+
+  Migration: previously unbounded asynchronous probes now fail after their deadline, which changes readiness behavior for existing applications and requires a major release. If a platform probe legitimately needs more than 5000 ms, pass `{ component, readiness: { timeoutMs } }` in the platform registration. Direct HealthModule users can raise `HealthModule.forRoot({ readinessCheckTimeoutMs })`. TerminusModuleOptions currently cannot raise its runtime callback's 5000 ms budget; longer indicator/platform budgets alone do not extend Terminus `/ready` waiting. Keep Terminus readiness work within that limit until a separate option is supported. Ordinary callback errors still propagate, callback order and false short-circuit behavior remain unchanged, and timed-out work is not cancelled.
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca), [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526), [`1271a87`](https://github.com/fluojs/fluo/commit/1271a87d1599cbd7ff85fe11dd20bb3aaddc1fbe), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/di@3.2.0
+
 ## 3.0.2
 
 ### Patch Changes

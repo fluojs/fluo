@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+## 2.0.4
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4278](https://github.com/fluojs/fluo/pull/4278) [`ac1e00f`](https://github.com/fluojs/fluo/commit/ac1e00f4aa647efb414526b0ed7862125c25e79b) Thanks [@ayden94](https://github.com/ayden94)! - Correct the English and Korean READMEs to explain that compatible package copies loaded in the same realm share the public `DISCORD_CHANNEL` injection key, without implying shared service or channel instances across separate module scopes.
+
+- [#4260](https://github.com/fluojs/fluo/pull/4260) [`b3077d0`](https://github.com/fluojs/fluo/commit/b3077d0ae1e5110b937c1ca15ea64b481b98f3d8) Thanks [@ayden94](https://github.com/ayden94)! - Correct `DiscordService.sendMany()` handling of transport receipts with `ok: false`.
+  The default mode (including `continueOnError: false`) now rejects with
+  `DiscordTransportError` before sending later messages. With `continueOnError: true`,
+  the failed input message and error are recorded in `failures` and `failed`, later
+  messages are attempted, and only successful receipts enter `results` and `succeeded`.
+  Errors omit provider response details. Single-message `send()` continues to return
+  `ok: false` receipts, and receipts without `ok` still normalize to successful results.
+
+- [#4310](https://github.com/fluojs/fluo/pull/4310) [`d7897ba`](https://github.com/fluojs/fluo/commit/d7897bae3cf6658b63b7a1f3f74a2686f337032e) Thanks [@ayden94](https://github.com/ayden94)! - Preserve the cancellation reason when a webhook response body read is interrupted, without reporting a successful delivery or retrying the POST. Reject payloads that cannot be serialized to JSON with a redacted `DiscordTransportError` before any request or backoff.
+
+- [#4267](https://github.com/fluojs/fluo/pull/4267) [`7e9f82c`](https://github.com/fluojs/fluo/commit/7e9f82cb64afddfbf872d8d9a25eb9ea909f4bed) Thanks [@ayden94](https://github.com/ayden94)! - Treat directly injected Discord transports with non-callable `create` fields as app-owned instances, restoring initialization, readiness diagnostics, and resource ownership for both synchronous and asynchronous module registration. Preserve callable factory precedence and ownership settings.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca), [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526), [`1271a87`](https://github.com/fluojs/fluo/commit/1271a87d1599cbd7ff85fe11dd20bb3aaddc1fbe), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`8ed2fa5`](https://github.com/fluojs/fluo/commit/8ed2fa57c4e485839de546447cfd929fe2f7453a), [`536900f`](https://github.com/fluojs/fluo/commit/536900fe282790415eb94bbafb4640196c6b2af2), [`e2da5f2`](https://github.com/fluojs/fluo/commit/e2da5f29f7e5613ab15a84d77df7317cc19e5029), [`d24e1de`](https://github.com/fluojs/fluo/commit/d24e1dea0057ae1cbbd0aa200f32970b51b9caa7), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/di@3.2.0
+  - @fluojs/notifications@2.0.4
+
 ## 2.0.3
 
 ### Patch Changes

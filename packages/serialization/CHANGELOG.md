@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#4106](https://github.com/fluojs/fluo/pull/4106) [`5c0877d`](https://github.com/fluojs/fluo/commit/5c0877d06c9441467922798151dac610ef1f161c) Thanks [@ayden94](https://github.com/ayden94)! - Preserve opaque and self-serializing values in `serialize()`: built-ins created in another realm (such as through `node:vm`), `ReadableStream` and `Blob` values, and undecorated class instances, plain objects, and null-prototype records with a callable `toJSON()` now pass through unchanged instead of being flattened to `{}`. Classes with serialization metadata (including an explicit `@Expose({ excludeExtraneous: false })`) keep metadata-driven shaping even when they define `toJSON()`, and DTOs that only spoof a built-in `Symbol.toStringTag` are still walked as records.
+
+  Breaking: undecorated class instances that define a callable `toJSON()` are no longer walked field by field. `serialize()` returns the instance itself, so the final JSON output is its `toJSON()` representation instead of a record of its own enumerable fields, and `@Exclude()`/`@Expose()`/`@Transform()` rules on decorated descendants reachable only through that instance's fields are no longer applied. For example, `serialize({ price: new Money(1234) })` now writes `{"price":"12.34"}` where it previously wrote `{"price":{"cents":1234}}`.
+
+  Migration: if a response relied on the previous field-by-field output (or on decorated nested DTOs being shaped) for an undecorated class that defines `toJSON()`, either add serialization metadata to that class, for example `@Expose({ excludeExtraneous: false })`, to restore field-by-field shaping, or make its `toJSON()` return the exact payload you want to send, applying any field filtering inside `toJSON()` itself.
+
+### Patch Changes
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- [#4074](https://github.com/fluojs/fluo/pull/4074) [`b665174`](https://github.com/fluojs/fluo/commit/b665174b516b35949c52150318d068fa7623dfbc) Thanks [@ayden94](https://github.com/ayden94)! - Document SerializerInterceptor class-token provider registration in the controller module. Clarify that final JSON encoding throws for unnormalized bigint values but silently omits function and symbol object properties and replaces their array entries with null; normalize these values before writing.
+
+- [#4071](https://github.com/fluojs/fluo/pull/4071) [`bc403a1`](https://github.com/fluojs/fluo/commit/bc403a16763befeed971377c11138360f3d7a486) Thanks [@ayden94](https://github.com/ayden94)! - Ignore static field applications of Expose, Exclude, and Transform so they cannot expose, suppress, or transform same-named instance fields, including across inheritance. Preserve instance-only allowlists and ordinary instance decorator behavior without requiring migration.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca), [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526), [`1fe212d`](https://github.com/fluojs/fluo/commit/1fe212d4b49e6e2d1ef577d6ee62962e6da5bafb), [`93f2213`](https://github.com/fluojs/fluo/commit/93f22136266b93238c8db6a11160949867ce97ba), [`559fd2d`](https://github.com/fluojs/fluo/commit/559fd2df4c7a230a6bbdb4b89a23f1a5f8991f32), [`8817120`](https://github.com/fluojs/fluo/commit/8817120f21180ced38dda95b9fbbfb1133bb2a82), [`c0e0cb7`](https://github.com/fluojs/fluo/commit/c0e0cb7e67f07752c554a811a1d04e9e0e8f4337), [`7c3ded4`](https://github.com/fluojs/fluo/commit/7c3ded4f98f96ff702d3cf6466ef2e158045883e), [`31082f9`](https://github.com/fluojs/fluo/commit/31082f9e405d90edfea1646c60536316614bf7d1), [`021afd7`](https://github.com/fluojs/fluo/commit/021afd76b8c48684c1e14f051412236bd5108357), [`d642f02`](https://github.com/fluojs/fluo/commit/d642f0281c34206b9684fe2bd116a9b230c29f0e), [`c28bf37`](https://github.com/fluojs/fluo/commit/c28bf37a82d62932b30138191e28451d5c2f3b5b), [`24646e5`](https://github.com/fluojs/fluo/commit/24646e5a87e1a85bc0b822e07f619f92800e0d3c), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`ab19f61`](https://github.com/fluojs/fluo/commit/ab19f610ec89c246a771f1664d1c8a780a696285)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/http@3.3.0
+
 ## 2.0.0
 
 ### Major Changes

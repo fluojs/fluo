@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## 3.0.4
+
+### Patch Changes
+
+- [#4301](https://github.com/fluojs/fluo/pull/4301) [`ed99ead`](https://github.com/fluojs/fluo/commit/ed99eadca16a5f9718469e16a6681df51ada3dca) Thanks [@ayden94](https://github.com/ayden94)! - Release references to expired remote catalogs during continued use of `CachedRemoteI18nLoader`, even when callers never request the expired keys again.
+
+- [#4299](https://github.com/fluojs/fluo/pull/4299) [`d52135f`](https://github.com/fluojs/fluo/commit/d52135f5e325bf305664bd6d0f2b93ddf54dc96a) Thanks [@ayden94](https://github.com/ayden94)! - Prevent in-flight remote catalog loads from refilling or overwriting the cache after `invalidate()` or `clear()`. These calls still let existing loads complete for their original callers.
+
+- [#4314](https://github.com/fluojs/fluo/pull/4314) [`f6612c4`](https://github.com/fluojs/fluo/commit/f6612c450d53a416f0ca9a162dce332ae1232534) Thanks [@ayden94](https://github.com/ayden94)! - Correct typed facade examples to use an explicit service type annotation so bound translate calls reject keys outside the generated catalog.
+
+- [#4316](https://github.com/fluojs/fluo/pull/4316) [`54232b3`](https://github.com/fluojs/fluo/commit/54232b3d7dedfb2f7f9b383cc61a8e81397cab61) Thanks [@ayden94](https://github.com/ayden94)! - Generate valid catalog declarations when custom output names shadow helper type parameters or utility types, or when names such as `keyof` and `readonly` are ambiguous in type references. Preserve valid contextual names, including `as` for interfaces and `intrinsic` for namespace maps, and reject names that are invalid in their declaration position with `I18N_INVALID_OPTIONS`.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca), [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93)]:
+  - @fluojs/core@2.2.0
+
 ## 3.0.3
 
 ### Patch Changes
