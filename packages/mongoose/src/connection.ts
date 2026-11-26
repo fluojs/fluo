@@ -51,6 +51,7 @@ type AmbientSessionScope = {
   activeSession: ActiveSessionScopeHandle;
   session: MongooseSessionLike;
   readonly owner: TransactionOwner;
+  readonly requestCallback?: { running: boolean };
 };
 
 // Each native callback attempt owns its registrations and pending request work.
@@ -304,7 +305,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    */
   currentSession(): MongooseSessionLike | undefined {
     const scope = this.sessions.getStore();
-    return scope?.owner.open ? scope.session : undefined;
+    return scope && (scope.requestCallback?.running ?? scope.owner.open) ? scope.session : undefined;
   }
 
   /**
@@ -503,7 +504,17 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       const active = this.trackActiveRequestTransaction(abortContext.controller);
       currentScope.activeSession.retainRequestTransaction(active);
 
-      const request = raceWithAbortAndDrainCallback(fn, abortContext.signal)
+      const request = raceWithAbortAndDrainCallback(() => {
+        // Only the user callback keeps session visibility when the owner closes admission.
+        const requestCallback = { running: currentScope.owner.open };
+        return this.sessions.run({ ...currentScope, requestCallback }, async () => {
+          try {
+            return await fn();
+          } finally {
+            requestCallback.running = false;
+          }
+        });
+      }, abortContext.signal)
         .then((result) => evaluateResult(currentScope.owner, result, boundary?.shouldRollback))
         .finally(() => {
           abortContext.cleanup();

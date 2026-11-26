@@ -1080,6 +1080,14 @@ describe('@fluojs/mongoose', () => {
     async (mode) => {
       const events: string[] = [];
       const session = createFakeSession(events);
+      let savedSession: MongooseSessionLike | undefined;
+      let saveFailure: { reason: unknown } | undefined;
+      const document = {
+        async save(options?: { session?: MongooseSessionLike }) {
+          savedSession = options?.session;
+          return document;
+        },
+      };
       const childStarted = deferred<MongooseSessionLike | undefined>();
       const releaseChild = deferred<void>();
       const finishParentWork = deferred<void>();
@@ -1118,6 +1126,9 @@ describe('@fluojs/mongoose', () => {
         const child = mongoose.requestTransaction(async () => {
           childStarted.resolve(mongoose.currentSession());
           await releaseChild.promise;
+          await mongoose.saveDocument(document).catch((reason: unknown) => {
+            saveFailure = { reason };
+          });
           events.push('child:settled');
           return 'child-result';
         });
@@ -1170,6 +1181,13 @@ describe('@fluojs/mongoose', () => {
           activeSessions: 0,
           lifecycleState: 'stopped',
         });
+        // Shutdown masks the callback's save rejection with the public AbortError.
+        // Let the missing-session regression fail at the native session assertion only.
+        if (saveFailure && !(saveFailure.reason instanceof Error &&
+          saveFailure.reason.message === 'Mongoose document saves require an active transaction session.')) {
+          throw saveFailure.reason;
+        }
+        expect(savedSession).toBe(session);
       } finally {
         finishParentWork.resolve();
         releaseChild.resolve();
