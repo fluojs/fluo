@@ -84,7 +84,7 @@ async function readResponseBody(response: DiscordFetchResponse, signal: AbortSig
       throw signal.reason;
     }
 
-    if (isAbortError(error)) {
+    if (typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError') {
       throw error;
     }
 
