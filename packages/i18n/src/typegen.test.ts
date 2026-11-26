@@ -187,6 +187,18 @@ export interface I18nCatalogTypedService {
     { keyByNamespaceTypeName: 'intrinsic' },
     { keyByNamespaceTypeName: 'as' },
     { typedServiceTypeName: 'as' },
+    { keyTypeName: 'keyof' },
+    { keyByNamespaceTypeName: 'readonly' },
+    { keyByNamespaceTypeName: 'keyof' },
+    { keyByNamespaceTypeName: 'unique' },
+    { keyByNamespaceTypeName: 'infer' },
+    {
+      namespaceTypeName: 'infer',
+      namespaceKeyTypeName: 'keyof',
+      typedTranslateOptionsTypeName: 'readonly',
+      typedTranslateTypeName: 'unique',
+      typedServiceTypeName: '$readonly',
+    },
   ] satisfies readonly I18nCatalogTypegenOptions[])('compiles declarations and consumers with custom names %j', async (options: I18nCatalogTypegenOptions) => {
     // Given: valid and invalid consumers import the declaration text emitted by the production type generator.
     const inputs = [
@@ -255,6 +267,18 @@ export interface I18nCatalogTypedService {
       rootNames: [i18nModulePath, join(rootDir, 'generated-i18n-catalog.d.ts'), validConsumerPath],
     });
     expect(ts.getPreEmitDiagnostics(validProgram)).toEqual([]);
+    const checker = validProgram.getTypeChecker();
+    const declarationFile = validProgram.getSourceFile(join(rootDir, 'generated-i18n-catalog.d.ts'));
+    const catalogModule = declarationFile && checker.getSymbolAtLocation(declarationFile);
+    expect(catalogModule && checker.getExportsOfModule(catalogModule).map(({ name }) => name).sort()).toEqual([
+      options.keyTypeName ?? 'I18nCatalogKey',
+      options.namespaceTypeName ?? 'I18nCatalogNamespace',
+      options.keyByNamespaceTypeName ?? 'I18nCatalogKeyByNamespace',
+      options.namespaceKeyTypeName ?? 'I18nCatalogNamespaceKey',
+      options.typedTranslateOptionsTypeName ?? 'I18nCatalogTypedTranslateOptions',
+      options.typedTranslateTypeName ?? 'I18nCatalogTypedTranslate',
+      serviceName,
+    ].sort());
     expect(await generateI18nCatalogTypesFromDirectory({ rootDir, ...options })).toBe(declarations);
     const program = ts.createProgram({
       options: compilerOptions,
