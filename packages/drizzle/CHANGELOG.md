@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## 3.0.1
+
+### Patch Changes
+
+- [#4013](https://github.com/fluojs/fluo/pull/4013) [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88) Thanks [@ayden94](https://github.com/ayden94)! - Move the shared provider lifecycle hook contracts to `@fluojs/core`. New code should import the five hook types from core; existing `@fluojs/runtime` type imports remain compatible through direct re-exports.
+
+  The sixteen consumer packages listed above now reference core-owned lifecycle types in their shipped declarations. Hook signatures, execution order, signal delivery, failure cleanup, and resource ownership remain unchanged. Runtime continues to execute the hooks.
+
+  The JWT change only updates a test import and does not require a release. NestJS `beforeApplicationShutdown` remains unsupported.
+
+- [#4313](https://github.com/fluojs/fluo/pull/4313) [`5fb1827`](https://github.com/fluojs/fluo/commit/5fb18273a55d09ca4096b270122bd27544865cd4) Thanks [@ayden94](https://github.com/ayden94)! - Infer the native transaction handle and options from the registered Drizzle database when those type arguments are omitted. This restores cast-free libSQL and PostgreSQL registration and wrapper/facade usage, including typed dependencies in `forRootAsync` factories. Explicit type arguments and transaction runtime behavior are unchanged.
+
+- [#4311](https://github.com/fluojs/fluo/pull/4311) [`51af097`](https://github.com/fluojs/fluo/commit/51af0975f9ea5ff05c4024637d7946943b250b91) Thanks [@ayden94](https://github.com/ayden94)! - Roll back a native Drizzle request transaction if the request is cancelled while inherited child callbacks settle before commit. This applies even with after-commit hooks or `requireAfterCommit` and preserves cancellation behavior once native commit has started.
+
+- [#4228](https://github.com/fluojs/fluo/pull/4228) [`8ee09f7`](https://github.com/fluojs/fluo/commit/8ee09f7e86cb5247da65fed94848933e62213695) Thanks [@ayden94](https://github.com/ayden94)! - Propagate a nested Drizzle `requestTransaction(...)` call's additional `AbortSignal` into the nested callback's ambient transaction context so descendant `requestTransaction(...)` calls observe the same composed cancellation signal. Cancelling only the nested signal now rejects that nested call and its descendants with the nested cancellation reason without cancelling the outer request signal, independent sibling request work, or the reused active transaction handle, on both the native driver and fail-open paths. Package-root README updates document the propagation, which still does not add rollback atomicity to fail-open boundaries or interrupt user work that is already running.
+
+- [#4219](https://github.com/fluojs/fluo/pull/4219) [`020502f`](https://github.com/fluojs/fluo/commit/020502f6b2e0c422e47c805924233c3d45cae152) Thanks [@ayden94](https://github.com/ayden94)! - Release the rollback observation scope when a directly connected client's `BEGIN` rejects, so the next independent transaction reuses the same client without a manual release, `ROLLBACK`, or observer recreation. Overlapped `BEGIN` calls from other observation scopes stay rejected while the first is pending, and a rejected `BEGIN` never counts as rollback confirmation.
+
+- [#4226](https://github.com/fluojs/fluo/pull/4226) [`39fd20a`](https://github.com/fluojs/fluo/commit/39fd20a3304b7dde87f88219e9914ddd61d4992c) Thanks [@ayden94](https://github.com/ayden94)! - Fix rejected nested Drizzle boundaries changing the owner's cancellation outcome. A nested `transaction(...)` or `requestTransaction(...)` call inside an active native transaction that passed native options together with `requireAfterCommit: true` was rejected for the unsupported nested options, but still enabled the requirement on the shared owner. A late request cancellation arriving while the outer native transaction committed then returned the callback result instead of rejecting with `AbortError`. The requirement is now applied only after the nested boundary is admitted, so a rejected child never changes the owner's result; validly admitted nested requirements still prioritize confirmed commit success.
+
+- [#4230](https://github.com/fluojs/fluo/pull/4230) [`8d85512`](https://github.com/fluojs/fluo/commit/8d85512e23be52f2fbfed650080f2960eb85bd7f) Thanks [@ayden94](https://github.com/ayden94)! - Apply the package owner capability check to `@Transaction` decorators invoked with only `requireAfterCommit: true`. A target that supplies `transaction` and a callable `afterCommit` but is not a compatible same-realm package owner (missing owner/version marker or incomplete consumed surface) is now rejected with `AfterCommitCapabilityError` before the target runner, the decorated method, or any hook executes, restoring the documented capability preflight. Omitting the requirement or passing `requireAfterCommit: false` keeps the legacy allowed path, native option positions, and fail-open behavior unchanged, and `shouldRollback` keeps its existing `TransactionRollbackCapabilityError` priority.
+
+- [#4011](https://github.com/fluojs/fluo/pull/4011) [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93) Thanks [@ayden94](https://github.com/ayden94)! - Remove package-wide Node engine installation gates from shared runtime packages
+  and existing Bun/Workers integration paths. This also removes transitive
+  first-party Node engine gates from native adapters.
+
+  Supported Node versions remain `>=24.0.0 <27`; Node-specific subpaths, crypto,
+  drivers, optional peers and native runtime limitations retain their documented
+  contracts. Omitting `engines.node` does not add support for unverified runtimes
+  or make every exported feature portable.
+
+- Updated dependencies [[`87b37b5`](https://github.com/fluojs/fluo/commit/87b37b5b33c15fea5197ed6c635d0e11cbe03b70), [`c7d8153`](https://github.com/fluojs/fluo/commit/c7d8153fce0974fad55423591374ba41ac58ed36), [`59e9955`](https://github.com/fluojs/fluo/commit/59e995560248a19533e1d0e4d58cf10ed57555e1), [`54dced9`](https://github.com/fluojs/fluo/commit/54dced97e2c87646f0ff1f782dea360ac3393e88), [`81e5c81`](https://github.com/fluojs/fluo/commit/81e5c81e8587cc39f1ce9f009e74e03046d792ca), [`0292be2`](https://github.com/fluojs/fluo/commit/0292be25da54ccf22ac24feebc6b971822b59526), [`1271a87`](https://github.com/fluojs/fluo/commit/1271a87d1599cbd7ff85fe11dd20bb3aaddc1fbe), [`064609c`](https://github.com/fluojs/fluo/commit/064609ce31bf8aa8ed1eb9f1ae0852e67b2871ac), [`2a05748`](https://github.com/fluojs/fluo/commit/2a0574891d6de44b866b8ca337bf01d782bd5fde), [`ac7ce8d`](https://github.com/fluojs/fluo/commit/ac7ce8d09a0631ab993ca326a2680dd80fe30380), [`5b2a293`](https://github.com/fluojs/fluo/commit/5b2a293c49533e4f536c3328e255bf83df3c4c9d), [`46f9b46`](https://github.com/fluojs/fluo/commit/46f9b46bf9780e956d36666bad2750f4f68d050f), [`bae15c5`](https://github.com/fluojs/fluo/commit/bae15c50cfb9f8ccaf2eaceebb7e87a80b399031), [`fb64bc6`](https://github.com/fluojs/fluo/commit/fb64bc642a21b31dd80040971f1d0f3be03742ef), [`5396767`](https://github.com/fluojs/fluo/commit/5396767931116b2b0ec75eda77f6e39aab9a5c14), [`a436c3b`](https://github.com/fluojs/fluo/commit/a436c3b855f05087d04ef921e05eac9e53f7de93), [`b1a5604`](https://github.com/fluojs/fluo/commit/b1a5604c7b7430d239342c15446c9da26df48ab4), [`73d14ba`](https://github.com/fluojs/fluo/commit/73d14ba7f2b1e32976a2578d2904861c939a277d), [`b9c267d`](https://github.com/fluojs/fluo/commit/b9c267d1bf609f5f6d720ac9888f45d93c274ab8), [`a300bde`](https://github.com/fluojs/fluo/commit/a300bde7122ba41c39c25e101bd485a115538505), [`abc2046`](https://github.com/fluojs/fluo/commit/abc2046f13836b6972b188b06598998706ff3416), [`8f80684`](https://github.com/fluojs/fluo/commit/8f80684659d786b6866c6ac852c3ba0e8274c79e)]:
+  - @fluojs/core@2.2.0
+  - @fluojs/runtime@4.0.0
+  - @fluojs/di@3.2.0
+  - @fluojs/persistence@0.1.1
+
 ## 3.0.0
 
 ### Major Changes
