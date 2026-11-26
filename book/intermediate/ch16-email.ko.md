@@ -193,6 +193,8 @@ export class AppModule {}
 
 루프 안에서 이메일 1,000개를 직접 보내면 이벤트 루프를 오래 점유하거나 공급자 속도 제한에 걸리기 쉽습니다. 대량 발송은 `@fluojs/email/queue` 서브패스로 백그라운드 작업에 넘기는 편이 안전합니다.
 
+아래 예제를 사용하려면 부트스트랩 시 `QueueModule.forRoot()`에서 이름 없는 기본 Redis 클라이언트에 접근할 수 있어야 하며, Redis 서버에도 연결할 수 있어야 합니다. 앱에 이름 없는 기본 `RedisModule.forRoot(...)` 등록이 이미 있다면 그 등록을 재사용합니다. `global: false`처럼 등록 범위가 제한되어 Queue에서 보이지 않는다면, 모듈의 `imports`와 `exports`를 통해 같은 등록에 접근할 수 있게 합니다. 앱에 이름 없는 기본 Redis 등록이 없을 때만 [Queue 빠른 시작](../../packages/queue/README.ko.md#빠른-시작)에 따라 새로 등록합니다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
@@ -286,25 +288,30 @@ if (snapshot.readiness.status !== 'ready') {
 
 FluoShop에서는 주문 확인과 법적 보관이 필요한 주문 요약본 전송에 이메일을 사용합니다. 사용자가 나중에 주문 내용을 다시 확인해야 하는 경우가 많기 때문에, 이메일은 실시간 알림과 다른 지속적인 전달 채널 역할을 합니다.
 
+[§16.6](#166-queue-backed-bulk-delivery)의 이메일 채널, 큐 어댑터, 워커를 등록하고, [§16.7](#167-template-rendering)의 방식으로 `order-success` 주문 템플릿을 렌더링하도록 앱을 구성했다고 가정합니다. 단건 `dispatch()`는 큐 어댑터가 있어도 옵션을 생략하면 직접 발송하므로, 주문 확인 메일을 워커에 넘기려면 `{ queue: true }`를 명시합니다. 이 선택은 `dispatchMany()`의 `bulkThreshold`나 호출별 큐 선택 규칙을 바꾸지 않습니다.
+
 ```typescript
 async sendOrderConfirmation(order: Order) {
-  await this.notifications.dispatch({
-    channel: 'email',
-    recipients: [order.customerEmail],
-    subject: 'FluoShop 주문 확인',
-    template: 'order-success',
-    payload: {
-      templateData: {
-        orderId: order.id,
-        items: order.items,
-        total: order.total,
+  return this.notifications.dispatch(
+    {
+      channel: 'email',
+      recipients: [order.customerEmail],
+      subject: 'FluoShop order confirmation',
+      template: 'order-success',
+      payload: {
+        templateData: {
+          orderId: order.id,
+          items: order.items,
+          total: order.total,
+        },
       },
     },
-  });
+    { queue: true },
+  );
 }
 ```
 
-오케스트레이션 계층을 거치면 SMTP 서버나 외부 공급자가 잠시 불안정해도 queued email delivery가 내장 worker 기본값을 일관되게 사용할 수 있습니다. FluoShop이 나중에 커스텀 worker로 교체한다면 email API에 per-job retry 또는 backoff 설정이 있다고 가정하지 말고, 해당 기본값을 의도적으로 미러링해야 합니다. 주문 처리와 메일 전송 실패 대응이 분리되므로, 사용자의 결제 흐름을 불필요하게 지연시키지 않습니다.
+호출자는 반환된 Promise를 `await`해 큐 등록 결과를 기다립니다. 성공 결과의 `status: 'queued'`는 큐가 작업을 수락했다는 뜻이고, `deliveryId`는 큐 작업 ID입니다. 메일 공급자의 수락, 수신함 도달, 최종 발송 성공을 뜻하지 않습니다. 이후 메일 전송과 해당 작업의 재시도는 내장 워커 경로에서 처리합니다. FluoShop이 나중에 커스텀 워커로 교체한다면 이메일 API에 작업별 retry 또는 backoff 옵션이 있다고 가정하지 말고, 필요한 경우 워커에서 기본값을 재현해야 합니다.
 
 ## Conclusion
 
