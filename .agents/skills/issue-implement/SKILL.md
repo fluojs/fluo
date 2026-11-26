@@ -73,6 +73,20 @@ to preparation; do not duplicate it in another runner merely to obtain a
 receipt. This check grants neither implementers nor reviewers lead capture
 authority.
 
+For test-only executable fix-back, follow the lead-owned
+[decision and evidence retention rules](../execute-lane/references/operations.md#test-only-executable-fix-back).
+A focused pass does not establish remediation: the complete test/fixture
+projection onto the actual previous head must fail in the named test-body
+assertion with the supported runner, and that same selection must pass on the
+corrected head with identical command and argv. If the projection passes,
+return the observation to the lead rather than claim remediation; a diagnostic
+mutation failure cannot supply RED. The missing evidence is non-fixable
+preparation input, not a product verdict. Leave any required canonical blocker
+unresolved for maintainer/scope adjudication. Do not relabel the fix-back;
+only independently extra coverage qualifies for separately approved ordinary
+implementation after original acceptance and review are satisfied without
+it or mutation evidence and no required blocker remains.
+
 Before dispatch in either mode, the lead runs
 `../execute-lane/scripts/workflow-preparation.mjs implement <input.json>`.
 The wrapper is exactly `{version:1,stage:"implement",root,

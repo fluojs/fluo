@@ -102,6 +102,22 @@ native RED/GREEN or the Git-only release-metadata evidence below. Ordinary
 implementation and conflict resolution need neither. Missing or inconsistent
 evidence stops before dispatch as non-fixable `input-preparation`.
 
+The lead applies the
+[test-only executable fix-back rules](../execute-lane/references/operations.md#test-only-executable-fix-back)
+before dispatch. A pass of the complete test/fixture projection on the actual
+previous head is not RED, even if a separate diagnostic mutation fails; retain
+those observations separately under `execute-lane`. The supported runner must
+show the genuine named test-body assertion failure on the projected previous
+head at the required source location, then a pass of the same selection on
+the corrected head with identical command and argv. Without that pair, stop
+as `input-preparation`, `fix_back_eligible:false`: no reviewer verdict, no PASS
+and no remediation of the original required blocker. Preserve it as unresolved
+for maintainer/scope adjudication. Neither the bounded Changeset-only path
+below nor a mode change can admit it. Separately approved extra coverage can
+go through ordinary implementation only after the original acceptance and
+review are independently satisfied without that coverage or mutation evidence
+and no required blocker remains.
+
 For executable fix-back, the lead prepares a separate clean checkout at
 `previous_head_sha`, then runs:
 
