@@ -840,7 +840,7 @@ describe('DiscordModule', () => {
     });
   });
 
-  it('creates a webhook-first transport with an explicit fetch-compatible boundary', async () => {
+  it('maps a successful webhook response to a DiscordChannel delivery and externalId', async () => {
     const calls: Array<{ body?: string; input: string; method?: string }> = [];
     const rawResponseBody = '{ "channel_id": "chan-1", "guild_id": "guild-1", "id": "msg-1" }';
     const fetchLike: DiscordFetchLike = async (input, init) => {
@@ -859,19 +859,30 @@ describe('DiscordModule', () => {
       webhookUrl: 'https://discord.com/api/webhooks/123/abc',
     });
 
-    const result = await transport.send(
-      {
-        attachments: [],
-        components: [],
-        content: 'Webhook path',
-        embeds: [],
-        threadId: 'thread-ops',
-      },
+    const container = new Container();
+    container.register(...moduleProviders(DiscordModule.forRoot({ transport })));
+    const service = await container.resolve(DiscordService);
+    const channel = await container.resolve(DiscordChannel);
+    await service.onModuleInit();
+
+    const result = await channel.send(
+      { channel: 'discord', payload: { content: 'Webhook path' }, recipients: ['thread-ops'] },
       {},
     );
 
-    expect(result).toMatchObject({ messageId: 'msg-1', ok: true, statusCode: 200, threadId: 'thread-ops' });
-    expect(result.response).toBe(rawResponseBody);
+    expect(result).toMatchObject({
+      externalId: 'msg-1',
+      receipt: {
+        channelId: 'chan-1',
+        guildId: 'guild-1',
+        messageId: 'msg-1',
+        ok: true,
+        response: rawResponseBody,
+        statusCode: 200,
+        threadId: 'thread-ops',
+      },
+      status: 'delivered',
+    });
     expect(calls).toEqual([
       {
         body: JSON.stringify({ content: 'Webhook path' }),
@@ -879,6 +890,34 @@ describe('DiscordModule', () => {
         method: 'POST',
       },
     ]);
+  });
+
+  it('rejects a DiscordChannel send cancelled during webhook body reading without delivering or reposting', async () => {
+    const controller = new AbortController();
+    const reason = new Error('caller cancelled the channel send');
+    const fetchLike = vi.fn<DiscordFetchLike>(async (_input, init) => ({
+      ok: true,
+      status: 200,
+      async text() {
+        controller.abort(reason);
+        init?.signal?.throwIfAborted();
+        return '{"id":"msg-1"}';
+      },
+    }));
+    const transport = createDiscordWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    });
+    const container = new Container();
+    container.register(...moduleProviders(DiscordModule.forRoot({ transport })));
+    const service = await container.resolve(DiscordService);
+    const channel = await container.resolve(DiscordChannel);
+    await service.onModuleInit();
+
+    await expect(
+      channel.send({ channel: 'discord', payload: { content: 'Webhook path' } }, { signal: controller.signal }),
+    ).rejects.toBe(reason);
+    expect(fetchLike).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.objectContaining({ method: 'POST' }));
   });
 
   it('serializes the documented Discord webhook payload fields through the built-in transport', async () => {
