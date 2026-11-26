@@ -353,7 +353,7 @@ The renderer runs only when both `template` and `renderer` are present. Its `sub
 
 When `@fluojs/notifications` should offload bulk email delivery to the background, import `QueueModule`, inject the `Queue` facade with `getQueueToken()`, call `createEmailNotificationsQueueAdapter(queue)`, and register `EmailNotificationsQueueWorker` as an application provider. The root `EmailModule` does not register the worker automatically, so applications that never import `@fluojs/email/queue` do not need `@fluojs/queue` at runtime.
 
-Before using this example, make sure `QueueModule.forRoot()` can access an unnamed default Redis client at bootstrap and that the Redis server is reachable. If your app already has a default `RedisModule.forRoot(...)` registration visible to Queue, reuse it. Otherwise, follow the [Queue Quick Start](../queue/README.md#quick-start) to register it.
+Before using this example, make sure `QueueModule.forRoot()` can access an unnamed default Redis client at bootstrap and that the Redis server is reachable. If your app already has an unnamed default `RedisModule.forRoot(...)` registration, reuse it. If that registration is scoped and not visible to Queue, for example with `global: false`, make the same registration accessible through module `imports` and `exports`. Follow the [Queue Quick Start](../queue/README.md#quick-start) to add an unnamed default registration only if the app has none.
 
 ```typescript
 import { Module } from '@fluojs/core';

@@ -193,7 +193,7 @@ export class AppModule {}
 
 루프 안에서 이메일 1,000개를 직접 보내면 이벤트 루프를 오래 점유하거나 공급자 속도 제한에 걸리기 쉽습니다. 대량 발송은 `@fluojs/email/queue` 서브패스로 백그라운드 작업에 넘기는 편이 안전합니다.
 
-아래 예제를 사용하려면 부트스트랩 시 `QueueModule.forRoot()`에서 이름 없는 기본 Redis 클라이언트에 접근할 수 있어야 하며, Redis 서버에도 연결할 수 있어야 합니다. Queue에서 접근할 수 있는 기본 `RedisModule.forRoot(...)` 등록이 앱에 이미 있다면 그대로 사용합니다. 없다면 [Queue 빠른 시작](../../packages/queue/README.ko.md#빠른-시작)에 따라 등록합니다.
+아래 예제를 사용하려면 부트스트랩 시 `QueueModule.forRoot()`에서 이름 없는 기본 Redis 클라이언트에 접근할 수 있어야 하며, Redis 서버에도 연결할 수 있어야 합니다. 앱에 이름 없는 기본 `RedisModule.forRoot(...)` 등록이 이미 있다면 그 등록을 재사용합니다. `global: false`처럼 등록 범위가 제한되어 Queue에서 보이지 않는다면, 모듈의 `imports`와 `exports`를 통해 같은 등록에 접근할 수 있게 합니다. 앱에 이름 없는 기본 Redis 등록이 없을 때만 [Queue 빠른 시작](../../packages/queue/README.ko.md#빠른-시작)에 따라 새로 등록합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';

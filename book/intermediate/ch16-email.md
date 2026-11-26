@@ -193,7 +193,7 @@ After integration, calls to `NotificationsService.dispatch({ channel: 'email', .
 
 Sending 1,000 emails directly inside a loop can occupy the event loop for too long or hit provider rate limits. Bulk delivery is safer when handed off to background jobs through the `@fluojs/email/queue` subpath.
 
-To use the example below, `QueueModule.forRoot()` must be able to access an unnamed default Redis client at bootstrap, and the Redis server must be reachable. If your app already has a default `RedisModule.forRoot(...)` registration visible to Queue, reuse it. Otherwise, follow the [Queue Quick Start](../../packages/queue/README.md#quick-start) to register it.
+To use the example below, `QueueModule.forRoot()` must be able to access an unnamed default Redis client at bootstrap, and the Redis server must be reachable. If your app already has an unnamed default `RedisModule.forRoot(...)` registration, reuse it. If that registration is scoped and not visible to Queue, for example with `global: false`, make the same registration accessible through module `imports` and `exports`. Follow the [Queue Quick Start](../../packages/queue/README.md#quick-start) to add an unnamed default registration only if the app has none.
 
 ```typescript
 import { Module } from '@fluojs/core';
