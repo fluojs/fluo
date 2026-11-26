@@ -12,6 +12,7 @@ import {
   AfterCommitError,
   MongooseConnection,
   Transaction,
+  TransactionRollbackCapabilityError,
 } from './index.js';
 
 function barrier() {
@@ -133,7 +134,10 @@ describe.each(['manual', 'delegated'] as const)('Mongoose afterCommit %s boundar
     }
     const service = new Service();
     const value = await conn.requestTransaction(async () => {
-      conn.afterCommit(() => { events.push('outer'); });
+      conn.afterCommit(() => {
+        expect(conn.currentSession()).toBeUndefined();
+        events.push('outer');
+      });
       await conn.requestTransaction(async () => {
         conn.afterCommit(() => { events.push('nested'); });
       }, undefined, { requireAfterCommit: true });
@@ -559,6 +563,53 @@ describe('Mongoose afterCommit ownership and public API', () => {
       expect(() => conn.afterCommit(() => {})).toThrow(/active|native/i);
     });
     expect(() => conn.afterCommit(() => {})).toThrow(/active|native/i);
+  });
+
+  describe.each(['transaction', 'requestTransaction'] as const)('%s manual session preflight', (entry) => {
+    it.each(['commitTransaction', 'endSession'] as const)('retires a session missing %s before starting work', async (missing) => {
+      const { conn, events, session } = fixture('manual');
+      const callback = vi.fn(async () => 42);
+      Reflect.deleteProperty(session, missing);
+      const options = { requireAfterCommit: true };
+
+      const transaction = entry === 'transaction'
+        ? conn.transaction(callback, options)
+        : conn.requestTransaction(callback, undefined, options);
+
+      await expect(transaction).rejects.toBeInstanceOf(AfterCommitCapabilityError);
+      expect(callback).not.toHaveBeenCalled();
+      expect(session.startTransaction).not.toHaveBeenCalled();
+      expect(session.abortTransaction).not.toHaveBeenCalled();
+      expect(events).toEqual(missing === 'endSession' ? [] : ['end']);
+      expect(conn.currentSession()).toBeUndefined();
+      expect(conn.createPlatformStatusSnapshot().details).toMatchObject({
+        activeSessions: 0,
+        activeRequestTransactions: 0,
+      });
+      await conn.onApplicationShutdown();
+      expect(events.at(-1)).toBe('dispose');
+    });
+
+    it('preserves rollback capability error priority when both options reject the session', async () => {
+      const { root, session } = fixture('manual');
+      Reflect.deleteProperty(session, 'commitTransaction');
+      const beginAttempt = vi.fn(() => ({ confirmRollback: () => true as const }));
+      const conn = new MongooseConnection(root, undefined, {
+        strictTransactions: false,
+        rollbackObserver: { run: (callback) => callback(), beginAttempt },
+      });
+      const callback = vi.fn(async () => 42);
+      const options = { requireAfterCommit: true, shouldRollback: () => true };
+
+      const transaction = entry === 'transaction'
+        ? conn.transaction(callback, options)
+        : conn.requestTransaction(callback, undefined, options);
+
+      await expect(transaction).rejects.toBeInstanceOf(TransactionRollbackCapabilityError);
+      expect(callback).not.toHaveBeenCalled();
+      expect(beginAttempt).not.toHaveBeenCalled();
+      expect(session.endSession).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('preflights an explicit legacy transaction-only decorator target only when required', async () => {
