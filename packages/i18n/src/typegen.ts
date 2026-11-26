@@ -19,7 +19,7 @@ const RESERVED_TYPE_NAMES = new Set([
   'enum', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof',
   'new', 'null', 'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void',
   'while', 'with', 'implements', 'interface', 'let', 'package', 'private', 'protected', 'public',
-  'static', 'yield', 'as', 'await', 'any', 'bigint', 'boolean', 'never', 'number', 'object', 'string',
+  'static', 'yield', 'await', 'any', 'bigint', 'boolean', 'never', 'number', 'object', 'string',
   'symbol', 'undefined', 'unknown',
 ]);
 
@@ -73,9 +73,8 @@ export interface I18nCatalogTypegenDirectoryOptions extends I18nCatalogTypegenOp
   readonly locales?: readonly I18nLocale[];
 }
 
-function assertIdentifier(value: string | undefined, fallback: string, label: string): string {
-  const name = value ?? fallback;
-  if (!IDENTIFIER_PATTERN.test(name) || RESERVED_TYPE_NAMES.has(name)) {
+function assertIdentifier(name: string, label: string, isInterface = false): string {
+  if (!IDENTIFIER_PATTERN.test(name) || RESERVED_TYPE_NAMES.has(name) || (name === 'as' && !isInterface)) {
     throw new I18nError(`${label} must be a valid TypeScript identifier.`, 'I18N_INVALID_OPTIONS');
   }
 
@@ -186,8 +185,10 @@ function renderTypedHelpers(names: {
   const translateOptions = identifiers.has('Omit')
     ? "{ [Property in keyof import('@fluojs/i18n').I18nTranslateOptions as Property extends 'namespace' ? never : Property]: import('@fluojs/i18n').I18nTranslateOptions[Property] }"
     : "Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>";
+  // At the start of a type alias RHS, TypeScript parses bare `intrinsic` as a keyword.
+  const namespaceMapReference = names.keyByNamespaceTypeName === 'intrinsic' ? '(intrinsic)' : names.keyByNamespaceTypeName;
   return [
-    `export type ${names.namespaceKeyTypeName}<${namespaceParameter} extends ${names.namespaceTypeName}> = ${names.keyByNamespaceTypeName}[${namespaceParameter}];`,
+    `export type ${names.namespaceKeyTypeName}<${namespaceParameter} extends ${names.namespaceTypeName}> = ${namespaceMapReference}[${namespaceParameter}];`,
     `export type ${names.typedTranslateOptionsTypeName} = ${translateOptions};`,
     `export type ${names.typedTranslateTypeName} = <${keyParameter} extends ${names.keyTypeName}>(`,
     `  key: ${keyParameter},`,
@@ -258,32 +259,30 @@ export function generateI18nCatalogTypes(
     throw new I18nError('Catalog typegen inputs must be an array.', 'I18N_INVALID_OPTIONS');
   }
 
-  const keyTypeName = assertIdentifier(options.keyTypeName, DEFAULT_KEY_TYPE_NAME, 'Catalog typegen keyTypeName');
-  const namespaceTypeName = assertIdentifier(options.namespaceTypeName, DEFAULT_NAMESPACE_TYPE_NAME, 'Catalog typegen namespaceTypeName');
+  const keyTypeName = assertIdentifier(options.keyTypeName ?? DEFAULT_KEY_TYPE_NAME, 'Catalog typegen keyTypeName');
+  const namespaceTypeName = assertIdentifier(options.namespaceTypeName ?? DEFAULT_NAMESPACE_TYPE_NAME, 'Catalog typegen namespaceTypeName');
   const keyByNamespaceTypeName = assertIdentifier(
-    options.keyByNamespaceTypeName,
-    DEFAULT_KEY_BY_NAMESPACE_TYPE_NAME,
+    options.keyByNamespaceTypeName ?? DEFAULT_KEY_BY_NAMESPACE_TYPE_NAME,
     'Catalog typegen keyByNamespaceTypeName',
+    // Without a namespace, the map is emitted as a type alias instead of an interface.
+    options.keyByNamespaceTypeName === 'as' && inputs.some((input) => input?.namespace !== undefined),
   );
   const namespaceKeyTypeName = assertIdentifier(
-    options.namespaceKeyTypeName,
-    DEFAULT_NAMESPACE_KEY_TYPE_NAME,
+    options.namespaceKeyTypeName ?? DEFAULT_NAMESPACE_KEY_TYPE_NAME,
     'Catalog typegen namespaceKeyTypeName',
   );
   const typedTranslateTypeName = assertIdentifier(
-    options.typedTranslateTypeName,
-    DEFAULT_TYPED_TRANSLATE_TYPE_NAME,
+    options.typedTranslateTypeName ?? DEFAULT_TYPED_TRANSLATE_TYPE_NAME,
     'Catalog typegen typedTranslateTypeName',
   );
   const typedTranslateOptionsTypeName = assertIdentifier(
-    options.typedTranslateOptionsTypeName,
-    DEFAULT_TYPED_TRANSLATE_OPTIONS_TYPE_NAME,
+    options.typedTranslateOptionsTypeName ?? DEFAULT_TYPED_TRANSLATE_OPTIONS_TYPE_NAME,
     'Catalog typegen typedTranslateOptionsTypeName',
   );
   const typedServiceTypeName = assertIdentifier(
-    options.typedServiceTypeName,
-    DEFAULT_TYPED_SERVICE_TYPE_NAME,
+    options.typedServiceTypeName ?? DEFAULT_TYPED_SERVICE_TYPE_NAME,
     'Catalog typegen typedServiceTypeName',
+    true,
   );
   const generatedIdentifiers = [
     keyTypeName,

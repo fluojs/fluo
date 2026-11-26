@@ -184,6 +184,9 @@ export interface I18nCatalogTypedService {
     { typedServiceTypeName: 'Key', keyTypeName: 'Key_', namespaceTypeName: 'Namespace' },
     { keyTypeName: 'Omit', keyByNamespaceTypeName: 'Record' },
     { keyTypeName: 'intrinsic', namespaceTypeName: 'type', typedServiceTypeName: 'interfaceName' },
+    { keyByNamespaceTypeName: 'intrinsic' },
+    { keyByNamespaceTypeName: 'as' },
+    { typedServiceTypeName: 'as' },
   ] satisfies readonly I18nCatalogTypegenOptions[])('compiles declarations and consumers with custom names %j', async (options: I18nCatalogTypegenOptions) => {
     // Given: valid and invalid consumers import the declaration text emitted by the production type generator.
     const inputs = [
@@ -193,7 +196,6 @@ export interface I18nCatalogTypedService {
     await writeCatalog('en', 'admin/common', inputs[0].messages);
     await writeCatalog('en', 'common', inputs[1].messages);
     const declarations = generateI18nCatalogTypes(inputs, options);
-    expect(await generateI18nCatalogTypesFromDirectory({ rootDir, ...options })).toBe(declarations);
     const serviceName = options.typedServiceTypeName ?? 'I18nCatalogTypedService';
     const i18nModulePath = join(rootDir, 'i18n-module.d.ts');
     const validConsumerPath = join(rootDir, 'valid-consumer.ts');
@@ -246,6 +248,7 @@ export interface I18nCatalogTypedService {
       rootNames: [i18nModulePath, join(rootDir, 'generated-i18n-catalog.d.ts'), validConsumerPath],
     });
     expect(ts.getPreEmitDiagnostics(validProgram)).toEqual([]);
+    expect(await generateI18nCatalogTypesFromDirectory({ rootDir, ...options })).toBe(declarations);
     const program = ts.createProgram({
       options: compilerOptions,
       rootNames: [i18nModulePath, validConsumerPath, invalidConsumerPath],
@@ -304,13 +307,25 @@ export interface I18nCatalogTypedService {
     'keyTypeName', 'namespaceTypeName', 'keyByNamespaceTypeName', 'namespaceKeyTypeName',
     'typedTranslateOptionsTypeName', 'typedTranslateTypeName', 'typedServiceTypeName',
   ] as const)('rejects reserved declaration names for %s through both entry points', async (option) => {
-    await writeCatalog('en', 'common', { title: 'Welcome' });
+    const messages = { title: 'Welcome' };
+    await writeCatalog('en', 'common', messages);
 
-    for (const name of ['class', 'string', 'void', 'null', 'await', 'as']) {
+    const names = ['class', 'string', 'void', 'null', 'await'];
+    if (option !== 'keyByNamespaceTypeName' && option !== 'typedServiceTypeName') {
+      names.push('as');
+    }
+    for (const name of names) {
       const options = { [option]: name };
-      expectI18nThrow(() => generateI18nCatalogTypes([], options), 'I18N_INVALID_OPTIONS');
+      expectI18nThrow(() => generateI18nCatalogTypes([{ locale: 'en', namespace: 'common', messages }], options), 'I18N_INVALID_OPTIONS');
       await expectI18nRejection(() => generateI18nCatalogTypesFromDirectory({ rootDir, ...options }), 'I18N_INVALID_OPTIONS');
     }
+  });
+
+  it('rejects as for the namespace map when it is emitted as a type alias', async () => {
+    const options = { keyByNamespaceTypeName: 'as' };
+
+    expectI18nThrow(() => generateI18nCatalogTypes([], options), 'I18N_INVALID_OPTIONS');
+    await expectI18nRejection(() => generateI18nCatalogTypesFromDirectory({ rootDir, ...options }), 'I18N_INVALID_OPTIONS');
   });
 
   it.each([
