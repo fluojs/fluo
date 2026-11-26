@@ -3529,12 +3529,16 @@ const readinessFixture = (t, predictions = { 42: ['docs/shared.md'], 43: ['docs/
   }
   writeFileSync(f.lanePath, JSON.stringify(lane));
   const planIssue = issue => JSON.parse(f.cli('plan', ['--lane', f.lanePath, '--issue', String(issue)]).stdout);
-  const implementIssue = issue => {
-    if (issue === 42) f.implement();
-    else {
+  const implementIssue = (issue, file) => {
+    if (issue === 42) {
+      f.implement();
+      if (file) f.commit(file, 'implementation 42\n');
+    } else {
       const worktree = join(f.root, `.worktrees/issue-${issue}`);
       f.git(f.root, 'worktree', 'add', '-b', `issue-${issue}`, worktree, 'main');
-      writeFileSync(join(worktree, `docs/issue-${issue}.md`), `implementation ${issue}\n`);
+      const path = join(worktree, file ?? `docs/issue-${issue}.md`);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, `implementation ${issue}\n`);
       f.git(worktree, 'add', '.');
       f.git(worktree, '-c', 'commit.gpgsign=false', 'commit', '-m', `implement ${issue}`);
     }
@@ -3545,6 +3549,189 @@ const readinessFixture = (t, predictions = { 42: ['docs/shared.md'], 43: ['docs/
   const all = () => JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout);
   return { ...f, planIssue, implementIssue, recordIssue, readiness, all };
 };
+
+test('#4323 review preparation: exact grant releases the live overlap and recovery re-enters at a new sequence', () =>
+  withGatedWatch({
+    makeFixture: context => {
+      const file = 'src/shared.ts';
+      const f = readinessFixture(context, { 42: [file], 43: [file] });
+      for (const issue of [42, 43]) f.implementIssue(issue, file);
+      const lane = JSON.parse(readFileSync(f.lanePath));
+      lane.retry_policy = { retry_count_is_terminal: false, max_same_failure_repeats: null,
+        max_wall_clock_minutes: null, stop_on_child_contract_error: true };
+      writeFileSync(f.lanePath, JSON.stringify(lane));
+      f.state.prs = { 'issue-42': { number: 142, state: 'OPEN', headRefOid: f.git(f.root, 'rev-parse', 'main'),
+        mergeable: 'MERGEABLE', statusCheckRollup: [{ state: 'PENDING' }] } };
+      f.update();
+      f.recordIssue(42, 'review', { ok: false });
+      f.recordIssue(42, 'implement', { ok: false });
+      assert.equal(f.planIssue(42).decision.action, 'review');
+      assert.equal(f.planIssue(43).decision.action, 'wait-preflight-overlap');
+      return f;
+    },
+    gate: "process.argv[2]==='api' && process.argv.some(arg=>arg.includes('ExternalOverlapPullRequests'))",
+  }, async ({ f, tick, output }) => {
+    const firstTick = await tick(); // Supplementary observation, after the first snapshot unlocked.
+    const readiness = f.readiness(42);
+    const request = { reason: 'prior-head-red-unavailable', fix_back_eligible: false,
+      head_sha: readiness.head, policy_sha256: readiness.value.policy_sha256, sequence: readiness.value.sequence };
+    const record = (value = request, ok = true) => f.cli('record-review-preparation-blocker',
+      [...f.common, '--value', JSON.stringify(value)], ok);
+    const blocker = { type: 'input-preparation', phase: 'review', ...request };
+    const expected = JSON.parse(readFileSync(f.lanePath));
+    const events = () => readRetroEvents(f.root, 'fixture').filter(event => event.kind !== 'observation');
+    const priorEvents = events();
+
+    // Leave the watch paused until the atomic post-state has been inspected.
+    record();
+    expected.issues[42].blocker = blocker;
+    expected.issues[42].facts['review-readiness'].value.active = false;
+    assert.deepEqual(JSON.parse(readFileSync(f.lanePath)), expected);
+    const blockedBytes = readFileSync(f.lanePath);
+    record();
+    assert.deepEqual(readFileSync(f.lanePath), blockedBytes);
+    assert.deepEqual(events(), priorEvents);
+    assert.equal(f.planIssue(42).decision.action, 'blocked');
+    assert.equal(f.readiness(43), undefined, 'planning only the blocked issue cannot grant its sibling');
+
+    firstTick.end('continue\n');
+    const initial = await output(text => text.match(/issue 43: \(start\) -> wait-preflight-overlap[^\n]*\n/u));
+    assert.match(initial[0], /"issue":42.*src\/shared\.ts/u);
+    (await tick()).end('continue\n');
+    const transition = await output(text => /issue 43: wait-preflight-overlap -> review\b[^\n]*\n/u.test(text) && text);
+    assert.match(transition, /issue 42: review -> blocked/u);
+    const sibling = f.readiness(43);
+    assert.equal(sibling.value.sequence, request.sequence + 1);
+    assert.deepEqual(f.all().map(row => row.decision.action), ['blocked', 'review']);
+    assert.equal(f.planIssue(43).decision.action, 'review');
+
+    const beforeClear = readFileSync(f.lanePath);
+    record();
+    assert.deepEqual(readFileSync(f.lanePath), beforeClear, 'an ended grant can replay even after sibling admission');
+    f.cli('clear-blocker', [...f.common, '--phase', 'implement'], false);
+    assert.deepEqual(readFileSync(f.lanePath), beforeClear);
+    assert.deepEqual(events(), priorEvents);
+    f.cli('clear-blocker', [...f.common, '--phase', 'review']);
+    const cleared = JSON.parse(readFileSync(f.lanePath)).issues[42];
+    const { review: reviewTelemetry, ...otherTelemetry } = expected.issues[42].retry_telemetry;
+    assert.equal(reviewTelemetry.same_failure_repeats, 1);
+    assert.deepEqual(cleared, { ...expected.issues[42], blocker: null,
+      attempts: { ...expected.issues[42].attempts, review: 0 }, retry_telemetry: otherTelemetry });
+    assert.deepEqual(events().slice(priorEvents.length).map(event => [event.kind, event.data.action, event.data.blocker]),
+      [['incident', 'clear-blocker', blocker]]);
+    assert.equal(f.planIssue(42).decision.action, 'wait-preflight-overlap');
+    assert.deepEqual(f.readiness(42), cleared.facts['review-readiness']);
+    assert.deepEqual(f.readiness(43), sibling);
+
+    f.state.issues = { 43: { ...f.state.issue, state: 'CLOSED' } };
+    f.update();
+    assert.equal(f.planIssue(42).decision.action, 'review');
+    assert.deepEqual(f.readiness(42), { ...readiness, value: { ...readiness.value, sequence: sibling.value.sequence + 1 } });
+    const regrantedBytes = readFileSync(f.lanePath);
+    assert.equal(record(request, false).stdout, '');
+    assert.deepEqual(readFileSync(f.lanePath), regrantedBytes);
+
+    const latest = { ...request, sequence: f.readiness(42).value.sequence };
+    record(latest);
+    assert.deepEqual(JSON.parse(f.recordIssue(42, 'implement', {
+      ok: false, error: { type: 'child-contract-error' },
+    }).stdout).blocker, { ...blocker, sequence: latest.sequence });
+    f.commit('src/shared.ts', 'new review head while parked\n');
+    const staleBytes = readFileSync(f.lanePath);
+    assert.equal(record(latest, false).stdout, '');
+    assert.deepEqual(readFileSync(f.lanePath), staleBytes);
+  }));
+
+test('#4323 review preparation: malformed, stale and ineligible requests preserve lane bytes and history', t => {
+  const file = 'src/shared.ts';
+  const f = readinessFixture(t, { 42: [file], 43: [file] });
+  for (const issue of [42, 43]) f.implementIssue(issue, file);
+  const { obs } = f.planIssue(42);
+  const request = { reason: 'prior-head-red-unavailable', fix_back_eligible: false, head_sha: obs.headSha,
+    policy_sha256: obs.preflightPolicy.sha256, sequence: f.readiness(42).value.sequence };
+  const bytes = readFileSync(f.lanePath);
+  const events = readRetroEvents(f.root, 'fixture');
+  const reject = (value, expected, issue = '42', flags = []) => {
+    const before = readFileSync(f.lanePath);
+    const result = f.cli('record-review-preparation-blocker',
+      ['--lane', f.lanePath, '--issue', issue, '--value', JSON.stringify(value), ...flags], false);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, expected);
+    assert.deepEqual(readFileSync(f.lanePath), before);
+  };
+
+  const { sequence, ...missingSequence } = request;
+  for (const bad of [null, [], missingSequence, { ...request, reviews: [] }, { ...request, phase: 'review' },
+    { ...request, authority: true }, { ...request, reason: 'dispatch-target-unavailable' },
+    { ...request, fix_back_eligible: true }, { ...request, fix_back_eligible: 'false' },
+    { ...request, sequence: String(sequence) }, { ...request, sequence: 0 },
+    { ...request, sequence: 1.5 }, { ...request, sequence: Number.MAX_SAFE_INTEGER + 1 },
+    { ...request, head_sha: request.head_sha.toUpperCase() }, { ...request, head_sha: 42 },
+    { ...request, policy_sha256: 'short' }]) reject(bad, /review-preparation blocker input/u);
+  reject(request, /review-preparation blocker arguments/u, '42', ['--phase', 'review']);
+  reject(request, /review-preparation blocker arguments/u, '4.2e1');
+  reject(request, /not in this lane/u, '999');
+  reject({ ...request, head_sha: f.git(f.root, 'rev-parse', 'issue-43') }, /exact review grant/u);
+  reject({ ...request, policy_sha256: '0'.repeat(64) }, /exact review grant/u);
+  reject({ ...request, sequence: sequence + 1 }, /exact review grant/u);
+  reject({ ...request, head_sha: f.git(f.root, 'rev-parse', 'issue-43') }, /exact review grant/u, '43');
+
+  const lane = JSON.parse(bytes);
+  for (const [change, expected] of [
+    [copy => { delete copy.preflight_overlap; }, /preflight_overlap: 1/u],
+    [copy => { copy.issues[42].facts['review-readiness'].value.active = 'true'; }, /invalid-review-readiness/u],
+    [copy => { copy.issues[42].depends_on = [43]; }, /not eligible/u],
+    [copy => { copy.issues[42].blocker = { type: 'input-preparation', phase: 'review', code: 'dispatch-target-unavailable' }; },
+      /different blocker/u],
+  ]) {
+    const copy = structuredClone(lane);
+    change(copy);
+    writeFileSync(f.lanePath, JSON.stringify(copy));
+    reject(request, expected);
+  }
+  writeFileSync(f.lanePath, bytes);
+  for (const state of ['OPEN', 'CLOSED', 'MERGED']) {
+    f.state.pr = { number: 142, state, headRefOid: obs.headSha,
+      mergeable: 'MERGEABLE', statusCheckRollup: [{ state: 'PENDING' }] };
+    f.update();
+    reject(request, /not eligible/u);
+  }
+  f.state.pr = null;
+  f.state.issue.state = 'CLOSED';
+  f.update();
+  reject(request, /not eligible/u);
+  f.state.issue.state = 'OPEN';
+  f.state.fail = 'issue';
+  f.update();
+  reject(request, /not eligible/u);
+  delete f.state.fail;
+  const originalBody = f.state.issue.body;
+  f.state.issue.body += ' New issue requirements.';
+  f.update();
+  reject(request, /not eligible/u);
+  assert.deepEqual(readFileSync(f.lanePath), bytes);
+  assert.deepEqual(readRetroEvents(f.root, 'fixture'), events);
+
+  f.state.issue.body = originalBody;
+  const siblingHead = f.git(f.root, 'rev-parse', 'issue-43');
+  f.state.prs = { 'issue-43': { number: 143, state: 'MERGED', headRefOid: siblingHead,
+    mergeCommit: { oid: siblingHead }, mergeable: 'MERGEABLE', statusCheckRollup: [] } };
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', siblingHead);
+  f.update();
+  reject(request, /not eligible/u);
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', obs.baseSha);
+  delete f.state.prs;
+  f.update();
+  writeFileSync(join(f.worktree, file), 'dirty checkout\n');
+  reject(request, /current clean implementation checkout/u);
+  f.git(f.worktree, 'restore', file);
+  const completed = f.review();
+  f.set('review', completed, obs.headSha);
+  assert.equal(f.planIssue(42).decision.action, 'create-pr');
+  reject(request, /not eligible/u);
+  f.commit(file, 'changed review head\n');
+  reject(request, /not eligible/u);
+});
 
 for (const [command, flags, granted] of [
   ['plan-all', [], [43, 44]],

@@ -31,7 +31,8 @@ a missing or nonnumeric bounded limit never becomes unlimited retries.
 
 `init` rejects an existing lane file, for both explicit issue specs and v2
 intake, preserving its bytes. It never resets an active lane. State writers
-(`record`, `set-fact`, `approve-merge`, `clear-blocker`) serialize the entire
+(`record`, `record-review-preparation-blocker`, `set-fact`, `approve-merge`,
+`clear-blocker`) serialize the entire
 read/validate/update operation with a per-file exclusive lock and publish complete
 JSON atomically. Readers can continue during a write. Node's built-in SQLite
 holds an OS-owned write transaction on the persistent `.lock` file, with a
@@ -567,6 +568,38 @@ issues, facts, approvals and counters. It appends an `incident` with
 existing retrospective store, retaining every clear even after identical repeated
 exhaustion. Run a fresh `plan` afterward; clearing a blocker supplies no passing
 evidence or additional authority.
+
+### Release a review grant when prior-head RED is unavailable
+
+Only the lane lead may record this input-preparation blocker, and only when
+official review evidence preparation fails because the required prior-head RED
+cannot be established. In a `preflight_overlap: 1` lane, use an actual returned
+`review` grant. Copy the review head and effective `policy_sha256`
+(`obs.preflightPolicy.sha256`), and the positive safe-integer sequence from
+`obs.facts["review-readiness"].value.sequence` on that `plan` row. The command
+accepts only the following five JSON fields:
+
+```text
+node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs record-review-preparation-blocker --root . --lane <lane.json> --issue <n> --value '{"reason":"prior-head-red-unavailable","fix_back_eligible":false,"head_sha":"<head>","policy_sha256":"<policy>","sequence":<sequence>}'
+```
+
+The command re-observes the checkout and GitHub under the lane lock and
+requires that exact grant to still be eligible for coordinated `review`. An
+OPEN PR at an older head is allowed; an already published current head is not.
+The blocker and the deactivated grant are saved together. The command allocates
+no sequence and consumes no retry or fix-back attempt. An exact replay on the
+same live binding is a no-op; a stale request or a different blocker is an
+error. Do not edit the ledger or simulate a stage result to release a slot.
+
+Retain the failed preparation evidence and any separate unresolved product
+blockers. A diagnostic mutation is not official RED, and this command supplies
+neither a RED waiver nor admission to review, publication, CI or merge. Once
+the preparation problem is resolved, use `clear-blocker --phase review`,
+then obtain a fresh `review` via `plan`. The old grant stays inactive, including
+when the head or policy changes, and an active overlapping sibling keeps its
+priority. Run [official review preparation](../../review-head/SKILL.md) again
+under the fresh binding, with the required previous-head RED, same-selection
+GREEN, and all selected axes. Clearing the blocker carries no evidence forward.
 
 Required PR, issue and dependency GitHub observations fail closed.
 `plan` and `plan-all` return the `observation-failed` action with
