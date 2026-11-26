@@ -216,6 +216,53 @@ checkout. Keep stdout/stderr separately. A worker's lookalike file cannot
 replace the completion channel. See review-head for the exact collection
 contract.
 
+### Test-only executable fix-back
+
+Classify the complete actual Git delta between the implementer Result's
+`previous_head_sha` and corrected `head_sha`, not the submitter's label.
+Test/fixture-only changes do not qualify for different evidence. Mixed,
+runner/configuration or build-input changes, and uncertain classifications
+remain subject to the existing gate.
+
+In a separate, initially clean worktree at that actual `previous_head_sha`,
+project only the complete regression-test and necessary fixture changes from
+the corrected head. If the named test passes there, the test-only fix-back
+cannot proceed: it has not shown that the blocker is reproduced on the
+previous head or that the fix-back corrected it. For a regression that does
+reproduce, require the supported runner's genuine failure in the named test
+body at the required source location and an actual pass of that same
+selection on the corrected head with identical command and argv. The pinned
+verification base, a product-mutated checkout, a different runner, and setup,
+hook, import or runtime failures cannot supply canonical RED.
+
+The lead owns this preparation decision and retains both observed commits and
+trees, the complete projection patch, exact runner/selection/command/argv,
+outcomes and full raw logs with their provenance in existing work-unit
+evidence. Keep a previous-head projection pass as that observation, not a
+RED receipt. If a product mutation is used to diagnose test sensitivity,
+retain its checkout identity, mutation patch, outcome and logs separately as
+diagnostic evidence; verify restoration and keep the corrected review checkout
+clean. Mutation failure proves neither previous-head RED nor blocker
+remediation and cannot substitute for review PASS.
+
+If the previous-head projection passes and required evidence is unavailable,
+stop before reviewer dispatch. Report the evidence gap as `input-preparation`,
+`fix_back_eligible:false`, not a new product verdict or fix-back retry. Preserve
+the original required canonical blocker's identity, evidence and unresolved
+status separately. Refer it and the retained observations to the maintainer for
+blocker/scope adjudication; return to preflight if approved scope must change.
+Do not mark the blocker remediated or treat the work as complete, reviewed or
+publishable on this evidence. Local Result admission does not satisfy this gate.
+
+Only independently extra coverage may be separately approved and scoped as
+ordinary implementation, after original acceptance and review are satisfied
+without that coverage or mutation evidence and no required blocker remains.
+Do not relabel the existing fix-back, waive evidence, or introduce another
+evidence path. The bounded Changeset-only Git evidence above is unchanged and
+does not apply to tests or fixtures.
+
+### Implementation and review input details
+
 New `preflight` inputs require complete `caller_searches` at the pinned base;
 the preparer authenticates repository-wide fixed-argv Git results, including
 tooling and governance fixtures. The read-only child returns `contract_input`
