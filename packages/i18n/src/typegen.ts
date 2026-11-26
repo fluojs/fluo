@@ -14,13 +14,13 @@ const DEFAULT_TYPED_TRANSLATE_OPTIONS_TYPE_NAME = 'I18nCatalogTypedTranslateOpti
 const DEFAULT_TYPED_TRANSLATE_TYPE_NAME = 'I18nCatalogTypedTranslate';
 const DEFAULT_TYPED_SERVICE_TYPE_NAME = 'I18nCatalogTypedService';
 const IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-const RESERVED_TYPE_NAMES = new Set([
+// Ambient declarations permit strict-mode contextual keywords such as `public` and `await`.
+const RESERVED_AMBIENT_TYPE_NAMES = new Set([
   'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else',
   'enum', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof',
   'new', 'null', 'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void',
-  'while', 'with', 'implements', 'interface', 'let', 'package', 'private', 'protected', 'public',
-  'static', 'yield', 'await', 'any', 'bigint', 'boolean', 'never', 'number', 'object', 'string',
-  'symbol', 'undefined', 'unknown',
+  'while', 'with', 'any', 'bigint', 'boolean', 'never', 'number', 'object', 'string', 'symbol',
+  'undefined', 'unknown',
 ]);
 
 type CatalogEntry = {
@@ -74,7 +74,7 @@ export interface I18nCatalogTypegenDirectoryOptions extends I18nCatalogTypegenOp
 }
 
 function assertIdentifier(name: string, label: string, isInterface = false): string {
-  if (!IDENTIFIER_PATTERN.test(name) || RESERVED_TYPE_NAMES.has(name) || (name === 'as' && !isInterface)) {
+  if (!IDENTIFIER_PATTERN.test(name) || RESERVED_AMBIENT_TYPE_NAMES.has(name) || (name === 'as' && !isInterface)) {
     throw new I18nError(`${label} must be a valid TypeScript identifier.`, 'I18N_INVALID_OPTIONS');
   }
 

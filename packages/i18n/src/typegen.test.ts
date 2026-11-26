@@ -187,6 +187,13 @@ export interface I18nCatalogTypedService {
     { keyByNamespaceTypeName: 'intrinsic' },
     { keyByNamespaceTypeName: 'as' },
     { typedServiceTypeName: 'as' },
+    { typedServiceTypeName: 'public' },
+    {
+      keyTypeName: 'implements', namespaceTypeName: 'interface', keyByNamespaceTypeName: 'static',
+      namespaceKeyTypeName: 'yield', typedTranslateOptionsTypeName: 'private',
+      typedTranslateTypeName: 'await', typedServiceTypeName: 'package',
+    },
+    { keyTypeName: 'let', keyByNamespaceTypeName: 'protected' },
     { keyTypeName: 'keyof' },
     { keyByNamespaceTypeName: 'readonly' },
     { keyByNamespaceTypeName: 'keyof' },
@@ -207,16 +214,17 @@ export interface I18nCatalogTypedService {
     ] as const satisfies readonly I18nCatalogTypegenInput[];
     await writeCatalog('en', 'admin/common', inputs[0].messages);
     await writeCatalog('en', 'common', inputs[1].messages);
-    const declarations = generateI18nCatalogTypes(inputs, options);
+    let declarations = '';
+    expect(() => { declarations = generateI18nCatalogTypes(inputs, options); }).not.toThrow();
     const serviceName = options.typedServiceTypeName ?? 'I18nCatalogTypedService';
     const i18nModulePath = join(rootDir, 'i18n-module.d.ts');
     const validConsumerPath = join(rootDir, 'valid-consumer.ts');
     const invalidConsumerPath = join(rootDir, 'invalid-consumer.ts');
     const facade = [
       "import type { I18nTranslateOptions } from '@fluojs/i18n';",
-      `import type { ${serviceName} } from './generated-i18n-catalog.d.ts';`,
+      `import type { ${serviceName} as CatalogService } from './generated-i18n-catalog.d.ts';`,
       'declare const i18n: { translate(key: string, options: I18nTranslateOptions): string };',
-      `const typedI18n: ${serviceName} = {`,
+      'const typedI18n: CatalogService = {',
       '  translate: i18n.translate.bind(i18n),',
       '  translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),',
       '};',
@@ -345,7 +353,7 @@ export interface I18nCatalogTypedService {
     const messages = { title: 'Welcome' };
     await writeCatalog('en', 'common', messages);
 
-    const names = ['class', 'string', 'void', 'null', 'await'];
+    const names = ['class', 'string', 'void', 'null', 'unknown'];
     if (option !== 'keyByNamespaceTypeName' && option !== 'typedServiceTypeName') {
       names.push('as');
     }
