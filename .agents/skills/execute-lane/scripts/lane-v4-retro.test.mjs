@@ -875,7 +875,8 @@ console.log(JSON.stringify(args[0]==='api'?api:args[0]==='pr'?pr:{state:'CLOSED'
 	assert.deepEqual(JSON.parse(watchLines.find((line) => line.startsWith("LANE-SETTLED ")).slice("LANE-SETTLED ".length)),
 		[{ issue: 1, action: "done" }]);
 	const legacy = invoke("retro-evidence");
-	assert.equal(legacy.events.length, 3);
+	assert.equal(legacy.events.length, 4);
+	assert.ok(legacy.events.every(({ kind }) => kind !== "stage-lifecycle"));
 	assert.equal(legacy.stageLifecycle?.coverage, "partial");
 	assert.equal(legacy.stageLifecycle.observedStarts, null);
 	const native = (suffix, stage, checkpoints, { task = {}, reverse = false } = {}) => {
@@ -958,7 +959,7 @@ console.log(JSON.stringify(args[0]==='api'?api:args[0]==='pr'?pr:{state:'CLOSED'
 	assert.deepEqual(readFileSync(path), original);
 	invoke("retro-ci", ["--issue", "1"]);
 	const evidence = invoke("retro-evidence");
-	assert.equal(evidence.events.filter(({ kind }) => kind !== "stage-lifecycle").length, 4);
+	assert.deepEqual(evidence.events.filter(({ kind }) => kind !== "stage-lifecycle"), legacy.events);
 	assert.equal(evidence.totalElapsedMs, null);
 	assert.deepEqual(evidence.ciFailurePatterns.map(({ failures, cancellations }) => [failures, cancellations]), [[0, 1]]);
 	const timing = evidence.ciTimings ?? [];
