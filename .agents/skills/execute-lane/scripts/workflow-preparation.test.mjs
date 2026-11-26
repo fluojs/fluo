@@ -1084,6 +1084,166 @@ function callerFootprint(value) {
     matches: [{ path: 'source.mjs', line: 1, text: 'export const value = 1;' }] }] };
 }
 
+const metadataPath = '.changeset/readme-correction.md';
+const metadataOwner = '@fluojs/core';
+const patchMetadata = (frontmatter = `"${metadataOwner}": patch`) =>
+  `---\n${frontmatter}\n---\n\nCorrect the documented behavior.\n`;
+const readmePair = (root) => ({
+  [`${root}/README.md`]: '# Corrected behavior\n',
+  [`${root}/README.ko.md`]: '# 동작 설명 정정\n',
+});
+const publicManifest = { name: metadataOwner, publishConfig: { access: 'public' } };
+
+function metadataFixture(t, options = {}) {
+  const value = fixture(t);
+  const { root, input, store } = value;
+  const packageRoot = options.packageRoot ?? 'packages/core';
+  const writeFiles = (files) => {
+    for (const [path, contents] of Object.entries(files)) {
+      if (contents === null) {
+        rmSync(join(root, path));
+      } else {
+        mkdirSync(join(root, path, '..'), { recursive: true });
+        if (typeof contents === 'string') writeFileSync(join(root, path), contents);
+        else symlinkSync(contents.target, join(root, path));
+      }
+    }
+    git(root, 'add', '-A', '--', ...Object.keys(files));
+  };
+  if (options.upstream) {
+    git(root, 'checkout', '-q', 'main');
+    writeFiles(options.upstream);
+    git(root, 'commit', '-qm', 'upstream documentation');
+    input.base_head_sha = git(root, 'rev-parse', 'HEAD');
+    git(root, 'update-ref', 'refs/remotes/origin/main', input.base_head_sha);
+    git(root, 'checkout', '-q', 'issue-42');
+    git(root, 'merge', '--no-edit', '-q', 'main');
+  }
+  writeFiles({
+    [`${packageRoot}/package.json`]: JSON.stringify(options.manifest ?? publicManifest),
+    ...(options.readmes ?? readmePair(packageRoot)),
+    ...options.prior,
+  });
+  git(root, 'commit', '-qm', 'previous implementation');
+  const previous = git(root, 'rev-parse', 'HEAD');
+  writeFiles(options.delta ?? { [metadataPath]: patchMetadata(options.frontmatter) });
+  git(root, 'commit', '--allow-empty', '-qm', 'fix-back');
+  const head = git(root, 'rev-parse', 'HEAD');
+  git(input.checkout, 'checkout', '--detach', '-q', head);
+  const tree = git(root, 'rev-parse', `${head}^{tree}`);
+  const mergeBase = git(root, 'merge-base', input.base_head_sha, head);
+  input.changed_paths = git(root, 'diff', '--name-only', '--no-renames', '-z', mergeBase, head)
+    .split('\0').filter(Boolean);
+  input.contract = createPreflight({ ...input.contract, scope: ['source.mjs', 'packages/', '.changeset/'],
+    ...(options.outsideScope ? { non_scope: [metadataPath] } : {}),
+    ...(options.large ? { acceptance: ['Keep the documented correction. '.repeat(1600)] } : {}) });
+  input.policy = evaluatePreflight(input.contract, { issue: input.issue, issueSha256: input.issue_sha256,
+    baseSha: value.base, changedFiles: options.outsideScope ? ['source.mjs'] : input.changed_paths }).policy;
+  input.head_sha = head;
+  input.implementation = { mode: 'fix-back', previous_head_sha: previous, head_sha: head,
+    contract_sha256: input.contract.sha256 };
+  input.diff = store('metadata.diff', execFileSync('git',
+    ['diff', '--binary', '--full-index', '--no-renames', mergeBase, head], { cwd: root, encoding: 'utf8' }));
+  input.evidence[0].receipt = store('metadata-focused.json', { ...value.receipt,
+    head_sha: head, tree_sha: tree, contract_sha256: input.contract.sha256 });
+  writeFileSync(input.accepted_contract_path, JSON.stringify(input.contract));
+  input.observation = store('metadata-plan.json', { issue: input.issue, decision: { action: 'review' }, obs: {
+    preflight: input.contract, preflightPolicy: input.policy, issueSha256: input.issue_sha256,
+    baseSha: value.base, headSha: head, changedFiles: input.changed_paths,
+  } });
+  return { ...value, previous, head, tree, mergeBase, packageRoot };
+}
+
+const assertPreparationBlock = (run, diagnostic) => assert.throws(run,
+  (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+    && diagnostic.test(error.message));
+
+for (const large of [false, true]) {
+  test(`#4294 Changeset fix-back: authored bilingual README pair -> identical Git evidence on all axes (${large ? 'transfer' : 'inline'})`, (t) => {
+    const { root, input, previous, head, tree, mergeBase, packageRoot } = metadataFixture(t, { large });
+
+    const delivery = prepareReviewTransfer(input);
+
+    assert.equal(delivery.kind, large ? 'review-transfer' : 'review-input');
+    const prepared = large ? readReviewTransfer(input.artifact_root, delivery.transfer) : delivery;
+    const metadata = {
+      version: 1, kind: 'release-metadata', issue: 42, contract_sha256: input.contract.sha256,
+      previous_head_sha: previous, previous_tree_sha: git(root, 'rev-parse', `${previous}^{tree}`),
+      head_sha: head, tree_sha: tree, previous_authored_merge_base_sha: mergeBase,
+      changeset: { path: metadataPath, blob_sha: git(root, 'rev-parse', `${head}:${metadataPath}`),
+        sha256: hash(patchMetadata()), bytes: Buffer.byteLength(patchMetadata()) },
+      package: { name: metadataOwner, root: packageRoot }, intent: { lane: 'stable', bump: 'patch' },
+    };
+    assert.deepEqual(prepared.common.fix_back_release_metadata, metadata);
+    assert.equal(Object.hasOwn(prepared.common, 'fix_back_red'), false);
+    assert.deepEqual(prepared.reviewers.map(({ reviewer }) => reviewer), ['contract', 'code', 'verification']);
+    for (const reviewer of prepared.reviewers) assert.deepEqual(reviewer.input.fix_back_release_metadata, metadata);
+    assert.equal(prepared.common.readable_index.commands[0].status, 'passed');
+    assert.deepEqual(prepared.common.changed_paths, input.changed_paths);
+  });
+}
+
+for (const [scenario, options, diagnostic] of [
+  ['missing Korean README', { readmes: { 'packages/core/README.md': '# English\n' } }, /README pair/u],
+  ['nested README pair', { readmes: readmePair('packages/core/docs') }, /README pair/u],
+  ['upstream-only README pair', { upstream: readmePair('packages/core'), readmes: {} }, /README pair/u],
+  ['ambiguous README owners', { readmes: { ...readmePair('packages/core'), ...readmePair('packages/http') } }, /README pair/u],
+  ['private manifest', { manifest: { ...publicManifest, private: true } }, /public package/u],
+  ['wrong package', { frontmatter: '"@fluojs/http": patch' }, /patch intent/u],
+  ['non-patch intent', { frontmatter: `"${metadataOwner}": minor` }, /patch intent/u],
+  ['malformed frontmatter', { frontmatter: `"${metadataOwner}': patch` }, /patch intent/u],
+  ['duplicate intent', { frontmatter: `"${metadataOwner}": patch\n"${metadataOwner}": patch` }, /patch intent/u],
+  ['multiple intents', { frontmatter: `"${metadataOwner}": patch\n"@fluojs/http": patch` }, /patch intent/u],
+  ['CLI feature mislabeled as patch', { packageRoot: 'packages/cli', manifest: { ...publicManifest, name: '@fluojs/cli' },
+    readmes: { ...readmePair('packages/cli'), 'packages/cli/README.md': 'Run `fluo inspect`.\n' },
+    delta: { [metadataPath]: '---\n"@fluojs/cli": patch\n---\n\nAdds `fluo inspect`.\n' } }, /public CLI feature additions classified as patch/u],
+  ['outside approved scope', { outsideScope: true }, /scope-expansion/u],
+  ['mixed runtime and metadata', { delta: { [metadataPath]: patchMetadata(), 'source.mjs': 'export const value = 3;\n' } }, /Changeset addition/u],
+  ['multiple metadata files', { delta: { [metadataPath]: patchMetadata(), '.changeset/extra.md': patchMetadata() } }, /Changeset addition/u],
+  ['existing metadata modified', { prior: { [metadataPath]: patchMetadata() },
+    delta: { [metadataPath]: `${patchMetadata()}More detail.\n` } }, /Changeset addition/u],
+  ['existing metadata renamed', { prior: { '.changeset/old.md': patchMetadata() },
+    delta: { '.changeset/old.md': null, [metadataPath]: patchMetadata() } }, /Changeset addition/u],
+  ['existing metadata deleted', { prior: { [metadataPath]: patchMetadata() }, delta: { [metadataPath]: null } }, /Changeset addition/u],
+  ['empty delta', { prior: { [metadataPath]: patchMetadata() } }, /Changeset addition/u],
+  ['Changesets README', { delta: { '.changeset/README.md': patchMetadata() } }, /Changeset addition/u],
+  ['mixed-case Changesets README', { delta: { '.changeset/readME.md': patchMetadata() } }, /Changeset addition/u],
+  ['hidden Changeset', { delta: { '.changeset/.readme-correction.md': patchMetadata() } }, /Changeset addition/u],
+  ['uppercase Changeset extension', { delta: { '.changeset/readme-correction.MD': patchMetadata() } }, /Changeset addition/u],
+  ['nested metadata', { delta: { '.changeset/nested/new.md': patchMetadata() } }, /Changeset addition/u],
+  ['symlink metadata', { delta: { [metadataPath]: { target: '../source.mjs' } } }, /Changeset addition/u],
+]) {
+  test(`#4294 Changeset fix-back: ${scenario} -> non-fixable preparation block`, (t) => {
+    const { input } = metadataFixture(t, options);
+
+    assertPreparationBlock(() => prepareReviewInput(input), diagnostic);
+  });
+}
+
+test('Changeset fix-back rejects an unquoted scoped YAML key', (t) => {
+  const { input } = metadataFixture(t, { frontmatter: `${metadataOwner}: patch` });
+
+  assert.throws(() => prepareReviewInput(input),
+    (error) => error.kind === 'input-preparation' && error.fix_back_eligible === false
+      && /invalid YAML in frontmatter/u.test(error.message));
+});
+
+for (const [scenario, change, diagnostic] of [
+  ['null RED', ({ input }) => { input.fix_back_red = null; }, /fix-back RED/u],
+  ['invalid RED receipt', ({ input, store }) => { input.fix_back_red = store('invalid-red.json', {}); }, /RED receipt/u],
+  ['caller-supplied metadata', ({ input }) => { input.fix_back_release_metadata = { kind: 'release-metadata' }; }, /non-canonical keys/u],
+  ['tampered authored diff', ({ input, store }) => { input.diff = store('tampered.diff', patchMetadata()); }, /complete merge-base-to-head/u],
+  ['tampered previous head', ({ input, baseHead }) => { input.implementation.previous_head_sha = baseHead; }, /Changeset addition/u],
+  ['tampered readable index', ({ input, store }) => { input.readable_index = store('bad-index.json', {}); }, /readable index/u],
+]) {
+  test(`#4294 Changeset fix-back: ${scenario} -> no reviewer dispatch`, (t) => {
+    const value = metadataFixture(t);
+    change(value);
+
+    assertPreparationBlock(() => prepareReviewInput(value.input), diagnostic);
+  });
+}
+
 function cli(value, stage, input) {
   const path = join(value.input.artifact_root, `${stage}-input.json`);
   writeFileSync(path, JSON.stringify(input));

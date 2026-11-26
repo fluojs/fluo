@@ -2,9 +2,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { basename, delimiter, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { publicWorkspacePackageNames } from '../../../../tooling/release/release-intents.mjs';
+import { verifyChangesetReleaseLane } from '../../../../tooling/release/verify-changeset-release-lane.mjs';
 import { contractDigest, createPreflight, evaluatePreflight, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { assertIssueImplementIdentity, assertIssueImplementInput, assertIssueImplementResult } from '../../issue-implement/scripts/contracts.mjs';
 import { dispatchFor, DispatchPreparationError, readRegisteredAgents, reviewerTargets, validateDispatchTarget } from './dispatch-targets.mjs';
@@ -537,6 +540,87 @@ const implementationBinding = (root, implementation, head, contract) => {
   return text(root, 'rev-parse', `${implementation.previous_head_sha}^{tree}`);
 };
 
+const authenticateFixBackReleaseMetadata = (input, baseHead, trees) => {
+  const { previous_head_sha: previous, head_sha: head } = input.implementation;
+  const readGit = (...args) => git(input.root, '--no-replace-objects', ...args);
+  const { previousTree, tree } = trees;
+  requireInput(readGit('rev-parse', `${previous}^{tree}`, `${head}^{tree}`).toString().trim()
+    === `${previousTree}\n${tree}`, 'fix-back release metadata: rebound Git trees');
+  readGit('merge-base', '--is-ancestor', previous, head);
+  const delta = readGit('diff', '--raw', '--no-abbrev', '--no-renames', '--ignore-submodules=none',
+    '-z', previous, head).toString();
+  // Match @changesets/read's modern filename filter before checking the committed contents.
+  const added = /^:000000 100(?:644|755) 0{40} ([a-f0-9]{40}) A\0(\.changeset\/(?!\.)[^/\0]+\.md)\0$/u.exec(delta);
+  requireInput(added && pathSafe(added[2]) && !/^README\.md$/i.test(basename(added[2]))
+    && input.changed_paths.includes(added[2])
+    && readGit('--literal-pathspecs', 'ls-tree', '-z', previous, '--', added[2]).length === 0,
+  'fix-back release metadata: expected exactly one new authored top-level regular Changeset addition');
+  const [, blob, path] = added;
+  const bytes = readGit('cat-file', 'blob', blob);
+
+  const previousBase = readGit('merge-base', baseHead, previous).toString().trim();
+  const authored = new Set(readGit('diff', '--name-only', '--no-renames', '-z', previousBase, previous)
+    .toString().split('\0'));
+  const owners = [...authored].filter((file) => /^packages\/[^/]+\/README\.md$/u.test(file)
+    && pathSafe(file) && authored.has(`${dirname(file)}/README.ko.md`));
+  requireInput(owners.length === 1, 'fix-back release metadata: expected one authored package-root README pair');
+  const packageRoot = dirname(owners[0]);
+  const readmes = [owners[0], `${packageRoot}/README.ko.md`];
+  const manifestPath = `${packageRoot}/package.json`;
+  const entries = readGit('--literal-pathspecs', 'ls-tree', '-z', previous, '--', ...readmes, manifestPath)
+    .toString().split('\0').filter(Boolean);
+  requireInput(entries.length === 3 && entries.every((entry) => /^100(?:644|755) blob [a-f0-9]{40}\t/u.test(entry)),
+    'fix-back release metadata: README pair and public package manifest must be regular committed files');
+  let owner;
+  try {
+    const manifest = JSON.parse(readGit('cat-file', 'blob', `${previous}:${manifestPath}`));
+    requireInput(manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest)
+      && typeof manifest.name === 'string' && /^@fluojs\/[a-z0-9][a-z0-9._-]*$/u.test(manifest.name)
+      && (manifest.private === undefined || manifest.private === false),
+    'fix-back release metadata: invalid public package manifest');
+    [owner] = publicWorkspacePackageNames([{ manifest }]);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new WorkflowPreparationError(`fix-back release metadata: invalid public package manifest: ${error.message}`);
+  }
+  requireInput(owner, 'fix-back release metadata: README owner is not a public package');
+
+  const contents = bytes.toString('utf8');
+  const frontmatter = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/u.exec(contents);
+  const declarations = frontmatter?.[1].split(/\r?\n/u).map((line) => line.trim())
+    .filter((line) => line.length && !line.startsWith('#'));
+  const syntax = /^(["']?)(@fluojs\/[a-z0-9][a-z0-9._-]*)\1[ \t]*:[ \t]+(["']?)patch\3(?:[ \t]+#.*)?$/u;
+  requireInput(Buffer.from(contents).equals(bytes) && !contents.includes('\0') && frontmatter?.[2].trim()
+    && declarations?.length === 1 && syntax.exec(declarations[0])?.[2] === owner,
+  'fix-back release metadata: expected one valid stable patch intent for the README owner');
+  try {
+    verifyChangesetReleaseLane({ lane: 'stable', changesetDirectory: '.changeset' }, {
+      existsSync: () => true,
+      readdirSync: () => [basename(path)],
+      readFileSync: () => contents,
+      readCliReadme: () => readGit('cat-file', 'blob', `${previous}:${readmes[0]}`).toString(),
+      // The complete fix-back delta proves there are no version or engine changes in this projection.
+      collectPackageVersionDeltas: () => [],
+      collectStableNodeEngineRangeNarrowings: () => [],
+    });
+    // Resolve lazily through the CLI's dependency chain, even under isolated installs.
+    const require = createRequire(import.meta.url);
+    const cliRequire = createRequire(require.resolve('@changesets/cli'));
+    const readRequire = createRequire(cliRequire.resolve('@changesets/read'));
+    const { default: parseChangeset } = readRequire('@changesets/parse');
+    requireInput(isDeepStrictEqual(parseChangeset(contents).releases, [{ name: owner, type: 'patch' }]),
+      'fix-back release metadata: Changesets parser did not return exactly one patch intent for the README owner');
+  } catch (error) {
+    if (!(error instanceof Error) || error instanceof WorkflowPreparationError) throw error;
+    throw new WorkflowPreparationError(`fix-back release metadata: invalid stable patch intent: ${error.message}`);
+  }
+  return { version: 1, kind: 'release-metadata', issue: input.issue, contract_sha256: input.contract.sha256,
+    previous_head_sha: previous, previous_tree_sha: previousTree, head_sha: head, tree_sha: tree,
+    previous_authored_merge_base_sha: previousBase,
+    changeset: { path, blob_sha: blob, sha256: sha256(bytes), bytes: bytes.length },
+    package: { name: owner, root: packageRoot }, intent: { lane: 'stable', bump: 'patch' } };
+};
+
 const regressionPatch = (root, implementation, bytes, failure) => {
   exact(failure, ['file', 'line', 'test'], 'RED failure');
   requireInput(pathSafe(failure.file) && /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(failure.file)
@@ -854,7 +938,9 @@ export function prepareReviewInput(input) {
   const previousTree = implementationBinding(root, input.implementation, input.head_sha, input.contract);
   let red;
   let redRoot;
-  if (input.implementation.mode === 'fix-back') {
+  const hasRed = Object.hasOwn(input, 'fix_back_red');
+  if (hasRed) {
+    requireInput(input.implementation.mode === 'fix-back', 'RED receipt is only valid for fix-back');
     try { red = JSON.parse(readPreparationArtifact(input.artifact_root, redReference, 'fix-back RED')); }
     catch (error) {
       if (error instanceof WorkflowPreparationError) throw error;
@@ -881,8 +967,6 @@ export function prepareReviewInput(input) {
     } else {
       redAssertion(red, stdout);
     }
-  } else {
-    requireInput(!Object.hasOwn(input, 'fix_back_red'), 'RED receipt is only valid for fix-back');
   }
   requireInput(typeof input.base_ref === 'string' && /^origin\/[^ \x00-\x1f]+$/u.test(input.base_ref)
     && commit(input.base_head_sha), 'review preparation: invalid origin/base observation');
@@ -925,6 +1009,8 @@ export function prepareReviewInput(input) {
     && Array.isArray(input.evidence) && input.evidence.length === input.required_checks.length,
   'review preparation: missing required focused evidence inventory');
   const tree = text(checkout, 'rev-parse', 'HEAD^{tree}');
+  const releaseMetadata = input.implementation.mode === 'fix-back' && !hasRed
+    ? authenticateFixBackReleaseMetadata(input, baseHead, { previousTree, tree }) : undefined;
   const observedCommands = new Set();
   const indexCommands = [];
   const authenticated = [];
@@ -1097,6 +1183,7 @@ export function prepareReviewInput(input) {
     required_checks: input.required_checks, evidence: input.evidence, readable_index: readableIndex, footprint,
     implementation: input.implementation,
     ...(red === undefined ? {} : { fix_back_red: { reference: redReference, receipt: red } }),
+    ...(releaseMetadata === undefined ? {} : { fix_back_release_metadata: releaseMetadata }),
     ...(retention === undefined ? {} : { retention, fresh_axes: freshAxes }) };
   return { status: 'prepared', kind: 'review-input', common,
     reviewers: freshAxes.map((reviewer) => ({

@@ -97,12 +97,13 @@ Review input also requires `implementation:{mode,previous_head_sha,head_sha,
 contract_sha256}`. Modes are `implement`, `fix-back`, and `resolve-conflict`.
 Bind the current commit and accepted contract; the previous commit must be an
 ancestor. For fix-back, take both heads from the actual implementer Result,
-not the fixed verification base. A fix-back additionally requires
-`fix_back_red:{path,sha256,bytes}`; ordinary implementation and conflict
-resolution need no RED receipt. Missing or inconsistent evidence stops before
-dispatch as non-fixable `input-preparation`.
+not the fixed verification base. A fix-back requires either authenticated
+native RED/GREEN or the Git-only release-metadata evidence below. Ordinary
+implementation and conflict resolution need neither. Missing or inconsistent
+evidence stops before dispatch as non-fixable `input-preparation`.
 
-The lead prepares a separate clean checkout at `previous_head_sha`, then runs:
+For executable fix-back, the lead prepares a separate clean checkout at
+`previous_head_sha`, then runs:
 
 ```text
 node .agents/skills/execute-lane/scripts/workflow-preparation.mjs fix-back-red <input.json>
@@ -223,6 +224,21 @@ keys. Node TAP receipt keys and accepted argv remain unchanged. Preparation
 authenticates and rechecks the Vitest artifact along with the existing raw
 streams/patch/head/tree/contract bindings and shares it in the same common
 evidence/readable index with every active reviewer axis.
+
+For a Changeset-only fix-back, leave `fix_back_red` absent. Review preparation
+checks the complete previous-to-current Git delta: exactly one approved, newly
+added regular top-level `.changeset/*.md` file, excluding `.changeset/README.md`.
+The previous head's own merge-base-to-head diff must change both package-root
+`README.md` and `README.ko.md` for one unambiguous public package. Its committed
+manifest names the owner, and the new Changeset must declare a single valid
+stable `patch` for that owner. Upstream-only README changes are not evidence.
+All axes receive the same `common.fix_back_release_metadata`, identifying both
+heads and trees, the issue and contract, the prior authored merge base, the
+committed Changeset path/blob/byte digest, and the owner and intent. This is
+Git evidence, not an execution receipt or a waiver; it never replaces an
+invalid supplied RED, including `null`. Full authored diff, focused receipts,
+readable index, and normal CI and release policy still apply. Inline and
+bounded transfer carry identical evidence.
 
 `common.readable_index` is decoder-free machine metadata derived from those
 authenticated receipts and raw artifacts, with exact head/tree, distinct

@@ -170,5 +170,9 @@ Every verdict includes both arrays. Each evidence entry has exactly
 `acceptance` (a non-empty criterion identifier) and `locations` (one or more
 repository-relative `file:line` strings). PASS needs at least one evidence
 entry. Observations are non-empty strings, or an empty array, and never affect
-aggregation. In fix-back mode inspect the identical authenticated
-`common.fix_back_red` and its previous-head assertion before judging the fix.
+aggregation. For an executable fix-back, inspect the authenticated
+`common.fix_back_red` and its previous-head assertion. For a Changeset-only
+fix-back, inspect the identical `common.fix_back_release_metadata` against
+the authored diff: the prior bilingual README owner and committed stable
+patch intent must match the approved contract. This is not execution evidence
+and does not replace any focused check or release obligation.
