@@ -353,6 +353,8 @@ export class WelcomeEmailService {
 
 `@fluojs/notifications`가 대량 이메일 전달을 백그라운드로 넘겨야 한다면 `QueueModule`을 import하고, `getQueueToken()`으로 `Queue` facade를 주입해 `createEmailNotificationsQueueAdapter(queue)`를 만든 뒤, `EmailNotificationsQueueWorker`를 애플리케이션 provider로 등록합니다. 루트 `EmailModule`은 worker를 자동 등록하지 않으므로 `@fluojs/email/queue`를 import하지 않는 애플리케이션은 런타임에서 `@fluojs/queue`를 필요로 하지 않습니다.
 
+이 예제를 사용하려면 부트스트랩 시 `QueueModule.forRoot()`에서 이름 없는 기본 Redis 클라이언트에 접근할 수 있어야 하며, Redis 서버에도 연결할 수 있어야 합니다. Queue에서 접근할 수 있는 기본 `RedisModule.forRoot(...)` 등록이 앱에 이미 있다면 그대로 사용합니다. 없다면 [Queue 빠른 시작](../queue/README.ko.md#빠른-시작)에 따라 등록합니다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import {

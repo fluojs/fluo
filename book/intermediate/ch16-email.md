@@ -193,6 +193,8 @@ After integration, calls to `NotificationsService.dispatch({ channel: 'email', .
 
 Sending 1,000 emails directly inside a loop can occupy the event loop for too long or hit provider rate limits. Bulk delivery is safer when handed off to background jobs through the `@fluojs/email/queue` subpath.
 
+To use the example below, `QueueModule.forRoot()` must be able to access an unnamed default Redis client at bootstrap, and the Redis server must be reachable. If your app already has a default `RedisModule.forRoot(...)` registration visible to Queue, reuse it. Otherwise, follow the [Queue Quick Start](../../packages/queue/README.md#quick-start) to register it.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
@@ -286,25 +288,30 @@ This snapshot is especially practical when connected to Kubernetes readiness pro
 
 FluoShop uses email to send order confirmations and order summaries that require legal retention.
 
+The example assumes the email channel, queue adapter, and worker from [§16.6](#166-queue-backed-bulk-delivery) are registered and the app is configured to render the `order-success` order template as in [§16.7](#167-template-rendering). A single `dispatch()` sends directly by default even with a queue adapter, so pass `{ queue: true }` to hand the confirmation email to the worker. This does not change the `dispatchMany()` `bulkThreshold` or its per-call queue selection rules.
+
 ```typescript
 async sendOrderConfirmation(order: Order) {
-  await this.notifications.dispatch({
-    channel: 'email',
-    recipients: [order.customerEmail],
-    subject: 'FluoShop order confirmation',
-    template: 'order-success',
-    payload: {
-      templateData: {
-        orderId: order.id,
-        items: order.items,
-        total: order.total,
+  return this.notifications.dispatch(
+    {
+      channel: 'email',
+      recipients: [order.customerEmail],
+      subject: 'FluoShop order confirmation',
+      template: 'order-success',
+      payload: {
+        templateData: {
+          orderId: order.id,
+          items: order.items,
+          total: order.total,
+        },
       },
     },
-  });
+    { queue: true },
+  );
 }
 ```
 
-Going through the orchestration layer lets queued email delivery use the built-in worker defaults consistently, even when the SMTP server or an external provider is briefly unstable. If FluoShop later swaps in a custom worker, it should mirror those defaults deliberately instead of assuming per-job retry or backoff configuration exists on the email API.
+The caller awaits the returned promise for the enqueue result. On success, `status: 'queued'` means the queue accepted the job, and `deliveryId` is the queue job ID. Neither indicates acceptance by the mail provider, arrival in the inbox, or final delivery success. The built-in worker handles subsequent email delivery and retries for the job. If FluoShop later switches to a custom worker, it should reproduce those defaults in the worker if needed rather than assuming the email API offers per-job retry or backoff options.
 
 ## Conclusion
 
