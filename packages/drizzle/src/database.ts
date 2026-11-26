@@ -474,6 +474,7 @@ export class DrizzleDatabase<
             await this.closeTransactionBoundaryOwner(owner);
           }
           attemptBoundary.assertCommittable();
+          this.throwIfRequestAborted(abortContext.signal);
           return value;
         },
         options,

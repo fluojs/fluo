@@ -302,7 +302,7 @@ async function renameUser(
 
 Hook 실패 후에도 나머지를 모두 실행하고 `AfterCommitError`를 던집니다. `committed`는 `true`, `results`는 성공과 실패 전체의 FIFO 결과, 상속한 `errors`는 모든 실패 이유입니다. `error instanceof AfterCommitError`로 구분하고 이미 commit된 DB write를 재실행하지 마세요. 캐시만 복구할지 재조정할지는 애플리케이션 정책이며 Fluo는 hook 오류로 native transaction을 재시도하거나 rollback하지 않습니다.
 
-`requestTransaction(...)` 경계에 hook이 등록되었거나 소유 경계에 `requireAfterCommit: true`가 요구되었다면(중첩 호출이 요구한 경우 포함), callback 완료 후 native commit 중 발생한 request cancellation보다 확인된 commit 성공이 우선합니다. 이 경우에도 모든 hook의 drain을 기다리며, hook 실패는 늦은 abort로 대체하지 않고 `AfterCommitError`로 보고합니다. hook이 모두 성공하면 원래 callback 결과를 반환합니다.
+네이티브 runner가 commit에 진입한 뒤에는 `requestTransaction(...)` 경계에 hook이 등록되었거나 소유 경계에 `requireAfterCommit: true`가 설정된 경우(중첩 호출이 설정한 경우 포함) 늦은 요청 취소보다 확인된 commit 성공이 우선합니다. 이 경우에도 모든 hook의 drain을 기다리며, hook 실패는 늦은 abort로 대체하지 않고 `AfterCommitError`로 보고합니다. hook이 모두 성공하면 원래 callback 결과를 반환합니다.
 
 Raw-client 외부 transaction·다른 wrapper·connection의 commit은 관찰하지 않습니다. Redis에는 지원되는 Fluo-owned commit tracking이 없으며 hook에서 Redis를 호출해도 DB+Redis 원자성은 없습니다. in-process 성공 owner invocation만 다루고 durable outbox·crash/network exactly-once는 보장하지 않습니다. 전체 계약은 [트랜잭션 문맥 계약](../../docs/architecture/transactions.ko.md#커밋-후-작업)을 따릅니다.
 
@@ -379,7 +379,9 @@ non-global이며 ALS transaction context, shutdown drain, disposal, status를 �
 상속한 owner가 settle된 뒤 새 boundary를 시작하는 transaction continuation은 닫힌 transaction handle을 더 이상 재사용하지 않습니다. 이 continuation은 독립적으로 tracking되는 root가 되며, shutdown은 disposal 전에 해당 continuation root를 기다립니다.
 기존 요청 boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 활성 Drizzle transaction을 재사용하면서도 ambient request abort signal을 관찰합니다. 중첩 호출이 자체 `AbortSignal`을 전달하면 합성된 신호가 해당 중첩 callback의 ambient context에도 설치됩니다. 그 callback이 이후에 여는 `requestTransaction(...)` 호출은 자체 신호 여부와 무관하게 같은 합성 취소를 관찰합니다. 따라서 중첩 신호만 취소하면 해당 중첩 호출과 그 후손이 같은 중첩 취소 사유로 reject되고, 바깥 요청 신호, 독립된 sibling 요청 작업, 재사용 중인 활성 transaction handle은 그대로 유지됩니다. 이 전파는 fail-open boundary에 rollback 원자성을 추가하지 않으며 이미 실행 중인 사용자 작업을 중단하지도 않습니다. 기존 수동 transaction boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 두 번째 Drizzle transaction을 열지 않고 shutdown settlement tracking에 참여하며, 해당 settlement handle은 바깥 수동 transaction이 settle될 때까지 tracking에 남아 shutdown이 `dispose(database)`를 실행하기 전에 그 바깥 경계까지 drain하게 합니다. 단, platform status activity count는 더 짧게 유지됩니다. 중첩 request callback이 settle되는 즉시, 바깥 수동 transaction이 계속 실행 중이어도 `details.activeRequestTransactions`는 감소합니다.
 종료가 시작된 뒤 새 `transaction(...)` 및 `requestTransaction(...)` 호출은 거부되므로, 종료 boundary를 지난 뒤 시작되는 늦은 트랜잭션보다 dispose가 먼저 실행되는 상황을 방지합니다.
-등록된 hook이 없고 소유 경계의 `requireAfterCommit` 요구도 없는 기존 경계에서, 요청 callback이 완료된 뒤 underlying Drizzle transaction runner가 commit 또는 rollback을 끝내기 전에 request signal이 abort되면, `requestTransaction(...)`은 먼저 해당 runner가 settle될 때까지 기다린 다음 abort reason으로 reject합니다. 이 동작은 Drizzle cleanup을 request cancellation과 직렬화하면서, 완료된 callback 결과를 반환하는 대신 늦은 request abort를 caller에게 드러냅니다.
+트랜잭션이 상속된 자식 callback의 정산을 기다리는 동안 소유 요청이 취소되면 `requestTransaction(...)`은 자식 callback의 정산을 기다립니다. 이후 commit 가능한 결과를 네이티브 runner에 넘기기 전에 취소를 다시 확인하고, hook이 등록되어 있거나 `requireAfterCommit`이 설정되어 있어도 `AbortError`로 rollback 경로에 들어갑니다. 이미 결정된 rollback-only 또는 실패는 취소로 대체하지 않습니다.
+
+네이티브 runner가 commit에 진입한 뒤의 취소는 해당 commit을 되돌리지 않습니다. 등록된 hook이 없고 소유 경계의 `requireAfterCommit` 요구도 없는 기존 경계에서 `requestTransaction(...)`은 runner의 정산을 기다린 뒤, commit이 성공했다면 callback 결과 대신 취소 사유로 reject합니다. 네이티브 실패는 그대로 전파합니다.
 
 `createDrizzlePlatformStatusSnapshot(...)`과 `DrizzleDatabase.createPlatformStatusSnapshot()`은 같은 계약을 진단 surface에 노출합니다.
 
