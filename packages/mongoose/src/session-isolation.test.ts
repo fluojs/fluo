@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { AsyncResource } from 'node:async_hooks';
+import { describe, expect, it, vi } from 'vitest';
 
 import { MongooseConnection } from './index.js';
 import type { MongooseModelFacade, MongooseSessionLike } from './types.js';
@@ -23,6 +24,85 @@ function createFakeSession(branch: Branch, events: string[]): MongooseSessionLik
 }
 
 describe('MongooseConnection session isolation', () => {
+  it.each([
+    { operation: 'create', operands: [[{ name: 'Ada' }]] },
+    { operation: 'find', operands: [{ name: 'Ada' }, { name: 1, session: 1 }] },
+    { operation: 'findOne', operands: [{ name: 'Ada' }, 'name'] },
+    { operation: 'aggregate', operands: [[{ $match: { name: 'Ada' } }]] },
+    { operation: 'bulkWrite', operands: [[{ insertOne: { document: { name: 'Ada' } } }]] },
+  ] as const)('reuses a retained $operation facade and method with only the live session', async ({ operation, operands }) => {
+    const firstSession = { ...createFakeSession('first', []), branch: 'first' };
+    const secondSession = { ...createFakeSession('second', []), branch: 'second' };
+    const otherSession = createFakeSession('second', []);
+    const nativeResult = {};
+    const nativeOperation = vi.fn(function (this: unknown, ..._args: unknown[]) {
+      return nativeResult;
+    });
+    const UserModel = { [operation]: nativeOperation };
+    const schema = {};
+    const connection = {
+      model: vi.fn(function (this: unknown, _name: string, _schema: object) {
+        return UserModel;
+      }),
+      startSession: vi.fn().mockResolvedValueOnce(firstSession).mockResolvedValueOnce(secondSession),
+    };
+    const mongoose = new MongooseConnection(connection);
+    const options = Object.freeze({ timestamps: false });
+    const nullOptions = Object.freeze({ ...options, session: null });
+    const { facade, retained, callFromClosedScope } = await mongoose.transaction(async () => {
+      const facade = mongoose.model('User', schema);
+      const retained = facade[operation];
+      return {
+        facade,
+        retained,
+        callFromClosedScope: AsyncResource.bind(() => retained(...operands, nullOptions)),
+      };
+    });
+
+    await mongoose.transaction(async () => {
+      expect(facade[operation](...operands, options)).toBe(nativeResult);
+      expect(nativeOperation.mock.lastCall?.at(-1)).toEqual({
+        ...options,
+        session: expect.toSatisfy((session: unknown) => session === secondSession),
+      });
+      const currentOptions = Object.freeze({ ...options, session: secondSession });
+      expect(retained(...operands, currentOptions)).toBe(nativeResult);
+      expect(nativeOperation.mock.lastCall?.at(-1)).toEqual({
+        ...options,
+        session: expect.toSatisfy((session: unknown) => session === secondSession),
+      });
+      expect(nativeOperation.mock.lastCall?.at(-1)).not.toBe(currentOptions);
+
+      for (const session of [firstSession, otherSession]) {
+        expect(() => retained(...operands, { ...options, session }))
+          .toThrow('Explicit session conflicts with ambient transaction session');
+      }
+      expect(() => retained(...operands, nullOptions))
+        .toThrow('Explicit session: null conflicts with ambient transaction session');
+      expect(nativeOperation).toHaveBeenCalledTimes(2);
+    });
+
+    expect(retained(...operands)).toBe(nativeResult);
+    expect(callFromClosedScope()).toBe(nativeResult);
+
+    expect(nativeOperation.mock.calls.map((args) => args.length))
+      .toEqual([operands.length + 1, operands.length + 1, operands.length, operands.length + 1]);
+    for (const args of nativeOperation.mock.calls) {
+      for (const [index, operand] of operands.entries()) {
+        expect(args[index]).toBe(operand);
+      }
+    }
+    expect(nativeOperation.mock.lastCall?.at(-1)).toBe(nullOptions);
+    for (const receiver of nativeOperation.mock.contexts) {
+      expect(receiver).toBe(UserModel);
+    }
+    expect(mongoose.model('User', schema)).toBe(UserModel);
+    expect(connection.model.mock.calls).toEqual([['User', schema], ['User', schema]]);
+    for (const receiver of connection.model.mock.contexts) {
+      expect(receiver).toBe(connection);
+    }
+  });
+
   it('keeps overlapping async branches bound to their own ambient and facade sessions', async () => {
     // Given
     const events: string[] = [];
